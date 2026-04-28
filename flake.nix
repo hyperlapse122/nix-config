@@ -35,6 +35,7 @@
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
+              home-manager.backupFileExtension = "backup";
               home-manager.users.h82 = import ./home/h82.nix;
               home-manager.extraSpecialArgs = { inherit inputs; };
               home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
