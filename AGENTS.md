@@ -36,6 +36,7 @@ nix-config/
 | Add a user package / program (all hosts) | `home/modules/<name>.nix`, then enable in `home/h82.nix` |
 | Add a VS Code extension or setting | `home/modules/editors/vscode.nix` (see `home/modules/editors/AGENTS.md`) |
 | Add a KDE Plasma setting | `home/modules/desktop/plasma.nix` |
+| Add an input method (fcitx5) addon | `home/modules/i18n/fcitx5.nix` |
 | Bump nixpkgs / home-manager / plasma-manager / nix-vscode-extensions | `flake.lock` via `nix flake update` |
 | Add a new host | See **ADDING A HOST** below |
 
@@ -99,8 +100,10 @@ Anything in this section is specific to ONE host and should NOT leak into shared
 
 ### `jpi-vmware` (VMware guest, KDE Plasma 6, Korean desktop)
 - **VMware-only**: `virtualisation.vmware.guest.enable`, GRUB BIOS on `/dev/sda`, `ata_piix`/`mptspi` initrd modules. Not portable.
-- **Korean locale + fcitx5-hangul** with Wayland frontend: `time.timeZone = "Asia/Seoul"`, `i18n.defaultLocale = "ko_KR.UTF-8"`. `GTK_IM_MODULE` / `QT_IM_MODULE` are intentionally cleared (`lib.mkForce ""`); fcitx5 Wayland frontend handles input. **Do not restore those vars on this host** — it breaks Korean input. Hosts without KDE/fcitx5 should not copy this block.
+- **Korean locale**: `time.timeZone = "Asia/Seoul"`, `i18n.defaultLocale = "ko_KR.UTF-8"`. Hosts in other regions should override these in their own `default.nix`.
 - **KDE Plasma 6** via `services.desktopManager.plasma6` + `plasma-manager` home module. Hosts without a desktop should not enable `my.desktop.plasma`.
+
+> **fcitx5 입력기**: 시스템 레벨이 아닌 home-manager 모듈 (`my.i18n.fcitx5`) 로 관리되며 모든 호스트가 공유한다. `home/modules/i18n/fcitx5.nix` 참고. KDE Wayland InputMethod 경로는 `home/modules/desktop/plasma.nix` 의 `kwinrc` 에서 fcitx5-with-addons 패키지의 store 경로를 직접 가리킨다.
 
 ## NOTES
 

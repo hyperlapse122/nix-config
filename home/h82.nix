@@ -24,4 +24,5 @@
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;
+  my.i18n.fcitx5.enable = true;
 }

@@ -23,19 +23,7 @@
     LC_MONETARY = "ko_KR.UTF-8";
   };
 
-  # 한국어 입력
-  i18n.inputMethod = {
-    enable = true;
-    type = "fcitx5";
-    fcitx5 = {
-      addons = with pkgs; [
-        fcitx5-hangul
-        qt6Packages.fcitx5-configtool
-      ];
-      # Wayland frontend 사용 (KDE Plasma 6 권장)
-      waylandFrontend = true;
-    };
-  };
+  # 한국어 입력 (fcitx5) 은 home-manager 모듈에서 관리: home/modules/i18n/fcitx5.nix
 
   # D-Bus
   services.dbus.enable = true;
@@ -99,13 +87,6 @@
     enable = true;
     settings.PasswordAuthentication = false;
     settings.PermitRootLogin = "no";
-  };
-
-  # IM module 환경변수 비우기 (Wayland frontend가 직접 처리)
-  environment.sessionVariables = {
-    GTK_IM_MODULE = lib.mkForce "";
-    QT_IM_MODULE = lib.mkForce "";
-    XMODIFIERS = "@im=fcitx";  # XWayland 앱 호환
   };
 
   # state version - 절대 임의로 바꾸지 말 것

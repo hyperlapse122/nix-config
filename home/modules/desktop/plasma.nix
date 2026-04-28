@@ -42,9 +42,13 @@ in {
 
       configFile = {
         # KWin Wayland의 가상 키보드 활성화 및 fcitx5 선택
+        # NOTE: fcitx5 가 home-manager 모듈로 옮겨졌으므로 시스템 프로파일 경로
+        #       (/run/current-system/sw/...) 대신 fcitx5-with-addons 패키지의
+        #       store 경로를 직접 가리킨다. HM 의 i18n.inputMethod.fcitx5 기본
+        #       package 가 pkgs.qt6Packages.fcitx5-with-addons 이므로 일치.
         "kwinrc"."Wayland" = {
           InputMethod = {
-            value = "/run/current-system/sw/share/applications/org.fcitx.Fcitx5.desktop";
+            value = "${pkgs.qt6Packages.fcitx5-with-addons}/share/applications/fcitx5-wayland-launcher.desktop";
             immutable = true;
           };
           VirtualKeyboardEnabled = true;
