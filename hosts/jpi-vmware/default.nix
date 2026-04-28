@@ -35,6 +35,22 @@
   my.system.virtualisation.docker.enable = true;
   my.system.hardware.logitech.enable = true;
 
+  # 호스트 단위 home-manager 오버라이드.
+  # `home-manager.users.h82` 는 flake.nix 에서 이미 `import ./home/h82.nix` 로 정의되어 있다.
+  # 같은 키에 attrset 을 또 대입하면 NixOS 모듈 시스템이 두 정의를 자동으로 병합한다
+  # (home-manager 의 users 옵션 타입 = `attrsOf (submoduleWith ...)` — 각 사용자 항목이
+  # 서브모듈이라 여러 정의가 imports 처럼 합쳐짐). 즉 home/h82.nix 의 설정을 그대로 둔 채
+  # 이 호스트만의 override 를 얹는 패턴이다.
+  home-manager.users.h82 = {
+    # 화면 자동 잠금 / 자동 끄기 — VMware guest 데스크탑이라 둘 다 끔.
+    # idle 잠금 (kscreenlockerrc Autolock) 과 DPMS (powerdevilrc turnOffDisplay) 가
+    # 가상 세션에서는 의미 없이 거슬리기만 하므로 명시적으로 비활성.
+    # NOTE: 절전/재개 시 잠금 (LockOnResume) 과 dim display 는 건드리지 않는다 —
+    #       각 옵션 기본값(켜짐) 유지. 옵션 의미는 home/modules/desktop/plasma.nix 참고.
+    my.desktop.plasma.autoLock.enable = false;
+    my.desktop.plasma.screenOff.enable = false;
+  };
+
   # 노트북 입력 (keyd + libinput palm rejection) — VMware guest 라서 비활성.
   # 호스트 키보드/터치패드는 hypervisor 가 추상화해서 전달하므로 keyd 매핑이 무의미하고,
   # libinput palm rejection 도 물리 터치패드가 없어 적용 대상이 없음.

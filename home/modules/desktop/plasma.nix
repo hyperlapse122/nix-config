@@ -4,11 +4,68 @@ let
 in {
   options.my.desktop.plasma = {
     enable = lib.mkEnableOption "KDE Plasma desktop configuration (plasma-manager)";
+
+    # 화면 자동 잠금 (idle 타이머 기반).
+    # 기본 true 는 Plasma 의 표준 동작 (idle 시 화면 잠금) 을 그대로 둔다는 뜻.
+    # 호스트 단위로 끄려면 그 호스트의 default.nix 에서:
+    #   home-manager.users.h82.my.desktop.plasma.autoLock.enable = false;
+    # NOTE: 이 토글은 idle 잠금 (kscreenlockerrc [Daemon] Autolock) 만 끈다.
+    #       절전/재개 시 잠금 (LockOnResume) 은 별도 설정이며 보안상 기본값(true)을 유지한다.
+    autoLock.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether KDE Screen Locker auto-locks the screen after the idle timeout.
+        Default true preserves Plasma's stock behavior. Disable per host via
+        `home-manager.users.h82.my.desktop.plasma.autoLock.enable = false;` in
+        the host's `default.nix`. Lock-on-resume from suspend is governed by a
+        separate setting and is intentionally left at Plasma's default (locked).
+      '';
+    };
+
+    # 화면 자동 끄기 (DPMS — PowerDevil 의 turnOffDisplay).
+    # 기본 true 는 Plasma 의 표준 DPMS 동작을 그대로 둔다는 뜻.
+    # 호스트 단위로 끄려면 그 호스트의 default.nix 에서:
+    #   home-manager.users.h82.my.desktop.plasma.screenOff.enable = false;
+    # NOTE: false 일 때 AC / battery / lowBattery 모든 프로파일의 turnOffDisplay.idleTimeout
+    #       을 "never" 로 설정 (powerdevilrc 내부적으로 -1 로 매핑).
+    #       Display dimming (어두워짐) 은 별도이므로 영향받지 않는다 — 필요하면 따로 끌 것.
+    screenOff.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether the display turns off when idle (DPMS via PowerDevil's
+        `turnOffDisplay`). Default true preserves Plasma's stock behavior.
+        Disable per host via
+        `home-manager.users.h82.my.desktop.plasma.screenOff.enable = false;` in
+        the host's `default.nix`. When disabled, sets the idle timeout to
+        `"never"` for AC, battery, and lowBattery profiles. Display dimming is
+        a separate setting and is not touched.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     programs.plasma = {
       enable = true;
+
+      # 화면 자동 잠금 — autoLock 토글이 꺼진 호스트에서만 false 를 명시.
+      # plasma-manager 의 autoLock 옵션은 nullOr bool 이라서 null (= 옵션 미정의) 일 때
+      # kscreenlockerrc 에 키를 쓰지 않으므로 Plasma 기본값 (idle 시 잠금) 이 그대로 적용된다.
+      # 따라서 토글이 켜진 호스트에서는 lib.mkIf 가 옵션을 정의하지 않아 기본 동작이 보존됨.
+      kscreenlocker.autoLock = lib.mkIf (!cfg.autoLock.enable) false;
+
+      # 화면 자동 끄기 (DPMS) — screenOff 토글이 꺼진 호스트에서 모든 프로파일을 "never" 로.
+      # plasma-manager 의 turnOffDisplay.idleTimeout 은 enum ["never"] | ints.between 30 600000
+      # 이고, "never" 는 powerdevilrc 의 -1 로 매핑된다 (modules/powerdevil.nix 의 apply).
+      # NOTE: VMware guest 같은 데스크탑/VM 에는 battery / lowBattery 가 없지만 plasma-manager 가
+      #       세 프로파일을 무조건 powerdevilrc 에 기록하므로 셋 다 적어둔다 — 실제 PowerDevil 은
+      #       해당 상태로 진입하지 않으므로 무해. 노트북 호스트에서도 "never" 일관성이 자연스럽다.
+      # NOTE: idleTimeoutWhenLocked 는 함께 설정하면 안 된다 — plasma-manager 가 "never" 와의
+      #       조합에 대해 assertion 실패시킴 (modules/powerdevil.nix 의 createAssertions). null 유지.
+      powerdevil.AC.turnOffDisplay.idleTimeout = lib.mkIf (!cfg.screenOff.enable) "never";
+      powerdevil.battery.turnOffDisplay.idleTimeout = lib.mkIf (!cfg.screenOff.enable) "never";
+      powerdevil.lowBattery.turnOffDisplay.idleTimeout = lib.mkIf (!cfg.screenOff.enable) "never";
 
       # 기본 폰트 (UI / 고정폭)
       # NOTE: family 문자열은 fontconfig 등록명과 정확히 일치해야 함.
