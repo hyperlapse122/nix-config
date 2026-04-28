@@ -64,6 +64,15 @@
   # 외부 바이너리 호환 (mise 등을 위해)
   programs.nix-ld.enable = true;
 
+  # 1Password (GUI + CLI)
+  # 브라우저 통합용 setuid wrapper 가 필요해서 NixOS 레벨에서 활성화해야 한다.
+  # 단순히 환경 패키지로 깔면 브라우저 확장과의 코드 서명 검증이 동작하지 않음.
+  programs._1password.enable = true;
+  programs._1password-gui = {
+    enable = true;
+    polkitPolicyOwners = [ "h82" ];
+  };
+
   # Flakes 정식 활성화
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
