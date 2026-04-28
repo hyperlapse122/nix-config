@@ -21,6 +21,7 @@
   # 모듈 활성화
   my.shell.enable = true;
   my.git.enable = true;
+  my.gpg.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;
