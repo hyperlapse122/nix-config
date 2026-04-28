@@ -23,6 +23,7 @@
   my.git.enable = true;
   my.gpg.enable = true;
   my.ssh.enable = true;
+  my.env.enable = true;
   my.chrome.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
