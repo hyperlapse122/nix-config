@@ -23,7 +23,7 @@ in {
 
         # AI Agent
         agent = {
-          play_sound_when_agent_done = "when_hidden";
+          play_sound_when_agent_done = false;
           new_thread_location = "new_worktree";
           dock = "left";
           default_model = {
