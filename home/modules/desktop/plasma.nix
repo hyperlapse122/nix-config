@@ -174,6 +174,27 @@ in {
           VirtualKeyboardEnabled = true;
         };
 
+        # 터치패드 자연 스크롤 — 모든 터치패드의 기본값
+        # NOTE: Plasma 6 Wayland 에서 KWin libinput 백엔드는 kcminputrc 의
+        #       [Libinput][Defaults][Touchpad] 그룹을 장치별 설정 fallback
+        #       (= 기본값) 으로 사용한다. 따라서 이 한 줄로 호스트에 연결된 모든
+        #       터치패드에 자연 스크롤이 적용된다 — vendor / product / device-name
+        #       별로 키를 따로 적을 필요가 없다.
+        #       (참고: KDE/kwin src/backends/libinput/device.{h,cpp} 의 m_defaultConfig)
+        # NOTE: 레거시 ~/.config/touchpadrc ([libinput] naturalScroll=true) 는
+        #       Plasma 5 → 6 마이그레이션 전용 파일이며 (KDE/plasma-desktop
+        #       kcms/touchpad/kded/kded.cpp), Plasma 6 Wayland 의 KWin 은 이 파일을
+        #       더 이상 읽지 않는다. 그래서 dotfiles 의 touchpadrc 를 그대로
+        #       이식하지 않고 kcminputrc 의 Defaults 그룹에 쓴다.
+        # NOTE: KConfig 의 중첩 그룹 [A][B][C] 는 plasma-manager configFile 에서
+        #       단일 속성 키 "A/B/C" 로 표현한다 — write_config.py 가 / 를 그룹
+        #       구분자로 분해해 [A][B][C] 형태로 직렬화하기 때문. configFile 스키마는
+        #       attrsOf × 3 (file → group → key) 로 고정이라 깊은 attrset 중첩 (예:
+        #       Libinput.Defaults.Touchpad.NaturalScroll) 은 타입 체크에서 거절된다.
+        "kcminputrc"."Libinput/Defaults/Touchpad" = {
+          NaturalScroll = true;
+        };
+
         # 전역 테마: 자동 (낮/밤 시간대에 따라 Breeze ↔ Breeze Dark 자동 전환)
         # NOTE: plasma-manager 의 `workspace.lookAndFeel` 은 구체적 패키지 ID
         #       (org.kde.breeze.desktop / org.kde.breezedark.desktop) 만 받기 때문에
