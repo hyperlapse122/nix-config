@@ -15,18 +15,18 @@
       "sourceType": "gitlab",
       "sourceUrl": "https://gitlab.com/gitlab-org/ai/skills.git",
       "skillPath": "skills/glab/SKILL.md",
-      "skillFolderHash": "",
+      "skillFolderHash": "803d9838627cdc624c205a5d855cb4f0c6565b7db8387ba280b1c6f036f52779",
       "installedAt": "2026-04-23T07:19:26.181Z",
-      "updatedAt": "2026-04-23T07:19:26.181Z"
+      "updatedAt": "2026-04-28T10:12:52.842Z"
     },
     "playwright-cli": {
       "source": "microsoft/playwright-cli",
       "sourceType": "github",
       "sourceUrl": "https://github.com/microsoft/playwright-cli.git",
       "skillPath": "skills/playwright-cli/SKILL.md",
-      "skillFolderHash": "b901dcc64256dbb1b32744975a0bafaeb4478da5",
+      "skillFolderHash": "e065db5c5c0a7b197cdbcb1e70c9b374f80a7c91",
       "installedAt": "2026-04-23T22:53:51.418Z",
-      "updatedAt": "2026-04-23T22:53:51.418Z"
+      "updatedAt": "2026-04-28T10:12:13.087Z"
     }
   },
   "dismissed": {
