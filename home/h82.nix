@@ -69,4 +69,19 @@
     enable = true;
     enableZshIntegration = true;
   };
+
+  programs.plasma = {
+    enable = true;
+
+    configFile = {
+      # KWin Wayland의 가상 키보드 활성화 및 fcitx5 선택
+      "kwinrc"."Wayland" = {
+        InputMethod = {
+          value = "/run/current-system/sw/share/applications/org.fcitx.Fcitx5.desktop";
+          immutable = true;
+        };
+        VirtualKeyboardEnabled = true;
+      };
+    };
+  };
 }
