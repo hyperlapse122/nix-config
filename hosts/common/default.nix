@@ -6,6 +6,7 @@
     ./networking.nix
     ./audio.nix
     ./ssh.nix
+    ./laptop-input.nix
     ./desktop
     ./programs
   ];

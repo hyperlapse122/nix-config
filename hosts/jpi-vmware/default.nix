@@ -33,6 +33,12 @@
   my.system.programs.nix-ld.enable = true;
   my.system.programs._1password.enable = true;
 
+  # 노트북 입력 (keyd + libinput palm rejection) — VMware guest 라서 비활성.
+  # 호스트 키보드/터치패드는 hypervisor 가 추상화해서 전달하므로 keyd 매핑이 무의미하고,
+  # libinput palm rejection 도 물리 터치패드가 없어 적용 대상이 없음.
+  # 명시적으로 false 를 박아두는 이유: 기본값(false) 의존이 아니라 "이 호스트는 의도적으로 끔" 을 문서화.
+  my.system.laptop-input.enable = false;
+
   # 한국어 입력 (fcitx5) 은 home-manager 모듈에서 관리: home/modules/i18n/fcitx5.nix
 
   # state version — 절대 임의로 바꾸지 말 것 (이 호스트가 처음 설치된 NixOS 릴리즈)
