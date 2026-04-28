@@ -9,5 +9,6 @@
     ./editors
     ./desktop/plasma.nix
     ./i18n
+    ./dev
   ];
 }

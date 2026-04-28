@@ -29,7 +29,7 @@ nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ];
 ## ZED — AGENT SERVERS
 
 `zed.nix` registers `OpenCode` as a custom agent server invoking `opencode acp`.
-`opencode` must be on `$PATH` for the `cmd-alt-o` keybinding to work — this repo does not install it.
+`opencode` must be on `$PATH` for the `cmd-alt-o` keybinding to work — installed by `my.dev.opencode` (`home/modules/dev/opencode.nix`), a `bunx` wrapper around `opencode-ai@latest`. Hosts that enable Zed should also enable `my.dev.opencode = true;`.
 The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; nothing extra needed.
 
 ## CONVENTIONS
