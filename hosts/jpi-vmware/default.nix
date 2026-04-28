@@ -33,6 +33,9 @@
     ];
   };
 
+  # D-Bus
+  services.dbus.enable = true;
+
   # KDE Plasma 6
   services.xserver.enable = true;
   services.displayManager.sddm = {

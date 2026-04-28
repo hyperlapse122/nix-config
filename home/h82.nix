@@ -48,12 +48,17 @@
   programs.git = {
     enable = true;
     settings = {
+      # User Settings
       user.name = "Joosung Park";
       user.email = "iam@h82.dev";
+
       init.defaultBranch = "main";
       pull.rebase = true;
-      credential.helper = "manager";
+
+      # Git Credential Manager 사용 설정
+      credential.helper = "${pkgs.git-credential-manager}/bin/git-credential-manager";
       credential.credentialStore = "secretservice";
+      credential.guiPrompt = "true";
     };
   };
 
