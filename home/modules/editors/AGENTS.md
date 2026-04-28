@@ -42,7 +42,7 @@ The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; 
 
   These divider comments are searchable markers. Keep them.
 
-- **Nix tooling paths.** `nix.serverPath = "${pkgs.nixd}/bin/nixd"`. The Nix formatter is `nixfmt` (from `pkgs.nixfmt-rfc-style`). Both packages are installed in this same module's `home.packages`, so the binaries exist at runtime.
+- **Nix tooling paths.** `nix.serverPath = "${pkgs.nixd}/bin/nixd"`. The Nix formatter is `nixfmt` (from `pkgs.nixfmt` — the `pkgs.nixfmt-rfc-style` alias was deprecated upstream). Both packages are installed in this same module's `home.packages`, so the binaries exist at runtime.
 
 - **Dotted setting keys must be quoted strings** in VS Code (e.g. `"editor.tabSize"`, `"github.copilot.enable"`). Already done throughout — match the pattern.
 
@@ -52,4 +52,4 @@ The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; 
 - ❌ **Do not enable `extensions.autoUpdate` / `auto_update` / `update.mode = "default"`.** Nix is the source of truth; the kill-switches are intentional.
 - ❌ **Do not source VS Code extensions from `pkgs.vscode-extensions.*`** (the nixpkgs set). Stick to `pkgs.vscode-marketplace.*` for consistency and version freshness.
 - ❌ **Do not rename or remove the `# ─── NixOS overlay ... ───` divider comments.** They mark which settings exist only because Nix manages the editor.
-- ❌ **Do not install `nixd` or `nixfmt-rfc-style` elsewhere.** They're co-located with the editor that needs them; duplicating the install is noise.
+- ❌ **Do not install `nixd` or `nixfmt` elsewhere.** They're co-located with the editor that needs them; duplicating the install is noise.

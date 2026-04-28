@@ -171,7 +171,7 @@ in {
     # 외부 도구들 (Zed가 호출)
     home.packages = with pkgs; [
       nixd
-      nixfmt-rfc-style
+      nixfmt
     ];
   };
 }

@@ -63,7 +63,7 @@ nix-config/
 - **`with pkgs; [ ... ]`** style for package lists.
 - **No flake-parts / snowfall / devshell / devenv.** Plain `nixpkgs.lib.nixosSystem` + `home-manager.nixosModules.home-manager`.
 - **Mixed Korean / English comments are normal.** Keep Korean intent comments untouched when editing — they encode design rationale.
-- **Nix code is formatted with `nixfmt-rfc-style`** (Zed invokes `nixfmt`). There is no `treefmt`, no `nix fmt` formatter output, no pre-commit hook, no CI.
+- **Nix code is formatted with `nixfmt`** (RFC-style; the legacy `nixfmt-rfc-style` alias has been collapsed into `nixfmt` upstream). Zed invokes it directly. There is no `treefmt`, no `nix fmt` formatter output, no pre-commit hook, no CI.
 - **Git identity is hard-coded** (`Joosung Park <iam@h82.dev>`) in `home/modules/git.nix`. Do not parameterize unless adding a second user.
 
 ## ADDING A HOST
