@@ -10,6 +10,7 @@
     ./virtualisation.nix
     ./boot
     ./desktop
+    ./hardware
     ./programs
   ];
 }
