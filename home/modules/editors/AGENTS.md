@@ -12,13 +12,16 @@ Editor modules. Both expose `my.editors.<name>.enable`.
 ## VS CODE — CRITICAL CAVEAT
 
 VS Code marketplace extensions come from the `nix-vscode-extensions` overlay (`pkgs.vscode-marketplace.<publisher>.<extension>`).
-The overlay is **applied at the host level** in `hosts/jpi-vmware/default.nix`:
+The overlay is **applied at the host level** in **each host's `default.nix`**:
 
 ```nix
+# hosts/<hostname>/default.nix
 nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ];
 ```
 
 **Why host-level, not home-manager-level**: only the host's `nixpkgs` instance has `allowUnfree = true`. Re-adding the overlay inside home-manager creates a second `pkgs` instance that does **not** inherit `allowUnfree`, and unfree extensions (Copilot, Pylance, etc.) silently fail to evaluate.
+
+> **Multi-host rule**: every host that enables `my.editors.vscode = true` MUST declare this overlay in its own `default.nix`. There is no shared/inherited fallback. Forgetting this causes opaque "extension not found" failures at evaluation time.
 
 → When adding extensions, use `pkgs.vscode-marketplace.<publisher>.<extension>` (lowercased, dots → hyphens). **Never re-import the overlay here.**
 → The `package` option exists so you can swap `pkgs.vscode` → `pkgs.vscodium` / `pkgs.vscode-insiders` without touching anything else.
@@ -45,7 +48,7 @@ The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; 
 
 ## ANTI-PATTERNS
 
-- ❌ **Do not move the `nix-vscode-extensions` overlay into this module** or into `home-manager.users.h82`. See critical caveat above.
+- ❌ **Do not move the `nix-vscode-extensions` overlay into this module** or into any `home-manager.users.<user>` block. The overlay belongs in each host's `default.nix`. See critical caveat above.
 - ❌ **Do not enable `extensions.autoUpdate` / `auto_update` / `update.mode = "default"`.** Nix is the source of truth; the kill-switches are intentional.
 - ❌ **Do not source VS Code extensions from `pkgs.vscode-extensions.*`** (the nixpkgs set). Stick to `pkgs.vscode-marketplace.*` for consistency and version freshness.
 - ❌ **Do not rename or remove the `# ─── NixOS overlay ... ───` divider comments.** They mark which settings exist only because Nix manages the editor.

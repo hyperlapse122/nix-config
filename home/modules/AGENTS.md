@@ -51,5 +51,6 @@ modules/
 - ❌ **No `my.<X>.enable` gate.** A module that runs unconditionally cannot be turned off without deleting the import — defeats the entire pattern.
 - ❌ **Imported but not enabled in `home/h82.nix`.** Imports without enables are dead weight; either enable it or remove the import.
 - ❌ **Hard-coded `/home/h82/...` paths inside modules.** Use `config.home.homeDirectory`. Modules should be user-agnostic in case a second user appears.
-- ❌ **NixOS (system-level) options here.** `users.users.*`, `services.*`, `boot.*`, `networking.*`, `security.*`, `nixpkgs.overlays`, `nixpkgs.config.allowUnfree` belong in `hosts/<host>/default.nix`. Putting them here will fail evaluation.
+- ❌ **Host-specific code inside modules.** No `if config.networking.hostName == "jpi-vmware" then ...` conditionals, no host-scoped paths, no hardware references. Modules under `home/modules/` are imported by EVERY host and must work on all of them. Host divergence lives in `hosts/<hostname>/default.nix` — see the **PER-HOST QUIRKS** section in the root `AGENTS.md`.
+- ❌ **NixOS (system-level) options here.** `users.users.*`, `services.*`, `boot.*`, `networking.*`, `security.*`, `nixpkgs.overlays`, `nixpkgs.config.allowUnfree` belong in `hosts/<hostname>/default.nix`. Putting them here will fail evaluation.
 - ❌ **Tightly coupling two modules.** If `my.editors.vscode` reads `config.my.shell.enable`, you've created an undocumented dependency. Keep modules independent.
