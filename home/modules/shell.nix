@@ -11,7 +11,23 @@ in {
       enable = true;
       autosuggestion.enable = true;
       syntaxHighlighting.enable = true;
-      prezto.enable = true;
+      prezto = {
+        enable = true;
+        pmodules = [
+          "environment"
+          "terminal"
+          "editor"
+          "history"
+          "directory"
+          "spectrum"
+          "utility"
+          "completion"
+          "git"
+          "archive"
+          "ssh"
+          "prompt"
+        ];
+      };
       shellAliases = {
         ls = "eza";
         ll = "eza -l";
