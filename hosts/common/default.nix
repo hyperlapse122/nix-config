@@ -8,6 +8,7 @@
     ./ssh.nix
     ./laptop-input.nix
     ./virtualisation.nix
+    ./boot
     ./desktop
     ./programs
   ];
