@@ -9,7 +9,7 @@ in {
       type = lib.types.package;
       default = pkgs.vscode;
       defaultText = "pkgs.vscode";
-      description = "VSCode 패키지 (vscode, vscodium, vscode-insiders 중 선택)";
+      description = "VSCode Package";
     };
   };
 
@@ -244,15 +244,9 @@ in {
           "sherlock.userId" = "f2117860-db4f-4634-9ddb-58c999457bce";
 
           # Terminal
-          "terminal.external.windowsExec" = "pwsh.exe";
-          "terminal.integrated.autoReplies" = {
-            "Terminate batch job (Y/N)" = "Y\r";
-            "일괄 작업을 끝내시겠습니까 (Y/N)?" = "Y\r";
-          };
           "terminal.integrated.enableImages" = true;
           "terminal.integrated.fontLigatures.enabled" = true;
           "terminal.integrated.stickyScroll.enabled" = false;
-          "terminal.integrated.windowsUseConptyDll" = true;
 
           # Todo Tree
           "todo-tree.general.tags" = [ "BUG" "HACK" "FIXME" "TODO" "XXX" ];

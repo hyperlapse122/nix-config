@@ -3,7 +3,7 @@ let
   cfg = config.my.shell;
 in {
   options.my.shell = {
-    enable = lib.mkEnableOption "Shell environment (zsh, direnv, mise, CLI utilities)";
+    enable = lib.mkEnableOption "Shell environment";
   };
 
   config = lib.mkIf cfg.enable {
@@ -11,6 +11,7 @@ in {
       enable = true;
       autosuggestion.enable = true;
       syntaxHighlighting.enable = true;
+      prezto.enable = true;
       shellAliases = {
         ls = "eza";
         ll = "eza -l";

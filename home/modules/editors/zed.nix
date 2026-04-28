@@ -3,7 +3,7 @@ let
   cfg = config.my.editors.zed;
 in {
   options.my.editors.zed = {
-    enable = lib.mkEnableOption "Zed editor";
+    enable = lib.mkEnableOption "Zed Editor configuration";
   };
 
   config = lib.mkIf cfg.enable {

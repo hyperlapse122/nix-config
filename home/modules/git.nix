@@ -3,7 +3,7 @@ let
   cfg = config.my.git;
 in {
   options.my.git = {
-    enable = lib.mkEnableOption "Git configuration with credential manager";
+    enable = lib.mkEnableOption "Git configuration";
   };
 
   config = lib.mkIf cfg.enable {
