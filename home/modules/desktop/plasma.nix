@@ -77,6 +77,20 @@ in {
         }
       ];
 
+      # 패널 레이아웃을 매 Plasma 세션 시작마다 강제 재적용
+      # NOTE: plasma-manager 는 `panels` 선언을 기반으로 KWin 시작 시 한 번 실행되는
+      #       desktop script 를 생성한다. 기본값(`runAlways = false`)에서는 최초 1회만
+      #       실행되므로, 사용자가 GUI 에서 위젯을 옮기거나 핀을 제거하면 그 변경이
+      #       다음 부팅까지 그대로 남는다. `runAlways = true` 는 매 세션 시작마다
+      #       해당 desktop script 를 재실행하여 panels = [ ... ] 선언을 권위 있는
+      #       상태로 되돌린다 — 즉 위에서 핀한 Konsole / VS Code / Zed 가 항상 복귀한다.
+      #       (참고: nix-community/plasma-manager modules/startup.nix runAlways 옵션)
+      # NOTE: 이 토글은 패널에만 영향을 준다. Plasma 의 다른 설정 (테마, 단축키, KWin rule)
+      #       을 매 home-manager activation 마다 통째로 덮어쓰고 싶다면 별도로
+      #       `programs.plasma.overrideConfig = true;` 를 추가해야 한다 — 단,
+      #       그 옵션은 GUI 로 만진 설정 파일들을 광범위하게 삭제하므로 신중히 사용.
+      startup.desktopScript."panels".runAlways = true;
+
       configFile = {
         # KWin Wayland의 가상 키보드 활성화 및 fcitx5 선택
         # NOTE: fcitx5 가 home-manager 모듈로 옮겨졌으므로 시스템 프로파일 경로
