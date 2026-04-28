@@ -40,7 +40,7 @@ in {
         };
       };
 
-      # 하단 패널 (작업 표시줄): Plasma 6 표준 위젯 셋 + 자주 쓰는 앱 (Konsole / VS Code / Zed) 핀
+      # 하단 패널 (작업 표시줄): Plasma 6 표준 위젯 셋 + 자주 쓰는 앱 핀
       # NOTE: `programs.plasma.panels` 를 선언하면 Plasma 의 기본 패널 레이아웃을 통째로
       #       대체한다. 기본 패널을 그대로 두고 런처만 추가하는 방법은 없으므로,
       #       표준 위젯 (kickoff / pager / icontasks / systemtray / digitalclock / showdesktop)
@@ -50,10 +50,13 @@ in {
       #       아이콘 전용 작업 관리자) 를 생성한다. 텍스트 라벨이 있는 클래식 작업 관리자
       #       (`org.kde.plasma.taskmanager`) 가 필요하면 `iconsOnly = false` 로 바꿀 것.
       # NOTE: 런처 URI 형식은 `applications:<id>.desktop` — KDE 의 표준 .desktop 참조.
-      #       id 는 실제 설치된 .desktop 파일명과 정확히 일치해야 한다.
-      #         - Konsole: org.kde.konsole.desktop  (plasma6 데스크탑 매니저에 포함)
-      #         - VS Code: code.desktop             (pkgs.vscode 가 제공)
-      #         - Zed:     dev.zed.Zed.desktop      (pkgs.zed-editor 가 제공)
+      #       id 는 실제 설치된 .desktop 파일명과 정확히 일치해야 한다. 핀 순서는
+      #       파일 관리자 → 터미널 → 브라우저 → 에디터 (사용 빈도 / 카테고리 묶음).
+      #         - Dolphin: org.kde.dolphin.desktop   (plasma6 데스크탑 매니저에 포함)
+      #         - Konsole: org.kde.konsole.desktop   (plasma6 데스크탑 매니저에 포함)
+      #         - Chrome:  google-chrome.desktop     (pkgs.google-chrome 가 제공)
+      #         - VS Code: code.desktop              (pkgs.vscode 가 제공)
+      #         - Zed:     dev.zed.Zed.desktop       (pkgs.zed-editor 가 제공)
       panels = [
         {
           location = "bottom";
@@ -63,6 +66,8 @@ in {
             {
               iconTasks = {
                 launchers = [
+                  "applications:google-chrome.desktop"
+                  "applications:org.kde.dolphin.desktop"
                   "applications:org.kde.konsole.desktop"
                   "applications:code.desktop"
                   "applications:dev.zed.Zed.desktop"
