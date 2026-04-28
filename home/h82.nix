@@ -22,6 +22,7 @@
   my.shell.enable = true;
   my.git.enable = true;
   my.gpg.enable = true;
+  my.chrome.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;

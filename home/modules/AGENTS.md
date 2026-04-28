@@ -7,9 +7,10 @@ Bundled via `./default.nix`, opted-in per-feature in `home/h82.nix`.
 
 ```plain
 modules/
-├── default.nix          # Aggregator: imports shell, git, editors, desktop/plasma, i18n
+├── default.nix          # Aggregator: imports shell, git, chrome, editors, desktop/plasma, i18n
 ├── shell.nix            # my.shell.enable           — zsh + direnv + mise + CLI utilities (rebuild aliases live here)
 ├── git.nix              # my.git.enable             — git config + git-credential-manager
+├── chrome.nix           # my.chrome.enable          — Google Chrome (latest stable from nixos-unstable)
 ├── desktop/plasma.nix   # my.desktop.plasma.enable  — plasma-manager (KDE Plasma 6)
 ├── editors/             # my.editors.{vscode,zed}.enable — see editors/AGENTS.md
 └── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
