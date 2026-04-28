@@ -53,6 +53,20 @@ in {
           };
           VirtualKeyboardEnabled = true;
         };
+
+        # 전역 테마: 자동 (낮/밤 시간대에 따라 Breeze ↔ Breeze Dark 자동 전환)
+        # NOTE: plasma-manager 의 `workspace.lookAndFeel` 은 구체적 패키지 ID
+        #       (org.kde.breeze.desktop / org.kde.breezedark.desktop) 만 받기 때문에
+        #       "Automatic" 을 직접 표현하지 못한다. Plasma 6 에서 "Automatic" 은
+        #       lookAndFeel 패키지가 아니라 kdeglobals 의 [KDE] 섹션 boolean
+        #       `AutomaticLookAndFeel=true` 로 동작하며, 낮/밤 각각의 테마는
+        #       `DefaultLightLookAndFeel` / `DefaultDarkLookAndFeel` 로 별도 저장된다.
+        #       (참고: KDE/plasma-workspace kcms/lookandfeel/lookandfeelsettings.kcfg)
+        "kdeglobals"."KDE" = {
+          AutomaticLookAndFeel = true;
+          DefaultLightLookAndFeel = "org.kde.breeze.desktop";
+          DefaultDarkLookAndFeel = "org.kde.breezedark.desktop";
+        };
       };
     };
   };
