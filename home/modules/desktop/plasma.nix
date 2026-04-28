@@ -117,6 +117,13 @@ in {
       panels = [
         {
           location = "bottom";
+          # 플로팅 패널 — Plasma 6 의 기본 스타일 (화면 가장자리에서 살짝 떨어진 마진을 두고 떠 있는 모습).
+          # NOTE: plasma-manager 의 `floating` 은 bool 옵션 (modules/panels.nix). `location = "floating"`
+          #       이라는 값도 enum 에 존재하지만 그건 위치 자체를 자유 배치로 만드는 별개 옵션이므로
+          #       혼동하지 말 것 — 우리가 원하는 "하단에 있되 떠 있는" 동작은 이 플래그로만 켠다.
+          # NOTE: lengthMode / alignment 등 관련 옵션은 모두 plasma-manager 기본값을 그대로 쓴다 —
+          #       즉 Plasma 6 의 표준 플로팅 패널 동작 (fit 길이 / 중앙 정렬) 이 그대로 적용된다.
+          floating = true;
           widgets = [
             "org.kde.plasma.kickoff"
             "org.kde.plasma.pager"
