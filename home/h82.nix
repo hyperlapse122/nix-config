@@ -30,6 +30,7 @@
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;
   my.i18n.fcitx5.enable = true;
+  my.dev.agents.enable = true;
   my.dev.opencode.enable = true;
   my.dev.tokscale.enable = true;
 }

@@ -1,0 +1,49 @@
+{
+  "version": 3,
+  "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/vercel-labs/skills.git",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "skillFolderHash": "3013fdeb8a11b10b1eb795ec3ae8bfca38f7c26d",
+      "installedAt": "2026-04-22T04:34:47.109Z",
+      "updatedAt": "2026-04-22T04:34:47.109Z"
+    },
+    "glab": {
+      "source": "gitlab-org/ai/skills",
+      "sourceType": "gitlab",
+      "sourceUrl": "https://gitlab.com/gitlab-org/ai/skills.git",
+      "skillPath": "skills/glab/SKILL.md",
+      "skillFolderHash": "",
+      "installedAt": "2026-04-23T07:19:26.181Z",
+      "updatedAt": "2026-04-23T07:19:26.181Z"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/microsoft/playwright-cli.git",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "skillFolderHash": "b901dcc64256dbb1b32744975a0bafaeb4478da5",
+      "installedAt": "2026-04-23T22:53:51.418Z",
+      "updatedAt": "2026-04-23T22:53:51.418Z"
+    }
+  },
+  "dismissed": {
+    "findSkillsPrompt": true
+  },
+  "lastSelectedAgents": [
+    "amp",
+    "antigravity",
+    "cline",
+    "codex",
+    "cursor",
+    "deepagents",
+    "firebender",
+    "gemini-cli",
+    "github-copilot",
+    "kimi-cli",
+    "opencode",
+    "warp"
+  ]
+}

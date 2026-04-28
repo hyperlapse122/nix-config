@@ -17,10 +17,15 @@ modules/
 ├── desktop/plasma.nix   # my.desktop.plasma.enable  — plasma-manager (KDE Plasma 6)
 ├── editors/             # my.editors.{vscode,zed}.enable — see editors/AGENTS.md
 ├── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
-└── dev/opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
+└── dev/
+    ├── agents.nix       # my.dev.agents.enable      — ~/.agents → ~/nix-config/agents (live out-of-store symlink for agent skills + shared commands)
+    ├── opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
+    └── tokscale.nix     # my.dev.tokscale.enable    — tokscale CLI (bunx wrapper)
 ```
 
 > **`dev/opencode/`** is a self-contained module directory: the Nix logic in `default.nix` references co-located config files (`opencode.json`, `AGENTS.md`, `commands/`, `oh-my-openagent.jsonc`) via relative paths. Add new opencode commands by dropping `*.md` into `commands/`; settings changes go into `opencode.json` (which is read via `builtins.fromJSON` and fed to `programs.opencode.settings`).
+
+> **`dev/agents.nix`** uses `config.lib.file.mkOutOfStoreSymlink` (not `home.file.*.source = ./path`) because `~/.agents` is **runtime-mutable**: OpenCode's `oh-my-openagent` plugin installs skills into `skills/` and updates `.skill-lock.json` at runtime. A Nix store symlink would make those writes fail with EROFS. The trade-off is that the symlink target (`~/nix-config/agents`) must exist at the path literally written into the symlink — the module assumes the repo is checked out at `~/nix-config`, matching the convention used by the `rebuild*` aliases in `shell.nix`.
 
 ## ADDING A NEW MODULE
 
