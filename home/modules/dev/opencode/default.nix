@@ -1,4 +1,4 @@
-{ config, lib, pkgs, pkgs-unstable, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.my.dev.opencode;
 
@@ -10,7 +10,7 @@ let
   opencodeWrapper = pkgs.writeShellApplication {
     name = "opencode";
     text = ''
-      exec ${pkgs-unstable.bun}/bin/bunx opencode-ai@latest "$@"
+      exec ${pkgs.bun}/bin/bunx opencode-ai@latest "$@"
     '';
   };
 
@@ -35,9 +35,9 @@ in {
       commands = ./commands;
     };
 
-    # bunx 래퍼가 의존하는 bun 본체 (nixos-unstable)
+    # bunx 래퍼가 의존하는 bun 본체
     home.packages = [
-      pkgs-unstable.bun
+      pkgs.bun
     ];
 
     # oh-my-openagent 플러그인 설정 (programs.opencode 가 다루지 않는 외부 플러그인 파일)

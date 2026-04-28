@@ -1,4 +1,4 @@
-{ config, lib, pkgs, pkgs-unstable, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.my.editors.zed;
 in {
@@ -9,8 +9,7 @@ in {
   config = lib.mkIf cfg.enable {
     programs.zed-editor = {
       enable = true;
-      # nixos-unstable 의 zed-editor 사용 (stable 보다 빠른 업데이트 주기)
-      package = pkgs-unstable.zed-editor;
+      package = pkgs.zed-editor;
 
       # ~/.config/zed/settings.json 의 내용 (dotfiles에서 동기화)
       userSettings = {

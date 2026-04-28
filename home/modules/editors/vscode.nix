@@ -1,18 +1,16 @@
-{ config, lib, pkgs, pkgs-unstable, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.my.editors.vscode;
 in {
   options.my.editors.vscode = {
     enable = lib.mkEnableOption "Visual Studio Code";
 
-    # 기본값은 nixos-unstable 의 vscode (stable 채널보다 빠른 업데이트 주기 필요).
-    # 확장은 여전히 stable 의 nix-vscode-extensions 오버레이(pkgs.vscode-marketplace)
-    # 에서 가져온다 — VS Code 마켓플레이스 .vsix 는 버전 호환성이 넓어 문제없음.
+    # VSCodium / Insiders 등으로 스왑하고 싶을 때만 건드리는 옵션. 기본은 호스트 nixpkgs 의 vscode.
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs-unstable.vscode;
-      defaultText = "pkgs-unstable.vscode";
-      description = "VSCode Package (defaults to nixos-unstable)";
+      default = pkgs.vscode;
+      defaultText = "pkgs.vscode";
+      description = "VSCode Package";
     };
   };
 

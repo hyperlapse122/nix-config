@@ -2,15 +2,13 @@
   description = "H82's NixOS configurations";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    # nixos-unstable: VS Code / Zed / 1Password 등 빠른 업데이트가 필요한 패키지에 사용
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # 단일 채널 정책: 모든 패키지를 nixos-unstable 에서 가져온다.
+    # Arch Linux 처럼 rolling release 감각을 유지하려는 의도 — stable 채널을 따로 두지 않는다.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # home-manager: master(unstable) 사용 - programs.opencode 등 최신 모듈 필요
-    # useGlobalPkgs = true 이므로 모듈 내부 pkgs 는 호스트의 stable nixpkgs 그대로 사용됨
     home-manager = {
       url = "github:nix-community/home-manager/master";
-      inputs.nixpkgs.follows = "nixpkgs-unstable";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     plasma-manager = {
@@ -25,20 +23,14 @@
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, home-manager, plasma-manager, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, plasma-manager, ... }@inputs:
     let
       system = "x86_64-linux";
-      # nixos-unstable pkgs 인스턴스. allowUnfree 는 별도 인스턴스라 여기서 직접 켜줌
-      # (호스트의 nixpkgs.config.allowUnfree 는 stable 채널 한정이라 여기까지 전파되지 않는다)
-      pkgs-unstable = import nixpkgs-unstable {
-        inherit system;
-        config.allowUnfree = true;
-      };
     in {
       nixosConfigurations = {
         jpi-vmware = nixpkgs.lib.nixosSystem {
           inherit system;
-          specialArgs = { inherit inputs pkgs-unstable; };
+          specialArgs = { inherit inputs; };
           modules = [
             ./hosts/jpi-vmware
             home-manager.nixosModules.home-manager
@@ -47,7 +39,7 @@
               home-manager.useUserPackages = true;
               home-manager.backupFileExtension = "backup";
               home-manager.users.h82 = import ./home/h82.nix;
-              home-manager.extraSpecialArgs = { inherit inputs pkgs-unstable; };
+              home-manager.extraSpecialArgs = { inherit inputs; };
               home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
             }
           ];
