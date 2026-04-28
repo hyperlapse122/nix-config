@@ -12,7 +12,7 @@
   };
 
   # 호스트명
-  networking.hostName = "h82-vmware";
+  networking.hostName = "jpi-vmware";
   networking.networkmanager.enable = true;
 
   # 시간/지역
