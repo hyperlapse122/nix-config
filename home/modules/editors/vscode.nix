@@ -60,73 +60,271 @@ in {
           marketplace.vscode-marketplace.vscjava.vscode-maven
           marketplace.vscode-marketplace.wakatime.vscode-wakatime
           marketplace.vscode-marketplace.yoavbls.pretty-ts-errors
+          marketplace.vscode-marketplace.bbenoist.nix
         ];
 
-        # settings.json 내용을 그대로 Nix로
+        # ~/.config/Code/User/settings.json 의 내용 (dotfiles에서 동기화)
         userSettings = {
-          # 외관
-          "workbench.colorTheme" = "Catppuccin Mocha";
-          "workbench.iconTheme" = "material-icon-theme";
-          "editor.fontFamily" = "'JetBrainsMono Nerd Font', 'D2Coding', monospace";
-          "editor.fontSize" = 14;
+          # 언어별 포매터
+          "[json]" = {
+            "editor.defaultFormatter" = "vscode.json-language-features";
+          };
+          "[jsonc]" = {
+            "editor.defaultFormatter" = "biomejs.biome";
+          };
+          "[typescript]" = {
+            "editor.defaultFormatter" = "biomejs.biome";
+          };
+          "[typescriptreact]" = {
+            "editor.defaultFormatter" = "biomejs.biome";
+          };
+          "[yaml]" = {
+            "editor.defaultFormatter" = "biomejs.biome";
+          };
+
+          # AG Cockpit
+          "agCockpit.groupingEnabled" = true;
+          "agCockpit.notificationEnabled" = true;
+
+          # Biome
+          "biome.requireConfiguration" = true;
+          "biome.suggestInstallingGlobally" = false;
+
+          # Chat / MCP
+          "chat.agent.maxRequests" = 1000;
+          "chat.instructionsFilesLocations" = {
+            ".github/instructions" = true;
+          };
+          "chat.mcp.gallery.enabled" = true;
+          "chat.tools.terminal.autoApprove" = {
+            "/.*/" = true;
+          };
+
+          # Claude Code
+          "claudeCode.allowDangerouslySkipPermissions" = true;
+          "claudeCode.preferredLocation" = "panel";
+
+          # C#
+          "csharp.experimental.debug.hotReload" = true;
+
+          # Docker
+          "docker.extension.enableComposeLanguageServer" = false;
+
+          # Editor
+          "editor.accessibilitySupport" = "off";
+          "editor.aiStats.enabled" = true;
+          "editor.codeActionsOnSave" = {
+            "source.fixAll.biome" = "explicit";
+            "source.organizeImports.biome" = "explicit";
+          };
+          "editor.fontFamily" = "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'D2Coding Nerd Font', 'D2Coding', 'Droid Sans Mono', 'monospace', monospace";
           "editor.fontLigatures" = true;
-          "editor.lineNumbers" = "relative";
-          "editor.minimap.enabled" = false;
-          "editor.renderWhitespace" = "boundary";
-          "editor.bracketPairColorization.enabled" = true;
-          "editor.guides.bracketPairs" = "active";
-
-          # 에디터 동작
           "editor.formatOnSave" = true;
+          "editor.quickSuggestions" = {
+            strings = "on";
+          };
+          "editor.smoothScrolling" = true;
           "editor.tabSize" = 2;
-          "editor.rulers" = [ 80 120 ];
-          "files.trimTrailingWhitespace" = true;
-          "files.insertFinalNewline" = true;
-          "files.eol" = "\n";
 
-          # 터미널
-          "terminal.integrated.fontFamily" = "'JetBrainsMono Nerd Font'";
-          "terminal.integrated.defaultProfile.linux" = "zsh";
+          # Emmet
+          "emmet.preferences" = {};
+          "emmet.showAbbreviationSuggestions" = false;
 
-          # Nix
-          "nix.enableLanguageServer" = true;
-          "nix.serverPath" = "${pkgs.nixd}/bin/nixd";
-          "[nix]"."editor.tabSize" = 2;
+          # Explorer
+          "explorer.autoReveal" = false;
+          "explorer.incrementalNaming" = "smart";
 
-          # direnv 통합
-          "direnv.restart.automatic" = true;
+          # Files
+          "files.autoSave" = "onFocusChange";
+          "files.enableTrash" = false;
 
           # Git
-          "git.confirmSync" = false;
           "git.autofetch" = true;
-          "gitlens.codeLens.enabled" = false;
+          "git.blame.editorDecoration.enabled" = false;
+          "git.confirmSync" = false;
+          "git.enableCommitSigning" = true;
+          "git.enableSmartCommit" = true;
+          "git.followTagsWhenSync" = true;
+          "git.replaceTagsWhenPull" = true;
 
-          # Telemetry 끄기
-          "telemetry.telemetryLevel" = "off";
+          # GitHub Copilot
+          "github.copilot.chat.agent.thinkingTool" = true;
+          "github.copilot.chat.codesearch.enabled" = true;
+          "github.copilot.chat.commitMessageGeneration.instructions" = [
+            {
+              text = "Use multi-line conventional commit message format. First line should be a short summary (max 72 characters), followed by a blank line, and then a detailed description if necessary.";
+            }
+          ];
+          "github.copilot.chat.languageContext.fix.typescript.enabled" = true;
+          "github.copilot.chat.languageContext.inline.typescript.enabled" = true;
+          "github.copilot.chat.languageContext.typescript.enabled" = true;
+          "github.copilot.chat.localeOverride" = "ko";
+          "github.copilot.enable" = {
+            "*" = true;
+            plaintext = false;
+            markdown = false;
+            scminput = false;
+            json = true;
+          };
+          "github.copilot.nextEditSuggestions.enabled" = true;
+          "github.gitProtocol" = "https";
+          "githubPullRequests.codingAgent.promptForConfirmation" = false;
+
+          # GitLab
+          "gitlab.authentication.oauthClientIds" = {
+            "https://git.jpi.app" = "c173cf3eb02fabd54c93401cadce5a4a1f8c034e2d85e1f95e9d33dc5e5243e5";
+          };
+          "gitlab.duoAgentPlatform.enabled" = false;
+          "gitlab.duoChat.enabled" = false;
+          "gitlab.duoCodeSuggestions.enabled" = false;
+
+          # GitLens
+          "gitlens.ai.model" = "vscode";
+          "gitlens.ai.vscode.model" = "copilot:gpt-4.1";
+          "gitlens.gitkraken.mcp.autoEnabled" = false;
+
+          # JS/TS
+          "js/ts.experimental.useTsgo" = false;
+          "js/ts.implicitProjectConfig.checkJs" = true;
+          "js/ts.implicitProjectConfig.experimentalDecorators" = true;
+          "js/ts.preferences.autoImportFileExcludePatterns" = [ "**/dist/**" ];
+          "js/ts.preferences.autoImportSpecifierExcludeRegexes" = [
+            "^(node:)?os$"
+            "^node_modules.+$"
+            "^type$"
+          ];
+          "js/ts.suggest.completeFunctionCalls" = true;
+          "js/ts.updateImportsOnFileMove.enabled" = "never";
+
+          # JSON Schemas
+          "json.schemaDownload.trustedDomains" = {
+            "https://biomejs.dev" = true;
+            "https://developer.microsoft.com/json-schemas/" = true;
+            "https://inlang.com" = true;
+            "https://json-schema.org/" = true;
+            "https://json.schemastore.org/" = true;
+            "https://models.dev" = true;
+            "https://opencode.ai" = true;
+            "https://raw.githubusercontent.com/" = true;
+            "https://raw.githubusercontent.com/devcontainers/spec/" = true;
+            "https://raw.githubusercontent.com/microsoft/vscode/" = true;
+            "https://schemastore.azurewebsites.net/" = true;
+            "https://turbo.build" = true;
+            "https://turborepo.dev" = true;
+            "https://ui.shadcn.com" = true;
+            "https://unpkg.com" = true;
+            "https://www.schemastore.org/" = true;
+          };
+
+          # Kilo Code
+          "kilo-code.allowedCommands" = [ "git log" "git diff" "git show" ];
+          "kilo-code.deniedCommands" = [];
+          "kilo-code.provider" = "openrouter";
+
+          # Markdownlint
+          "markdownlint.lintWorkspaceGlobs" = [
+            "**/*.{md,mkd,mdwn,mdown,markdown,markdn,mdtxt,mdtext,workbook}"
+            "!**/*.code-search"
+            "!**/bower_components"
+            "!**/node_modules"
+            "!**/.git"
+            "!**/vendor"
+            "!**/.sisyphus"
+          ];
+
+          # Misc
+          "prettier.enable" = false;
+          "python.analysis.typeCheckingMode" = "basic";
           "redhat.telemetry.enabled" = false;
+          "remote.SSH.remotePlatform" = {
+            "deskmini.tetra-gecko.ts.net" = "linux";
+          };
 
-          # 업데이트 끄기 (Nix가 관리하니까)
+          # Sherlock
+          "sherlock.previewLanguageTag" = "en";
+          "sherlock.userId" = "f2117860-db4f-4634-9ddb-58c999457bce";
+
+          # Terminal
+          "terminal.external.windowsExec" = "pwsh.exe";
+          "terminal.integrated.autoReplies" = {
+            "Terminate batch job (Y/N)" = "Y\r";
+            "일괄 작업을 끝내시겠습니까 (Y/N)?" = "Y\r";
+          };
+          "terminal.integrated.enableImages" = true;
+          "terminal.integrated.fontLigatures.enabled" = true;
+          "terminal.integrated.stickyScroll.enabled" = false;
+          "terminal.integrated.windowsUseConptyDll" = true;
+
+          # Todo Tree
+          "todo-tree.general.tags" = [ "BUG" "HACK" "FIXME" "TODO" "XXX" ];
+
+          # VSCode Edge DevTools
+          "vscode-edge-devtools.webhintInstallNotification" = true;
+
+          # Window
+          "window.restoreWindows" = "none";
+
+          # ─── NixOS overlay (kill-switches & Nix LSP, dotfiles에는 없음) ───
+          # 자동 업데이트 끄기 (Nix가 관리)
           "update.mode" = "none";
           "extensions.autoCheckUpdates" = false;
           "extensions.autoUpdate" = false;
+
+          # Nix LSP (bbenoist.Nix 확장이 사용)
+          "nix.enableLanguageServer" = true;
+          "nix.serverPath" = "${pkgs.nixd}/bin/nixd";
+          "[nix]" = {
+            "editor.tabSize" = 2;
+          };
         };
 
-        # 키바인딩
+        # ~/.config/Code/User/keybindings.json 의 내용 (dotfiles에서 동기화)
         keybindings = [
           {
-            key = "ctrl+shift+/";
-            command = "editor.action.blockComment";
-            when = "editorTextFocus && !editorReadonly";
+            key = "shift+enter";
+            command = "workbench.action.terminal.sendSequence";
+            when = "terminalFocus";
+            args = {
+              text = "\\\r\n";
+            };
           }
           {
-            key = "alt+up";
-            command = "editor.action.moveLinesUpAction";
-            when = "editorTextFocus && !editorReadonly";
+            key = "ctrl+enter";
+            command = "workbench.action.terminal.sendSequence";
+            when = "terminalFocus";
+            args = {
+              text = "\\\r\n";
+            };
           }
           {
-            key = "alt+down";
-            command = "editor.action.moveLinesDownAction";
-            when = "editorTextFocus && !editorReadonly";
+            key = "backspace";
+            command = "deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !inputFocus";
+          }
+          {
+            key = "backspace";
+            command = "deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !inputFocus";
+          }
+          {
+            key = "delete";
+            command = "deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !inputFocus";
+          }
+          {
+            key = "shift+delete";
+            command = "deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !explorerResourceMoveableToTrash && !inputFocus";
+          }
+          {
+            key = "shift+delete";
+            command = "-deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !inputFocus";
+          }
+          {
+            key = "delete";
+            command = "-deleteFile";
+            when = "filesExplorerFocus && foldersViewVisible && !explorerResourceMoveableToTrash && !inputFocus";
           }
         ];
       };
