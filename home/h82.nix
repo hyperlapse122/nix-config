@@ -1,87 +1,19 @@
-{ config, pkgs, ... }:
+{ ... }:
 {
+  imports = [
+    ./modules
+  ];
+
   home.username = "h82";
   home.homeDirectory = "/home/h82";
   home.stateVersion = "25.11";
 
   programs.home-manager.enable = true;
 
-  # 기본 패키지
-  home.packages = with pkgs; [
-    ripgrep
-    fd
-    bat
-    eza
-    jq
-    fzf
-    git-credential-manager
-    libsecret
-  ];
-
-  programs.zsh = {
-    enable = true;
-    autosuggestion.enable = true;
-    syntaxHighlighting.enable = true;
-    shellAliases = {
-      ls = "eza";
-      ll = "eza -l";
-      cat = "bat";
-    };
-    initContent = ''
-      rebuild() {
-        sudo nixos-rebuild switch --flake ~/nix-config "$@"
-      }
-
-      rebuild-test() {
-        sudo nixos-rebuild test --flake ~/nix-config "$@"
-      }
-
-      rebuild-boot() {
-        sudo nixos-rebuild boot --flake ~/nix-config "$@"
-      }
-    '';
-  };
-
-  programs.git = {
-    enable = true;
-    settings = {
-      # User Settings
-      user.name = "Joosung Park";
-      user.email = "iam@h82.dev";
-
-      init.defaultBranch = "main";
-      pull.rebase = true;
-
-      # Git Credential Manager 사용 설정
-      credential.helper = "${pkgs.git-credential-manager}/bin/git-credential-manager";
-      credential.credentialStore = "secretservice";
-      credential.guiPrompt = "true";
-    };
-  };
-
-  programs.direnv = {
-    enable = true;
-    nix-direnv.enable = true;
-    enableZshIntegration = true;
-  };
-
-  programs.mise = {
-    enable = true;
-    enableZshIntegration = true;
-  };
-
-  programs.plasma = {
-    enable = true;
-
-    configFile = {
-      # KWin Wayland의 가상 키보드 활성화 및 fcitx5 선택
-      "kwinrc"."Wayland" = {
-        InputMethod = {
-          value = "/run/current-system/sw/share/applications/org.fcitx.Fcitx5.desktop";
-          immutable = true;
-        };
-        VirtualKeyboardEnabled = true;
-      };
-    };
-  };
+  # 모듈 활성화
+  my.shell.enable = true;
+  my.git.enable = true;
+  my.desktop.plasma.enable = true;
+  my.editors.vscode.enable = true;
+  my.editors.zed.enable = true;
 }

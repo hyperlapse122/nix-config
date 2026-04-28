@@ -79,6 +79,9 @@
   # Flakes 정식 활성화
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
+  # Unfree 패키지 허용
+  nixpkgs.config.allowUnfree = true;
+
   # 시스템 패키지 (최소한만)
   environment.systemPackages = with pkgs; [
     git
