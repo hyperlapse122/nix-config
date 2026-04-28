@@ -40,6 +40,43 @@ in {
         };
       };
 
+      # 하단 패널 (작업 표시줄): Plasma 6 표준 위젯 셋 + 자주 쓰는 앱 (Konsole / VS Code / Zed) 핀
+      # NOTE: `programs.plasma.panels` 를 선언하면 Plasma 의 기본 패널 레이아웃을 통째로
+      #       대체한다. 기본 패널을 그대로 두고 런처만 추가하는 방법은 없으므로,
+      #       표준 위젯 (kickoff / pager / icontasks / systemtray / digitalclock / showdesktop)
+      #       을 모두 명시해야 정상적인 작업 표시줄이 된다.
+      #       (참고: nix-community/plasma-manager modules/panels.nix)
+      # NOTE: `iconTasks` 헬퍼는 기본적으로 `org.kde.plasma.icontasks` (Plasma 6 기본 -
+      #       아이콘 전용 작업 관리자) 를 생성한다. 텍스트 라벨이 있는 클래식 작업 관리자
+      #       (`org.kde.plasma.taskmanager`) 가 필요하면 `iconsOnly = false` 로 바꿀 것.
+      # NOTE: 런처 URI 형식은 `applications:<id>.desktop` — KDE 의 표준 .desktop 참조.
+      #       id 는 실제 설치된 .desktop 파일명과 정확히 일치해야 한다.
+      #         - Konsole: org.kde.konsole.desktop  (plasma6 데스크탑 매니저에 포함)
+      #         - VS Code: code.desktop             (pkgs.vscode 가 제공)
+      #         - Zed:     dev.zed.Zed.desktop      (pkgs.zed-editor 가 제공)
+      panels = [
+        {
+          location = "bottom";
+          widgets = [
+            "org.kde.plasma.kickoff"
+            "org.kde.plasma.pager"
+            {
+              iconTasks = {
+                launchers = [
+                  "applications:org.kde.konsole.desktop"
+                  "applications:code.desktop"
+                  "applications:dev.zed.Zed.desktop"
+                ];
+              };
+            }
+            "org.kde.plasma.marginsseparator"
+            "org.kde.plasma.systemtray"
+            "org.kde.plasma.digitalclock"
+            "org.kde.plasma.showdesktop"
+          ];
+        }
+      ];
+
       configFile = {
         # KWin Wayland의 가상 키보드 활성화 및 fcitx5 선택
         # NOTE: fcitx5 가 home-manager 모듈로 옮겨졌으므로 시스템 프로파일 경로
