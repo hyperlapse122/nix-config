@@ -25,6 +25,7 @@
   my.ssh.enable = true;
   my.env.enable = true;
   my.chrome.enable = true;
+  my._1password.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;

@@ -1,5 +1,6 @@
 {
   imports = [
+    ./_1password.nix
     ./shell.nix
     ./git.nix
     ./gpg.nix
