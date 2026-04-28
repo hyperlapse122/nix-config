@@ -67,6 +67,16 @@ in {
           DefaultLightLookAndFeel = "org.kde.breeze.desktop";
           DefaultDarkLookAndFeel = "org.kde.breezedark.desktop";
         };
+
+        # 세션 복원 비활성화: 로그인 시 빈 세션으로 시작
+        # NOTE: ksmserverrc 의 [General] loginMode 가 세션 시작 정책을 결정한다.
+        #       - "default"             : 이전 세션 복원 (Plasma 기본값)
+        #       - "restoreSavedSession" : 수동 저장 세션 복원
+        #       - "emptySession"        : 항상 빈 세션으로 시작 (← 우리가 원하는 값)
+        #       (참고: KDE/plasma-workspace ksmserver/server.cpp, kcms/session)
+        "ksmserverrc"."General" = {
+          loginMode = "emptySession";
+        };
       };
     };
   };
