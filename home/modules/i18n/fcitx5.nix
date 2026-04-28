@@ -22,6 +22,18 @@ in {
         ];
         # Wayland frontend 사용 (KDE Plasma 6 권장)
         waylandFrontend = true;
+        # 입력기 전환 키: 한국어 키보드의 Hangul 키 단독 사용
+        # ~/.config/fcitx5/config 로 INI 직렬화 됨. TriggerKeys 는 key-list 라
+        # [Hotkey/TriggerKeys] 섹션 + 숫자 인덱스 엔트리 형식으로 작성한다.
+        # 단일 전용 키만 트리거로 쓰므로 modifier-cycle (EnumerateWithTriggerKeys) 은 끈다.
+        settings.globalOptions = {
+          Hotkey = {
+            EnumerateWithTriggerKeys = false;
+          };
+          "Hotkey/TriggerKeys" = {
+            "0" = "Hangul";
+          };
+        };
       };
     };
   };
