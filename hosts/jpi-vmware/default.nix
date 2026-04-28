@@ -8,11 +8,11 @@
   # 호스트명 — flake.nix 의 nixosConfigurations 키와 디렉터리명과 일치해야 함.
   networking.hostName = "jpi-vmware";
 
-  # 부트로더 (BIOS/Legacy) — VMware guest 의 디스크 구성에 맞춤.
-  boot.loader.grub = {
+  # 부트로더 (BIOS/Legacy) — VMware guest 의 디스크 구성. 정책 모듈: hosts/common/boot/grub.nix.
+  # device 는 호스트 하드웨어 (VMware 가상 디스크) 라서 여기에 두지만, useOSProber 등 정책은 모듈 안에 박혀 있음.
+  my.system.boot.grub = {
     enable = true;
     device = "/dev/sda";
-    useOSProber = false;
   };
 
   # VMware guest 지원 (이 호스트 전용)
