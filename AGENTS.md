@@ -6,9 +6,9 @@
 
 ## OVERVIEW
 
-Multi-host flake-based NixOS 25.11 config. Each host lives under `hosts/<hostname>/` and is wired into `flake.nix#nixosConfigurations`.
+Multi-host flake-based NixOS config tracking the **`nixos-unstable`** channel exclusively (rolling release, Arch-equivalent). Each host lives under `hosts/<hostname>/` and is wired into `flake.nix#nixosConfigurations`.
 Shared system-level config lives in `hosts/common/`; shared user-level config lives in `home/modules/`. Per-host divergence stays inside `hosts/<hostname>/default.nix`.
-Home Manager runs as a NixOS module; KDE Plasma 6 is configured via `plasma-manager`.
+Home Manager runs on **`master`** (matches unstable nixpkgs); KDE Plasma 6 is configured via `plasma-manager`.
 Reusable modules use a custom `my.*` option namespace — `my.<group>.<name>.enable` for home modules (toggled in `home/h82.nix`), `my.system.<group>.<name>.enable` for shared system modules (toggled in each host's `default.nix`).
 
 > Currently only `jpi-vmware` exists. New hosts: NixOS only (no nix-darwin / WSL planned).
@@ -18,7 +18,7 @@ Reusable modules use a custom `my.*` option namespace — `my.<group>.<name>.ena
 ```plain
 nix-config/
 ├── flake.nix                  # Inputs + every nixosConfiguration entry
-├── flake.lock                 # Pinned: nixpkgs 25.11, home-manager 25.11, plasma-manager, nix-vscode-extensions
+├── flake.lock                 # Pinned revisions for nixpkgs (nixos-unstable), home-manager (master), plasma-manager, nix-vscode-extensions
 ├── hosts/
 │   ├── common/                # Reusable, host-agnostic system modules — `my.system.*` namespace
 │   │   ├── default.nix        # Aggregator
@@ -39,6 +39,8 @@ nix-config/
     └── modules/               # Reusable, host-agnostic home-manager modules — see home/modules/AGENTS.md
 ```
 
+> **home/modules/dev/opencode/** — opencode CLI module. Wraps `bunx opencode-ai@latest` and wires `programs.opencode.{settings,context,commands}` from `opencode.json` / `AGENTS.md` / `commands/` co-located in the same directory. Plugin config (`oh-my-openagent.jsonc`) sits next to it as a raw `xdg.configFile`. See **WHERE TO LOOK** for editing flow.
+
 ## WHERE TO LOOK
 
 | Task | Location |
@@ -50,8 +52,10 @@ nix-config/
 | Add a VS Code extension or setting | `home/modules/editors/vscode.nix` (see `home/modules/editors/AGENTS.md`) |
 | Add a KDE Plasma setting | `home/modules/desktop/plasma.nix` |
 | Add an input method (fcitx5) addon | `home/modules/i18n/fcitx5.nix` |
+| Modify opencode CLI config (settings / context / commands / plugin) | `home/modules/dev/opencode/{opencode.json,AGENTS.md,commands/,oh-my-openagent.jsonc}` — wired through home-manager's `programs.opencode.*` |
 | Bump nixpkgs / home-manager / plasma-manager / nix-vscode-extensions | `flake.lock` via `nix flake update` |
-| Add a new host | See **ADDING A HOST** below |
+| Install NixOS on a fresh machine using this flake | See **INSTALLING NIXOS** below |
+| Add a new host (NixOS already installed) | See **ADDING A HOST** below |
 
 ## CONVENTIONS
 
@@ -61,10 +65,55 @@ nix-config/
   - Always-on baseline in `hosts/common/base.nix` is the **only** system file without an `enable` gate (nix flakes / allowUnfree / dbus / minimal pkgs are universal across hosts).
 - **Imports are explicit `imports = [ ... ]` lists**, not auto-discovered. Aggregated via `default.nix` per directory (`hosts/common`, `home/modules`, `editors`, etc.).
 - **`with pkgs; [ ... ]`** style for package lists.
+- **Single `nixos-unstable` channel.** `flake.nix` pins `nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"`; there is no separate `pkgs-unstable` instance, no overlays for fresher packages, no stable/unstable mixing. Every package — system or home — comes from one `nixpkgs` revision (locked in `flake.lock`). Coming from Arch Linux: same rolling-release model, just with atomic rollbacks.
 - **No flake-parts / snowfall / devshell / devenv.** Plain `nixpkgs.lib.nixosSystem` + `home-manager.nixosModules.home-manager`.
 - **Mixed Korean / English comments are normal.** Keep Korean intent comments untouched when editing — they encode design rationale.
 - **Nix code is formatted with `nixfmt`** (RFC-style; the legacy `nixfmt-rfc-style` alias has been collapsed into `nixfmt` upstream). Zed invokes it directly. There is no `treefmt`, no `nix fmt` formatter output, no pre-commit hook, no CI.
 - **Git identity is hard-coded** (`Joosung Park <iam@h82.dev>`) in `home/modules/git.nix`. Do not parameterize unless adding a second user.
+
+## INSTALLING NIXOS
+
+This config pins `nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"`, so any host built from it tracks **nixos-unstable** regardless of which installer ISO you booted. There is **no `nix-channel` setup**: flakes pin nixpkgs by revision in `flake.lock`, not by channel name. Coming from Arch Linux, this is the same rolling-release model.
+
+### Fresh install (new machine)
+
+1. **Boot any recent NixOS ISO.** The unstable graphical / minimal ISO is recommended (matches the runtime channel) but a stable 25.11 ISO works too — flakes are enabled in modern installers, and nothing about the installer ISO leaks into the installed system.
+2. **Partition + mount `/mnt`** per the [official NixOS install guide](https://nixos.org/manual/nixos/unstable/index.html#sec-installation).
+3. **Generate the hardware config**:
+   ```bash
+   sudo nixos-generate-config --root /mnt
+   ```
+4. **Bring this repo onto the target**:
+   ```bash
+   sudo nix-shell -p git --run "git clone https://github.com/<user>/nix-config /mnt/etc/nix-config"
+   sudo mkdir -p /mnt/etc/nix-config/hosts/<new-hostname>
+   sudo mv /mnt/etc/nixos/hardware-configuration.nix /mnt/etc/nix-config/hosts/<new-hostname>/
+   ```
+5. **Wire up the new host** — follow **ADDING A HOST** below (steps 2–8). Skip step 1 there since `nixos-generate-config` already produced the hardware file.
+6. **Install with the flake** (the `#<hostname>` MUST match `networking.hostName`, which MUST match the directory under `hosts/`):
+   ```bash
+   sudo nixos-install --flake /mnt/etc/nix-config#<new-hostname>
+   ```
+7. **Reboot.** The system is now on nixos-unstable; subsequent rebuilds (`rebuild` zsh wrapper from `home/modules/shell.nix`) pull from the same `flake.lock`-pinned nixpkgs revision.
+
+### Updating after install
+
+This config does NOT use `nix-channel` (legacy mechanism). Update inputs explicitly:
+
+```bash
+nix flake update                  # bump every input
+nix flake update nixpkgs          # bump just nixpkgs
+sudo nixos-rebuild switch --flake ~/nix-config
+```
+
+The lock file is the source of truth. Switching back to a stable release would require editing `flake.nix` itself (`nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11"` plus matching `home-manager` URL) — there is no runtime "channel switch".
+
+### Caveats specific to this repo
+
+- **`system.stateVersion` / `home.stateVersion` are picked once at install time and never bumped.** They mark the data formats your system was first set up with, independent of the rolling nixpkgs channel. Set them in the new host's `default.nix` and `home/h82.nix` to whatever NixOS release was current when you installed (e.g. `"25.11"`). See **ANTI-PATTERNS**.
+- **`allowUnfree = true`** is set globally in `hosts/common/base.nix`. New hosts inherit it via `imports = [ ../common ]`.
+- **No standalone `home-manager`**: it's wired into each host as a NixOS module (`home-manager.nixosModules.home-manager` in `flake.nix`). Do **not** run `home-manager switch` directly.
+- **Internet required during `nixos-install`** — the flake fetches nixpkgs (nixos-unstable) and other inputs from GitHub. Same as any other flake-based install.
 
 ## ADDING A HOST
 

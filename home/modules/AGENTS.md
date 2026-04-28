@@ -7,17 +7,20 @@ Bundled via `./default.nix`, opted-in per-feature in `home/h82.nix`.
 
 ```plain
 modules/
-├── default.nix          # Aggregator: imports shell, git, gpg, ssh, env, chrome, editors, desktop/plasma, i18n
+├── default.nix          # Aggregator: imports shell, git, gpg, ssh, env, chrome, editors, desktop/plasma, i18n, dev
 ├── shell.nix            # my.shell.enable           — zsh + direnv + mise + CLI utilities (rebuild aliases live here)
 ├── git.nix              # my.git.enable             — git config + git-credential-manager
 ├── gpg.nix              # my.gpg.enable             — GnuPG + gpg-agent (pinentry-qt)
 ├── ssh.nix              # my.ssh.enable             — OpenSSH client + 1Password SSH agent (identityAgent)
 ├── env.nix              # my.env.enable             — user-wide session env vars (replaces ~/.config/environment.d)
-├── chrome.nix           # my.chrome.enable          — Google Chrome (latest stable from nixos-unstable)
+├── chrome.nix           # my.chrome.enable          — Google Chrome
 ├── desktop/plasma.nix   # my.desktop.plasma.enable  — plasma-manager (KDE Plasma 6)
 ├── editors/             # my.editors.{vscode,zed}.enable — see editors/AGENTS.md
-└── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
+├── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
+└── dev/opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
 ```
+
+> **`dev/opencode/`** is a self-contained module directory: the Nix logic in `default.nix` references co-located config files (`opencode.json`, `AGENTS.md`, `commands/`, `oh-my-openagent.jsonc`) via relative paths. Add new opencode commands by dropping `*.md` into `commands/`; settings changes go into `opencode.json` (which is read via `builtins.fromJSON` and fed to `programs.opencode.settings`).
 
 ## ADDING A NEW MODULE
 
