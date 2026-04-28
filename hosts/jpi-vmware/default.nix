@@ -17,6 +17,7 @@
 
   # VMware guest 지원 (이 호스트 전용)
   virtualisation.vmware.guest.enable = true;
+  hardware.graphics.enable = true;
 
   # nix-vscode-extensions overlay — 호스트 pkgs 에 적용해야 allowUnfree 가 전파됨.
   # home-manager 안에서 적용하면 별도 pkgs 인스턴스가 만들어져 Copilot/Pylance 등이 침묵 실패.
