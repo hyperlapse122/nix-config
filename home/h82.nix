@@ -29,18 +29,15 @@
     };
     initContent = ''
       rebuild() {
-        local host=$(hostname)
-        sudo nixos-rebuild switch --flake ~/nix-config#$host "$@"
+        sudo nixos-rebuild switch --flake ~/nix-config "$@"
       }
 
       rebuild-test() {
-        local host=$(hostname)
-        sudo nixos-rebuild test --flake ~/nix-config#$host "$@"
+        sudo nixos-rebuild test --flake ~/nix-config "$@"
       }
 
       rebuild-boot() {
-        local host=$(hostname)
-        sudo nixos-rebuild boot --flake ~/nix-config#$host "$@"
+        sudo nixos-rebuild boot --flake ~/nix-config "$@"
       }
     '';
   };
