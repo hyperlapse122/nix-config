@@ -14,6 +14,8 @@
     eza
     jq
     fzf
+    git-credential-manager
+    libsecret
   ];
 
   programs.zsh = {
@@ -50,6 +52,8 @@
       user.email = "iam@h82.dev";
       init.defaultBranch = "main";
       pull.rebase = true;
+      credential.helper = "manager";
+      credential.credentialStore = "secretservice";
     };
   };
 

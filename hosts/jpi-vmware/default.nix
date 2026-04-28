@@ -4,9 +4,12 @@
     ./hardware-configuration.nix
   ];
 
-  # 부트로더 (UEFI 가정)
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
+  # 부트로더 (BIOS/Legacy)
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/sda";
+    useOSProber = false;
+  };
 
   # 호스트명
   networking.hostName = "h82-vmware";
@@ -26,7 +29,7 @@
     type = "fcitx5";
     fcitx5.addons = with pkgs; [
       fcitx5-hangul
-      fcitx5-configtool
+      qt6Packages.fcitx5-configtool
     ];
   };
 
@@ -38,6 +41,10 @@
   };
   services.desktopManager.plasma6.enable = true;
   services.displayManager.defaultSession = "plasma";
+
+  # KDE Wallet
+  security.pam.services.login.kwallet.enable = true;
+  security.pam.services.kde.kwallet.enable = true;
 
   # 사운드
   services.pipewire = {
