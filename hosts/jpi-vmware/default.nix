@@ -82,6 +82,9 @@
   # Unfree 패키지 허용
   nixpkgs.config.allowUnfree = true;
 
+  # nix-vscode-extensions overlay (호스트 pkgs에 적용해야 allowUnfree가 전파됨)
+  nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ];
+
   # 시스템 패키지 (최소한만)
   environment.systemPackages = with pkgs; [
     git

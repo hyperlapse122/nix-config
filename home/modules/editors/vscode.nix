@@ -1,4 +1,4 @@
-{ config, lib, pkgs, inputs, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.my.editors.vscode;
 in {
@@ -19,48 +19,47 @@ in {
       package = cfg.package;
 
       # 확장은 nix-vscode-extensions(VS Code Marketplace)에서 관리
+      # 호스트 pkgs에 overlay가 적용되어 있어 pkgs.vscode-marketplace로 접근 (allowUnfree 전파됨)
       profiles.default = {
-        extensions = let
-          marketplace = inputs.nix-vscode-extensions.extensions.${pkgs.system};
-        in [
-          marketplace.vscode-marketplace.arktypeio.arkdark
-          marketplace.vscode-marketplace.biomejs.biome
-          marketplace.vscode-marketplace.bradlc.vscode-tailwindcss
-          marketplace.vscode-marketplace.bufbuild.vscode-buf
-          marketplace.vscode-marketplace.christian-kohler.npm-intellisense
-          marketplace.vscode-marketplace.davidanson.vscode-markdownlint
-          marketplace.vscode-marketplace.dbaeumer.vscode-eslint
-          marketplace.vscode-marketplace.dnicolson.binary-plist
-          marketplace.vscode-marketplace.docker.docker
-          marketplace.vscode-marketplace.donjayamanne.githistory
-          marketplace.vscode-marketplace.dotjoshjohnson.xml
-          marketplace.vscode-marketplace.editorconfig.editorconfig
-          marketplace.vscode-marketplace.esbenp.prettier-vscode
-          marketplace.vscode-marketplace.github.codespaces
-          marketplace.vscode-marketplace.github.copilot-chat
-          marketplace.vscode-marketplace.github.vscode-github-actions
-          marketplace.vscode-marketplace.github.vscode-pull-request-github
-          marketplace.vscode-marketplace.inlang.vs-code-extension
-          marketplace.vscode-marketplace.ms-vscode.powershell
-          marketplace.vscode-marketplace.redhat.java
-          marketplace.vscode-marketplace.redhat.vscode-yaml
-          marketplace.vscode-marketplace.repreng.csv
-          marketplace.vscode-marketplace.rust-lang.rust-analyzer
-          marketplace.vscode-marketplace.sst-dev.opencode
-          marketplace.vscode-marketplace.tauri-apps.tauri-vscode
-          marketplace.vscode-marketplace.tombi-toml.tombi
-          marketplace.vscode-marketplace.typescriptteam.native-preview
-          marketplace.vscode-marketplace.usernamehw.errorlens
-          marketplace.vscode-marketplace.vitest.explorer
-          marketplace.vscode-marketplace.vscjava.vscode-gradle
-          marketplace.vscode-marketplace.vscjava.vscode-java-debug
-          marketplace.vscode-marketplace.vscjava.vscode-java-dependency
-          marketplace.vscode-marketplace.vscjava.vscode-java-pack
-          marketplace.vscode-marketplace.vscjava.vscode-java-test
-          marketplace.vscode-marketplace.vscjava.vscode-maven
-          marketplace.vscode-marketplace.wakatime.vscode-wakatime
-          marketplace.vscode-marketplace.yoavbls.pretty-ts-errors
-          marketplace.vscode-marketplace.bbenoist.nix
+        extensions = with pkgs.vscode-marketplace; [
+          arktypeio.arkdark
+          biomejs.biome
+          bradlc.vscode-tailwindcss
+          bufbuild.vscode-buf
+          christian-kohler.npm-intellisense
+          davidanson.vscode-markdownlint
+          dbaeumer.vscode-eslint
+          dnicolson.binary-plist
+          docker.docker
+          donjayamanne.githistory
+          dotjoshjohnson.xml
+          editorconfig.editorconfig
+          esbenp.prettier-vscode
+          github.codespaces
+          github.copilot-chat
+          github.vscode-github-actions
+          github.vscode-pull-request-github
+          inlang.vs-code-extension
+          ms-vscode.powershell
+          redhat.java
+          redhat.vscode-yaml
+          repreng.csv
+          rust-lang.rust-analyzer
+          sst-dev.opencode
+          tauri-apps.tauri-vscode
+          tombi-toml.tombi
+          typescriptteam.native-preview
+          usernamehw.errorlens
+          vitest.explorer
+          vscjava.vscode-gradle
+          vscjava.vscode-java-debug
+          vscjava.vscode-java-dependency
+          vscjava.vscode-java-pack
+          vscjava.vscode-java-test
+          vscjava.vscode-maven
+          wakatime.vscode-wakatime
+          yoavbls.pretty-ts-errors
+          bbenoist.nix
         ];
 
         # ~/.config/Code/User/settings.json 의 내용 (dotfiles에서 동기화)
