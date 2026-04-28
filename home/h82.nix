@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 {
   imports = [
     ./modules
@@ -7,6 +7,14 @@
   home.username = "h82";
   home.homeDirectory = "/home/h82";
   home.stateVersion = "25.11";
+
+  # 폰트
+  home.packages = with pkgs; [
+    pretendard
+    jetbrains-mono
+    nerd-fonts.jetbrains-mono
+    d2coding
+  ];
 
   programs.home-manager.enable = true;
 
