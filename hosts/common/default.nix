@@ -7,6 +7,7 @@
     ./audio.nix
     ./ssh.nix
     ./laptop-input.nix
+    ./virtualisation.nix
     ./desktop
     ./programs
   ];

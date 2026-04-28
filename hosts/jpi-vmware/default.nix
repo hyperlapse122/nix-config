@@ -32,6 +32,7 @@
   my.system.desktop.plasma.enable = true;
   my.system.programs.nix-ld.enable = true;
   my.system.programs._1password.enable = true;
+  my.system.virtualisation.docker.enable = true;
 
   # 노트북 입력 (keyd + libinput palm rejection) — VMware guest 라서 비활성.
   # 호스트 키보드/터치패드는 hypervisor 가 추상화해서 전달하므로 keyd 매핑이 무의미하고,
