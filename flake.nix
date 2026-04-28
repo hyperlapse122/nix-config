@@ -6,9 +6,11 @@
     # nixos-unstable: VS Code / Zed / 1Password 등 빠른 업데이트가 필요한 패키지에 사용
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # home-manager: master(unstable) 사용 - programs.opencode 등 최신 모듈 필요
+    # useGlobalPkgs = true 이므로 모듈 내부 pkgs 는 호스트의 stable nixpkgs 그대로 사용됨
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.11";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:nix-community/home-manager/master";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
     plasma-manager = {
