@@ -257,6 +257,9 @@ in {
           # Window
           "window.restoreWindows" = "none";
 
+          # Disable workthrough
+          "workbench.welcomePage.walkthroughs.openOnInstall" = false;
+
           # ─── NixOS overlay (kill-switches & Nix LSP, dotfiles에는 없음) ───
           # 자동 업데이트 끄기 (Nix가 관리)
           "update.mode" = "none";
