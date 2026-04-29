@@ -1,6 +1,17 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.my.git;
+
+  # CLI tool 기반 credential helper (각자 호스트에서 사용)
+  # 빈 문자열로 상위 helper 초기화 후 CLI 지정 (둘 다 실행되는 것 방지)
+  ghCredentialHelper = [
+    ""
+    "!${lib.getExe pkgs.gh} auth git-credential"
+  ];
+  glabCredentialHelper = [
+    ""
+    "!${lib.getExe pkgs.glab} auth git-credential"
+  ];
 in {
   options.my.git = {
     enable = lib.mkEnableOption "Git configuration";
@@ -33,19 +44,21 @@ in {
         push.recurseSubmodules = "check";
         push.autoSetupRemote = true;
 
-        # Git Credential Manager 사용 설정
         credential = {
+          # 기본 credential helper — Git Credential Manager (Azure DevOps 등 fallback)
           helper = "${pkgs.git-credential-manager}/bin/git-credential-manager";
           credentialStore = "secretservice";
           guiPrompt = "true";
-          gitLabAuthModes = "browser";
 
-          # JPI GitLab 인스턴스 OAuth 설정 (git-credential-manager GitLab provider)
-          "https://git.jpi.app" = {
-            gitLabDevClientId = "e7247d5a19cd0fa15c1754dfaae47606bcd27d9cd3dbd1b966993be0b683983b";
-            gitLabDevClientSecret = "gloas-5992d1284ff2c9b33668eef4271cf6a6765756f1b4bcd413e0d9f55071a72d41";
-            provider = "gitlab";
-          };
+          # GitHub 호스트 — gh CLI을 credential helper로 사용
+          # 첫 사용 시: `gh auth login` (gist.github.com 동일 인증 공유)
+          "https://github.com".helper = ghCredentialHelper;
+          "https://gist.github.com".helper = ghCredentialHelper;
+
+          # GitLab 호스트 — glab CLI을 credential helper로 사용
+          # 첫 사용 시: `glab auth login --hostname <host>`
+          "https://gitlab.com".helper = glabCredentialHelper;
+          "https://git.jpi.app".helper = glabCredentialHelper;
 
           # Azure DevOps — 같은 호스트의 다른 repo 별 자격증명 분리
           "https://dev.azure.com" = {
