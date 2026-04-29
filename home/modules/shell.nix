@@ -67,6 +67,7 @@ in {
       eza
       jq
       fzf
+      btop
     ];
   };
 }
