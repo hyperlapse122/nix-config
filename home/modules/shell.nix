@@ -59,6 +59,13 @@ in {
       enableZshIntegration = true;
     };
 
+    # mise shims — programs.mise 의 zsh 통합은 인터랙티브 셸에만 활성화되므로,
+    # systemd user 유닛 / GUI 앱 / 비인터랙티브 스크립트에서도 mise 가 관리하는
+    # 툴체인 (node, python, go 등) 을 찾을 수 있도록 shims 경로를 PATH 에 추가.
+    home.sessionPath = [
+      "${config.home.homeDirectory}/.local/share/mise/shims"
+    ];
+
     # 셸 유틸리티
     home.packages = with pkgs; [
       ripgrep
