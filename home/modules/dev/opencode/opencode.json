@@ -34,8 +34,8 @@
   },
   "mcp": {
     "figma": {
-      "type": "remote",
-      "url": "http://127.0.0.1:3845/mcp"
+      "type": "local",
+      "command": ["npx", "-y", "mcp-remote", "http://127.0.0.1:3845/mcp"]
     }
   },
   "provider": {}
