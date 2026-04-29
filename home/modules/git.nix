@@ -55,10 +55,12 @@ in {
       };
     };
 
-    # Git 인증 도구
+    # Git 인증 도구 + GitHub/GitLab CLI
     home.packages = with pkgs; [
       git-credential-manager
       libsecret
+      gh
+      glab
     ];
   };
 }
