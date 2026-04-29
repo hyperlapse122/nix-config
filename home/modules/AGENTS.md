@@ -19,6 +19,7 @@ modules/
 ├── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
 └── dev/
     ├── agents.nix       # my.dev.agents.enable      — ~/.agents → ~/nix-config/agents (live out-of-store symlink for agent skills + shared commands)
+    ├── nodejs.nix       # my.dev.nodejs.enable      — Node.js LTS (pkgs.nodejs, current LTS major in nixpkgs unstable)
     ├── opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
     └── tokscale.nix     # my.dev.tokscale.enable    — tokscale CLI (bunx wrapper)
 ```
