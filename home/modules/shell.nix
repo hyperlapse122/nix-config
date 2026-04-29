@@ -68,6 +68,7 @@ in {
       jq
       fzf
       btop
+      lsof
     ];
   };
 }
