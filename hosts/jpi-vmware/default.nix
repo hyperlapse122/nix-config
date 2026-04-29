@@ -33,6 +33,7 @@
   my.system.ssh.server.enable = true;
   my.system.desktop.plasma.enable = true;
   my.system.programs.nix-ld.enable = true;
+  my.system.programs.nix-index.enable = true;
   my.system.programs._1password = {
     enable = true;
     # 로그인 시 시스템 트레이로 자동 상주 — 브라우저 확장과 SSH agent 가
