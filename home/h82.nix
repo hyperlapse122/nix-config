@@ -35,6 +35,7 @@
   my.dev.native-build.enable = true;
   my.dev.nodejs.enable = true;
   my.dev.opencode.enable = true;
+  my.dev.playwright.enable = true;
   my.dev.python.enable = true;
   my.dev.tokscale.enable = true;
 }
