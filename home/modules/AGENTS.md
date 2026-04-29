@@ -21,6 +21,7 @@ modules/
     ├── agents.nix       # my.dev.agents.enable      — ~/.agents → ~/nix-config/agents (live out-of-store symlink for agent skills + shared commands)
     ├── nodejs.nix       # my.dev.nodejs.enable      — Node.js LTS (pkgs.nodejs, current LTS major in nixpkgs unstable)
     ├── opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
+    ├── python.nix       # my.dev.python.enable      — Python 3 (pkgs.python3, current default interpreter in nixpkgs unstable)
     └── tokscale.nix     # my.dev.tokscale.enable    — tokscale CLI (bunx wrapper)
 ```
 
