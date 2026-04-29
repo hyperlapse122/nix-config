@@ -5,8 +5,8 @@
     "@ex-machina/opencode-anthropic-auth@latest",
     "opencode-gemini-auth@latest"
   ],
-  "model": "openai/gpt-5.5-fast",
-  "small_model": "openai/gpt-5.4-mini-fast",
+  "model": "openai/gpt-5.5",
+  "small_model": "opencode/nemotron-3-super-free",
   "autoupdate": "notify",
   "lsp": {
     "buf": {
