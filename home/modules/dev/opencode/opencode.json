@@ -7,16 +7,56 @@
   ],
   "autoupdate": "notify",
   "lsp": {
-    "buf": {
-      "command": [
-        "mise",
-        "exec",
-        "npm:@bufbuild/buf@latest",
-        "--",
-        "buf",
-        "lsp",
-        "serve"
+    "typescript": {
+      "command": ["npx", "-y", "typescript-language-server", "--stdio"],
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mts",
+        ".mtsx",
+        ".mjs",
+        ".mjsx",
+        ".cts",
+        ".ctsx",
+        ".cjs",
+        ".cjsx"
       ],
+      "initialization": {
+        "preferences": {
+          "importModuleSpecifierPreference": "relative"
+        }
+      }
+    },
+    "biome": {
+      "command": ["npx", "-y", "@biomejs/biome", "lsp-proxy"],
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".cts",
+        ".ctsx",
+        ".cjs",
+        ".cjsx",
+        ".mts",
+        ".mtsx",
+        ".mjs",
+        ".mjsx",
+        ".json",
+        ".css",
+        ".scss",
+        ".html",
+        ".vue",
+        ".svelte",
+        ".json",
+        ".yaml",
+        ".yml"
+      ]
+    },
+    "buf": {
+      "command": ["npx", "-y", "@bufbuild/buf@latest", "lsp", "serve"],
       "extensions": [".proto"]
     }
   },
