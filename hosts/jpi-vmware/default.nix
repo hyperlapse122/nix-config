@@ -63,6 +63,13 @@
   # 명시적으로 false 를 박아두는 이유: 기본값(false) 의존이 아니라 "이 호스트는 의도적으로 끔" 을 문서화.
   my.system.laptop-input.enable = false;
 
+  # 방화벽 — VMware guest 라서 비활성 (공용 모듈 기본값 true 를 이 호스트에서만 false 로 override).
+  # VMware Workstation 의 기본 NAT 네트워크 뒤에 있어 외부에서 직접 인바운드가 닿지 않고,
+  # 호스트 OS 의 방화벽이 이미 1차 격리를 수행한다. guest 안에서 추가 iptables/nftables 레이어를
+  # 돌리면 docker 의 자체 NAT 룰 (my.system.virtualisation.docker) 과 충돌할 여지만 늘어나고
+  # 보호 측면의 이득은 거의 없음.
+  my.system.networking.firewall.enable = false;
+
   # 한국어 입력 (fcitx5) 은 home-manager 모듈에서 관리: home/modules/i18n/fcitx5.nix
 
   # state version — 절대 임의로 바꾸지 말 것 (이 호스트가 처음 설치된 NixOS 릴리즈)
