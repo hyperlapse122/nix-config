@@ -20,13 +20,13 @@ modules/
 └── dev/
     ├── agents.nix       # my.dev.agents.enable      — ~/.agents → ~/nix-config/agents (live out-of-store symlink for agent skills + shared commands)
     ├── nodejs.nix       # my.dev.nodejs.enable      — Node.js LTS + yarn (pkgs.nodejs, pkgs.yarn — current LTS major in nixpkgs unstable)
-    ├── opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, AGENTS.md, commands/, oh-my-openagent.jsonc)
+    ├── opencode/        # my.dev.opencode.enable    — opencode CLI (bunx wrapper) + programs.opencode.* config (settings, context.md, commands/, oh-my-openagent.jsonc)
     ├── playwright.nix   # my.dev.playwright.enable  — Playwright driver + browsers (pkgs.playwright-driver{,.browsers}) + PLAYWRIGHT_* env vars (BROWSERS_PATH / SKIP_VALIDATE_HOST_REQUIREMENTS / HOST_PLATFORM_OVERRIDE / NODEJS_PATH) — see https://wiki.nixos.org/wiki/Playwright
     ├── python.nix       # my.dev.python.enable      — Python 3 (pkgs.python3, current default interpreter in nixpkgs unstable)
     └── tokscale.nix     # my.dev.tokscale.enable    — tokscale CLI (bunx wrapper)
 ```
 
-> **`dev/opencode/`** is a self-contained module directory: the Nix logic in `default.nix` references co-located config files (`opencode.json`, `AGENTS.md`, `commands/`, `oh-my-openagent.jsonc`) via relative paths. Add new opencode commands by dropping `*.md` into `commands/`; settings changes go into `opencode.json` (which is read via `builtins.fromJSON` and fed to `programs.opencode.settings`).
+> **`dev/opencode/`** is a self-contained module directory: the Nix logic in `default.nix` references co-located config files (`opencode.json`, `context.md`, `commands/`, `oh-my-openagent.jsonc`) via relative paths. The context file is named `context.md` (not `AGENTS.md`) on purpose — opencode auto-loads any `AGENTS.md` it discovers in a parent directory of the CWD as scoped agent context, but this file holds **global** opencode behavior (commit/branch conventions, runtime preferences) and the home-manager `programs.opencode` module already installs it at `~/.config/opencode/AGENTS.md` for global use. Renaming the source prevents the convention collision while preserving the install path. Add new opencode commands by dropping `*.md` into `commands/`; settings changes go into `opencode.json` (which is read via `builtins.fromJSON` and fed to `programs.opencode.settings`).
 
 > **`dev/agents.nix`** uses `config.lib.file.mkOutOfStoreSymlink` (not `home.file.*.source = ./path`) because `~/.agents` is **runtime-mutable**: OpenCode's `oh-my-openagent` plugin installs skills into `skills/` and updates `.skill-lock.json` at runtime. A Nix store symlink would make those writes fail with EROFS. The trade-off is that the symlink target (`~/nix-config/agents`) must exist at the path literally written into the symlink — the module assumes the repo is checked out at `~/nix-config`, matching the convention used by the `rebuild*` aliases in `shell.nix`.
 

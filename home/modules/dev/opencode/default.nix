@@ -31,7 +31,7 @@ in {
       enable = true;
       package = opencodeWrapper;
       settings = opencodeSettings;
-      context = ./AGENTS.md;
+      context = ./context.md;
       commands = ./commands;
     };
 
