@@ -34,8 +34,14 @@
   },
   "mcp": {
     "figma": {
-      "type": "local",
-      "command": ["npx", "-y", "mcp-remote", "http://127.0.0.1:3845/mcp"]
+      "type": "remote",
+      "url": "https://mcp.figma.com/mcp",
+      "oauth": {
+        "clientId": "NuX7DeFZUot9qo3cGrQngb",
+        "clientSecret": "vEdGivHdQVbC0JxMZJDutGRdGea9Ox",
+        "redirectUri": "http://127.0.0.1:19876/mcp/oauth/callback",
+        "scope": "mcp:connect"
+      }
     }
   },
   "provider": {}
