@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.git;
 
@@ -12,7 +17,8 @@ let
     ""
     "!${lib.getExe pkgs.glab} auth git-credential"
   ];
-in {
+in
+{
   options.my.git = {
     enable = lib.mkEnableOption "Git configuration";
   };
@@ -55,8 +61,25 @@ in {
           "https://github.com".helper = ghCredentialHelper;
           "https://gist.github.com".helper = ghCredentialHelper;
 
-          # GitLab 호스트 — glab CLI을 credential helper로 사용
-          # 첫 사용 시: `glab auth login --hostname <host>`
+          # GitLab 호스트 — glab CLI을 credential helper로 사용.
+          # 첫 사용 시 (OAuth/web 로그인 — `glab auth git-credential` 이 토큰을 자동 갱신):
+          #
+          # gitlab.com (SaaS, 기본값):
+          # ```sh
+          # glab auth login --hostname gitlab.com --web
+          # ```
+          #
+          # git.jpi.app (사내 self-hosted) — glab 기본 OAuth client 가 등록되지 않은 인스턴스라
+          # 로그인 전에 custom OAuth application 의 client_id 를 먼저 주입해야 함.
+          # `--container-registry-domains` 는 docker credential helper(home/modules/dev/docker.nix)
+          # 가 registry.jpi.app 호스트를 git.jpi.app 인증에 매핑하는 데 쓰임:
+          # ```sh
+          # glab config set client_id c6c350c323dbd7dbd4091b2f3e56a1d6ef31e7104ae6deddfc5d950c7d11d69f \
+          #   --global --host git.jpi.app
+          # glab auth login --hostname git.jpi.app --web \
+          #   --container-registry-domains registry.jpi.app,registry.jpi.app:443 \
+          #   -a git.jpi.app -p https
+          # ```
           "https://gitlab.com".helper = glabCredentialHelper;
           "https://git.jpi.app".helper = glabCredentialHelper;
 
