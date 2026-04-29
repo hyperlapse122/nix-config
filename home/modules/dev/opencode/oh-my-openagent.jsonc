@@ -5,7 +5,7 @@
     "sisyphus": {
       // Primary
       "model": "anthropic/claude-opus-4-7",
-      "variant": "max"
+      "variant": "max",
 
       // Fallback (Kimi)
       // "model": "opencode-go/kimi-k2.6"
@@ -16,27 +16,27 @@
     },
     "hephaestus": {
       "model": "openai/gpt-5.5-fast",
-      "variant": "medium"
+      "variant": "medium",
     },
     "oracle": {
       // Primary
       "model": "openai/gpt-5.5-fast",
-      "variant": "high"
+      "variant": "high",
 
       // Fallback
       // "model": "google/gemini-3.1-pro-preview",
       // "variant": "high"
     },
     "librarian": {
-      "model": "openai/gpt-5.4-mini-fast"
+      "model": "openai/gpt-5.4-mini-fast",
     },
     "explore": {
-      "model": "openai/gpt-5.4-mini-fast"
+      "model": "openai/gpt-5.4-mini-fast",
     },
     "multimodal-looker": {
       // Primary
       "model": "openai/gpt-5.5-fast",
-      "variant": "medium"
+      "variant": "medium",
 
       // Fallback
       // "model": "opencode-go/minimax-m2.5"
@@ -51,12 +51,12 @@
       // "variant": "high",
 
       // Common
-      "prompt_append": "MANDATORY post-plan workflow (in order, no exceptions): (1) Save plan to `.sisyphus/plans/<name>.md`. (2) Self-review for clarity, verifiability, completeness. (3) ALWAYS invoke Momus for high-accuracy review by passing the plan file path as the sole prompt — NON-NEGOTIABLE, never skip, never mark optional. Address ALL Momus findings before proceeding. (4) Branch: if current branch is not `main` and matches `opencode/*` (auto-generated, dedicated to this task), rename in place via `git branch -m` per project rules or git flow convention (`feature/*`, `bugfix/*`, etc.). Never create parallel branches."
+      "prompt_append": "MANDATORY post-plan workflow (in order, no exceptions): (1) Save plan to `.sisyphus/plans/<name>.md`. (2) Self-review for clarity, verifiability, completeness. (3) ALWAYS invoke Momus for high-accuracy review by passing the plan file path as the sole prompt — NON-NEGOTIABLE, never skip, never mark optional. Address ALL Momus findings before proceeding. (4) Branch: if current branch is not `main` and matches `opencode/*` (auto-generated, dedicated to this task), rename in place via `git branch -m` per project rules or git flow convention (`feature/*`, `bugfix/*`, etc.). Never create parallel branches.",
     },
     "metis": {
       // Primary
       "model": "anthropic/claude-opus-4-7",
-      "variant": "max"
+      "variant": "max",
 
       // Fallback
       // "model": "openai/gpt-5.5-fast",
@@ -64,7 +64,7 @@
     },
     "momus": {
       "model": "openai/gpt-5.5-fast",
-      "variant": "xhigh"
+      "variant": "xhigh",
     },
     "atlas": {
       // Primary
@@ -74,21 +74,21 @@
       // "model": "opencode-go/kimi-k2.6",
 
       // Common
-      "prompt_append": "MANDATORY post-execution workflow (in order, no exceptions): (1) Update relevant AGENTS.md files with wisdoms learned during execution. (2) BEFORE push: if current branch matches `opencode/*` (auto-generated), rename in place via `git branch -m` per project rules or git flow convention (`feature/*`, `bugfix/*`, etc.) — never create parallel branches. (3) Commit and push all changes. (4) If current branch is not `main`, create or update PR/MR per project conventions with assignee set to the authenticated user. (5) On CI/CD pipeline failure: analyze, fix, push new commits — repeat until pipeline is green. NEVER abandon a failing pipeline."
+      "prompt_append": "MANDATORY post-execution workflow (in order, no exceptions): (1) Update relevant AGENTS.md files with wisdoms learned during execution. (2) BEFORE push: if current branch matches `opencode/*` (auto-generated), rename in place via `git branch -m` per project rules or git flow convention (`feature/*`, `bugfix/*`, etc.) — never create parallel branches. (3) Commit and push all changes. (4) If current branch is not `main`, create or update PR/MR per project conventions with assignee set to the authenticated user. (5) On CI/CD pipeline failure: analyze, fix, push new commits — repeat until pipeline is green. NEVER abandon a failing pipeline.",
     },
     "sisyphus-junior": {
       // Primary
-      "model": "anthropic/claude-sonnet-4-6"
+      "model": "anthropic/claude-sonnet-4-6",
 
       // Fallback
       // "model": "opencode-go/kimi-k2.6"
-    }
+    },
   },
   "categories": {
     "visual-engineering": {
       // Primary
       "model": "google/gemini-3.1-pro-preview",
-      "variant": "high"
+      "variant": "high",
 
       // Fallback
       // "model": "opencode-go/glm-5.1"
@@ -96,7 +96,7 @@
     "ultrabrain": {
       // Primary
       "model": "openai/gpt-5.5-fast",
-      "variant": "xhigh"
+      "variant": "xhigh",
 
       // Fallback
       // "model": "google/gemini-3.1-pro-preview",
@@ -104,22 +104,22 @@
     },
     "deep": {
       "model": "openai/gpt-5.5-fast",
-      "variant": "medium"
+      "variant": "medium",
     },
     "artistry": {
       // Primary
-      "model": "google/gemini-3.1-pro-preview",
-      "variant": "high"
+      // "model": "google/gemini-3.1-pro-preview",
+      // "variant": "high"
 
       // Fallback
-      // "model": "openai/gpt-5.5-fast"
+      "model": "openai/gpt-5.5-fast",
     },
     "quick": {
-      "model": "openai/gpt-5.4-mini-fast"
+      "model": "openai/gpt-5.4-mini-fast",
     },
     "unspecified-low": {
       // Primary
-      "model": "anthropic/claude-sonnet-4-6"
+      "model": "anthropic/claude-sonnet-4-6",
 
       // Fallback
       // "model": "openai/gpt-5.3-codex",
@@ -128,7 +128,7 @@
     "unspecified-high": {
       // Primary
       "model": "anthropic/claude-opus-4-7",
-      "variant": "max"
+      "variant": "max",
 
       // Fallback
       // "model": "openai/gpt-5.5-fast",
@@ -136,11 +136,11 @@
     },
     "writing": {
       // Primary
-      "model": "google/gemini-3-flash-preview"
+      // "model": "google/gemini-3-flash-preview"
 
       // Fallback
-      // "model": "opencode-go/kimi-k2.6"
-    }
+      "model": "openai/gpt-5.5-mini-fast",
+    },
   },
   "disabled_mcps": ["playwright"],
   "disabled_skills": ["playwright"],
@@ -148,13 +148,13 @@
     "session-notification",
     "no-sisyphus-gpt",
     "comment-checker",
-    "claude-code-hooks"
+    "claude-code-hooks",
   ],
   "browser_automation_engine": { "provider": "playwright-cli" },
   "git_master": {
     "commit_footer": false,
     "include_co_authored_by": true,
-    "git_env_prefix": "GIT_MASTER=1"
+    "git_env_prefix": "GIT_MASTER=1",
   },
-  "notification": { "force_enable": true }
+  "notification": { "force_enable": true },
 }
