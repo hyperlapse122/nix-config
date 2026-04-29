@@ -216,11 +216,6 @@ in {
             "https://www.schemastore.org/" = true;
           };
 
-          # Kilo Code
-          "kilo-code.allowedCommands" = [ "git log" "git diff" "git show" ];
-          "kilo-code.deniedCommands" = [];
-          "kilo-code.provider" = "openrouter";
-
           # Markdownlint
           "markdownlint.lintWorkspaceGlobs" = [
             "**/*.{md,mkd,mdwn,mdown,markdown,markdn,mdtxt,mdtext,workbook}"
