@@ -69,6 +69,7 @@ in {
       fzf
       btop
       lsof
+      curl
     ];
   };
 }
