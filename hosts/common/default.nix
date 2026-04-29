@@ -9,6 +9,7 @@
     ./ssh.nix
     ./laptop-input.nix
     ./virtualisation.nix
+    ./cross-compile.nix
     ./boot
     ./desktop
     ./hardware

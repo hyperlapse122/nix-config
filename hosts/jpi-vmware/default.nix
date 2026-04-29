@@ -43,6 +43,11 @@
   my.system.virtualisation.docker.enable = true;
   my.system.hardware.logitech.enable = true;
 
+  # aarch64 (arm64) 크로스 컴파일 활성화 — binfmt_misc + qemu-user 로 aarch64-linux 바이너리를 호스트에서 실행.
+  # `nix build nixpkgs#pkgsCross.aarch64-multiplatform.<pkg>` 결과물 및
+  # native aarch64 빌드 (cache.nixos.org 캐시 활용) 모두 가능. 정책: hosts/common/cross-compile.nix.
+  my.system.cross-compile.aarch64.enable = true;
+
   # 호스트 단위 home-manager 오버라이드.
   # `home-manager.users.h82` 는 flake.nix 에서 이미 `import ./home/h82.nix` 로 정의되어 있다.
   # 같은 키에 attrset 을 또 대입하면 NixOS 모듈 시스템이 두 정의를 자동으로 병합한다
