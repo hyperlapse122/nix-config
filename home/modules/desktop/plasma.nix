@@ -238,5 +238,34 @@ in
         };
       };
     };
+
+    # Konsole — KDE's bundled terminal emulator (Plasma 6).
+    # Configured via plasma-manager's separate `programs.konsole` module (a
+    # sibling of `programs.plasma`, not nested under it). It writes the profile
+    # to `~/.local/share/konsole/Default.profile` and routes the default-profile
+    # selection into `~/.config/konsolerc`'s `[Desktop Entry] DefaultProfile`
+    # via plasma-manager's `programs.plasma.configFile` mechanism — hence this
+    # block depends on `programs.plasma.enable = true` (already on above).
+    # NOTE: We use the strict-monospace "JetBrainsMono Nerd Font Mono" variant,
+    #       NOT the plain "JetBrainsMono Nerd Font" used in
+    #       `programs.plasma.fonts.fixedWidth` above. The "Mono" variant forces
+    #       every glyph (icons / Powerline / box-drawing) into a single
+    #       monospace cell, which TUIs (vim / htop / btop / neofetch) need for
+    #       column alignment. The non-Mono variant contains some double-width
+    #       Nerd-Font glyphs that render fine in IDE editors but break terminal
+    #       alignment. Both variants are provided by `pkgs.nerd-fonts.jetbrains-mono`
+    #       (enabled in `home/h82.nix`).
+    # NOTE: Konsole's stock "Built-in" profile is hardcoded inside the binary
+    #       and read-only, so we declare a fresh "Default" profile here and
+    #       point konsolerc at it (`defaultProfile = "Default"` becomes
+    #       `[Desktop Entry] DefaultProfile = "Default.profile"`).
+    programs.konsole = {
+      enable = true;
+      defaultProfile = "Default";
+      profiles.Default.font = {
+        name = "JetBrainsMono Nerd Font Mono";
+        size = 10;
+      };
+    };
   };
 }
