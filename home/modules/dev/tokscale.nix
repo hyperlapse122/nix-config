@@ -2,8 +2,8 @@
 let
   cfg = config.my.dev.tokscale;
 
-  # tokscale CLI: bunx 래퍼 (npm 레지스트리에서 매번 최신 tokscale 가져옴).
-  # opencode 모듈과 동일한 패턴 — bun 본체는 별도로 home.packages 에 넣어 의존성 보장.
+  # tokscale CLI: bunx wrapper (pulls the latest tokscale from npm every invocation).
+  # Same pattern as the opencode module — bun itself is added separately to home.packages to ensure the dependency is present.
   tokscaleWrapper = pkgs.writeShellApplication {
     name = "tokscale";
     text = ''
@@ -12,11 +12,11 @@ let
   };
 in {
   options.my.dev.tokscale = {
-    enable = lib.mkEnableOption "tokscale CLI (bunx 래퍼)";
+    enable = lib.mkEnableOption "tokscale CLI (bunx wrapper)";
   };
 
   config = lib.mkIf cfg.enable {
-    # bunx 래퍼 + bun 본체
+    # bunx wrapper + bun itself
     home.packages = [
       tokscaleWrapper
       pkgs.bun

@@ -3,25 +3,26 @@ let
   cfg = config.my._1password;
 in {
   options.my._1password = {
-    enable = lib.mkEnableOption "1Password 런처 .desktop 오버라이드 (Quick Access 전역 단축키 Ctrl+Shift+Space 활성화)";
+    enable = lib.mkEnableOption "1Password launcher .desktop override (enables the Quick Access global shortcut Ctrl+Shift+Space)";
   };
 
   config = lib.mkIf cfg.enable {
-    # 시스템 레벨 (hosts/common/programs/_1password.nix) 에서 programs._1password-gui 가 깐
-    # 원본 1password.desktop 을 사용자 영역에서 덮어쓴다.
-    # XDG 검색 우선순위: $XDG_DATA_HOME/applications (~/.local/share/applications) >
-    #   $XDG_DATA_DIRS/applications (NixOS 시스템/사용자 프로파일).
-    # 따라서 이 파일이 패키지 원본을 가리고, KDE 메뉴 / KRunner / Plasma 패널 런처 모두 이 정의를 본다.
+    # Override the original 1password.desktop installed at the system level by
+    # programs._1password-gui (hosts/common/programs/_1password.nix) with a user-level copy.
+    # XDG search precedence: $XDG_DATA_HOME/applications (~/.local/share/applications) >
+    #   $XDG_DATA_DIRS/applications (NixOS system / user profile).
+    # So this file shadows the package's original, and the KDE menu / KRunner / Plasma panel launchers all see this definition.
     #
-    # 핵심 변경: [Desktop Action QuickAccess] 섹션 + X-KDE-Shortcuts=Ctrl+Shift+Space.
-    # KDE 의 KGlobalAccel 이 .desktop 의 Action 메타데이터를 읽어 전역 단축키로 등록하므로
-    # 별도 kglobalshortcutsrc / plasma-manager 설정이 필요 없다.
+    # Key change: the [Desktop Action QuickAccess] section + X-KDE-Shortcuts=Ctrl+Shift+Space.
+    # KDE's KGlobalAccel reads .desktop Action metadata and registers it as a global shortcut,
+    # so no separate kglobalshortcutsrc / plasma-manager configuration is needed.
     #
-    # NOTE: Exec= 는 절대경로 (예: /opt/1Password/1password — Linux native install 형태) 가 아니라
-    #       PATH-based `1password` 다. NixOS 는 setuid wrapper 를 /run/wrappers/bin/1password 에 두고,
-    #       브라우저 통합 / 시스템 키링 / SSH agent 가 이 wrapper 를 통해서만 동작한다.
-    #       Nix store path 나 /opt 경로를 직접 박으면 wrapper 를 우회해서 깨짐.
-    #       (동일 주석: hosts/common/programs/_1password.nix 의 autostart .desktop)
+    # NOTE: Exec= is the PATH-based `1password`, not an absolute path
+    #       (e.g. /opt/1Password/1password — the Linux native install layout).
+    #       NixOS places its setuid wrapper at /run/wrappers/bin/1password, and only via that wrapper
+    #       do browser integration / system keyring / SSH agent work properly. Pinning a Nix-store
+    #       path or /opt path bypasses the wrapper and breaks integration.
+    #       (Same comment as the autostart .desktop in hosts/common/programs/_1password.nix)
     xdg.dataFile."applications/1password.desktop".text = ''
       [Desktop Entry]
       Name=1Password

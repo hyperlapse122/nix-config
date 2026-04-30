@@ -37,7 +37,7 @@ The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; 
 - **NixOS-overlay block.** Each editor's `userSettings` mirrors a dotfiles file **plus** an "NixOS overlay" section that disables auto-update and wires Nix tooling (nixd LSP, nixfmt formatter). This block is delimited by:
 
   ```nix
-  # ─── NixOS overlay (kill-switches & Nix LSP, dotfiles에는 없음) ───
+  # ─── NixOS overlay (kill-switches & Nix LSP, not in dotfiles) ───
   ```
 
   These divider comments are searchable markers. Keep them.
@@ -45,6 +45,7 @@ The other agents (Copilot, Gemini, Codex, Claude) come from Zed's own registry; 
 - **Nix tooling paths.** `nix.serverPath = "${pkgs.nixd}/bin/nixd"`. The Nix formatter is `nixfmt` (from `pkgs.nixfmt` — the `pkgs.nixfmt-rfc-style` alias was deprecated upstream). Both packages are installed in this same module's `home.packages`, so the binaries exist at runtime.
 
 - **Dotted setting keys must be quoted strings** in VS Code (e.g. `"editor.tabSize"`, `"github.copilot.enable"`). Already done throughout — match the pattern.
+- **English-only.** Every comment and string in `vscode.nix` / `zed.nix` MUST be in English, including the `# ─── NixOS overlay ... ───` markers. See the **LANGUAGE** section in the root `AGENTS.md`.
 
 ## ANTI-PATTERNS
 

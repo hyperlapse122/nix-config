@@ -3,11 +3,11 @@ let
   cfg = config.my.dev.python;
 in {
   options.my.dev.python = {
-    enable = lib.mkEnableOption "Python 3 (nixpkgs 기본 인터프리터)";
+    enable = lib.mkEnableOption "Python 3 (nixpkgs default interpreter)";
   };
 
   config = lib.mkIf cfg.enable {
-    # Python 3 — pkgs.python3 는 nixpkgs unstable 의 현재 기본 인터프리터를 가리킨다.
+    # Python 3 — pkgs.python3 in nixpkgs unstable points at the current default interpreter.
     home.packages = [ pkgs.python3 ];
   };
 }

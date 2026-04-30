@@ -9,12 +9,12 @@ let
 in
 {
   options.my.dev.nodejs = {
-    enable = lib.mkEnableOption "Node.js LTS + yarn (nixpkgs 기본값 = 현재 LTS)";
+    enable = lib.mkEnableOption "Node.js LTS + yarn (nixpkgs default = current LTS)";
   };
 
   config = lib.mkIf cfg.enable {
-    # Node.js LTS — pkgs.nodejs 는 nixpkgs unstable 에서 현재 active LTS 라인을 가리킨다.
-    # yarn (classic 1.x) — npm 대체 패키지 매니저.
+    # Node.js LTS — pkgs.nodejs in nixpkgs unstable points at the current active LTS line.
+    # yarn (classic 1.x) — alternative package manager to npm.
     home.packages = [
       pkgs.nodejs
       pkgs.yarn-berry

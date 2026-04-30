@@ -11,7 +11,7 @@ in {
       enable = true;
       package = pkgs.zed-editor;
 
-      # ~/.config/zed/settings.json 의 내용 (dotfiles에서 동기화)
+      # Contents of ~/.config/zed/settings.json (synced from dotfiles)
       userSettings = {
         # Panels (right dock)
         project_panel = { dock = "right"; };
@@ -69,7 +69,7 @@ in {
           dark = "One Dark";
         };
 
-        # 자동 설치할 확장
+        # Extensions to auto-install
         auto_install_extensions = {
           biome = true;
           graphql = true;
@@ -78,7 +78,7 @@ in {
           git-firefly = true;
           toml = true;
           wakatime = true;
-          # NixOS overlay: Nix 언어 지원
+          # NixOS overlay: Nix language support
           nix = true;
         };
 
@@ -120,11 +120,11 @@ in {
           };
         };
 
-        # ─── NixOS overlay (kill-switches & Nix 언어 설정, dotfiles에는 없음) ───
-        # 자동 업데이트 끄기 (Nix가 관리)
+        # ─── NixOS overlay (kill-switches & Nix language config, not in dotfiles) ───
+        # Disable auto-updates (Nix is the source of truth)
         auto_update = false;
 
-        # Nix 언어 설정 (nixd LSP + nixfmt 포매터)
+        # Nix language configuration (nixd LSP + nixfmt formatter)
         languages = {
           "Nix" = {
             language_servers = [ "nixd" ];
@@ -137,7 +137,7 @@ in {
         };
       };
 
-      # ~/.config/zed/keymap.json 의 내용 (dotfiles에서 동기화)
+      # Contents of ~/.config/zed/keymap.json (synced from dotfiles)
       userKeymaps = [
         {
           context = "Workspace";
@@ -168,7 +168,7 @@ in {
       ];
     };
 
-    # 외부 도구들 (Zed가 호출)
+    # External tools (invoked by Zed)
     home.packages = with pkgs; [
       nixd
       nixfmt

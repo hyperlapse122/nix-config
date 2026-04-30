@@ -7,8 +7,8 @@
 let
   cfg = config.my.git;
 
-  # CLI tool 기반 credential helper (각자 호스트에서 사용)
-  # 빈 문자열로 상위 helper 초기화 후 CLI 지정 (둘 다 실행되는 것 방지)
+  # CLI-tool-based credential helpers (used per host).
+  # Initialize the parent helper to empty string before adding the CLI helper, so that both don't run.
   ghCredentialHelper = [
     ""
     "!${lib.getExe pkgs.gh} auth git-credential"
@@ -27,7 +27,7 @@ in
     programs.git = {
       enable = true;
 
-      # Git LFS — clean/smudge/process filter 자동 설정 + git-lfs 패키지 포함
+      # Git LFS — auto-configures the clean/smudge/process filter and includes the git-lfs package.
       lfs.enable = true;
 
       settings = {
@@ -39,40 +39,40 @@ in
         init.defaultBranch = "main";
         pull.rebase = true;
 
-        # Line ending 정책 — Windows CRLF 자동 변환 비활성화
+        # Line-ending policy — disable Windows CRLF auto-conversion.
         core.autocrlf = false;
 
-        # 모든 commit/tag 자동 GPG 서명
+        # Auto-sign every commit/tag with GPG.
         commit.gpgsign = true;
         tag.gpgSign = true;
 
-        # Push 동작 — submodule 검증 + 첫 push 시 upstream 자동 설정
+        # Push behavior — verify submodules + auto-set upstream on first push.
         push.recurseSubmodules = "check";
         push.autoSetupRemote = true;
 
         credential = {
-          # 기본 credential helper — Git Credential Manager (Azure DevOps 등 fallback)
+          # Default credential helper — Git Credential Manager (fallback for Azure DevOps, etc.).
           helper = "${pkgs.git-credential-manager}/bin/git-credential-manager";
           credentialStore = "secretservice";
           guiPrompt = "true";
 
-          # GitHub 호스트 — gh CLI을 credential helper로 사용
-          # 첫 사용 시: `gh auth login` (gist.github.com 동일 인증 공유)
+          # GitHub hosts — use the gh CLI as the credential helper.
+          # First-time use: `gh auth login` (gist.github.com shares the same authentication).
           "https://github.com".helper = ghCredentialHelper;
           "https://gist.github.com".helper = ghCredentialHelper;
 
-          # GitLab 호스트 — glab CLI을 credential helper로 사용.
-          # 첫 사용 시 (OAuth/web 로그인 — `glab auth git-credential` 이 토큰을 자동 갱신):
+          # GitLab hosts — use the glab CLI as the credential helper.
+          # First-time use (OAuth/web login — `glab auth git-credential` auto-refreshes the token):
           #
-          # gitlab.com (SaaS, 기본값):
+          # gitlab.com (SaaS, default):
           # ```sh
           # glab auth login --hostname gitlab.com --web
           # ```
           #
-          # git.jpi.app (사내 self-hosted) — glab 기본 OAuth client 가 등록되지 않은 인스턴스라
-          # 로그인 전에 custom OAuth application 의 client_id 를 먼저 주입해야 함.
-          # `--container-registry-domains` 는 docker credential helper(home/modules/dev/docker.nix)
-          # 가 registry.jpi.app 호스트를 git.jpi.app 인증에 매핑하는 데 쓰임:
+          # git.jpi.app (in-house self-hosted) — glab's default OAuth client isn't registered on this instance,
+          # so the custom OAuth application's client_id must be injected before login.
+          # `--container-registry-domains` is what the docker credential helper (home/modules/dev/docker.nix)
+          # uses to map the registry.jpi.app host onto git.jpi.app authentication:
           # ```sh
           # glab config set client_id c6c350c323dbd7dbd4091b2f3e56a1d6ef31e7104ae6deddfc5d950c7d11d69f \
           #   --global --host git.jpi.app
@@ -83,7 +83,7 @@ in
           "https://gitlab.com".helper = glabCredentialHelper;
           "https://git.jpi.app".helper = glabCredentialHelper;
 
-          # Azure DevOps — 같은 호스트의 다른 repo 별 자격증명 분리
+          # Azure DevOps — separate credentials per repo on the same host.
           "https://dev.azure.com" = {
             useHttpPath = true;
           };
@@ -91,7 +91,7 @@ in
       };
     };
 
-    # Git 인증 도구 + GitHub/GitLab CLI
+    # Git authentication tools + GitHub/GitLab CLIs
     home.packages = with pkgs; [
       git-credential-manager
       libsecret

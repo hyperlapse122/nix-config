@@ -1,9 +1,9 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.my.ssh;
-  # 1Password SSH agent UNIX socket (Linux 전용 경로).
-  # 루트 AGENTS.md 의 "NixOS only (no nix-darwin / WSL planned)" 정책에 따라
-  # 위키의 Darwin 분기 (`Library/Group Containers/.../agent.sock`) 는 의도적으로 생략.
+  # 1Password SSH agent UNIX socket (Linux-only path).
+  # Per the root AGENTS.md "NixOS only (no nix-darwin / WSL planned)" policy, the Wiki's
+  # Darwin branch (`Library/Group Containers/.../agent.sock`) is intentionally omitted.
   onePassPath = "${config.home.homeDirectory}/.1password/agent.sock";
 in {
   options.my.ssh = {
@@ -11,22 +11,22 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
-    # home-manager 25.11 부터 programs.ssh 의 암묵적 default 들이 deprecated 됨.
-    # `enableDefaultConfig = false` 로 끄고, 같은 값들을 matchBlocks."*" 에 직접 명시한다.
-    # 출처: nix-community/home-manager release-25.11 modules/programs/ssh.nix
+    # Starting with home-manager 25.11, programs.ssh's implicit defaults were deprecated.
+    # We disable them with `enableDefaultConfig = false` and re-declare the same values explicitly under matchBlocks."*".
+    # Source: nix-community/home-manager release-25.11 modules/programs/ssh.nix
     #
-    # 동작 전제 조건:
-    #   1. 시스템 모듈 my.system.programs._1password 가 활성화된 호스트일 것.
-    #   2. 1Password 앱 Settings → Developer → "Use the SSH agent" 활성화.
+    # Behavior preconditions:
+    #   1. The host has my.system.programs._1password enabled.
+    #   2. 1Password app: Settings → Developer → "Use the SSH agent" enabled.
     programs.ssh = {
       enable = true;
       enableDefaultConfig = false;
       matchBlocks."*" = {
-        # 이 모듈의 본 목적 — 1Password agent 연동.
+        # The actual purpose of this module — wire up the 1Password agent.
         identityAgent = onePassPath;
 
-        # 이하는 home-manager 가 enableDefaultConfig=true 일 때 자동 주입하던 값들.
-        # 25.11+ 에선 사용자가 직접 박아야 동작이 동일하게 유지됨.
+        # Below are the values home-manager used to inject automatically when enableDefaultConfig=true.
+        # In 25.11+, they must be set explicitly to preserve identical behavior.
         forwardAgent = false;
         addKeysToAgent = "no";
         compression = false;

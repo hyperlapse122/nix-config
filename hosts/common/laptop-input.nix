@@ -3,34 +3,35 @@ let
   cfg = config.my.system.laptop-input;
 in {
   options.my.system.laptop-input = {
-    enable = lib.mkEnableOption "노트북 입력 설정 (keyd 키 매핑 + libinput palm rejection 조정)";
+    enable = lib.mkEnableOption "Laptop input configuration (keyd key remapping + libinput palm rejection tuning)";
   };
 
   config = lib.mkIf cfg.enable {
-    # keyd — 시스템 레벨 키 리매핑 데몬.
-    # 참고: https://wiki.nixos.org/wiki/Keyd
+    # keyd — system-level key-remapping daemon.
+    # Reference: https://wiki.nixos.org/wiki/Keyd
     #
-    # extraConfig 가 아닌 settings 로 작성한 이유: Nix 안에서 평면 attrset 으로 표현 가능하면
-    # extraConfig 문자열보다 evaluate 시점에 타이핑/머지 안전성이 더 높다.
+    # We use `settings` rather than `extraConfig` because, when a flat attrset can express the same config inside Nix,
+    # it is more typing-/merge-safe at evaluation time than an extraConfig string.
     services.keyd = {
       enable = true;
       keyboards.default = {
-        # 와일드카드 — 모든 키보드 대상.
-        # Wiki 의 "Disabling Copilot key" 섹션은 palm rejection 이슈를 피하려고 ID 를 명시하라고 권하지만,
-        # 아래 environment.etc."libinput/local-overrides.quirks" 로 동일한 문제를 해결하므로 와일드카드 사용 가능.
+        # Wildcard — match every keyboard.
+        # The "Disabling Copilot key" Wiki section recommends pinning explicit IDs to avoid palm-rejection
+        # issues, but the environment.etc."libinput/local-overrides.quirks" rule below addresses the same
+        # problem, so the wildcard is fine.
         ids = [ "*" ];
         settings = {
-          # 기본 레이어
+          # Default layer
           main = {
-            # CapsLock → Hangeul (한/영 전환). dotfiles/etc/keyd/default.conf 와 동일.
+            # CapsLock → Hangeul (Korean/English toggle). Same as dotfiles/etc/keyd/default.conf.
             capslock = "hangeul";
-            # Copilot 키 비활성화 — 신형 노트북에 달리는 쓸모없는 Copilot 키를 meta 레이어로 매핑.
-            # `sudo keyd monitor` 로 확인된 표준 시퀀스 (leftshift+leftmeta+f23) 를 잡아낸다.
-            # 참고: https://wiki.nixos.org/wiki/Keyd#Disabling_Copilot_key
+            # Disable the Copilot key — the useless Copilot key on newer laptops is mapped to a meta layer.
+            # Catches the standard sequence (leftshift+leftmeta+f23) confirmed via `sudo keyd monitor`.
+            # Reference: https://wiki.nixos.org/wiki/Keyd#Disabling_Copilot_key
             "leftshift+leftmeta+f23" = "layer(meta)";
           };
-          # Ctrl 레이어 — Ctrl 을 누른 상태에서 CapsLock 은 실제 CapsLock 동작.
-          # main 의 capslock=hangeul 매핑을 우회해 필요할 때 진짜 CapsLock 을 쓸 수 있게 함.
+          # Ctrl layer — while Ctrl is held, CapsLock acts as the real CapsLock.
+          # Bypasses main's capslock=hangeul mapping so that a real CapsLock is still reachable when needed.
           control = {
             capslock = "capslock";
           };
@@ -38,10 +39,11 @@ in {
       };
     };
 
-    # libinput palm rejection 보정.
-    # keyd 가 만든 가상 키보드를 internal 키보드로 인식시켜야 타이핑 중 터치패드 palm rejection 이 동작한다.
-    # 미설정 시 키 입력이 들어오는 동안에도 터치패드가 활성 상태로 남아 오타/오클릭 발생.
-    # 참고: https://github.com/rvaiya/keyd/issues/723
+    # libinput palm-rejection tuning.
+    # The virtual keyboard keyd creates must be classified as an internal keyboard for libinput palm
+    # rejection to engage during typing. Without this, the touchpad stays active during keystrokes,
+    # producing typos and stray clicks.
+    # Reference: https://github.com/rvaiya/keyd/issues/723
     environment.etc."libinput/local-overrides.quirks".text = ''
       [Serial Keyboards]
       MatchUdevType=keyboard

@@ -3,7 +3,7 @@ let
   cfg = config.my.system.desktop.plasma;
 in {
   options.my.system.desktop.plasma = {
-    enable = lib.mkEnableOption "KDE Plasma 6 데스크톱 (SDDM Wayland + KWallet PAM 통합)";
+    enable = lib.mkEnableOption "KDE Plasma 6 desktop (SDDM Wayland + KWallet PAM integration)";
   };
 
   config = lib.mkIf cfg.enable {
@@ -16,7 +16,7 @@ in {
     services.desktopManager.plasma6.enable = true;
     services.displayManager.defaultSession = "plasma";
 
-    # KDE Wallet — git-credential-manager (home/modules/git.nix) 가 secretservice 로 KWallet 사용.
+    # KDE Wallet — git-credential-manager (home/modules/git.nix) uses KWallet via secretservice.
     security.pam.services.login.kwallet.enable = true;
     security.pam.services.kde.kwallet.enable = true;
   };

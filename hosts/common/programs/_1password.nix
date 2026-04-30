@@ -3,14 +3,14 @@ let
   cfg = config.my.system.programs._1password;
 in {
   options.my.system.programs._1password = {
-    enable = lib.mkEnableOption "1Password (CLI + GUI, 브라우저 통합 포함)";
-    autostart = lib.mkEnableOption "1Password 자동 시작 (--silent, 시스템 트레이 상주)";
+    enable = lib.mkEnableOption "1Password (CLI + GUI, including browser integration)";
+    autostart = lib.mkEnableOption "1Password autostart (--silent, runs in the system tray)";
   };
 
   config = lib.mkIf cfg.enable {
     # 1Password (GUI + CLI)
-    # 브라우저 통합용 setuid wrapper 가 필요해서 NixOS 레벨에서 활성화해야 한다.
-    # 단순히 환경 패키지로 깔면 브라우저 확장과의 코드 서명 검증이 동작하지 않음.
+    # Must be enabled at the NixOS level because it requires a setuid wrapper for browser integration.
+    # If installed only as an environment package, code-signature verification with the browser extension does not work.
     programs._1password = {
       enable = true;
       package = pkgs._1password-cli;
@@ -18,19 +18,20 @@ in {
     programs._1password-gui = {
       enable = true;
       package = pkgs._1password-gui;
-      # 단일 사용자 (h82) 가정 — git.nix 의 git identity 와 동일한 hard-code 정책.
-      # 두 번째 사용자가 추가될 때 parameterize.
+      # Single-user (h82) assumption — same hard-coded policy as git.nix's git identity.
+      # Parameterize when a second user is added.
       polkitPolicyOwners = [ "h82" ];
     };
 
-    # 자동 시작 — XDG 호환 데스크톱 환경 (KDE Plasma 포함) 이 로그인 시
-    # /etc/xdg/autostart/*.desktop 을 자동 실행한다.
-    # `--silent` 로 띄우면 창은 숨기고 시스템 트레이에만 상주.
-    # `Exec=1password ...` 는 PATH 를 통해 /run/wrappers/bin/1password (setuid wrapper) 로 해석되므로
-    # 브라우저 통합용 코드 서명 검증이 그대로 동작 — Nix store path 를 직접 박으면 wrapper 를 우회해서 깨짐.
-    # 단일 사용자 (h82) 가정에 따라 /etc/xdg/autostart 에 시스템 전역으로 설치
-    # (~/.config/autostart 가 아닌 이유: home-manager 가 아니라 이 모듈이 system 레이어이기 때문).
-    # 원본 데스크톱 항목은 dotfiles/dotconfig/autostart/1password-autostart.desktop 참고.
+    # Autostart — XDG-compliant desktop environments (including KDE Plasma) automatically run
+    # /etc/xdg/autostart/*.desktop entries at login.
+    # `--silent` keeps the window hidden and runs only in the system tray.
+    # `Exec=1password ...` is resolved through PATH to /run/wrappers/bin/1password (the setuid wrapper),
+    # so browser integration / code-signature verification still works correctly. Pinning a Nix-store
+    # path or an /opt path bypasses the wrapper and breaks integration.
+    # Per the single-user (h82) assumption, install system-wide under /etc/xdg/autostart
+    # (~/.config/autostart is not used because this module is the system layer, not home-manager).
+    # See dotfiles/dotconfig/autostart/1password-autostart.desktop for the original desktop entry.
     environment.etc."xdg/autostart/1password.desktop" = lib.mkIf cfg.autostart {
       text = ''
         [Desktop Entry]

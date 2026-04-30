@@ -67,7 +67,7 @@ nix-config/
 - **`with pkgs; [ ... ]`** style for package lists.
 - **Single `nixos-unstable` channel.** `flake.nix` pins `nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"`; there is no separate `pkgs-unstable` instance, no overlays for fresher packages, no stable/unstable mixing. Every package — system or home — comes from one `nixpkgs` revision (locked in `flake.lock`). Coming from Arch Linux: same rolling-release model, just with atomic rollbacks.
 - **No flake-parts / snowfall / devshell / devenv.** Plain `nixpkgs.lib.nixosSystem` + `home-manager.nixosModules.home-manager`.
-- **Mixed Korean / English comments are normal.** Keep Korean intent comments untouched when editing — they encode design rationale.
+- **English-only for every version-controlled text.** See the **LANGUAGE** section below — non-English text is forbidden in any tracked file (comments, option descriptions, strings, docs, commit messages, branch names). The only exception is when a non-English literal IS the technical value (locale codes like `ko_KR.UTF-8`, font names like `Pretendard`, key codes like `hangeul`).
 - **Nix code is formatted with `nixfmt`** (RFC-style; the legacy `nixfmt-rfc-style` alias has been collapsed into `nixfmt` upstream). Zed invokes it directly. There is no `treefmt`, no `nix fmt` formatter output, no pre-commit hook, no CI.
 - **Git identity is hard-coded** (`Joosung Park <iam@h82.dev>`) in `home/modules/git.nix`. Do not parameterize unless adding a second user.
 
@@ -127,10 +127,44 @@ The lock file is the source of truth. Switching back to a stable release would r
 8. The user `h82` and `home/modules/*` import automatically — no per-host home config needed unless the host needs a different module set (then create `home/<user>-<hostname>.nix`).
 9. Verify: `nixos-rebuild build --flake .#<new-hostname>` from the repo root.
 
+## LANGUAGE
+
+**Every version-controlled text in this repo MUST be written in English.** This rule is non-negotiable and applies to every tracked file under this repository.
+
+### Scope (what is covered)
+
+- All `.nix` source code: comments, option `description` strings, `mkEnableOption` summaries, assertion `message` strings, `lib.warn` / `lib.trace` payloads, every other string literal that is intended to be read by a human.
+- All `.md`, `.mdx`, `.txt` documentation, including this `AGENTS.md`, every other `AGENTS.md`, and every file under `home/modules/dev/opencode/commands/`.
+- All `.json`, `.jsonc`, `.toml`, `.yaml`, `.yml` configuration: comments, descriptions, and any human-readable string fields you author.
+- Git artifacts authored from this repo: commit messages, branch names, tag names, PR / MR titles and descriptions.
+
+### Allowed exceptions (what is NOT a violation)
+
+- **Technical values that happen to use a non-Latin script** when the value itself is what the system requires. Examples: `i18n.defaultLocale = "ko_KR.UTF-8"`, `time.timeZone = "Asia/Seoul"`, font family `"Pretendard"`, key codes such as `hangeul`, fcitx5 `TriggerKeys` of `"Hangul"`.
+- **Generated / vendored content** under `agents/skills/` and `agents/.skill-lock.json`. These are managed by OpenCode's skill system; do not hand-edit them. Their language is upstream's choice.
+- **Generated `hardware-configuration.nix`** files. Regenerate via `nixos-generate-config`, never edit by hand.
+
+### Why this rule exists
+
+Mixed-language sources fragment review, search, code-mod, and AI-assisted refactoring. A single language across every comment, description, and doc keeps every tool — `grep`, `nixfmt`, AGENTS.md-aware agents, code review — predictable.
+
+### Enforcement before commit
+
+Before opening a PR, verify the diff has no non-English text. A simple guardrail:
+
+```bash
+# Must produce no output for any tracked file you authored or modified.
+git diff --name-only HEAD | xargs -r grep -lP '[^\x00-\x7F]' \
+  | grep -vE '^(agents/skills/|agents/\.skill-lock\.json$|hosts/.*/hardware-configuration\.nix$)' \
+  || true
+```
+
+If a match shows up: translate it before committing. There is no "TODO: translate later" carve-out.
+
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - ❌ **Do not modify any host's `hardware-configuration.nix`** — regenerate via `nixos-generate-config` if hardware changes. The file's own header forbids edits.
-- ❌ **Do not change `system.stateVersion` or `home.stateVersion`** (both `25.11`). The `jpi-vmware` host calls this out explicitly: `# state version - 절대 임의로 바꾸지 말 것`. New hosts inherit the same rule — set `stateVersion` to the NixOS release on which they were first installed and never bump it casually.
+- ❌ **Do not change `system.stateVersion` or `home.stateVersion`** (both `25.11`). The `jpi-vmware` host calls this out explicitly: `# state version — never change arbitrarily`. New hosts inherit the same rule — set `stateVersion` to the NixOS release on which they were first installed and never bump it casually.
 - ❌ **Do not move `inputs.nix-vscode-extensions.overlays.default` out of the host's `default.nix`.** It must be applied to that host's `nixpkgs` so `allowUnfree` propagates to marketplace extensions. Each host that uses VS Code declares the overlay locally. Adding it inside `home-manager` produces a separate `pkgs` instance without `allowUnfree` and silently breaks Copilot, Pylance, etc.
 - ❌ **Do not put host-specific config in `home/modules/`.** Modules under `home/modules/` are shared by every host. Anything that depends on hardware, hostname, or per-machine quirks belongs in `hosts/<hostname>/default.nix`.
 - ❌ **Do not put host-specific config in `hosts/common/`.** Same rule, system side. No `if config.networking.hostName == "..." then ...`, no hardware-specific overlays, no per-machine paths. Host-only divergence (bootloader, virtualization flavor, `nix-vscode-extensions` overlay, `system.stateVersion`) lives in `hosts/<hostname>/default.nix`.
@@ -138,6 +172,7 @@ The lock file is the source of truth. Switching back to a stable release would r
 - ❌ **Do not let `networking.hostName` drift from the directory name** under `hosts/`. The rebuild aliases (`rebuild`, `rebuild-test`, `rebuild-boot`) call `nixos-rebuild --flake ~/nix-config` with no `#hostname` attribute, which resolves to `nixosConfigurations.${current hostname}`. Mismatch = silent build of the wrong host.
 - ❌ **Do not introduce flake-parts / module library indirection** unless rewriting the layout deliberately. The simplicity is intentional even with N hosts — copy-paste the `nixosSystem` block, don't abstract it prematurely.
 - ❌ **Do not commit `result`, `result-*`, or `.direnv/`** — already in `.gitignore`.
+- ❌ **Do not introduce non-English text in any tracked file.** See the **LANGUAGE** section above. Translate before committing — no "TODO" carve-outs.
 
 ## COMMANDS
 
@@ -172,7 +207,7 @@ Anything in this section is specific to ONE host and should NOT leak into shared
 - **`nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ]`** — declared at host level (see ANTI-PATTERNS for why it can't move to `hosts/common/` or home-manager).
 - **Shared toggles enabled** (provided by `hosts/common/`): `my.system.users.h82`, `my.system.locale.korean`, `my.system.networking.networkmanager`, `my.system.audio.pipewire`, `my.system.ssh.server`, `my.system.desktop.plasma`, `my.system.programs.nix-ld`, `my.system.programs._1password`, `my.system.virtualisation.docker`, `my.system.boot.grub` (with `device = "/dev/sda"`). Hosts in other regions / without a desktop should leave the corresponding toggles off.
 
-> **fcitx5 입력기**: 시스템 레벨이 아닌 home-manager 모듈 (`my.i18n.fcitx5`) 로 관리되며 모든 호스트가 공유한다. `home/modules/i18n/fcitx5.nix` 참고. KDE Wayland InputMethod 경로는 `home/modules/desktop/plasma.nix` 의 `kwinrc` 에서 fcitx5-with-addons 패키지의 store 경로를 직접 가리킨다.
+> **fcitx5 input method**: managed at the home-manager layer (`my.i18n.fcitx5`) rather than the system layer, and shared across every host. See `home/modules/i18n/fcitx5.nix`. The KDE Wayland InputMethod path is set in `home/modules/desktop/plasma.nix`'s `kwinrc` and points directly at the fcitx5-with-addons package's store path.
 
 ## NOTES
 

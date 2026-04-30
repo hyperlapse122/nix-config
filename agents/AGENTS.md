@@ -39,6 +39,10 @@ dotagents/
 - `.skill-lock.json` tracks versions; do not edit by hand.
 - Some skills (docx, pptx, xlsx) bundle Office XML schemas under `scripts/office/schemas/` — these are large and read-only.
 
+## LANGUAGE
+
+This `AGENTS.md` itself MUST be written in English. The skills under `skills/` are managed artifacts whose language follows upstream — leave them as-is. See the **LANGUAGE** section in the root `AGENTS.md` for the project-wide rule and its allowed exceptions.
+
 ## ANTI-PATTERNS
 
 | Forbidden | Why |
@@ -46,3 +50,4 @@ dotagents/
 | Hand-edit `.skill-lock.json` | Managed by skill system; manual edits cause sync issues |
 | Modify skill contents directly | Use `skill-creator` skill to update; direct edits get overwritten |
 | Add non-skill files under `skills/` | Reserved for the skill system directory structure |
+| Add non-English text to this `AGENTS.md` | Project-wide policy: every tracked text is English. See root `AGENTS.md` LANGUAGE section. |

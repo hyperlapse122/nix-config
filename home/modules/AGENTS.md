@@ -59,7 +59,7 @@ modules/
 - **`{ config, lib, pkgs, ... }:`** function header, even when `config` or `lib` is unused. Consistency over micro-optimization.
 - **`let cfg = config.my.<path>; in { options = ...; config = lib.mkIf cfg.enable ...; }`** — never inline `config.my.X.enable` in multiple places.
 - **Enable-only options.** Only `vscode.nix` adds a non-`enable` option (`package`, for VSCode/VSCodium/Insiders swap). Stay minimal otherwise.
-- **Korean comments** (e.g. `# 셸 유틸리티`, `# 모듈 활성화`, `# 한국어 입력`) explain intent. Preserve them when editing.
+- **English-only comments and strings.** Every comment, option description, and string literal in this repo MUST be written in English. Do not introduce non-English text in any version-controlled file. See the **LANGUAGE** section in the root `AGENTS.md` for the project-wide rule.
 - **Shell hooks** (e.g. `programs.zsh.initContent` in `shell.nix`) are the right place for thin wrappers like the `rebuild*` aliases.
 
 ## ANTI-PATTERNS

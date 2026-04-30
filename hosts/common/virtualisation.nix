@@ -3,17 +3,17 @@ let
   cfg = config.my.system.virtualisation.docker;
 in {
   options.my.system.virtualisation.docker = {
-    enable = lib.mkEnableOption "Docker 데몬 + docker-compose CLI (sudo 없이 쓰려면 사용자가 docker 그룹에 속해야 함 — h82 는 hosts/common/users.nix 에서 이미 등록됨)";
+    enable = lib.mkEnableOption "Docker daemon + docker-compose CLI (the user must be in the docker group to use it without sudo — h82 is already registered in hosts/common/users.nix)";
   };
 
   config = lib.mkIf cfg.enable {
-    # Docker 데몬 활성화. NixOS 의 docker 패키지에는 compose v2 플러그인이 포함되어
-    # `docker compose ...` (공백) 형태가 즉시 동작함.
+    # Enable the Docker daemon. NixOS's docker package includes the compose v2 plugin,
+    # so `docker compose ...` (with a space) works out of the box.
     virtualisation.docker.enable = true;
 
-    # 레거시 standalone 바이너리 `docker-compose` (하이픈) 도 같이 제공.
-    # compose v2 (`docker compose`) 와 v1 (`docker-compose`) 둘 다 호출 가능하게 하기 위함 —
-    # 외부 스크립트/문서가 어느 쪽을 쓰든 깨지지 않도록.
+    # Also provide the legacy standalone `docker-compose` (hyphenated) binary.
+    # Lets both compose v2 (`docker compose`) and v1 (`docker-compose`) be invoked,
+    # so external scripts / docs that use either form keep working.
     environment.systemPackages = [ pkgs.docker-compose ];
   };
 }

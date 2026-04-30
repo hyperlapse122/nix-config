@@ -9,22 +9,22 @@ let
 in
 {
   options.my.system.programs.nix-index = {
-    enable = lib.mkEnableOption "nix-index (nix-locate 명령 + zsh/bash command-not-found 통합)";
+    enable = lib.mkEnableOption "nix-index (nix-locate command + zsh/bash command-not-found integration)";
   };
 
   config = lib.mkIf cfg.enable {
-    # nix-index 패키지 설치 + 셸 통합 (zsh/bash 가 command-not-found.sh 를 source).
-    # `nix-locate <file>` 로 store 안의 파일이 어느 패키지에 속하는지 검색하고,
-    # 없는 명령어 입력 시 어떤 nixpkgs 패키지에 들어 있는지 제안한다.
+    # Install the nix-index package + shell integration (zsh/bash sources command-not-found.sh).
+    # `nix-locate <file>` searches which package in the store owns a file, and on a missing-command
+    # input it suggests which nixpkgs package contains it.
     programs.nix-index.enable = true;
 
-    # nixpkgs 의 레거시 command-not-found (programs.sqlite 기반 제안기) 와 상호 배타.
-    # nixos/modules/programs/nix-index.nix 가 assertion 으로 강제하므로 명시적으로 끈다.
-    # nix-index 쪽이 더 빠르고 채널 외 패키지도 인덱싱하므로 대체.
+    # Mutually exclusive with nixpkgs's legacy command-not-found (the programs.sqlite-based suggester).
+    # nixos/modules/programs/nix-index.nix asserts this, so we explicitly disable it.
+    # nix-index is faster and indexes packages outside the channel as well, so it's the preferred replacement.
     programs.command-not-found.enable = false;
 
-    # CAVEAT: 인덱스 DB 는 자동 생성/갱신되지 않는다.
-    # 활성화 후 사용자 셸에서 한 번 `nix-index` 를 실행해
-    # ~/.cache/nix-index 를 채워야 nix-locate 와 command-not-found 제안이 동작한다.
+    # CAVEAT: The index DB is NOT auto-generated or auto-refreshed.
+    # After enabling, run `nix-index` once in the user shell to populate ~/.cache/nix-index;
+    # only then will nix-locate and command-not-found suggestions function.
   };
 }

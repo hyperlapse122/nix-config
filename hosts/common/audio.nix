@@ -3,7 +3,7 @@ let
   cfg = config.my.system.audio.pipewire;
 in {
   options.my.system.audio.pipewire = {
-    enable = lib.mkEnableOption "PipeWire 사운드 (ALSA + PulseAudio 호환 레이어 포함)";
+    enable = lib.mkEnableOption "PipeWire sound (includes ALSA + PulseAudio compatibility layers)";
   };
 
   config = lib.mkIf cfg.enable {

@@ -5,7 +5,7 @@ in {
   options.my.editors.vscode = {
     enable = lib.mkEnableOption "Visual Studio Code";
 
-    # VSCodium / Insiders 등으로 스왑하고 싶을 때만 건드리는 옵션. 기본은 호스트 nixpkgs 의 vscode.
+    # Touch this option only to swap to VSCodium / Insiders / similar. Default: the host's nixpkgs vscode.
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.vscode;
@@ -19,8 +19,8 @@ in {
       enable = true;
       package = cfg.package;
 
-      # 확장은 nix-vscode-extensions(VS Code Marketplace)에서 관리
-      # 호스트 pkgs에 overlay가 적용되어 있어 pkgs.vscode-marketplace로 접근 (allowUnfree 전파됨)
+      # Extensions are managed via nix-vscode-extensions (the VS Code Marketplace overlay).
+      # The overlay is applied to the host's pkgs, so pkgs.vscode-marketplace is reachable here (allowUnfree propagates).
       profiles.default = {
         extensions = with pkgs.vscode-marketplace; [
           arktypeio.arkdark
@@ -63,9 +63,9 @@ in {
           bbenoist.nix
         ];
 
-        # ~/.config/Code/User/settings.json 의 내용 (dotfiles에서 동기화)
+        # Contents of ~/.config/Code/User/settings.json (synced from dotfiles).
         userSettings = {
-          # 언어별 포매터
+          # Per-language formatters
           "[json]" = {
             "editor.defaultFormatter" = "vscode.json-language-features";
           };
@@ -158,7 +158,7 @@ in {
           "github.copilot.chat.languageContext.fix.typescript.enabled" = true;
           "github.copilot.chat.languageContext.inline.typescript.enabled" = true;
           "github.copilot.chat.languageContext.typescript.enabled" = true;
-          "github.copilot.chat.localeOverride" = "ko";
+          "github.copilot.chat.localeOverride" = "en";
           "github.copilot.enable" = {
             "*" = true;
             plaintext = false;
@@ -256,13 +256,13 @@ in {
           # Disable workthrough
           "workbench.welcomePage.walkthroughs.openOnInstall" = false;
 
-          # ─── NixOS overlay (kill-switches & Nix LSP, dotfiles에는 없음) ───
-          # 자동 업데이트 끄기 (Nix가 관리)
+          # ─── NixOS overlay (kill-switches & Nix LSP, not in dotfiles) ───
+          # Disable auto-updates (Nix is the source of truth)
           "update.mode" = "none";
           "extensions.autoCheckUpdates" = false;
           "extensions.autoUpdate" = false;
 
-          # Nix LSP (bbenoist.Nix 확장이 사용)
+          # Nix LSP (used by the bbenoist.Nix extension)
           "nix.enableLanguageServer" = true;
           "nix.serverPath" = "${pkgs.nixd}/bin/nixd";
           "[nix]" = {
@@ -270,7 +270,7 @@ in {
           };
         };
 
-        # ~/.config/Code/User/keybindings.json 의 내용 (dotfiles에서 동기화)
+        # Contents of ~/.config/Code/User/keybindings.json (synced from dotfiles)
         keybindings = [
           {
             key = "shift+enter";
@@ -322,7 +322,7 @@ in {
       };
     };
 
-    # nixd가 Nix LSP로 동작하도록 패키지도 같이 설치
+    # Install nixd alongside so it can serve as the Nix LSP
     home.packages = [ pkgs.nixd ];
   };
 }

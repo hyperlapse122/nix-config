@@ -1,15 +1,15 @@
 { config, lib, pkgs, ... }:
 {
-  # Flakes 정식 활성화 — 이 repo 자체가 flake 기반이므로 모든 호스트에서 필수
+  # Enable Flakes officially — this repo is flake-based, so it's required on every host
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
-  # Unfree 패키지 허용 (h82 의 정책: 모든 호스트에서 unfree 허용)
+  # Allow unfree packages (h82's policy: allow unfree on every host)
   nixpkgs.config.allowUnfree = true;
 
-  # D-Bus — desktop / polkit / fcitx5 등이 의존하므로 명시적으로 활성화
+  # D-Bus — required by desktop / polkit / fcitx5 / etc., so enable explicitly
   services.dbus.enable = true;
 
-  # 시스템 패키지 (최소한만)
+  # System packages (minimal only)
   environment.systemPackages = with pkgs; [
     git
     vim
