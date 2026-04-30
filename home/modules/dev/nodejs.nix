@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.dev.nodejs;
-in {
+in
+{
   options.my.dev.nodejs = {
     enable = lib.mkEnableOption "Node.js LTS + yarn (nixpkgs 기본값 = 현재 LTS)";
   };
