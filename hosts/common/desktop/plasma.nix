@@ -15,11 +15,12 @@ in
   config = lib.mkIf cfg.enable {
     # KDE Plasma 6
     services.xserver.enable = true;
-    fonts.packages = [ pkgs.pretendard ];
 
     services.displayManager.sddm = {
       enable = true;
       wayland.enable = true;
+      # Default greeter font. Pretendard is provided system-wide via fonts.packages below
+      # because SDDM runs as the `sddm` user and cannot see h82's home-manager fonts.
       settings.Theme.Font = "Pretendard";
     };
     services.desktopManager.plasma6.enable = true;
@@ -31,6 +32,8 @@ in
       enable = true;
       enablePlasmaBrowserIntegration = true;
     };
+    # System-level fonts — required for SDDM (pre-login) and any other system service.
+    fonts.packages = with pkgs; [ pretendard ];
 
     # KDE Wallet — git-credential-manager (home/modules/git.nix) uses KWallet via secretservice.
     security.pam.services.login.kwallet.enable = true;
