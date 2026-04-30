@@ -8,6 +8,7 @@
     ./audio.nix
     ./ssh.nix
     ./laptop-input.nix
+    ./keyboard.nix
     ./virtualisation.nix
     ./cross-compile.nix
     ./boot

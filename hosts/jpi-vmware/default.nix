@@ -34,6 +34,7 @@
   # Enable shared modules (hosts/common/*)
   my.system.users.h82.enable = true;
   my.system.locale.korean.enable = true;
+  my.system.keyboard.kr106.enable = true;
   my.system.networking.networkmanager.enable = true;
   my.system.networking.tailscale.enable = true;
   my.system.audio.pipewire.enable = true;
