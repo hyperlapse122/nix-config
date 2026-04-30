@@ -17,7 +17,7 @@ in
     # yarn (classic 1.x) — npm 대체 패키지 매니저.
     home.packages = [
       pkgs.nodejs
-      pkgs.yarn
+      pkgs.yarn-berry
     ];
   };
 }
