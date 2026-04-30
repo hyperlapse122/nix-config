@@ -95,6 +95,7 @@ in
     home.packages = with pkgs; [
       git-credential-manager
       libsecret
+      git-trim
       gh
       glab
     ];
