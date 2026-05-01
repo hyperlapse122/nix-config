@@ -17,6 +17,10 @@
   boot.initrd.systemd.enable = true;
   boot.initrd.systemd.tpm2.enable = true;
 
+  boot.initrd.luks.devices."luks-3d2268fe-5c8f-42d8-a02d-d500f2df7319".crypttabExtraOpts = [
+    "tpm2-device=auto"
+    "tpm2-measure-pcr=yes"
+  ];
   boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".device =
     "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163";
   boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".crypttabExtraOpts = [
@@ -61,7 +65,10 @@
   my.system.boot.sbctl.enable = true;
   my.system.boot.tpm-luks-enroll = {
     enable = true;
-    device = "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163";
+    devices = [
+      "/dev/disk/by-uuid/3d2268fe-5c8f-42d8-a02d-d500f2df7319"
+      "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163"
+    ];
   };
 
   # Enable aarch64 (arm64) cross-compilation — binfmt_misc + qemu-user runs aarch64-linux binaries on this host.
