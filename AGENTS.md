@@ -28,7 +28,7 @@ nix-config/
 │   │   ├── networking.nix     # my.system.networking.networkmanager
 │   │   ├── audio.nix          # my.system.audio.pipewire      — PipeWire (ALSA + Pulse compat)
 │   │   ├── ssh.nix            # my.system.ssh.server          — OpenSSH (sshd, no password / no root)
-│   │   ├── boot/              # my.system.boot.{grub,systemd-boot} — BIOS GRUB / UEFI systemd-boot policy
+│   │   ├── boot/              # my.system.boot.{grub,systemd-boot,sbctl,tpm-luks-enroll} — bootloader, Secure Boot, TPM LUKS helpers
 │   │   ├── desktop/plasma.nix # my.system.desktop.plasma      — Plasma 6 + SDDM Wayland + KWallet PAM
 │   │   └── programs/          # my.system.programs.{nix-ld,_1password}
 │   └── <hostname>/            # One directory per machine; name MUST match networking.hostName
@@ -52,6 +52,7 @@ nix-config/
 | Add a VS Code extension or setting | `home/modules/editors/vscode.nix` (see `home/modules/editors/AGENTS.md`) |
 | Add a KDE Plasma setting | `home/modules/desktop/plasma.nix` |
 | Add an input method (fcitx5) addon | `home/modules/i18n/fcitx5.nix` |
+| Add Secure Boot / TPM LUKS helpers | `hosts/common/boot/{sbctl.nix,tpm-luks-enroll.nix}`, then enable per host in `hosts/<hostname>/default.nix`. TPM helper command: `enroll-luks-tpm2` |
 | Modify opencode CLI config (settings / context / commands / plugin) | `home/modules/dev/opencode/{opencode.json,AGENTS.md,commands/,oh-my-openagent.jsonc}` — wired through home-manager's `programs.opencode.*` |
 | Bump nixpkgs / home-manager / plasma-manager / nix-vscode-extensions | `flake.lock` via `nix flake update` |
 | Install NixOS on a fresh machine using this flake | See **INSTALLING NIXOS** below |
@@ -59,7 +60,7 @@ nix-config/
 
 ## CONVENTIONS
 
-- **`my.*` option namespace** — reusable modules expose `<path>.enable` and nothing else. Rare exceptions are reserved for genuinely required arguments with no sensible default: `vscode.package` (editor binary swap, home module) and `boot.grub.device` (BIOS disk path, system module). Two slices:
+- **`my.*` option namespace** — reusable modules expose `<path>.enable` and nothing else. Rare exceptions are reserved for genuinely required arguments with no sensible default: `vscode.package` (editor binary swap, home module), `boot.grub.device` (BIOS disk path, system module), and `boot.tpm-luks-enroll.device` (host LUKS device path). Two slices:
   - `my.<group>.<name>.enable` for **home** modules (`home/modules/`), toggled in `home/h82.nix`. See `home/modules/AGENTS.md`.
   - `my.system.<group>.<name>.enable` for **shared system** modules (`hosts/common/`), toggled in `hosts/<hostname>/default.nix`.
   - Always-on baseline in `hosts/common/base.nix` is the **only** system file without an `enable` gate (nix flakes / allowUnfree / dbus / minimal pkgs are universal across hosts).
@@ -120,7 +121,7 @@ The lock file is the source of truth. Switching back to a stable release would r
 1. `mkdir hosts/<new-hostname>` and run `nixos-generate-config --root /mnt --dir hosts/<new-hostname>` (or copy the file from the running machine). This produces `hardware-configuration.nix`.
 2. Create `hosts/<new-hostname>/default.nix` — start by copying `hosts/jpi-vmware/default.nix`. The shared layer is pulled in via `imports = [ ./hardware-configuration.nix ../common ];`; everything else in the file should be host-specific.
 3. Set `networking.hostName = "<new-hostname>";` — **must match the directory name** (the rebuild aliases rely on this).
-4. Declare host-specific bits inline: hardware-specific options (e.g. `virtualisation.<flavor>.guest.enable`) and `system.stateVersion` (set to the NixOS release on which this host was first installed). Bootloader policy lives in shared modules — enable `my.system.boot.grub` (BIOS, requires `.device = "/dev/X"`) or `my.system.boot.systemd-boot` (UEFI, includes Plymouth splash).
+4. Declare host-specific bits inline: hardware-specific options (e.g. `virtualisation.<flavor>.guest.enable`) and `system.stateVersion` (set to the NixOS release on which this host was first installed). Boot policy lives in shared modules — enable `my.system.boot.grub` (BIOS, requires `.device = "/dev/X"`) or `my.system.boot.systemd-boot` (UEFI, includes Plymouth splash). UEFI Secure Boot hosts may also enable `my.system.boot.sbctl`; TPM2 LUKS enrollment helpers use `my.system.boot.tpm-luks-enroll` and require a host-specific `.device`.
 5. Flip the `my.system.*.enable` toggles the host needs (see `hosts/common/` modules). Skip the ones that don't apply: a headless server typically drops `my.system.desktop.plasma`, `my.system.audio.pipewire`; a non-Korean host drops `my.system.locale.korean` and sets its own `time.timeZone` / `i18n.*` directly.
 6. If the host uses VS Code, add `nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ];` to its `default.nix` (see `home/modules/editors/AGENTS.md` for why it must be host-level).
 7. In `flake.nix`, add a new entry to `nixosConfigurations` mirroring the `jpi-vmware` block. Pass the same `inherit system; specialArgs; modules = [ ./hosts/<new-hostname> home-manager.nixosModules.home-manager { ... } ];`.
@@ -168,7 +169,7 @@ If a match shows up: translate it before committing. There is no "TODO: translat
 - ❌ **Do not move `inputs.nix-vscode-extensions.overlays.default` out of the host's `default.nix`.** It must be applied to that host's `nixpkgs` so `allowUnfree` propagates to marketplace extensions. Each host that uses VS Code declares the overlay locally. Adding it inside `home-manager` produces a separate `pkgs` instance without `allowUnfree` and silently breaks Copilot, Pylance, etc.
 - ❌ **Do not put host-specific config in `home/modules/`.** Modules under `home/modules/` are shared by every host. Anything that depends on hardware, hostname, or per-machine quirks belongs in `hosts/<hostname>/default.nix`.
 - ❌ **Do not put host-specific config in `hosts/common/`.** Same rule, system side. No `if config.networking.hostName == "..." then ...`, no hardware-specific overlays, no per-machine paths. Host-only divergence (bootloader, virtualization flavor, `nix-vscode-extensions` overlay, `system.stateVersion`) lives in `hosts/<hostname>/default.nix`.
-- ❌ **Do not duplicate shared config inline in a host's `default.nix` if `hosts/common/` already provides it.** If a feature has a `my.system.*.enable` toggle in common, **flip the toggle**; don't paste the underlying NixOS options. Inline duplication causes the host to drift from the shared baseline silently — the duplicate may merge, shadow, or conflict with the shared version. The only legitimate inline overrides are host-only quirks (bootloader, hardware, hostname, stateVersion, host-level overlays). Bootloader policy lives in shared modules (`my.system.boot.{grub,systemd-boot}`); only the GRUB disk `device` remains a host-specific argument, passed through `my.system.boot.grub.device`.
+- ❌ **Do not duplicate shared config inline in a host's `default.nix` if `hosts/common/` already provides it.** If a feature has a `my.system.*.enable` toggle in common, **flip the toggle**; don't paste the underlying NixOS options. Inline duplication causes the host to drift from the shared baseline silently — the duplicate may merge, shadow, or conflict with the shared version. The only legitimate inline overrides are host-only quirks (bootloader, hardware, hostname, stateVersion, host-level overlays). Boot policy lives in shared modules (`my.system.boot.{grub,systemd-boot,sbctl,tpm-luks-enroll}`); required host-specific arguments are passed through module options such as `my.system.boot.grub.device` and `my.system.boot.tpm-luks-enroll.device`.
 - ❌ **Do not let `networking.hostName` drift from the directory name** under `hosts/`. The rebuild aliases (`rebuild`, `rebuild-test`, `rebuild-boot`) call `nixos-rebuild --flake ~/nix-config` with no `#hostname` attribute, which resolves to `nixosConfigurations.${current hostname}`. Mismatch = silent build of the wrong host.
 - ❌ **Do not introduce flake-parts / module library indirection** unless rewriting the layout deliberately. The simplicity is intentional even with N hosts — copy-paste the `nixosSystem` block, don't abstract it prematurely.
 - ❌ **Do not commit `result`, `result-*`, or `.direnv/`** — already in `.gitignore`.
@@ -206,6 +207,11 @@ Anything in this section is specific to ONE host and should NOT leak into shared
 - **VMware-only** (inline in host): `virtualisation.vmware.guest.enable`, GRUB BIOS device `/dev/sda` (policy via shared `my.system.boot.grub` module), `ata_piix`/`mptspi` initrd modules. Not portable.
 - **`nixpkgs.overlays = [ inputs.nix-vscode-extensions.overlays.default ]`** — declared at host level (see ANTI-PATTERNS for why it can't move to `hosts/common/` or home-manager).
 - **Shared toggles enabled** (provided by `hosts/common/`): `my.system.users.h82`, `my.system.locale.korean`, `my.system.networking.networkmanager`, `my.system.audio.pipewire`, `my.system.ssh.server`, `my.system.desktop.plasma`, `my.system.programs.nix-ld`, `my.system.programs._1password`, `my.system.virtualisation.docker`, `my.system.boot.grub` (with `device = "/dev/sda"`). Hosts in other regions / without a desktop should leave the corresponding toggles off.
+
+### `h82-t14-gen2` (ThinkPad T14 Gen 2 Intel, Secure Boot, TPM2 LUKS)
+- **UEFI boot policy**: uses shared `my.system.boot.systemd-boot` plus `my.system.boot.sbctl` for Secure Boot key creation/enrollment and EFI signing during systemd-boot install.
+- **TPM2 LUKS helper**: enables `my.system.boot.tpm-luks-enroll` with the host's encrypted root device. The manual command is `sudo enroll-luks-tpm2 --check`, then `sudo enroll-luks-tpm2 --recovery-key --yes` after creating a LUKS header backup.
+- **TPM2 unlock**: uses systemd initrd TPM2 support plus `crypttabExtraOpts = [ "tpm2-device=auto" "tpm2-measure-pcr=yes" ];` on the enrolled LUKS mapping.
 
 > **fcitx5 input method**: managed at the home-manager layer (`my.i18n.fcitx5`) rather than the system layer, and shared across every host. See `home/modules/i18n/fcitx5.nix`. The KDE Wayland InputMethod path is set in `home/modules/desktop/plasma.nix`'s `kwinrc` and points directly at the fcitx5-with-addons package's store path.
 
