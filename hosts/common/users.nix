@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.users.h82;
-in {
+in
+{
   options.my.system.users.h82 = {
     enable = lib.mkEnableOption "h82 user account (shell: zsh)";
   };
@@ -10,7 +16,11 @@ in {
     users.users.h82 = {
       isNormalUser = true;
       description = "H82";
-      extraGroups = [ "wheel" "networkmanager" "docker" ];
+      extraGroups = [
+        "wheel"
+        "networkmanager"
+        "docker"
+      ];
       shell = pkgs.zsh;
     };
 

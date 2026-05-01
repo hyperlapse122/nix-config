@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.audio.pipewire;
-in {
+in
+{
   options.my.system.audio.pipewire = {
     enable = lib.mkEnableOption "PipeWire sound (includes ALSA + PulseAudio compatibility layers)";
   };

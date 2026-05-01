@@ -1,7 +1,15 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   # Enable Flakes officially — this repo is flake-based, so it's required on every host
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
   # Allow unfree packages (h82's policy: allow unfree on every host)
   nixpkgs.config.allowUnfree = true;
