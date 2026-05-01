@@ -14,9 +14,16 @@
 
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.initrd.systemd.enable = true;
+  boot.initrd.systemd.tpm2.enable = true;
 
   boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".device =
     "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163";
+  boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".crypttabExtraOpts = [
+    "tpm2-device=auto"
+    "tpm2-measure-pcr=yes"
+  ];
+
   networking.hostName = "h82-t14-gen2"; # Define your hostname.
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
@@ -52,6 +59,10 @@
   my.system.hardware.logitech.enable = true;
   my.system.boot.systemd-boot.enable = true;
   my.system.boot.sbctl.enable = true;
+  my.system.boot.tpm-luks-enroll = {
+    enable = true;
+    device = "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163";
+  };
 
   # Enable aarch64 (arm64) cross-compilation — binfmt_misc + qemu-user runs aarch64-linux binaries on this host.
   # Both `nix build nixpkgs#pkgsCross.aarch64-multiplatform.<pkg>` artifacts and native aarch64 builds
