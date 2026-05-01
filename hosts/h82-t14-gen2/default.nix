@@ -88,6 +88,9 @@
 
   hardware.bluetooth.enable = true;
   services.fprintd.enable = true;
+  security.pam.services.login.fprintAuth = false;
+  security.pam.services.sddm.fprintAuth = false;
+  security.pam.services.kde.fprintAuth = false;
   hardware.firmware = [ pkgs.sof-firmware ];
 
   # ThinkPad T14 Gen 2 Intel has no exact nixos-hardware module; apply the
