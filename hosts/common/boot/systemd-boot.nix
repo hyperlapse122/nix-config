@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
@@ -22,9 +21,7 @@ in
     boot.loader.efi.canTouchEfiVariables = true;
 
     # Boot splash (Plymouth) — bundled into the standard policy for UEFI/systemd-boot hosts.
-    # `splash` is automatically appended to boot.kernelParams by NixOS's plymouth module.
-    # Other quiet-boot params (`quiet`, `loglevel=3`, `rd.systemd.show_status=false`, etc.) are intentionally
-    # NOT applied — they affect the system globally and kernel messages are often needed for debugging.
+    # Shared Plymouth kernel-param policy lives in ./plymouth.nix.
     # Theme changes go in the host's default.nix via boot.plymouth.theme.
     boot.plymouth = {
       enable = true;
