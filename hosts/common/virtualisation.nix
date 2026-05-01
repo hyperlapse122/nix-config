@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.virtualisation.docker;
-in {
+in
+{
   options.my.system.virtualisation.docker = {
     enable = lib.mkEnableOption "Docker daemon + docker-compose CLI (the user must be in the docker group to use it without sudo — h82 is already registered in hosts/common/users.nix)";
   };

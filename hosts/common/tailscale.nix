@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.networking.tailscale;
-in {
+in
+{
   options.my.system.networking.tailscale = {
     enable = lib.mkEnableOption "Tailscale (WireGuard mesh VPN) — requires `sudo tailscale up` after first boot to authenticate. No authKey automation since this repo has no secret-management module.";
   };

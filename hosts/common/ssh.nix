@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.ssh;
-in {
+in
+{
   options.my.system.ssh = {
     server.enable = lib.mkEnableOption "OpenSSH server (sshd, password auth disabled, root login disallowed)";
   };

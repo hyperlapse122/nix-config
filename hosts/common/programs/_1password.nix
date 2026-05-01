@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.programs._1password;
-in {
+in
+{
   options.my.system.programs._1password = {
     enable = lib.mkEnableOption "1Password (CLI + GUI, including browser integration)";
     autostart = lib.mkEnableOption "1Password autostart (--silent, runs in the system tray)";
