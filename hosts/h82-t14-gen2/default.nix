@@ -51,6 +51,7 @@
   my.system.virtualisation.docker.enable = true;
   my.system.hardware.logitech.enable = true;
   my.system.boot.systemd-boot.enable = true;
+  my.system.boot.sbctl.enable = true;
 
   # Enable aarch64 (arm64) cross-compilation — binfmt_misc + qemu-user runs aarch64-linux binaries on this host.
   # Both `nix build nixpkgs#pkgsCross.aarch64-multiplatform.<pkg>` artifacts and native aarch64 builds
