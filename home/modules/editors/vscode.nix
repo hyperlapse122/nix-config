@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.editors.vscode;
-in {
+in
+{
   options.my.editors.vscode = {
     enable = lib.mkEnableOption "Visual Studio Code";
 
@@ -117,7 +123,8 @@ in {
             "source.fixAll.biome" = "explicit";
             "source.organizeImports.biome" = "explicit";
           };
-          "editor.fontFamily" = "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'D2Coding Nerd Font', 'D2Coding', 'Droid Sans Mono', 'monospace', monospace";
+          "editor.fontFamily" =
+            "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'D2Coding Nerd Font', 'D2Coding', 'Droid Sans Mono', 'monospace', monospace";
           "editor.fontLigatures" = true;
           "editor.formatOnSave" = true;
           "editor.quickSuggestions" = {
@@ -127,7 +134,7 @@ in {
           "editor.tabSize" = 2;
 
           # Emmet
-          "emmet.preferences" = {};
+          "emmet.preferences" = { };
           "emmet.showAbbreviationSuggestions" = false;
 
           # Explorer
@@ -245,7 +252,13 @@ in {
           "terminal.integrated.stickyScroll.enabled" = false;
 
           # Todo Tree
-          "todo-tree.general.tags" = [ "BUG" "HACK" "FIXME" "TODO" "XXX" ];
+          "todo-tree.general.tags" = [
+            "BUG"
+            "HACK"
+            "FIXME"
+            "TODO"
+            "XXX"
+          ];
 
           # VSCode Edge DevTools
           "vscode-edge-devtools.webhintInstallNotification" = true;

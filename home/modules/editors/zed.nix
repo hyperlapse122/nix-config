@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.editors.zed;
-in {
+in
+{
   options.my.editors.zed = {
     enable = lib.mkEnableOption "Zed Editor configuration";
   };
@@ -14,13 +20,21 @@ in {
       # Contents of ~/.config/zed/settings.json (synced from dotfiles)
       userSettings = {
         # Panels (right dock)
-        project_panel = { dock = "right"; };
-        outline_panel = { dock = "right"; };
-        collaboration_panel = { dock = "right"; };
-        git_panel = { dock = "right"; };
+        project_panel = {
+          dock = "right";
+        };
+        outline_panel = {
+          dock = "right";
+        };
+        collaboration_panel = {
+          dock = "right";
+        };
+        git_panel = {
+          dock = "right";
+        };
 
         # Prettier
-        prettier = {};
+        prettier = { };
 
         # AI Agent
         agent = {
@@ -33,8 +47,8 @@ in {
             enable_thinking = false;
             effort = "high";
           };
-          favorite_models = [];
-          model_parameters = [];
+          favorite_models = [ ];
+          model_parameters = [ ];
         };
 
         # Edit Predictions
@@ -92,13 +106,21 @@ in {
           vtsls = {
             settings = {
               # For TypeScript:
-              typescript = { tsserver = { maxTsServerMemory = 16184; }; };
+              typescript = {
+                tsserver = {
+                  maxTsServerMemory = 16184;
+                };
+              };
               # For JavaScript:
-              javascript = { tsserver = { maxTsServerMemory = 16184; }; };
+              javascript = {
+                tsserver = {
+                  maxTsServerMemory = 16184;
+                };
+              };
             };
           };
           # NixOS overlay: nixd
-          nixd = {};
+          nixd = { };
         };
 
         # Misc
@@ -110,9 +132,15 @@ in {
 
         # Agent Servers (ACP)
         agent_servers = {
-          gemini = { type = "registry"; };
-          codex-acp = { type = "registry"; };
-          claude-acp = { type = "registry"; };
+          gemini = {
+            type = "registry";
+          };
+          codex-acp = {
+            type = "registry";
+          };
+          claude-acp = {
+            type = "registry";
+          };
           OpenCode = {
             type = "custom";
             command = "opencode";
@@ -141,11 +169,11 @@ in {
       userKeymaps = [
         {
           context = "Workspace";
-          bindings = {};
+          bindings = { };
         }
         {
           context = "Editor && vim_mode == insert";
-          bindings = {};
+          bindings = { };
         }
         {
           bindings = {
