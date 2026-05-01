@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.desktop.plasma;
-in {
+in
+{
   options.my.desktop.plasma = {
     enable = lib.mkEnableOption "KDE Plasma desktop configuration (plasma-manager)";
 

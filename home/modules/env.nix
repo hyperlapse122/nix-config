@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.env;
 
@@ -49,7 +54,8 @@ let
     #       home/modules/i18n/fcitx5.nix for details. The legacy dotfile's kime XMODIFIERS was
     #       intentionally dropped during migration.
   };
-in {
+in
+{
   options.my.env = {
     enable = lib.mkEnableOption "User session environment variables (replaces legacy ~/.config/environment.d)";
   };

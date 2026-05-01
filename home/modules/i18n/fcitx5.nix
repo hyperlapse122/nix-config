@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.i18n.fcitx5;
-in {
+in
+{
   options.my.i18n.fcitx5 = {
     enable = lib.mkEnableOption "fcitx5 input method (Korean / Wayland frontend)";
   };
