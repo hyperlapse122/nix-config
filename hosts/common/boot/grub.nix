@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.boot.grub;
-in {
+in
+{
   options.my.system.boot.grub = {
     enable = lib.mkEnableOption "GRUB bootloader (BIOS/Legacy) — useOSProber disabled. For EFI/UEFI hosts use my.system.boot.systemd-boot";
 
@@ -22,10 +28,12 @@ in {
   config = lib.mkIf cfg.enable {
     # NixOS's boot.loader.grub.device performs its own validation, but the message is generic — provide a friendly one
     # that points directly at the `my.system.boot.grub.device` option name.
-    assertions = [{
-      assertion = cfg.device != "";
-      message = "Hosts with my.system.boot.grub.enable = true must set my.system.boot.grub.device (e.g. \"/dev/sda\").";
-    }];
+    assertions = [
+      {
+        assertion = cfg.device != "";
+        message = "Hosts with my.system.boot.grub.enable = true must set my.system.boot.grub.device (e.g. \"/dev/sda\").";
+      }
+    ];
 
     boot.loader.grub = {
       enable = true;

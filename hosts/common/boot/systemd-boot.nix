@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.boot.systemd-boot;
-in {
+in
+{
   options.my.system.boot.systemd-boot = {
     enable = lib.mkEnableOption "systemd-boot bootloader (UEFI) — includes EFI variable writes + Plymouth splash. ESP mount uses NixOS defaults (/boot). For BIOS/Legacy hosts use my.system.boot.grub";
   };
