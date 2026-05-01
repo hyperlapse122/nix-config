@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.dev.agents;
-in {
+in
+{
   options.my.dev.agents = {
     enable = lib.mkEnableOption "agent skills + shared commands directory (~/.agents → ~/nix-config/agents live symlink)";
   };

@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.dev.tokscale;
 
@@ -10,7 +15,8 @@ let
       exec ${pkgs.bun}/bin/bunx tokscale@latest "$@"
     '';
   };
-in {
+in
+{
   options.my.dev.tokscale = {
     enable = lib.mkEnableOption "tokscale CLI (bunx wrapper)";
   };

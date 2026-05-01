@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.dev.opencode;
 
@@ -16,10 +21,11 @@ let
 
   # Read opencode.json verbatim and use it as the settings.
   # `$schema` is auto-injected by home-manager's programs.opencode module, so strip it.
-  opencodeSettings = lib.removeAttrs
-    (builtins.fromJSON (builtins.readFile ./opencode.json))
-    [ "$schema" ];
-in {
+  opencodeSettings = lib.removeAttrs (builtins.fromJSON (builtins.readFile ./opencode.json)) [
+    "$schema"
+  ];
+in
+{
   options.my.dev.opencode = {
     enable = lib.mkEnableOption "opencode CLI (bunx wrapper) + the full set of config files";
   };

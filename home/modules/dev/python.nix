@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.dev.python;
-in {
+in
+{
   options.my.dev.python = {
     enable = lib.mkEnableOption "Python 3 (nixpkgs default interpreter)";
   };
