@@ -1,5 +1,4 @@
 {
-  config,
   pkgs,
   lib,
   inputs,
@@ -9,6 +8,8 @@
   imports = [
     ./hardware-configuration.nix
     ../common
+    inputs.nixos-hardware.nixosModules.lenovo-thinkpad-t14
+    (inputs.nixos-hardware + "/common/cpu/intel/tiger-lake")
   ];
 
   # Bootloader.
@@ -71,6 +72,12 @@
 
   hardware.bluetooth.enable = true;
   services.fprintd.enable = true;
+  hardware.firmware = [ pkgs.sof-firmware ];
+
+  # ThinkPad T14 Gen 2 Intel has no exact nixos-hardware module; apply the
+  # Tiger Lake GPU/thermal quirks used by nearby Gen 2 Intel ThinkPad modules.
+  hardware.intelgpu.driver = lib.mkDefault "xe";
+  services.throttled.enable = lib.mkDefault false;
 
   # state version — never change arbitrarily (the NixOS release this host was first installed on)
   system.stateVersion = "26.05";

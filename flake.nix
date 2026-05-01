@@ -22,6 +22,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    nixos-hardware.url = "github:NixOS/nixos-hardware";
+
     # Dedicated Playwright flake — pietdevries94/playwright-web-flake.
     # When nixpkgs's playwright version lags or drifts from npm `@playwright/test`,
     # pin a tag of this flake (e.g. 1.x.y) to keep them in sync.
@@ -34,7 +36,6 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       home-manager,
       plasma-manager,
