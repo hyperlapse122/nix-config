@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.networking;
-in {
+in
+{
   options.my.system.networking = {
     networkmanager = {
       enable = lib.mkEnableOption "NetworkManager (default network stack on most desktop / laptop hosts)";

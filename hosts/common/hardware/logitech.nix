@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.hardware.logitech;
-in {
+in
+{
   options.my.system.hardware.logitech = {
     enable = lib.mkEnableOption "udev rule for Logitech Unifying/Bolt receivers (disables wakeup during USB autosuspend)";
   };

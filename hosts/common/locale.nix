@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.locale.korean;
-in {
+in
+{
   options.my.system.locale.korean = {
     enable = lib.mkEnableOption "Korean locale (Asia/Seoul, ko_KR.UTF-8)";
   };

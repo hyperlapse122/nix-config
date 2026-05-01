@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.system.laptop-input;
-in {
+in
+{
   options.my.system.laptop-input = {
     enable = lib.mkEnableOption "Laptop input configuration (keyd key remapping + libinput palm rejection tuning)";
   };
