@@ -11,6 +11,13 @@
     "flakes"
   ];
 
+  # Remove old generations weekly to keep the Nix store from growing indefinitely.
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 7d";
+  };
+
   # Allow unfree packages (h82's policy: allow unfree on every host)
   nixpkgs.config.allowUnfree = true;
 

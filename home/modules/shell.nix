@@ -38,6 +38,7 @@ in
         ls = "eza";
         ll = "eza -l";
         cat = "bat";
+        gc-all = "sudo nix-collect-garbage -d";
       };
       initContent = ''
         rebuild() {
