@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.gpg;
 
@@ -21,7 +26,8 @@ let
       op read "op://tjlmijoc5qxj6vypdnvxf6s2sq/gmwqu34rldszc6qtas2i3ejiaq/gpg_private.asc" | gpg --batch --import
     '';
   };
-in {
+in
+{
   options.my.gpg = {
     enable = lib.mkEnableOption "GnuPG + gpg-agent (pinentry-qt)";
   };

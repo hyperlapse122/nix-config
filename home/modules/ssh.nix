@@ -1,11 +1,17 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.ssh;
   # 1Password SSH agent UNIX socket (Linux-only path).
   # Per the root AGENTS.md "NixOS only (no nix-darwin / WSL planned)" policy, the Wiki's
   # Darwin branch (`Library/Group Containers/.../agent.sock`) is intentionally omitted.
   onePassPath = "${config.home.homeDirectory}/.1password/agent.sock";
-in {
+in
+{
   options.my.ssh = {
     enable = lib.mkEnableOption "SSH Client configuration";
   };

@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.shell;
-in {
+in
+{
   options.my.shell = {
     enable = lib.mkEnableOption "Shell environment";
   };
