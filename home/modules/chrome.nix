@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my.chrome;
-in {
+in
+{
   options.my.chrome = {
     enable = lib.mkEnableOption "Google Chrome";
   };

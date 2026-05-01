@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.my._1password;
-in {
+in
+{
   options.my._1password = {
     enable = lib.mkEnableOption "1Password launcher .desktop override (enables the Quick Access global shortcut Ctrl+Shift+Space)";
   };
