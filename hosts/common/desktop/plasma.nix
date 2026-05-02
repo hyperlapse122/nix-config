@@ -23,7 +23,10 @@ in
 
     # Registers the native messaging host used by the KDE Plasma Browser Integration
     # extension for Chrome and Chromium.
-    programs.chromium.enablePlasmaBrowserIntegration = true;
+    programs.chromium = {
+      enable = true;
+      enablePlasmaBrowserIntegration = true;
+    };
 
     # KDE Wallet — git-credential-manager (home/modules/git.nix) uses KWallet via secretservice.
     security.pam.services.login.kwallet.enable = true;
