@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
@@ -13,6 +12,11 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    hardware.logitech.wireless = {
+      enable = true;
+      enableGraphical = true;
+    };
+
     # Pin the `power/wakeup` attribute of Logitech Unifying Receiver (idProduct=c52b)
     # and Bolt Receiver (idProduct=c548) to disabled, blocking the host from auto-waking
     # on mouse/keyboard input while in USB autosuspend.
