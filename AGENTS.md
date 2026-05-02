@@ -39,7 +39,7 @@ nix-config/
     └── modules/               # Reusable, host-agnostic home-manager modules — see home/modules/AGENTS.md
 ```
 
-> **home/modules/dev/opencode/** — opencode CLI module. Wraps `bunx opencode-ai@latest` and wires `programs.opencode.{settings,context,commands}` from `opencode.json` / `AGENTS.md` / `commands/` co-located in the same directory. Plugin config (`oh-my-openagent.jsonc`) sits next to it as a raw `xdg.configFile`. See **WHERE TO LOOK** for editing flow.
+> **home/modules/dev/opencode/** — opencode CLI module. Wraps `mise exec -q opencode@latest -- opencode` and wires `programs.opencode.{settings,context,commands}` from `opencode.json` / `AGENTS.md` / `commands/` co-located in the same directory. Plugin config (`oh-my-openagent.jsonc`) sits next to it as a raw `xdg.configFile`. See **WHERE TO LOOK** for editing flow.
 
 ## WHERE TO LOOK
 
