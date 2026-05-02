@@ -25,13 +25,8 @@ in
     # Theme changes go in the host's default.nix via boot.plymouth.theme.
     boot.plymouth = {
       enable = true;
-
-      # 2x render scale for HiDPI displays — port of `[Daemon] DeviceScale=2` from
-      # ~/dotfiles/etc/plymouth/plymouthd.conf. NixOS's boot.plymouth.extraConfig is
-      # appended as raw text inside the auto-generated [Daemon] section (right after Theme=).
-      # See nixpkgs' plymouth.nix.
       extraConfig = ''
-        DeviceScale=2
+        DeviceScale=1
       '';
     };
   };
