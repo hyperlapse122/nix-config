@@ -7,7 +7,7 @@
 let
   cfg = config.my.dev.opencode;
 
-  # opencode itself: a bunx wrapper (pulls the latest opencode-ai from npm every invocation).
+  # opencode itself: a mise wrapper (pulls the latest opencode from npm every invocation).
   # NOTE: Setting programs.opencode.package = null makes the master home-manager module fail evaluation
   #       on warnings — lib.versionAtLeast null "1.2.15" throws (a known bug in modules/programs/opencode.nix).
   #       Passing the wrapper as the package directly makes lib.getVersion return "" → versionAtLeast "" "..." = false
@@ -15,7 +15,7 @@ let
   opencodeWrapper = pkgs.writeShellApplication {
     name = "opencode";
     text = ''
-      exec ${pkgs.bun}/bin/bunx opencode-ai@latest "$@"
+      exec ${pkgs.mise}/bin/mise exec -q opencode@latest -- opencode "$@"
     '';
   };
 
@@ -27,12 +27,12 @@ let
 in
 {
   options.my.dev.opencode = {
-    enable = lib.mkEnableOption "opencode CLI (bunx wrapper) + the full set of config files";
+    enable = lib.mkEnableOption "opencode CLI (mise wrapper) + the full set of config files";
   };
 
   config = lib.mkIf cfg.enable {
     # Manage settings / context / commands through the programs.opencode module (home-manager master).
-    # Pass the bunx wrapper directly as `package` — the HM module registers it in home.packages automatically.
+    # Pass the mise wrapper directly as `package` — the HM module registers it in home.packages automatically.
     programs.opencode = {
       enable = true;
       package = opencodeWrapper;
@@ -41,9 +41,9 @@ in
       commands = ./commands;
     };
 
-    # bun itself, on which the bunx wrapper depends
+    # mise itself, on which the wrapper depends
     home.packages = [
-      pkgs.bun
+      pkgs.mise
     ];
 
     # oh-my-openagent plugin config (an external plugin file that programs.opencode does not handle)
