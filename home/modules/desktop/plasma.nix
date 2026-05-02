@@ -142,6 +142,7 @@ in
             "org.kde.plasma.pager"
             {
               iconTasks = {
+                # iconsOnly = false;
                 launchers = [
                   "applications:google-chrome.desktop"
                   "applications:org.kde.dolphin.desktop"
@@ -149,6 +150,7 @@ in
                   "applications:code.desktop"
                   "applications:dev.zed.Zed.desktop"
                 ];
+                behavior.grouping.method = "none";
               };
             }
             "org.kde.plasma.marginsseparator"
