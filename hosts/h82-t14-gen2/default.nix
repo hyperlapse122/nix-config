@@ -1,9 +1,28 @@
 {
+  config,
   pkgs,
   lib,
   inputs,
   ...
 }:
+let
+  luksMapperPrefix = "/dev/mapper/luks-";
+  luksCrypttabExtraOpts = [
+    "tpm2-device=auto"
+    "tpm2-measure-pcr=yes"
+  ];
+
+  isLuksMapper = device: lib.isString device && lib.hasPrefix luksMapperPrefix device;
+  luksNameFromMapper = device: lib.removePrefix "/dev/mapper/" device;
+  luksDeviceFromName = name: "/dev/disk/by-uuid/${lib.removePrefix "luks-" name}";
+
+  encryptedMapperDevices =
+    (map (fileSystem: fileSystem.device or null) (lib.attrValues config.fileSystems))
+    ++ (map (swapDevice: swapDevice.device or null) config.swapDevices);
+  encryptedLuksNames = lib.unique (
+    map luksNameFromMapper (lib.filter isLuksMapper encryptedMapperDevices)
+  );
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -16,17 +35,10 @@
   boot.kernelPackages = pkgs.linuxPackages_latest;
   boot.initrd.systemd.enable = true;
   boot.initrd.systemd.tpm2.enable = true;
-
-  boot.initrd.luks.devices."luks-3d2268fe-5c8f-42d8-a02d-d500f2df7319".crypttabExtraOpts = [
-    "tpm2-device=auto"
-    "tpm2-measure-pcr=yes"
-  ];
-  boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".device =
-    "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163";
-  boot.initrd.luks.devices."luks-65f6a6d1-31e0-4bf5-bf13-cbc7705a1163".crypttabExtraOpts = [
-    "tpm2-device=auto"
-    "tpm2-measure-pcr=yes"
-  ];
+  boot.initrd.luks.devices = lib.genAttrs encryptedLuksNames (name: {
+    device = luksDeviceFromName name;
+    crypttabExtraOpts = luksCrypttabExtraOpts;
+  });
 
   networking.hostName = "h82-t14-gen2"; # Define your hostname.
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
@@ -65,10 +77,7 @@
   my.system.boot.sbctl.enable = true;
   my.system.boot.tpm-luks-enroll = {
     enable = true;
-    devices = [
-      "/dev/disk/by-uuid/3d2268fe-5c8f-42d8-a02d-d500f2df7319"
-      "/dev/disk/by-uuid/65f6a6d1-31e0-4bf5-bf13-cbc7705a1163"
-    ];
+    devices = map (name: config.boot.initrd.luks.devices.${name}.device) encryptedLuksNames;
   };
 
   # Enable aarch64 (arm64) cross-compilation — binfmt_misc + qemu-user runs aarch64-linux binaries on this host.
