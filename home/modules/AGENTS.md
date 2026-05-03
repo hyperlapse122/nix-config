@@ -14,7 +14,7 @@ home/modules/
 +-- ssh.nix                  # my.ssh.enable; OpenSSH client + 1Password SSH agent
 +-- env.nix                  # my.env.enable; session variables
 +-- chrome.nix               # my.chrome.enable
-+-- obsidian.nix             # my.obsidian.enable
++-- obsidian/               # my.obsidian.enable; default vault and plugins
 +-- desktop/plasma.nix       # my.desktop.plasma.enable; user Plasma settings
 +-- editors/                 # VS Code and Zed; see editors/AGENTS.md
 +-- i18n/fcitx5.nix          # my.i18n.fcitx5.enable
