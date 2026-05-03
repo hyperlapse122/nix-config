@@ -11,9 +11,11 @@
   # User packages
   home.packages = with pkgs; [
     pretendard
+    pretendard-jp
     jetbrains-mono
     nerd-fonts.jetbrains-mono
     d2coding
+    nerd-fonts.d2coding
   ];
 
   programs.home-manager.enable = true;
