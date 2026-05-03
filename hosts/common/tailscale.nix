@@ -27,6 +27,7 @@ in
       useRoutingFeatures = "client";
 
       extraSetFlags = [
+        "--accept-routes"
         "--operator=h82"
       ];
     };
