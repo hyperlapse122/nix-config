@@ -31,8 +31,9 @@ in
     (inputs.nixos-hardware + "/common/cpu/intel/tiger-lake")
   ];
 
-  # Use latest kernel.
+  # Use latest kernel for Tiger Lake / Iris Xe hardware support.
   boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelParams = [ "mem_sleep_default=s2idle" ];
   boot.initrd.systemd.enable = true;
   boot.initrd.systemd.tpm2.enable = true;
   boot.initrd.luks.devices = lib.genAttrs encryptedLuksNames (name: {
@@ -95,6 +96,12 @@ in
 
   # Korean input (fcitx5) is managed by a home-manager module: home/modules/i18n/fcitx5.nix
 
+  # ThinkPad T14 Gen 2 Intel hardware notes:
+  # - Keep the BIOS suspend mode on Windows/Linux (S0ix); Linux S3 can make the touchpad lag after resume.
+  # - Turbo Boost is BIOS-controlled. `/sys/devices/system/cpu/intel_pstate/no_turbo` should read `0`.
+  # - Quectel WWAN may need a manual FCC unlock before ModemManager can use it.
+  hardware.enableRedistributableFirmware = true;
+  services.fwupd.enable = true;
   hardware.bluetooth.enable = true;
   services.fprintd.enable = true;
   security.pam.services.login.fprintAuth = false;
