@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
@@ -26,6 +25,10 @@ in
       # filter dropping traffic when using an exit node (see nixos/modules/services/networking/tailscale.nix).
       # To expose this host AS an exit node or do subnet routing, change this to "server" or "both".
       useRoutingFeatures = "client";
+
+      extraSetFlags = [
+        "--operator=h82"
+      ];
     };
 
     # The tailscale CLI is added to environment.systemPackages automatically by services.tailscale.enable, so no explicit package registration is needed.
