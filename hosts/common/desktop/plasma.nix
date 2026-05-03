@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -14,9 +15,12 @@ in
   config = lib.mkIf cfg.enable {
     # KDE Plasma 6
     services.xserver.enable = true;
+    fonts.packages = [ pkgs.pretendard ];
+
     services.displayManager.sddm = {
       enable = true;
       wayland.enable = true;
+      settings.Theme.Font = "Pretendard";
     };
     services.desktopManager.plasma6.enable = true;
     services.displayManager.defaultSession = "plasma";
