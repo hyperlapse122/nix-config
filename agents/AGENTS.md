@@ -1,53 +1,40 @@
-# dotagents/
+# agents - OpenCode Skill Store
 
-**Generated:** 2026-04-03 | **Commit:** 389a20b | **Branch:** main
-
-Linked to `~/.agents` via Dotbot. Contains AI agent skills managed by OpenCode's skill system.
+Runtime skill tree exposed at `~/.agents` by `home/modules/dev/agents.nix`. OpenCode and oh-my-openagent manage this directory at runtime.
 
 ## STRUCTURE
 
-```text
-dotagents/
-├── .skill-lock.json        # Lockfile tracking installed skill versions
-└── skills/                 # One directory per skill
-    ├── cloudflare/         # Cloudflare Workers, Pages, KV, D1, R2, AI
-    ├── docx/               # Word document creation/manipulation
-    ├── durable-objects/    # Cloudflare Durable Objects
-    ├── find-skills/        # Skill discovery helper
-    ├── git-flow-branch-creator/ # Git Flow branch naming
-    ├── neon-postgres/      # Neon Serverless Postgres
-    ├── pdf/                # PDF read/write/merge/split
-    ├── playwright-cli/     # Browser automation and testing
-    ├── pptx/               # PowerPoint creation/manipulation
-    ├── skill-creator/      # Create and optimize skills
-    ├── turborepo/          # Turborepo monorepo guidance
-    ├── vercel-composition-patterns/ # React composition patterns
-    ├── vercel-react-best-practices/ # React/Next.js performance
-    ├── vercel-react-native-skills/  # React Native/Expo
-    ├── vercel-react-view-transitions/ # React View Transitions API
-    ├── web-design-guidelines/ # Web UI/UX review
-    ├── web-perf/           # Web performance auditing
-    ├── workers-best-practices/ # CF Workers production patterns
-    ├── wrangler/           # Cloudflare Workers CLI
-    └── xlsx/               # Spreadsheet creation/manipulation
+```plain
+agents/
++-- AGENTS.md              # this scoped guide; hand-maintained
++-- .skill-lock.json       # managed lockfile; do not hand-edit
++-- skills/                # managed skill directories
+    +-- find-skills/
+    +-- glab/
+    +-- playwright-cli/
 ```
+
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+|------|----------|-------|
+| Understand active skills | `agents/skills/*/SKILL.md` | Read-only unless using the skill system. |
+| Track installed versions | `agents/.skill-lock.json` | Managed artifact. |
+| Change symlink behavior | `home/modules/dev/agents.nix` | Uses an out-of-store symlink so runtime writes work. |
+| Add/update skills | OpenCode skill system | Do not hand-edit generated skill files. |
 
 ## CONVENTIONS
 
-- Each skill contains a `SKILL.md` entry point and optional `references/`, `rules/`, `scripts/` subdirs.
-- Skills are **managed artifacts** — installed/updated via OpenCode's skill system, not manually edited.
-- `.skill-lock.json` tracks versions; do not edit by hand.
-- Some skills (docx, pptx, xlsx) bundle Office XML schemas under `scripts/office/schemas/` — these are large and read-only.
-
-## LANGUAGE
-
-This `AGENTS.md` itself MUST be written in English. The skills under `skills/` are managed artifacts whose language follows upstream — leave them as-is. See the **LANGUAGE** section in the root `AGENTS.md` for the project-wide rule and its allowed exceptions.
+- This file is hand-maintained and must follow the repo-wide English-only rule.
+- Skill directories and `.skill-lock.json` are managed artifacts. Their upstream language/content is allowed to differ from repo-authored docs.
+- Keep the structure section high-level. The exact installed skill set can change at runtime.
 
 ## ANTI-PATTERNS
 
 | Forbidden | Why |
 |-----------|-----|
-| Hand-edit `.skill-lock.json` | Managed by skill system; manual edits cause sync issues |
-| Modify skill contents directly | Use `skill-creator` skill to update; direct edits get overwritten |
-| Add non-skill files under `skills/` | Reserved for the skill system directory structure |
-| Add non-English text to this `AGENTS.md` | Project-wide policy: every tracked text is English. See root `AGENTS.md` LANGUAGE section. |
+| Hand-edit `.skill-lock.json` | The skill manager owns version state. |
+| Modify skill contents directly | Runtime updates can overwrite manual edits. |
+| Add random files under `skills/` | The directory is reserved for skill packages. |
+| Treat `agents/` as immutable Nix store content | It is intentionally writable through an out-of-store symlink. |
+| Add non-English text to this file | Repo-authored tracked text must be English. |
