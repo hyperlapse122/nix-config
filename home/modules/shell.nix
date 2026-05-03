@@ -69,9 +69,9 @@ in
     # mise shims — programs.mise's zsh integration only activates in interactive shells,
     # so we add the shims path to PATH so that systemd user units / GUI apps /
     # non-interactive scripts can also find toolchains managed by mise (node, python, go, etc.).
-    home.sessionPath = [
-      "${config.home.homeDirectory}/.local/share/mise/shims"
-    ];
+    # home.sessionPath = [
+    #   "${config.home.homeDirectory}/.local/share/mise/shims"
+    # ];
 
     # Shell utilities
     home.packages = with pkgs; [
