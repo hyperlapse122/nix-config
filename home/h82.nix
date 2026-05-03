@@ -8,7 +8,7 @@
   home.homeDirectory = "/home/h82";
   home.stateVersion = "25.11";
 
-  # Fonts
+  # User packages
   home.packages = with pkgs; [
     pretendard
     jetbrains-mono
@@ -25,6 +25,7 @@
   my.ssh.enable = true;
   my.env.enable = true;
   my.chrome.enable = true;
+  my.obsidian.enable = true;
   my._1password.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
