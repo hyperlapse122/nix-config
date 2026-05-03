@@ -1,72 +1,72 @@
-# home/modules — Home Manager modules
+# home/modules - Home Manager Modules
 
-Reusable user-level modules under the `my.*` option namespace.
-Bundled via `./default.nix`, opted-in per-feature in `home/h82.nix`.
+Reusable user-level modules under the `my.*` namespace. Imported through `home/h82.nix` and enabled per feature there.
 
 ## STRUCTURE
 
 ```plain
-modules/
-├── default.nix          # Aggregator: imports shell, git, gpg, ssh, env, chrome, editors, desktop/plasma, i18n, dev
-├── shell.nix            # my.shell.enable           — zsh + direnv + mise + CLI utilities (rebuild aliases live here)
-├── git.nix              # my.git.enable             — git config + git-credential-manager
-├── gpg.nix              # my.gpg.enable             — GnuPG + gpg-agent (pinentry-qt)
-├── ssh.nix              # my.ssh.enable             — OpenSSH client + 1Password SSH agent (identityAgent)
-├── env.nix              # my.env.enable             — user-wide session env vars (replaces ~/.config/environment.d)
-├── chrome.nix           # my.chrome.enable          — Google Chrome
-├── desktop/plasma.nix   # my.desktop.plasma.enable  — plasma-manager (KDE Plasma 6)
-├── editors/             # my.editors.{vscode,zed}.enable — see editors/AGENTS.md
-├── i18n/fcitx5.nix      # my.i18n.fcitx5.enable     — fcitx5 + fcitx5-hangul (Wayland frontend)
-└── dev/
-    ├── agents.nix       # my.dev.agents.enable      — ~/.agents → ~/nix-config/agents (live out-of-store symlink for agent skills + shared commands)
-    ├── nodejs.nix       # my.dev.nodejs.enable      — Node.js LTS + yarn (pkgs.nodejs, pkgs.yarn — current LTS major in nixpkgs unstable)
-    ├── opencode/        # my.dev.opencode.enable    — opencode CLI (mise wrapper) + programs.opencode.* config (settings, context.md, commands/, oh-my-openagent.jsonc)
-    ├── playwright.nix   # my.dev.playwright.enable  — Playwright driver + browsers (pkgs.playwright-driver{,.browsers}) + PLAYWRIGHT_* env vars (BROWSERS_PATH / SKIP_VALIDATE_HOST_REQUIREMENTS / HOST_PLATFORM_OVERRIDE / NODEJS_PATH) — see https://wiki.nixos.org/wiki/Playwright
-    ├── python.nix       # my.dev.python.enable      — Python 3 (pkgs.python3, current default interpreter in nixpkgs unstable)
-    └── tokscale.nix     # my.dev.tokscale.enable    — tokscale CLI (mise wrapper)
+home/modules/
++-- default.nix              # imports every shared home module group
++-- _1password.nix           # my._1password.enable
++-- shell.nix                # my.shell.enable; zsh, direnv, mise, rebuild wrappers
++-- git.nix                  # my.git.enable; git + credential manager
++-- gpg.nix                  # my.gpg.enable
++-- ssh.nix                  # my.ssh.enable; OpenSSH client + 1Password SSH agent
++-- env.nix                  # my.env.enable; session variables
++-- chrome.nix               # my.chrome.enable
++-- obsidian.nix             # my.obsidian.enable
++-- desktop/plasma.nix       # my.desktop.plasma.enable; user Plasma settings
++-- editors/                 # VS Code and Zed; see editors/AGENTS.md
++-- i18n/fcitx5.nix          # my.i18n.fcitx5.enable
++-- dev/                     # developer tools; see dev/AGENTS.md
 ```
 
-> **`dev/opencode/`** is a self-contained module directory: the Nix logic in `default.nix` references co-located config files (`opencode.json`, `context.md`, `commands/`, `oh-my-openagent.jsonc`) via relative paths. The context file is named `context.md` (not `AGENTS.md`) on purpose — opencode auto-loads any `AGENTS.md` it discovers in a parent directory of the CWD as scoped agent context, but this file holds **global** opencode behavior (commit/branch conventions, runtime preferences) and the home-manager `programs.opencode` module already installs it at `~/.config/opencode/AGENTS.md` for global use. Renaming the source prevents the convention collision while preserving the install path. Add new opencode commands by dropping `*.md` into `commands/`; settings changes go into `opencode.json` (which is read via `builtins.fromJSON` and fed to `programs.opencode.settings`).
+## WHERE TO LOOK
 
-> **`dev/agents.nix`** uses `config.lib.file.mkOutOfStoreSymlink` (not `home.file.*.source = ./path`) because `~/.agents` is **runtime-mutable**: OpenCode's `oh-my-openagent` plugin installs skills into `skills/` and updates `.skill-lock.json` at runtime. A Nix store symlink would make those writes fail with EROFS. The trade-off is that the symlink target (`~/nix-config/agents`) must exist at the path literally written into the symlink — the module assumes the repo is checked out at `~/nix-config`, matching the convention used by the `rebuild*` aliases in `shell.nix`.
+| Task | Location | Notes |
+|------|----------|-------|
+| Add a home module | `home/modules/<group>/<name>.nix` | Use the standard `my.*.enable` shape. |
+| Import a module | nearest `default.nix` | Imports are explicit; no auto-discovery. |
+| Enable a module | `home/h82.nix` | Imports without enables are dead weight. |
+| Add shell wrapper | `shell.nix` | Thin aliases/functions belong in zsh init content. |
+| Add editor config | `editors/` | Keep editor-specific caveats in `editors/AGENTS.md`. |
+| Add dev tooling | `dev/` | Keep opencode/agents/Playwright/Docker details in `dev/AGENTS.md`. |
 
-## ADDING A NEW MODULE
+## ADDING A MODULE
 
-1. Create `home/modules/<group>/<name>.nix` (or directly under `modules/` for top-level features).
-2. Use this skeleton — no exceptions:
+Use this skeleton unless a documented local exception exists:
 
-    ```nix
-    { config, lib, pkgs, ... }:
-    let
-      cfg = config.my.<group>.<name>;
-    in {
-      options.my.<group>.<name> = {
-        enable = lib.mkEnableOption "<one-line human description>";
-        # Add more options ONLY if user-tunable. Default to enable-only.
-      };
+```nix
+{ config, lib, pkgs, ... }:
+let
+  cfg = config.my.<group>.<name>;
+in
+{
+  options.my.<group>.<name> = {
+    enable = lib.mkEnableOption "<one-line human description>";
+  };
 
-      config = lib.mkIf cfg.enable {
-        # programs.X / home.packages / etc.
-      };
-    }
-    ```
+  config = lib.mkIf cfg.enable {
+    # programs.X / home.packages / home.file / xdg.configFile / etc.
+  };
+}
+```
 
-3. Add the path to the nearest `default.nix` (`modules/default.nix` or `modules/<group>/default.nix`).
-4. Flip the toggle in `home/h82.nix`: `my.<group>.<name>.enable = true;`.
+Then import it from the nearest `default.nix` and enable it in `home/h82.nix`.
 
 ## CONVENTIONS
 
-- **`{ config, lib, pkgs, ... }:`** function header, even when `config` or `lib` is unused. Consistency over micro-optimization.
-- **`let cfg = config.my.<path>; in { options = ...; config = lib.mkIf cfg.enable ...; }`** — never inline `config.my.X.enable` in multiple places.
-- **Enable-only options.** Only `vscode.nix` adds a non-`enable` option (`package`, for VSCode/VSCodium/Insiders swap). Stay minimal otherwise.
-- **English-only comments and strings.** Every comment, option description, and string literal in this repo MUST be written in English. Do not introduce non-English text in any version-controlled file. See the **LANGUAGE** section in the root `AGENTS.md` for the project-wide rule.
-- **Shell hooks** (e.g. `programs.zsh.initContent` in `shell.nix`) are the right place for thin wrappers like the `rebuild*` aliases.
+- Keep the function header `{ config, lib, pkgs, ... }:` even when one argument is unused.
+- Bind `cfg = config.my.<path>` once; do not repeat `config.my.X.enable` inline.
+- Default to enable-only options. Current notable exceptions are `my.editors.vscode.package` and user Plasma toggles for per-host overrides.
+- Use `config.home.homeDirectory` instead of hard-coded `/home/h82` inside reusable modules.
+- English-only comments, option descriptions, and human-readable strings.
+- If a module writes runtime-mutable files, do not point them at the Nix store. See `dev/agents.nix` for the out-of-store symlink case.
 
 ## ANTI-PATTERNS
 
-- ❌ **No `my.<X>.enable` gate.** A module that runs unconditionally cannot be turned off without deleting the import — defeats the entire pattern.
-- ❌ **Imported but not enabled in `home/h82.nix`.** Imports without enables are dead weight; either enable it or remove the import.
-- ❌ **Hard-coded `/home/h82/...` paths inside modules.** Use `config.home.homeDirectory`. Modules should be user-agnostic in case a second user appears.
-- ❌ **Host-specific code inside modules.** No `if config.networking.hostName == "jpi-vmware" then ...` conditionals, no host-scoped paths, no hardware references. Modules under `home/modules/` are imported by EVERY host and must work on all of them. Host divergence lives in `hosts/<hostname>/default.nix` — see the **PER-HOST QUIRKS** section in the root `AGENTS.md`.
-- ❌ **NixOS (system-level) options here.** `users.users.*`, `services.*`, `boot.*`, `networking.*`, `security.*`, `nixpkgs.overlays`, `nixpkgs.config.allowUnfree` belong in `hosts/<hostname>/default.nix`. Putting them here will fail evaluation.
-- ❌ **Tightly coupling two modules.** If `my.editors.vscode` reads `config.my.shell.enable`, you've created an undocumented dependency. Keep modules independent.
+- No `my.<path>.enable` gate.
+- Imported but not enabled in `home/h82.nix`.
+- Host-specific checks such as `config.networking.hostName` inside `home/modules/`.
+- System-level NixOS options here: `users.users.*`, `services.*`, `boot.*`, `networking.*`, `security.*`, `nixpkgs.overlays`, and `nixpkgs.config.allowUnfree` belong in host/system modules.
+- Tight hidden coupling between modules. If `my.editors.vscode` reads `config.my.shell.enable`, the dependency is undocumented.
