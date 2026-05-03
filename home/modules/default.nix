@@ -7,7 +7,7 @@
     ./ssh.nix
     ./env.nix
     ./chrome.nix
-    ./obsidian.nix
+    ./obsidian
     ./editors
     ./desktop/plasma.nix
     ./i18n
