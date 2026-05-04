@@ -20,6 +20,7 @@
     nerd-fonts.jetbrains-mono
     d2coding
     nerd-fonts.d2coding
+    tmux
   ];
 
   programs.home-manager.enable = true;
