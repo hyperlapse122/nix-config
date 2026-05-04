@@ -8,6 +8,7 @@
     ./env.nix
     ./chrome.nix
     ./obsidian
+    ./hardware
     ./editors
     ./desktop/plasma.nix
     ./i18n

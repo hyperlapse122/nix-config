@@ -34,6 +34,7 @@
   my.chrome.enable = true;
   my.obsidian.enable = true;
   my._1password.enable = true;
+  my.hardware.logitech.enable = true;
   my.desktop.plasma.enable = true;
   my.editors.vscode.enable = true;
   my.editors.zed.enable = true;
