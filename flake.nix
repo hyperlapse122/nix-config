@@ -1,22 +1,10 @@
 {
   description = "H82's NixOS configurations";
 
-  nixConfig = {
-    extra-substituters = [ "https://codex-cli.cachix.org" ];
-    extra-trusted-public-keys = [
-      "codex-cli.cachix.org-1:1Br3H1hHoRYG22n//cGKJOk3cQXgYobUel6O8DgSing="
-    ];
-  };
-
   inputs = {
     # Single-channel policy: every package is pulled from nixos-unstable.
     # The intent is to feel like Arch Linux's rolling release — no separate stable channel.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-
-    codex-cli-nix = {
-      url = "github:sadjow/codex-cli-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
 
     home-manager = {
       url = "github:nix-community/home-manager/master";
