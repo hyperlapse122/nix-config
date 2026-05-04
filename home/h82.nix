@@ -1,7 +1,4 @@
-{ inputs, pkgs, ... }:
-let
-  system = pkgs.stdenv.hostPlatform.system;
-in
+{ pkgs, ... }:
 {
   imports = [
     ./modules
@@ -12,19 +9,14 @@ in
   home.stateVersion = "25.11";
 
   # User packages
-  home.packages =
-    with pkgs;
-    [
-      pretendard
-      pretendard-jp
-      jetbrains-mono
-      nerd-fonts.jetbrains-mono
-      d2coding
-      nerd-fonts.d2coding
-    ]
-    ++ [
-      inputs.codex-cli-nix.packages.${system}.default
-    ];
+  home.packages = with pkgs; [
+    pretendard
+    pretendard-jp
+    jetbrains-mono
+    nerd-fonts.jetbrains-mono
+    d2coding
+    nerd-fonts.d2coding
+  ];
 
   programs.home-manager.enable = true;
 
@@ -42,6 +34,7 @@ in
   my.editors.zed.enable = true;
   my.i18n.fcitx5.enable = true;
   my.dev.agents.enable = true;
+  my.dev.codex.enable = true;
   my.dev.docker.enable = true;
   my.dev.native-build.enable = true;
   my.dev.nodejs.enable = true;
