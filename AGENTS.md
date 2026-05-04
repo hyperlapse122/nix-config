@@ -1,14 +1,14 @@
 # H82's NixOS Configurations
 
 **Generated:** 2026-05-04
-**Commit:** 2609740
+**Commit:** bea8eae
 **Branch:** main
 
 ## OVERVIEW
 
 Multi-host flake-based NixOS config tracking `nixos-unstable` exclusively. Hosts are declared explicitly in `flake.nix#nixosConfigurations`; shared system modules live in `hosts/common/`, shared Home Manager modules live in `home/modules/`, and per-host divergence stays in `hosts/<hostname>/default.nix`.
 
-Home Manager follows `master`, plasma-manager configures KDE Plasma 6, Codex CLI comes from `codex-cli-nix`, and reusable modules use a custom option namespace: `my.system.*` for NixOS modules and `my.*` for Home Manager modules.
+Home Manager follows `master`, plasma-manager configures KDE Plasma 6, Codex CLI is wrapped through `mise` in Home Manager, and reusable modules use a custom option namespace: `my.system.*` for NixOS modules and `my.*` for Home Manager modules.
 
 ## STRUCTURE
 
@@ -41,7 +41,7 @@ nix-config/
 | Change Plasma user settings | `home/modules/desktop/plasma.nix` | User-level plasma-manager config; system session setup is in `hosts/common/desktop/plasma.nix`. |
 | Change input method | `home/modules/i18n/fcitx5.nix` | Home Manager owns fcitx5; Plasma points KWin at the fcitx5 store path. |
 | Update inputs | `flake.lock` | Run `nix flake update` or target a specific input. |
-| Change Codex CLI cache/input | `flake.nix`, `hosts/common/base.nix`, `home/h82.nix` | Keep flake `nixConfig`, system `nix.settings`, and the Home Manager package source aligned. |
+| Change Codex CLI wrapper | `home/modules/dev/codex.nix`, `home/h82.nix` | `codex.nix` uses `mise exec -q npm:@openai/codex@latest`; enable through `my.dev.codex.enable`. |
 
 ## CONVENTIONS
 
@@ -52,7 +52,7 @@ nix-config/
 - Nix code is formatted with `nixfmt`; this flake does not define a `formatter`, so do not document `nix fmt` unless one is added.
 - Every tracked human-readable text must be English. Technical literals such as `ko_KR.UTF-8`, `Asia/Seoul`, `Pretendard`, and key names are allowed.
 - Home Manager is integrated as a NixOS module with `useGlobalPkgs`, `useUserPackages`, and plasma-manager in `sharedModules`; standalone `home-manager switch` is not supported.
-- Codex CLI uses `inputs.codex-cli-nix.packages.${system}.default`; the matching `codex-cli.cachix.org` substituter is declared in both flake `nixConfig` and `hosts/common/base.nix`.
+- Codex CLI is a Home Manager `mise` wrapper in `home/modules/dev/codex.nix`; there is no dedicated Codex flake input or Cachix substituter.
 - `home/modules/git.nix` hard-codes `Joosung Park <iam@h82.dev>` while this repo has one user.
 
 ## ADDING A HOST

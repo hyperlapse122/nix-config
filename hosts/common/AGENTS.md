@@ -7,7 +7,7 @@ Shared system-level modules under the `my.system.*` namespace. Imported by every
 ```plain
 hosts/common/
 +-- default.nix              # aggregator for every shared system module
-+-- base.nix                 # always-on Nix settings, Codex CLI cache, allowUnfree, D-Bus, base packages
++-- base.nix                 # always-on Nix settings, allowUnfree, D-Bus, base packages
 +-- users.nix                # my.system.users.h82
 +-- locale.nix               # my.system.locale.korean
 +-- networking.nix           # my.system.networking.{networkmanager,firewall}
@@ -34,7 +34,7 @@ hosts/common/
 
 - Shared system options use `my.system.<group>.<name>.enable`.
 - Most modules follow `let cfg = config.my.system.<path>; in { options...; config = lib.mkIf cfg.enable ...; }`.
-- `base.nix` is the only always-on module. It owns flakes, the Codex CLI Cachix substituter, `allowUnfree`, D-Bus, and minimal universal packages.
+- `base.nix` is the only always-on module. It owns flakes, `allowUnfree`, D-Bus, garbage collection, and minimal universal packages.
 - Extra options are allowed only when activation needs host data: `boot.grub.device`, `boot.tpm-luks-enroll.devices`, `boot.tpm-luks-enroll.pcrs`, `programs._1password.autostart`, and `networking.firewall.enable`.
 - Use assertions for required host arguments so failures name the `my.system.*` option directly.
 - Subdirectory `default.nix` files are aggregators only.
@@ -50,8 +50,7 @@ hosts/common/
 ## NIX SETTINGS
 
 - Flakes are enabled globally through `nix.settings.experimental-features`.
-- `codex-cli.cachix.org` is trusted here so NixOS rebuilds can substitute `codex-cli-nix` packages without requiring every host to repeat the cache settings.
-- Keep the system-level cache settings aligned with root `flake.nix` `nixConfig`.
+- This repo currently has no per-tool binary cache policy in `base.nix`; add substituters here only when they are intended for every host.
 
 ## NETWORKING
 

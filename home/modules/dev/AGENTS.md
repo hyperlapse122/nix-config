@@ -1,6 +1,6 @@
 # home/modules/dev - Developer Tooling
 
-Developer-focused Home Manager modules. This subtree has several non-standard modules: mutable agent skills, OpenCode configuration, Playwright browser wiring, Docker credential helpers, and `mise` wrappers.
+Developer-focused Home Manager modules. This subtree has several non-standard modules: mutable agent skills, OpenCode and Codex wrappers, Playwright browser wiring, Docker credential helpers, and `mise` wrappers.
 
 ## STRUCTURE
 
@@ -8,6 +8,7 @@ Developer-focused Home Manager modules. This subtree has several non-standard mo
 home/modules/dev/
 +-- default.nix              # imports all dev modules
 +-- agents.nix               # my.dev.agents.enable; ~/.agents live symlink
++-- codex.nix                # my.dev.codex.enable; Codex CLI mise wrapper
 +-- docker.nix               # my.dev.docker.enable; Docker credential helpers
 +-- native-build.nix         # my.dev.native-build.enable; gcc/make/pkg-config/autotools
 +-- nodejs.nix               # my.dev.nodejs.enable; Node.js LTS + yarn
@@ -22,7 +23,7 @@ home/modules/dev/
 | Task | Location | Notes |
 |------|----------|-------|
 | Add small dev package bundle | `nodejs.nix` / `python.nix` / `native-build.nix` pattern | Enable-only module with `home.packages`. |
-| Add `mise` CLI wrapper | `opencode/default.nix` or `tokscale.nix` pattern | Use `pkgs.writeShellApplication` and include `pkgs.mise`. |
+| Add `mise` CLI wrapper | `codex.nix`, `opencode/default.nix`, or `tokscale.nix` pattern | Use `pkgs.writeShellApplication` and include `pkgs.mise`. |
 | Change OpenCode settings | `opencode/opencode.json` | Parsed with `builtins.fromJSON`; `$schema` is stripped before HM settings. |
 | Change OpenCode global context | `opencode/context.md` | Installed by HM as `~/.config/opencode/AGENTS.md`; not named `AGENTS.md` in-tree to avoid scoped-context collisions. |
 | Add OpenCode command | `opencode/commands/*.md` | HM wires the whole directory through `programs.opencode.commands`. |
@@ -36,6 +37,11 @@ home/modules/dev/
 - Do not set `programs.opencode.package = null`; Home Manager master currently evaluates warnings through `lib.versionAtLeast null ...` and fails.
 - `opencode.json` stays schema-bearing JSON for editor validation, but the Nix module removes `$schema` before passing settings to Home Manager.
 - `context.md` is the source for global OpenCode behavior and is installed as `~/.config/opencode/AGENTS.md`.
+
+## CODEX
+
+- `codex.nix` installs a `codex` wrapper that runs `mise exec -q npm:@openai/codex@latest -- codex`.
+- `pkgs.mise` is added alongside the wrapper because the wrapper depends on it at runtime.
 
 ## AGENTS SYMLINK
 
