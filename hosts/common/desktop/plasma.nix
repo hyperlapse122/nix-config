@@ -16,6 +16,16 @@ in
     # KDE Plasma 6
     services.xserver.enable = true;
 
+    environment.systemPackages = with pkgs; [
+      ydotool
+      kdePackages.kdialog
+    ];
+
+    xdg.portal.enable = true;
+    xdg.portal.extraPortals = with pkgs; [
+      kdePackages.xdg-desktop-portal-kde
+    ];
+
     services.displayManager.sddm = {
       enable = true;
       wayland.enable = true;
