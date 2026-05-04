@@ -43,7 +43,13 @@ in
       enablePlasmaBrowserIntegration = true;
     };
     # System-level fonts — required for SDDM (pre-login) and any other system service.
-    fonts.packages = with pkgs; [ pretendard ];
+    fonts.packages = with pkgs; [
+      pretendard
+      noto-fonts
+      noto-fonts-cjk-sans
+      noto-fonts-cjk-serif
+      twemoji-color-font
+    ];
 
     # KDE Wallet — git-credential-manager (home/modules/git.nix) uses KWallet via secretservice.
     security.pam.services.login.kwallet.enable = true;

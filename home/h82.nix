@@ -12,6 +12,10 @@
   home.packages = with pkgs; [
     pretendard
     pretendard-jp
+    noto-fonts
+    noto-fonts-cjk-sans
+    noto-fonts-cjk-serif
+    twemoji-color-font
     jetbrains-mono
     nerd-fonts.jetbrains-mono
     d2coding
