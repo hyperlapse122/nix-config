@@ -6,6 +6,16 @@
     # The intent is to feel like Arch Linux's rolling release — no separate stable channel.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    codex-cli-nix = {
+      url = "github:sadjow/codex-cli-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    codex-desktop-linux = {
+      url = "github:ilysenko/codex-desktop-linux";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     home-manager = {
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";

@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ inputs, pkgs, ... }:
 {
   imports = [
     ./modules
@@ -9,14 +9,20 @@
   home.stateVersion = "25.11";
 
   # User packages
-  home.packages = with pkgs; [
-    pretendard
-    pretendard-jp
-    jetbrains-mono
-    nerd-fonts.jetbrains-mono
-    d2coding
-    nerd-fonts.d2coding
-  ];
+  home.packages =
+    with pkgs;
+    [
+      pretendard
+      pretendard-jp
+      jetbrains-mono
+      nerd-fonts.jetbrains-mono
+      d2coding
+      nerd-fonts.d2coding
+    ]
+    ++ [
+      inputs.codex-cli-nix.packages.${pkgs.stdenv.hostPlatform.system}.default
+      inputs.codex-desktop-linux.packages.${pkgs.stdenv.hostPlatform.system}.default
+    ];
 
   programs.home-manager.enable = true;
 
