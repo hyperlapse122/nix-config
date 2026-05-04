@@ -19,7 +19,12 @@
   };
 
   # VMware guest support (this host only)
-  virtualisation.vmware.guest.enable = true;
+  virtualisation.vmware.guest = {
+    enable = true;
+    # Clipboard and drag-and-drop need the GUI tools, including vmblock-fuse and
+    # vmware-user-suid-wrapper, even though Plasma is configured separately below.
+    headless = false;
+  };
   hardware.graphics.enable = true;
   services.xserver.videoDrivers = [ "vmware" ];
 
