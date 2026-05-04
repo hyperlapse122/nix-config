@@ -124,7 +124,10 @@ in
   security.pam.services.login.fprintAuth = false;
   security.pam.services.sddm.fprintAuth = false;
   security.pam.services.kde.fprintAuth = false;
-  hardware.firmware = [ pkgs.sof-firmware ];
+  hardware.firmware = with pkgs; [
+    linux-firmware
+    sof-firmware
+  ];
 
   # ThinkPad T14 Gen 2 Intel has no exact nixos-hardware module; apply the
   # Tiger Lake GPU/thermal quirks used by nearby Gen 2 Intel ThinkPad modules.
