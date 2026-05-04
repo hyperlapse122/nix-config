@@ -1,4 +1,7 @@
 { inputs, pkgs, ... }:
+let
+  system = pkgs.stdenv.hostPlatform.system;
+in
 {
   imports = [
     ./modules
@@ -20,8 +23,7 @@
       nerd-fonts.d2coding
     ]
     ++ [
-      inputs.codex-cli-nix.packages.${pkgs.stdenv.hostPlatform.system}.default
-      inputs.codex-desktop-linux.packages.${pkgs.stdenv.hostPlatform.system}.default
+      inputs.codex-cli-nix.packages.${system}.default
     ];
 
   programs.home-manager.enable = true;

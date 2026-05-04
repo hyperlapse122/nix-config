@@ -1,15 +1,15 @@
+{ pkgs, ... }:
 {
-  config,
-  lib,
-  pkgs,
-  ...
-}:
-{
-  # Enable Flakes officially — this repo is flake-based, so it's required on every host
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
+  nix.settings = {
+    # Enable Flakes officially — this repo is flake-based, so it's required on every host
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
+
+    substituters = [ "https://codex-cli.cachix.org" ];
+    trusted-public-keys = [ "codex-cli.cachix.org-1:1Br3H1hHoRYG22n//cGKJOk3cQXgYobUel6O8DgSing=" ];
+  };
 
   # Remove old generations weekly to keep the Nix store from growing indefinitely.
   nix.gc = {
