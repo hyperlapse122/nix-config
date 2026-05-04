@@ -42,6 +42,8 @@ in
       enable = true;
       enablePlasmaBrowserIntegration = true;
     };
+    programs.ssh.askPassword = lib.mkForce "${pkgs.kdePackages.ksshaskpass}/bin/ksshaskpass";
+
     # System-level fonts — required for SDDM (pre-login) and any other system service.
     fonts.packages = with pkgs; [
       pretendard
