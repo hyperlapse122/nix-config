@@ -8,7 +8,7 @@
       "skillPath": "skills/find-skills/SKILL.md",
       "skillFolderHash": "3013fdeb8a11b10b1eb795ec3ae8bfca38f7c26d",
       "installedAt": "2026-04-22T04:34:47.109Z",
-      "updatedAt": "2026-04-22T04:34:47.109Z"
+      "updatedAt": "2026-05-05T03:54:23.769Z"
     },
     "glab": {
       "source": "gitlab-org/ai/skills",
@@ -27,6 +27,15 @@
       "skillFolderHash": "ff92cdde57ecce01607406a4667dc0f2772dfac1",
       "installedAt": "2026-04-23T22:53:51.418Z",
       "updatedAt": "2026-05-04T00:26:14.155Z"
+    },
+    "gh-cli": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/github/awesome-copilot.git",
+      "skillPath": "skills/gh-cli/SKILL.md",
+      "skillFolderHash": "437437f7f20bcdbbdb3081cf164435a388c0a39a",
+      "installedAt": "2026-05-05T04:00:21.828Z",
+      "updatedAt": "2026-05-05T04:00:21.828Z"
     }
   },
   "dismissed": {
