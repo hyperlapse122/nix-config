@@ -33,7 +33,11 @@ in
 
   # Use latest kernel for Tiger Lake / Iris Xe hardware support.
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  boot.kernelParams = [ "mem_sleep_default=s2idle" ];
+  boot.kernelParams = [
+    "mem_sleep_default=s2idle"
+    "xe.force_probe=9a49"
+    "i915.force_probe=!9a49"
+  ];
   boot.initrd.systemd.enable = true;
   boot.initrd.systemd.tpm2.enable = true;
   boot.initrd.luks.devices = lib.genAttrs encryptedLuksNames (name: {
@@ -127,6 +131,20 @@ in
   hardware.firmware = with pkgs; [
     linux-firmware
     sof-firmware
+  ];
+  services.hardware.bolt.enable = true;
+  services.power-profiles-daemon.enable = true;
+  services.thermald.enable = true;
+  services.upower.enable = true;
+
+  environment.systemPackages = with pkgs; [
+    acpi
+    lm_sensors
+    nvme-cli
+    pciutils
+    powertop
+    smartmontools
+    usbutils
   ];
 
   # ThinkPad T14 Gen 2 Intel has no exact nixos-hardware module; apply the
