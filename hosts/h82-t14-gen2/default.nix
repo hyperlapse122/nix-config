@@ -108,22 +108,7 @@ in
   services.fwupd.enable = true;
   hardware.bluetooth = {
     enable = true;
-    settings = {
-      General = {
-        ControllerMode = "dual";
-        Experimental = true;
-        KernelExperimental = true;
-      };
-    };
   };
-  services.pipewire.wireplumber.configPackages = [
-    (pkgs.writeTextDir "share/wireplumber/wireplumber.conf.d/10-bluez-le-audio.conf" ''
-      monitor.bluez.properties = {
-        bluez5.roles = [ a2dp_sink a2dp_source bap_sink bap_source hfp_hf hfp_ag ]
-        bluez5.hfphsp-backend = "native"
-      }
-    '')
-  ];
   services.fprintd.enable = true;
   security.pam.services.login.fprintAuth = false;
   security.pam.services.sddm.fprintAuth = false;
