@@ -21,6 +21,7 @@ umask 077
 secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
 age-keygen -o "$secret_tmp/age.key"
 age-keygen -y "$secret_tmp/age.key" > secrets/recipient.txt
+mkdir -p secrets/bootstrap
 gpg --armor --encrypt \
   --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
   --output secrets/bootstrap/thinkpad-age-key.asc "$secret_tmp/age.key"
@@ -36,7 +37,8 @@ sops --encrypt --age "$(cat secrets/recipient.txt)" \
 
 암호화 파일을 복호화해 출력하지 않고 유효성을 검사하고, GPG bootstrap 복원으로 얻은 age 공개 수신자가 기록한 값과 일치하는지 확인한다. 평문을 `git add`하지 않는다. 암호화된 두 파일, 공개 수신자, `.sops.yaml`만 커밋한다. 검증을 마치면 임시 디렉터리를 지운다.
 
-실제 카드와 토큰이 없는 코드 검증에는 `tests/fixtures/`의 시험용 자료만 사용한다. 이 자료를 실제 인증 데이터로 설치하지 않는다.
+실제 카드와 토큰이 없는 코드 검증에는 flake check가 생성하는 가짜 인증 자료와
+`tests/test_publish_cli_auth.py`의 시험용 자료만 사용한다. 이 자료를 실제 인증 데이터로 설치하지 않는다.
 
 ## 설치한 NixOS에서 한 번 복원
 
@@ -52,7 +54,16 @@ sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
 
 ## Git 서명과 SSH
 
-Git 커밋·태그 서명에는 YubiKey가 필요하다. PIN 자동 입력은 기존 Secret Service의 `service=gnupg-card-pin`, `username=<카드 serial>` 항목을 사용한다. 해당 캐시가 없거나 keyring이 잠겼으면 정상 pinentry로 요청한다. PIN 오류나 재시도 제한 경고가 있으면 자동 제출을 반복하지 않는다. 카드 touch 정책은 그대로 따른다.
+Git 커밋·태그 서명에는 YubiKey가 필요하다. PIN 자동 입력은 기존 Secret Service의 `service=gnupg-card-pin`, `username=<카드 serial>` 항목을 사용한다. 해당 캐시가 없거나 keyring이 잠겼으면 정상 pinentry로 요청한다. PIN 오류나 재시도 제한 경고가 있으면 자동 제출을 반복하지 않는다. 카드 touch 정책은 그대로 따른다. 자동 PIN 입력을 사용할 경우 h82의 데스크톱 세션에서 한 번 등록한다. 명령의 프롬프트에 PIN을 입력하며 인자나 shell history에 넣지 않는다.
+
+```sh
+nix develop
+card_serial='<normalized serial from gpg --card-status>'
+secret-tool store --label='OpenPGP card PIN' service gnupg-card-pin username "$card_serial"
+unset card_serial
+```
+
+카드 serial은 `gpg --card-status`로 확인한 실제 값과 일치해야 한다. 이 등록 없이도 일반 재빌드는 정상 동작한다.
 
 1Password 앱에 한 번 로그인하고 Settings의 Developer 영역에서 SSH agent를 활성화한다. 저장소가 `IdentityAgent ~/.1password/agent.sock`과 `~/.config/1Password/ssh/agent.toml`의 키 선택을 배치한다. 앱 로그인·잠금 해제·SSH 승인은 사용자가 수행한다.
 

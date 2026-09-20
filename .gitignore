@@ -6,3 +6,5 @@ result-*
 .env
 secrets/*.plain.*
 secrets/bootstrap/*.key
+__pycache__/
+*.pyc

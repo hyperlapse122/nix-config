@@ -3,6 +3,7 @@
 ## 저장소 검사
 
 ```sh
+nix fmt -- --ci
 nix flake check --no-build
 nix flake check
 nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel

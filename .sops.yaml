@@ -1,0 +1,5 @@
+# This file intentionally has no creation rule until the migration operator has
+# generated the machine age recipient.  Keeping the list empty makes evaluation
+# safe before that one-time secret-recovery step and prevents a made-up key from
+# becoming part of the repository's trust policy.
+creation_rules: []

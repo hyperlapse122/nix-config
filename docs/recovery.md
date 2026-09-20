@@ -42,11 +42,98 @@ sudo systemd-cryptenroll /dev/disk/by-partlabel/disk-main-luks \
 
 `--wipe-slot=tpm2`는 TPM 슬롯에만 사용한다. 복구 암호 슬롯을 삭제하지 않는다. 새 자동 해제와 암호 해제를 확인한 뒤 LUKS header 외부 백업을 갱신한다.
 
-부팅이 불가능하면 설치 USB에서 LUKS를 열고 Btrfs root와 ESP를 올바르게 mount한다. disko의 포맷 모드를 재실행하지 않는다. `nixos-enter`로 들어가거나 target root에 `nixos-install`을 사용할 때 저장소 구성과 mount가 일치하는지 확인한다.
+## LUKS와 Secure Boot 자료 백업
+
+설치 직후와 TPM 슬롯을 갱신한 뒤에는 외부 매체를 연결하고 실제 mount인지 확인한다.
+아래의 `backup_mount`와 `backup_dir`은 대상 디스크가 아닌 외부 매체의 경로로 바꾼다.
+백업 파일은 GPG 수신자로 다시 암호화하므로 매체 자체의 암호화 여부와 별개로 보관할 수
+있다. 평문 중간 파일은 `/run/user`의 임시 파일시스템에만 둔다.
+
+```sh
+set -euo pipefail
+umask 077
+backup_mount=/run/media/h82/EXTERNAL_BACKUP
+backup_dir="$backup_mount/thinkpad"
+if ! findmnt --mountpoint "$backup_mount" >/dev/null; then
+  printf '%s\n' 'external backup mount is missing; refusing to write under /run' >&2
+  exit 1
+fi
+sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$backup_dir"
+backup_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-backup.XXXXXX)
+cleanup() {
+  sudo rm -f -- "$backup_tmp/luks-header.img" "$backup_tmp/sbctl.tar" "$backup_tmp/header-check" "$backup_tmp/bundle-check"
+  rmdir "$backup_tmp" 2>/dev/null || true
+}
+trap cleanup EXIT
+sudo cryptsetup luksHeaderBackup /dev/disk/by-partlabel/disk-main-luks \
+  --header-backup-file "$backup_tmp/luks-header.img"
+sudo tar --xattrs --acls --numeric-owner -C /var/lib \
+  -cpf "$backup_tmp/sbctl.tar" sbctl
+sudo chown -R "$(id -u):$(id -g)" "$backup_tmp"
+gpg --armor --encrypt \
+  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
+  --output "$backup_dir/luks-header.img.asc" "$backup_tmp/luks-header.img"
+gpg --armor --encrypt \
+  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
+  --output "$backup_dir/sbctl.tar.asc" "$backup_tmp/sbctl.tar"
+test -s "$backup_dir/luks-header.img.asc" \
+  && test -s "$backup_dir/sbctl.tar.asc"
+gpg --decrypt --output "$backup_tmp/header-check" "$backup_dir/luks-header.img.asc"
+gpg --decrypt --output "$backup_tmp/bundle-check" "$backup_dir/sbctl.tar.asc"
+cmp "$backup_tmp/luks-header.img" "$backup_tmp/header-check"
+cmp "$backup_tmp/sbctl.tar" "$backup_tmp/bundle-check"
+cleanup
+trap - EXIT
+```
+
+LUKS header에는 당시 keyslot이 포함되므로 두 `.asc` 파일 모두 외부 매체에 보관하고,
+header 백업이 유출된 것으로 의심되면 복구 암호와 서비스 자격 증명을 교체한다.
+
+부팅이 불가능하면 설치 USB에서 disko의 포맷 모드를 재실행하지 말고, 아래처럼 선언된
+레이아웃으로만 기존 파일시스템을 연다. 설치 USB에서 네트워크가 되면 저장소를 target
+root의 `/tmp/nix-config`에 다시 clone하고, 네트워크가 없으면 외부 매체에서 같은 경로로
+복사한다.
+
+```sh
+sudo cryptsetup open /dev/disk/by-partlabel/disk-main-luks cryptroot
+sudo mount -o subvol=/root,compress=zstd,noatime /dev/mapper/cryptroot /mnt
+sudo install -d /mnt/home /mnt/nix /mnt/var/log /mnt/boot /mnt/tmp
+sudo mount -o subvol=/home,compress=zstd,noatime /dev/mapper/cryptroot /mnt/home
+sudo mount -o subvol=/nix,compress=zstd,noatime /dev/mapper/cryptroot /mnt/nix
+sudo mount -o subvol=/log,compress=zstd,noatime /dev/mapper/cryptroot /mnt/var/log
+sudo mount /dev/disk/by-partlabel/disk-main-ESP /mnt/boot
+if sudo test -d /mnt/tmp/nix-config/.git; then
+  sudo git -C /mnt/tmp/nix-config pull --ff-only
+else
+  sudo git clone https://github.com/hyperlapse122/nix-config.git /mnt/tmp/nix-config
+fi
+sudo nixos-enter --root /mnt
+```
+
+`nixos-enter`가 필요한 `/dev`, `/sys`, `/proc` bind mount를 자체적으로 만든다.
+`nixos-rebuild boot`을 실행하기 전에 `/var/lib/sbctl`을 복원해야 하며, 서명된 부팅
+복원 명령은 아래와 같다.
 
 ## Secure Boot 서명 키 유실
 
-`/var/lib/sbctl`의 외부 암호화 백업을 복원하고 파일 소유권과 권한을 확인한다. 재빌드해 부팅 파일을 다시 서명한다. 백업이 없다면 새 bundle을 생성하고 UEFI 키 등록부터 다시 진행한다. TPM enrollment도 새 Secure Boot 정책에서 갱신한다.
+외부 암호화 백업을 연결한 뒤 `/var/lib/sbctl`을 복원하고, 백업 파일의 소유권과
+권한을 확인한다. 실행 중인 설치에서 복원할 때는 다음처럼 보관한 bundle을 풀고 다음
+부팅 세대를 다시 서명한다.
+
+```sh
+set -o pipefail
+gpg --decrypt /path/to/sbctl.tar.asc | \
+  sudo tar --xattrs --acls --numeric-owner -xpf - -C /var/lib
+sudo chown -R root:root /var/lib/sbctl
+sudo chmod -R go-rwx /var/lib/sbctl
+sudo nixos-rebuild boot --flake .#ThinkPad-X1-Carbon-Gen-11
+```
+
+설치 USB에서 복원하는 경우에는 먼저 위의 LUKS·Btrfs·ESP mount 절차를 수행한 뒤,
+외부 매체의 `sbctl.tar.asc`를 `/mnt/var/lib`에 복호화해 풀고 `nixos-enter` 안에서
+`/tmp/nix-config`의 같은 `nixos-rebuild boot` 명령을 실행한다.
+백업이 없다면 새 bundle을 생성하고 UEFI 키 등록부터 다시 진행한다. TPM enrollment도
+새 Secure Boot 정책에서 갱신한다.
 
 LUKS 복구 자료를 잠긴 대상 디스크에만 두거나, 그 디스크의 TPM 자동 해제를 유일한 복구 수단으로 삼지 않는다.
 

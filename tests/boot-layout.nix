@@ -23,7 +23,11 @@ let
     disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
   };
   testSystem = {
-    imports = [ bootModule bootstrapModule inputs.lanzaboote.nixosModules.lanzaboote ];
+    imports = [
+      bootModule
+      bootstrapModule
+      inputs.lanzaboote.nixosModules.lanzaboote
+    ];
     options.my.bootstrap = lib.mkOption {
       type = lib.types.bool;
       default = true;
