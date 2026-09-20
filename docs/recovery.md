@@ -107,7 +107,6 @@ if sudo test -d /mnt/tmp/nix-config/.git; then
 else
   sudo git clone https://github.com/hyperlapse122/nix-config.git /mnt/tmp/nix-config
 fi
-sudo nixos-enter --root /mnt
 ```
 
 `nixos-enter`가 필요한 `/dev`, `/sys`, `/proc` bind mount를 자체적으로 만든다.
@@ -129,9 +128,23 @@ sudo chmod -R go-rwx /var/lib/sbctl
 sudo nixos-rebuild boot --flake .#ThinkPad-X1-Carbon-Gen-11
 ```
 
-설치 USB에서 복원하는 경우에는 먼저 위의 LUKS·Btrfs·ESP mount 절차를 수행한 뒤,
-외부 매체의 `sbctl.tar.asc`를 `/mnt/var/lib`에 복호화해 풀고 `nixos-enter` 안에서
-`/tmp/nix-config`의 같은 `nixos-rebuild boot` 명령을 실행한다.
+설치 USB에서는 위의 mount 절차를 마친 뒤 live 환경의 일반 사용자로 공개키를 가져오고
+카드를 확인한다. `nix develop`이 연 셸에서 복호화하며, target의 root GPG agent에 의존하지 않는다.
+
+```sh
+nix develop path:/mnt/tmp/nix-config
+gpg --import /mnt/tmp/nix-config/keys/signing.asc
+gpg --card-status
+set -o pipefail
+gpg --decrypt /path/to/sbctl.tar.asc | \
+  sudo tar --xattrs --acls --numeric-owner -xpf - -C /mnt/var/lib
+sudo chown -R root:root /mnt/var/lib/sbctl
+sudo chmod -R go-rwx /mnt/var/lib/sbctl
+sudo nixos-enter --root /mnt -c \
+  'cd /tmp/nix-config && nixos-rebuild boot --flake .#ThinkPad-X1-Carbon-Gen-11'
+```
+
+기존 `/mnt/var/lib/sbctl`이 정상이라면 복호화·추출 단계는 생략하고 마지막 명령만 실행한다.
 백업이 없다면 새 bundle을 생성하고 UEFI 키 등록부터 다시 진행한다. TPM enrollment도
 새 Secure Boot 정책에서 갱신한다.
 

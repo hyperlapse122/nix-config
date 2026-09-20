@@ -25,5 +25,6 @@ jobs:
         run: nix flake check --print-build-logs
       - name: Build both host configurations without secrets
         run: |
-          nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel
-          nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
+          nix build --no-link \
+            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel \
+            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel

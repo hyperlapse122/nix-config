@@ -17,7 +17,6 @@ let
     qemu-common = import "${inputs.nixpkgs}/nixos/lib/qemu-common.nix";
   };
   bootModule = ../modules/nixos/boot.nix;
-  bootstrapModule = ../modules/nixos/bootstrap.nix;
   productionDisk = import ../hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix;
   testDisk = lib.recursiveUpdate productionDisk {
     disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
@@ -25,7 +24,6 @@ let
   testSystem = {
     imports = [
       bootModule
-      bootstrapModule
       inputs.lanzaboote.nixosModules.lanzaboote
     ];
     options.my.bootstrap = lib.mkOption {

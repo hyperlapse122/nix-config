@@ -9,7 +9,6 @@
     settings = {
       user.name = "Joosung Park";
       user.email = "iam@h82.dev";
-      user.signingkey = "A7F1956CD1A035A139BC7ABFCC740A29852C0E95";
       core.autocrlf = false;
       init.defaultBranch = "main";
       pull.rebase = true;

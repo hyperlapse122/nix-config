@@ -12,4 +12,4 @@ This repository configures one NixOS ThinkPad X1 Carbon Gen 11. The implementati
 
 ## Solutions
 
-No repository-specific solutions have been recorded yet.
+- [SOPS service umask and user secret traversal](.compound-engineering/artifacts/solutions/integration-issues/sops-service-umask-blocks-user-secrets.md): read before changing SOPS service permissions or activation tests.
