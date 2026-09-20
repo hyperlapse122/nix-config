@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""Assuan proxy that supplies only the cached OpenPGP card User PIN.
+
+The exact prompt and serial checks intentionally mirror the existing dotfiles
+wrapper.  Every other prompt is delegated to the selected desktop pinentry.
+The Nix package replaces the three @...@ constants with absolute store paths.
+"""
+
+import base64
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+
+DELEGATE_PATH = "@PINENTRY_QT@"
+LINUX_FALLBACK_PATH = "@PINENTRY_CURSES@"
+SECRET_TOOL_PATH = "@SECRET_TOOL@"
+IS_LINUX = True
+KEYRING_BACKEND = "secret-tool"
+MAX_DECODE_LEN = 4096
+KEYRING_LOOKUP_TIMEOUT = 5
+NUMBER_LINE_RE = re.compile(r"(?:^|\n)[\x1e\x1f]*Number:[\x1e\x1f]*[ \t]*([^\n]*)")
+SERIAL_FORM_RE = re.compile(r"\d+(?: \d+)*")
+
+
+def percent_decode(data):
+    if len(data) > MAX_DECODE_LEN:
+        return None
+    out = bytearray()
+    index = 0
+    while index < len(data):
+        byte = data[index]
+        if byte == 0x0D:
+            return None
+        if byte == 0x25:
+            if index + 3 > len(data):
+                return None
+            try:
+                out.append(int(data[index + 1 : index + 3], 16))
+            except ValueError:
+                return None
+            index += 3
+        else:
+            out.append(byte)
+            index += 1
+    return bytes(out)
+
+
+def percent_encode(data):
+    out = bytearray()
+    for byte in data:
+        if byte == 0x25 or byte < 0x20 or byte == 0x7F:
+            out.extend(("%%%02X" % byte).encode("ascii"))
+        else:
+            out.append(byte)
+    return bytes(out)
+
+
+def normalize_serial(raw):
+    text = raw.strip(" \t\x1e\x1f")
+    if not SERIAL_FORM_RE.fullmatch(text):
+        return None
+    compact = text.replace(" ", "")
+    if len(compact) == 12 and compact.startswith("0006"):
+        compact = compact[4:]
+    return compact.lstrip("0") or None
+
+
+def lookup_pin(serial):
+    if KEYRING_BACKEND == "secret-tool":
+        argv = [SECRET_TOOL_PATH, "lookup", "service", "gnupg-card-pin", "username", serial]
+    else:
+        argv = [SECRET_TOOL_PATH, "find-generic-password", "-s", "gnupg-card-pin", "-a", serial, "-w"]
+    try:
+        result = subprocess.run(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=KEYRING_LOOKUP_TIMEOUT,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    value = result.stdout[:-1] if result.stdout.endswith(b"\n") else result.stdout
+    if not value:
+        return None
+    if KEYRING_BACKEND == "security":
+        text = value.decode("utf-8", "replace")
+        if text.startswith("go-keyring-base64:"):
+            try:
+                return base64.b64decode(text[len("go-keyring-base64:") :], validate=True)
+            except (ValueError, base64.binascii.Error):
+                return None
+        if text.startswith("go-keyring-encoded:"):
+            try:
+                return bytes.fromhex(text[len("go-keyring-encoded:") :])
+            except ValueError:
+                return None
+    return value
+
+
+class Prompt:
+    def __init__(self):
+        self.prompt = None
+        self.desc = None
+        self.seen_error = False
+
+    def remember(self, command, argument):
+        if command == b"SETERROR":
+            self.seen_error = True
+            return
+        decoded = percent_decode(argument)
+        text = decoded.decode("utf-8", "replace") if decoded is not None else None
+        if command == b"SETPROMPT":
+            self.prompt = text
+        elif command == b"SETDESC":
+            self.desc = text
+
+    def matched_pin(self):
+        if self.prompt != "PIN" or not self.desc:
+            return None
+        if not self.desc.startswith("Please unlock the card"):
+            return None
+        if "Remaining attempts" in self.desc or self.seen_error:
+            return None
+        numbers = NUMBER_LINE_RE.findall(self.desc)
+        if len(numbers) != 1:
+            return None
+        serial = normalize_serial(numbers[0])
+        return lookup_pin(serial) if serial is not None else None
+
+    def wants_cancel(self):
+        return bool(self.desc and self.desc.startswith("Please insert the card"))
+
+
+def choose_delegate_path():
+    if IS_LINUX and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return LINUX_FALLBACK_PATH
+    return DELEGATE_PATH
+
+
+def spawn_delegate(path):
+    environment = dict(os.environ)
+    environment["PATH"] = "/usr/bin:/bin"
+    return subprocess.Popen(
+        [path] + sys.argv[1:],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        env=environment,
+        close_fds=True,
+    )
+
+
+def pump(delegate_stdout, client_out, output_lock):
+    while True:
+        chunk = delegate_stdout.readline()
+        if not chunk:
+            return
+        with output_lock:
+            client_out.write(chunk)
+            client_out.flush()
+
+
+def main():
+    client_in = sys.stdin.buffer
+    client_out = sys.stdout.buffer
+    delegate = spawn_delegate(choose_delegate_path())
+    output_lock = threading.Lock()
+    relay = threading.Thread(target=pump, args=(delegate.stdout, client_out, output_lock), daemon=True)
+    relay.start()
+    state = Prompt()
+    stopped = threading.Event()
+
+    def shutdown():
+        if stopped.is_set():
+            return delegate.returncode if delegate.returncode is not None else 0
+        stopped.set()
+        try:
+            delegate.stdin.close()
+        except OSError:
+            pass
+        try:
+            delegate.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            delegate.terminate()
+            try:
+                delegate.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                delegate.kill()
+                delegate.wait()
+        relay.join(timeout=2)
+        return delegate.returncode if delegate.returncode is not None else 0
+
+    def on_signal(signum, frame):
+        del signum, frame
+        sys.exit(shutdown())
+
+    signal.signal(signal.SIGINT, on_signal)
+    signal.signal(signal.SIGTERM, on_signal)
+
+    def forward(line):
+        try:
+            delegate.stdin.write(line)
+            delegate.stdin.flush()
+        except (BrokenPipeError, OSError):
+            sys.exit(shutdown())
+
+    while True:
+        line = client_in.readline()
+        if not line or not line.endswith(b"\n"):
+            sys.exit(shutdown())
+        command, _, argument = line[:-1].partition(b" ")
+        if command == b"GETPIN":
+            pin = state.matched_pin()
+            state.seen_error = False
+            if pin is not None:
+                with output_lock:
+                    client_out.write(b"D " + percent_encode(pin) + b"\nOK\n")
+                    client_out.flush()
+                continue
+            forward(line)
+            continue
+        if command == b"CONFIRM" and state.wants_cancel():
+            with output_lock:
+                client_out.write(b"ERR 83886179 Operation cancelled <Pinentry>\n")
+                client_out.flush()
+            continue
+        if command in (b"SETPROMPT", b"SETDESC", b"SETERROR"):
+            state.remember(command, argument)
+        forward(line)
+        if command == b"BYE":
+            sys.exit(shutdown())
+
+
+if __name__ == "__main__":
+    main()

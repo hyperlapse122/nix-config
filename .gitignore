@@ -1,1 +1,10 @@
 .context/compound-engineering/
+result
+result-*
+*.qcow2
+*.img
+.env
+secrets/*.plain.*
+secrets/bootstrap/*.key
+__pycache__/
+*.pyc
