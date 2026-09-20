@@ -26,6 +26,30 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
     in {
+      nixosConfigurations = let
+        mkHost = bootstrap: nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = { inherit inputs; };
+          modules = [
+            inputs.disko.nixosModules.disko
+            inputs.home-manager.nixosModules.home-manager
+            inputs.sops-nix.nixosModules.sops
+            inputs.lanzaboote.nixosModules.lanzaboote
+            ./hosts/ThinkPad-X1-Carbon-Gen-11
+            {
+              my.bootstrap = bootstrap;
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+              home-manager.users.h82 = import ./home/h82;
+            }
+          ];
+        };
+      in {
+        ThinkPad-X1-Carbon-Gen-11 = mkHost false;
+        ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost true;
+      };
+      packages.${system}.disko = inputs.disko.packages.${system}.disko;
+      checks.${system}.boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
       formatter.${system} = pkgs.nixfmt;
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [ age sops gnupg git nixfmt shellcheck python3 ];
