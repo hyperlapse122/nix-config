@@ -86,11 +86,17 @@ let
       echo 'the built nr helper does not carry the substituted nvd store path' >&2
       exit 1
     fi
+    if ! grep -q '${pkgs.git}/bin/git' ${nrPackage}/bin/nr; then
+      echo 'the built nr helper does not carry the substituted git store path' >&2
+      exit 1
+    fi
     if ! grep -q '"$NVD" diff' ${nrPackage}/bin/nr; then
       echo 'the built nr helper never invokes nvd diff, so it reports no generation change' >&2
       exit 1
     fi
-    if grep -q '@NVD@' ${nrPackage}/bin/nr; then
+    # Any surviving placeholder, not just @NVD@: a check that names one token
+    # passes while another substitution is silently dropped.
+    if grep -qE '@[A-Z_]+@' ${nrPackage}/bin/nr; then
       echo 'the built nr helper still contains an unsubstituted placeholder' >&2
       exit 1
     fi

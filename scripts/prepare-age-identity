@@ -60,7 +60,18 @@ recipient_file=$host_dir/recipient.txt
 umask 077
 [[ -d $RUNTIME_ROOT ]] || die "runtime directory $RUNTIME_ROOT does not exist"
 scratch=$(mktemp -d "$RUNTIME_ROOT/prepare-age-identity.XXXXXX")
-cleanup() { rm -rf -- "$scratch"; }
+
+# One trap covers every exit path, including a signal or an unanticipated
+# failure between the two writes. Anything short of `completed` leaves nothing
+# behind: a half-written host directory is worse than none, because the
+# operator would have to notice it before regenerating.
+completed=
+cleanup() {
+  rm -rf -- "$scratch"
+  [[ -n $completed ]] && return
+  rm -f -- "$ciphertext" "$recipient_file"
+  rmdir -- "$host_dir" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 identity=$scratch/age.key
@@ -72,42 +83,27 @@ recipient=$("$AGE_KEYGEN_BIN" -y "$identity") ||
   die 'could not derive the age recipient'
 
 mkdir -p -- "$host_dir"
-written=()
-rollback() {
-  local f
-  for f in "${written[@]:-}"; do
-    [[ -n $f ]] && rm -f -- "$f"
-  done
-  rmdir -- "$host_dir" 2>/dev/null || true
-}
 
-if ! "$GPG_BIN" --armor --encrypt --recipient "$gpg_recipient" \
-  --output "$ciphertext" "$identity"; then
-  rollback
-  die 'GPG encryption failed'
-fi
-written+=("$ciphertext")
+"$GPG_BIN" --armor --encrypt --recipient "$gpg_recipient" \
+  --output "$ciphertext" "$identity" ||
+  die 'GPG encryption failed; nothing was kept'
 
 # secrets/README.md makes a verified decrypt a precondition of installing, and
 # with one recipient for the whole repository an unopenable ciphertext loses the
 # machine identity and every token encrypted to it. Prove the round trip before
-# the trap destroys the only plaintext copy.
+# the trap destroys the only plaintext copy. GPG's own stderr is left visible:
+# a locked or absent card and a corrupt ciphertext fail here the same way, and
+# only GPG can tell the operator which.
 roundtrip=$scratch/roundtrip.key
-if ! "$GPG_BIN" --batch --no-tty --decrypt --output "$roundtrip" "$ciphertext" 2>/dev/null; then
-  rollback
-  die 'the encrypted identity does not decrypt back; nothing was kept'
-fi
-roundtrip_recipient=$("$AGE_KEYGEN_BIN" -y "$roundtrip") || {
-  rollback
+"$GPG_BIN" --batch --no-tty --decrypt --output "$roundtrip" "$ciphertext" ||
+  die 'could not decrypt the identity back (see the GPG error above); nothing was kept'
+roundtrip_recipient=$("$AGE_KEYGEN_BIN" -y "$roundtrip") ||
   die 'could not derive a recipient from the decrypted identity; nothing was kept'
-}
-if [[ $roundtrip_recipient != "$recipient" ]]; then
-  rollback
+[[ $roundtrip_recipient == "$recipient" ]] ||
   die 'the decrypted identity does not match the generated one; nothing was kept'
-fi
 
 printf '%s\n' "$recipient" >"$recipient_file"
-written+=("$recipient_file")
+completed=1
 
 printf 'prepare-age-identity: wrote secrets/bootstrap/%s/{age-key.asc,recipient.txt}\n' "$host"
 printf 'prepare-age-identity: recipient %s\n' "$recipient"

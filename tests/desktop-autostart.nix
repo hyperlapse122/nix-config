@@ -56,7 +56,7 @@ let
     );
 
   onePasswordEntry = entryFor host.config "autostart/1password.desktop";
-  kleopatraEntryProd = entryFor host.config "autostart/kleopatra.desktop";
+  kleopatraEntry = entryFor host.config "autostart/kleopatra.desktop";
   bootstrapOnePassword = entryFor bootstrapHost.config "autostart/1password.desktop";
   bootstrapKleopatra = entryFor bootstrapHost.config "autostart/kleopatra.desktop";
 
@@ -76,8 +76,16 @@ let
         echo 'the autostart entry for ${name} does not set force, so activation would abort on the app-written file' >&2
         exit 1
       fi
+      if ! grep -Fxq '[Desktop Entry]' ${entry.source}; then
+        echo 'the autostart entry for ${name} has no [Desktop Entry] header, so the autostart scanner ignores it' >&2
+        exit 1
+      fi
       if ! grep -Fxq 'Type=Application' ${entry.source}; then
         echo 'the autostart entry for ${name} is missing Type=Application' >&2
+        exit 1
+      fi
+      if ! grep -Fxq 'Hidden=false' ${entry.source}; then
+        echo 'the autostart entry for ${name} is missing Hidden=false, which would leave it inert' >&2
         exit 1
       fi
       if ! grep -Fxq 'X-KDE-autostart-phase=2' ${entry.source}; then
@@ -94,7 +102,7 @@ let
     "Exec=${onePasswordPackage}/bin/1password --silent"
   );
 
-  kleopatraExec = lib.optionalString (kleopatraEntryProd != null && kleopatraPackage != null) (
+  kleopatraExec = lib.optionalString (kleopatraEntry != null && kleopatraPackage != null) (
     "Exec=${kleopatraPackage}/bin/kleopatra --daemon"
   );
 
@@ -121,8 +129,8 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
   ${present "1Password" onePasswordEntry onePasswordExec}
 
   ${kleopatraAbsent}
-  ${lib.optionalString (kleopatraEntryProd == null) (missing "autostart/kleopatra.desktop")}
-  ${present "Kleopatra" kleopatraEntryProd kleopatraExec}
+  ${lib.optionalString (kleopatraEntry == null) (missing "autostart/kleopatra.desktop")}
+  ${present "Kleopatra" kleopatraEntry kleopatraExec}
 
   # 3. The bootstrap host declares neither, so first-boot key recovery is not
   #    competing with a card-touching UI server.

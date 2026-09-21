@@ -176,6 +176,7 @@
             ${present}
             touch $out
           '';
+        bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
         nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''

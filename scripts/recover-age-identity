@@ -4,8 +4,9 @@
 # exactly once, on the right-hand side, as secrets/README.md requires.
 set -euo pipefail
 
-# Overridable so tests never invoke the real installer.
+# Overridable so tests never invoke the real installer or a real card.
 INSTALLER=${RECOVER_AGE_INSTALLER:-/run/current-system/sw/bin/restore-age-identity}
+GPG_BIN=${RECOVER_AGE_GPG:-gpg}
 # Set to any non-empty value to print the resolved pipeline instead of running it.
 DRY_RUN=${RECOVER_AGE_DRY_RUN:-}
 
@@ -66,12 +67,16 @@ recipient_file=$host_dir/recipient.txt
 [[ -f $ciphertext ]] || die "missing $ciphertext"
 [[ -f $recipient_file ]] || die "missing $recipient_file"
 
-recipient=$(cat -- "$recipient_file")
+recipient=$(<"$recipient_file")
 [[ -n $recipient ]] || die "empty recipient in $recipient_file"
 
+# One definition for both branches: printing a separately written string would
+# let the dry-run receipt the tests assert against drift from what runs.
+decrypt_cmd=("$GPG_BIN" --batch --no-tty --decrypt -- "$ciphertext")
+install_cmd=(sudo -- "$INSTALLER" --recipient "$recipient")
+
 if [[ -n $DRY_RUN ]]; then
-  printf 'gpg --batch --no-tty --decrypt -- %s | sudo -- %s --recipient %s\n' \
-    "$ciphertext" "$INSTALLER" "$recipient"
+  printf '%s | %s\n' "${decrypt_cmd[*]}" "${install_cmd[*]}"
   exit 0
 fi
 
@@ -80,7 +85,6 @@ fi
 # pipefail matters here: without it a GPG failure is masked by the installer's
 # exit status and the run looks successful.
 sudo -v
-gpg --batch --no-tty --decrypt -- "$ciphertext" |
-  sudo -- "$INSTALLER" --recipient "$recipient"
+"${decrypt_cmd[@]}" | "${install_cmd[@]}"
 
 printf 'recover-age-identity: installed the age identity for %s\n' "$host"

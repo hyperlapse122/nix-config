@@ -7,7 +7,7 @@ This flake configures one NixOS ThinkPad X1 Carbon Gen 11. Preserve the default 
 - `flake.nix`: production and bootstrap hosts, checks, and development tools.
 - `hosts/ThinkPad-X1-Carbon-Gen-11/`: hardware and disk configuration.
 - `modules/nixos/`: system modules; `home/h82/`: Home Manager modules.
-- `scripts/`: authentication helpers; `packages/`: Nix packaging for those helpers.
+- `scripts/`: authentication and rebuild helpers; `packages/`: Nix packaging for those helpers.
 - `tests/`: Python, shell, and NixOS VM checks.
 - `docs/`: installation, provisioning, recovery, and verification. `secrets/README.md` defines secret conventions.
 

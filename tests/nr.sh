@@ -133,6 +133,115 @@ out=$("$rendered" boot --flake-dir "$repo" --host testhost 2>/dev/null)
   fail "boot does not diff against the system profile: $out"
 pass 'boot diffs against /nix/var/nix/profiles/system, which it actually updates'
 
+# --- argument validation ---------------------------------------------------
+
+unset NR_VARIANT_FILE
+for bad in "--host" "--flake-dir"; do
+  err=$("$rendered" switch --flake-dir "$repo" "$bad" 2>&1 >/dev/null || true)
+  [[ $err == *"missing value for $bad"* ]] || fail "$bad with no value not rejected: $err"
+done
+pass 'a flag with no value exits non-zero naming the flag'
+
+err=$("$rendered" switch --flake-dir "$repo" --bogus 2>&1 >/dev/null || true)
+[[ $err == *"unexpected argument --bogus"* ]] || fail "unknown flag not rejected: $err"
+pass 'an unknown flag exits non-zero naming it'
+
+# --- the post-rebuild generation diff --------------------------------------
+# Everything above runs under NR_DRY_RUN, which returns before the rebuild.
+# These drive the real control flow with the privileged command and nvd stubbed.
+
+unset NR_DRY_RUN
+stub_dir=$scratch/stubs
+mkdir -p "$stub_dir"
+# A sudo stub that actually runs what it is given, so the rebuild below really
+# executes; `sudo -v` (no command) is a no-op.
+cat >"$stub_dir/sudo" <<STUB
+#!$(command -v bash)
+[[ \${1:-} == -v ]] && exit 0
+[[ \${1:-} == -- ]] && shift
+exec "\$@"
+STUB
+chmod +x "$stub_dir/sudo"
+printf '#!%s\nprintf "nvd-called %%s\\n" "$*" >"%s/nvd.log"\n' "$(command -v bash)" "$scratch" >"$stub_dir/nvd"
+chmod +x "$stub_dir/nvd"
+
+# Re-render with the stub nvd so the substituted path is the recording one.
+rendered_run=$scratch/nr-run
+sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|$stub_dir/nvd|" "$script" >"$rendered_run"
+chmod +x "$rendered_run"
+
+mkdir -p "$scratch/genA" "$scratch/genB"
+export NR_CURRENT=$scratch/current
+export NR_PROFILE=$scratch/profile
+
+# A rebuild stub that repoints whichever generation link NR_STUB_MOVES names,
+# so the before/after sampling sees a real change mid-run the way a rebuild
+# produces one. Naming nothing leaves both links alone.
+printf '#!%s\n[[ -n ${NR_STUB_MOVES:-} ]] && ln -sfn "%s/genB" "$NR_STUB_MOVES"\nexit 0\n' \
+  "$(command -v bash)" "$scratch" >"$stub_dir/rebuild-stub"
+chmod +x "$stub_dir/rebuild-stub"
+export NR_NIXOS_REBUILD=$stub_dir/rebuild-stub
+
+reset_generations() {
+  ln -sfn "$scratch/genA" "$scratch/current"
+  ln -sfn "$scratch/genA" "$scratch/profile"
+  rm -f "$scratch/nvd.log"
+}
+
+reset_generations
+NR_STUB_MOVES= out=$(PATH=$stub_dir:$PATH "$rendered_run" switch --flake-dir "$repo" --host testhost 2>&1)
+[[ $out == *"produced no change"* ]] || fail "unchanged generation not reported: $out"
+[[ ! -f $scratch/nvd.log ]] || fail 'nvd was called even though the generation did not change'
+pass 'an unchanged generation reports no change and does not call nvd'
+
+# switch samples /run/current-system, so moving that link must be what it sees.
+reset_generations
+NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \
+  "$rendered_run" switch --flake-dir "$repo" --host testhost >/dev/null 2>&1
+[[ -f $scratch/nvd.log ]] || fail 'nvd was not called after switch changed the generation'
+grep -q "$scratch/genA $scratch/genB" "$scratch/nvd.log" ||
+  fail "switch diffed the wrong pair: $(cat "$scratch/nvd.log")"
+pass 'switch diffs the before and after of /run/current-system, in that order'
+
+# boot does not activate, so only the system profile moves. Start from links
+# that already diverge -- the state a previous boot leaves behind -- because
+# with both at the same generation a baseline read from /run/current-system
+# yields the same pair as one read from the profile, and the assertion could
+# not tell a correct implementation from the bug it guards.
+mkdir -p "$scratch/genC"
+rm -f "$scratch/nvd.log"
+ln -sfn "$scratch/genA" "$scratch/current"
+ln -sfn "$scratch/genB" "$scratch/profile"
+printf '#!%s\nln -sfn "%s/genC" "%s/profile"\nexit 0\n' \
+  "$(command -v bash)" "$scratch" "$scratch" >"$stub_dir/rebuild-stub"
+chmod +x "$stub_dir/rebuild-stub"
+PATH=$stub_dir:$PATH "$rendered_run" boot --flake-dir "$repo" --host testhost >/dev/null 2>&1
+[[ -f $scratch/nvd.log ]] || fail 'nvd was not called after boot changed the system profile'
+grep -q "$scratch/genB $scratch/genC" "$scratch/nvd.log" ||
+  fail "boot did not diff the profile's own before and after: $(cat "$scratch/nvd.log")"
+pass 'boot diffs the system profile against itself, not against current-system'
+
+# Restore the parameterised stub for the remaining cases.
+printf '#!%s\n[[ -n ${NR_STUB_MOVES:-} ]] && ln -sfn "%s/genB" "$NR_STUB_MOVES"\nexit 0\n' \
+  "$(command -v bash)" "$scratch" >"$stub_dir/rebuild-stub"
+chmod +x "$stub_dir/rebuild-stub"
+
+# A failing nvd must not turn a successful rebuild into a failure.
+printf '#!%s\nexit 3\n' "$(command -v bash)" >"$stub_dir/nvd"
+chmod +x "$stub_dir/nvd"
+rendered_fail=$scratch/nr-nvdfail
+sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|$stub_dir/nvd|" "$script" >"$rendered_fail"
+chmod +x "$rendered_fail"
+reset_generations
+if ! NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \
+  "$rendered_fail" switch --flake-dir "$repo" --host testhost >/dev/null 2>&1; then
+  fail 'a failing nvd made a successful rebuild look failed'
+fi
+pass 'a failing nvd is reported but does not fail the run'
+
+unset NR_NIXOS_REBUILD NR_CURRENT NR_PROFILE
+export NR_DRY_RUN=1
+
 # --- usage -----------------------------------------------------------------
 
 if "$rendered" frobnicate --flake-dir "$repo" >/dev/null 2>&1; then

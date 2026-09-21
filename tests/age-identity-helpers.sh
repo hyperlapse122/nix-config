@@ -64,6 +64,67 @@ else
   pass 'the running hostname happens to have material; rescue path covered by the unknown-host case'
 fi
 
+# --- the real pipeline, not the dry-run receipt ----------------------------
+# Everything above asserts printed text. These run the actual
+# gpg | sudo installer composition with both sides stubbed, so a divergence
+# between what is printed and what executes cannot hide here.
+
+unset RECOVER_AGE_DRY_RUN
+
+pipe_stubs=$scratch/pipe-stubs
+mkdir -p "$pipe_stubs"
+bash_bin_pipe=$(command -v bash) || fail 'bash is required'
+
+# sudo that runs what it is given, so the installer stub really executes.
+cat >"$pipe_stubs/sudo" <<STUB
+#!$bash_bin_pipe
+[[ \${1:-} == -v ]] && exit 0
+[[ \${1:-} == -- ]] && shift
+exec "\$@"
+STUB
+chmod +x "$pipe_stubs/sudo"
+
+# An installer stub that records what reached it, the way the real root-side
+# installer reads the identity from stdin and the recipient from argv.
+cat >"$pipe_stubs/installer" <<STUB
+#!$bash_bin_pipe
+printf 'recipient=%s\n' "\$2" >"$scratch/installed.log"
+cat >>"$scratch/installed.log"
+STUB
+chmod +x "$pipe_stubs/installer"
+
+printf '#!%s\nprintf "DECRYPTED-IDENTITY\\n"\n' "$bash_bin_pipe" >"$pipe_stubs/gpg-ok"
+chmod +x "$pipe_stubs/gpg-ok"
+printf '#!%s\nexit 2\n' "$bash_bin_pipe" >"$pipe_stubs/gpg-fail"
+chmod +x "$pipe_stubs/gpg-fail"
+
+export RECOVER_AGE_INSTALLER=$pipe_stubs/installer
+
+rm -f "$scratch/installed.log"
+RECOVER_AGE_GPG=$pipe_stubs/gpg-ok PATH=$pipe_stubs:$PATH \
+  "$recover_bin" --host testhost >/dev/null 2>&1 ||
+  fail 'the happy-path pipeline did not succeed'
+[[ -f $scratch/installed.log ]] || fail 'the installer never received the decrypted identity'
+grep -q "recipient=$fake_recipient" "$scratch/installed.log" ||
+  fail "the installer did not receive the recorded recipient: $(cat "$scratch/installed.log")"
+grep -q 'DECRYPTED-IDENTITY' "$scratch/installed.log" ||
+  fail 'the identity did not reach the installer on stdin'
+pass 'the executed pipeline sends the identity on stdin and the recipient in argv'
+
+# pipefail is the reason a GPG failure is not masked by the installer's status.
+rm -f "$scratch/installed.log"
+if RECOVER_AGE_GPG=$pipe_stubs/gpg-fail PATH=$pipe_stubs:$PATH \
+  "$recover_bin" --host testhost >/dev/null 2>&1; then
+  fail 'a GPG failure was masked by the installer exiting zero'
+fi
+pass 'a GPG failure on the left of the pipe fails the whole run'
+
+# A missing installer must be named rather than producing a broken pipe.
+err=$(RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_INSTALLER=$scratch/absent-installer \
+  PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost 2>&1 >/dev/null || true)
+[[ $err == *absent-installer* ]] || fail "a missing installer was not named: $err"
+pass 'a missing installer exits non-zero naming the path'
+
 # ---------------------------------------------------------------------------
 # prepare-age-identity
 # ---------------------------------------------------------------------------
@@ -183,6 +244,70 @@ pass 'a ciphertext that does not decrypt back fails and leaves no files behind'
 
 [[ -z $(ls -A "$runtime") ]] || fail 'the trap did not clean the runtime directory after failure'
 pass 'the trap clears the runtime directory on the failure path too'
+
+# A gpg that writes its output file and then fails: the partial ciphertext must
+# not survive, and the host directory must not be left half-populated.
+stub gpg-halfwrite
+cat >>"$stub_dir/gpg-halfwrite" <<'STUB'
+set -uo pipefail
+out=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --output) out=$2; shift 2 ;;
+    --recipient) shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n $out ]] && printf 'partial\n' >"$out"
+exit 4
+STUB
+chmod +x "$stub_dir/gpg-halfwrite"
+
+export PREPARE_AGE_GPG=$stub_dir/gpg-halfwrite
+if "$prepare_bin" --host halfhost --recipient DEADBEEF >/dev/null 2>&1; then
+  fail 'an encryption failure should not succeed'
+fi
+[[ ! -e $fake_repo/secrets/bootstrap/halfhost ]] ||
+  fail "an encryption failure left the host directory behind: $(ls -A "$fake_repo/secrets/bootstrap/halfhost")"
+pass 'an encryption failure that wrote a partial ciphertext leaves nothing behind'
+
+# An interruption between the two writes must leave nothing behind either.
+# SIGTERM during the round-trip decrypt is the narrowest way to reach the gap
+# the explicit failure branches do not cover.
+stub gpg-hang
+cat >>"$stub_dir/gpg-hang" <<'STUB'
+set -uo pipefail
+out=; mode=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --output) out=$2; shift 2 ;;
+    --encrypt) mode=encrypt; shift ;;
+    --decrypt) mode=decrypt; shift ;;
+    --recipient) shift 2 ;;
+    *) src=$1; shift ;;
+  esac
+done
+if [[ $mode == decrypt ]]; then
+  sleep 30
+else
+  base64 <"$src" >"$out"
+fi
+STUB
+chmod +x "$stub_dir/gpg-hang"
+
+export PREPARE_AGE_GPG=$stub_dir/gpg-hang
+"$prepare_bin" --host hanghost --recipient DEADBEEF >/dev/null 2>&1 &
+prepare_pid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -f $fake_repo/secrets/bootstrap/hanghost/age-key.asc ]] && break
+  sleep 0.2
+done
+kill -TERM "$prepare_pid" 2>/dev/null || true
+wait "$prepare_pid" 2>/dev/null || true
+[[ ! -e $fake_repo/secrets/bootstrap/hanghost ]] ||
+  fail "an interrupted run left the host directory behind: $(ls -A "$fake_repo/secrets/bootstrap/hanghost")"
+[[ -z $(ls -A "$runtime") ]] || fail 'an interrupted run left plaintext in the runtime directory'
+pass 'an interrupted run leaves neither the ciphertext nor plaintext behind'
 
 # ---------------------------------------------------------------------------
 # root refusal
