@@ -15,11 +15,14 @@
   home.sessionVariables.DISABLE_AUTOUPDATER = "1";
 
   home.packages = with pkgs; [
+    antigravity-cli
+    bun
     claude-code
     codex
     gh
     glab
     google-chrome
+    nodejs
     omp
   ];
 }
