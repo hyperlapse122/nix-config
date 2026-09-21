@@ -69,3 +69,12 @@ Sign in to the 1Password app once and enable the SSH agent under Settings > Deve
 ## Verify after applying
 
 Check each CLI's authentication status and test Git HTTPS access to the required hosts. Keep tokens out of status output and debug logs. Verify GPG signing in a temporary Git repository. Verify SSH with an actual selected key while 1Password is signed in and unlocked.
+
+## Coding agent harness configuration
+
+Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`, with persistent memory features explicitly disabled in `home/h82/agent-memory.nix` to prevent mutable per-user history from affecting agent behavior:
+
+- **Claude Code**: Environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"` acts as the top-level kill switch. In addition, `~/.claude/settings.json` declaratively sets `"autoMemoryEnabled": false` and `"autoDreamEnabled": false`.
+- **Antigravity CLI**: `~/.gemini/antigravity-cli/settings.json` sets `"disableAutoGenerateMemories": true`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
+
+Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
