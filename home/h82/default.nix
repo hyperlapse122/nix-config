@@ -20,7 +20,6 @@
     antigravity-cli
     bun
     claude-code
-    codex
     gh
     glab
     google-chrome
