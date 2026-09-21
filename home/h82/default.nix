@@ -31,6 +31,7 @@
       omp
       python3
       uv
+      yubioath-flutter
     ])
     ++ [ (import ../../packages/nix-tools.nix { inherit pkgs; }).nr ];
 

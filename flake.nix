@@ -197,6 +197,7 @@
             ${present}
             touch $out
           '';
+        yubikey-fido = import ./tests/yubikey-fido.nix { inherit pkgs self; };
         kleopatra-gui =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;

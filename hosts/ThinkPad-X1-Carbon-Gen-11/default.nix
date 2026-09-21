@@ -11,6 +11,7 @@
     ../../modules/nixos/keyd.nix
     ../../modules/nixos/nix-ld.nix
     ../../modules/nixos/secrets.nix
+    ../../modules/nixos/yubikey.nix
   ];
   config.my.cliAuth.enable = !config.my.bootstrap;
   # The Gen 11 predates the Copilot key, so the chord binding stays out of the
