@@ -8,6 +8,7 @@
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/keyd.nix
+    ../../modules/nixos/nix-ld.nix
     ../../modules/nixos/secrets.nix
   ];
   config.my.cliAuth.enable = !config.my.bootstrap;
