@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 {
   imports = [
     ./git.nix
@@ -25,4 +25,10 @@
     nodejs
     omp
   ];
+
+  home.activation.configureKWinVirtualKeyboard = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if [ -x "${pkgs.kdePackages.kconfig}/bin/kwriteconfig6" ]; then
+      ${pkgs.kdePackages.kconfig}/bin/kwriteconfig6 --file kwinrc --group Wayland --key InputMethod --type path /run/current-system/sw/share/applications/fcitx5-wayland-launcher.desktop
+    fi
+  '';
 }
