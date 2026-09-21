@@ -7,9 +7,13 @@
     ../../modules/nixos/boot.nix
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
+    ../../modules/nixos/keyd.nix
     ../../modules/nixos/secrets.nix
   ];
   config.my.cliAuth.enable = !config.my.bootstrap;
+  # The Gen 11 predates the Copilot key, so the chord binding stays out of the
+  # generated keyd configuration on this host.
+  config.my.keyd.copilotKey = false;
   options.my.bootstrap = lib.mkOption {
     type = lib.types.bool;
     default = false;
