@@ -11,6 +11,17 @@ in
         source = ../../keys/signing.asc;
         trust = "ultimate";
       }
+      # The retired rsa2048 key, kept so commits and tags signed before the
+      # rotation still verify.  No trust override: it signs nothing new.
+      #
+      # Deliberately the pre-revocation copy.  The key is revoked on
+      # keys.openpgp.org, but merging that revocation in here makes
+      # `git verify-commit` exit 1 on every pre-rotation commit: gpg still
+      # reports a good signature and then adds a revocation warning, which git
+      # treats as failure.  Do not "resync" this file with the keyserver.
+      {
+        source = ../../keys/signing-legacy.asc;
+      }
     ];
     settings = {
       cert-digest-algo = "SHA512";

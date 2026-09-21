@@ -4,7 +4,7 @@ Use the YubiKey only for Git signing and initial installation or recovery. Routi
 
 ## Before erasing the existing OS
 
-The repository's `keys/` directory stores only the public key for the existing Git signing identity. Its fingerprint is `A7F1956CD1A035A139BC7ABFCC740A29852C0E95`. Confirm that the actual card provides signing and encryption subkeys.
+The repository's `keys/` directory stores two public keys and no private key. `signing.asc` is the current signing identity, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`. `signing-legacy.asc` is the retired rsa2048 key, kept so commits and tags signed before the rotation still verify. It is deliberately the copy from before that key was revoked: with the revocation merged in, `git verify-commit` fails on every pre-rotation commit, because git treats gpg's revocation warning as an error even though the signature itself is still good. Confirm that the actual card provides signing and encryption subkeys.
 
 ```sh
 gpg --show-keys --with-fingerprint keys/signing.asc
@@ -21,7 +21,7 @@ The preparation helper does this. It runs on the pre-migration host, from the de
 nix develop
 ./scripts/prepare-age-identity \
   --host ThinkPad-X1-Carbon-Gen-11 \
-  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05
 ```
 
 It writes `secrets/bootstrap/<hostname>/age-key.asc` and `secrets/bootstrap/<hostname>/recipient.txt`.
@@ -60,7 +60,11 @@ Use the same command for later applies. It works with the YubiKey disconnected o
 
 ## Git signing and SSH
 
-Signing Git commits and tags requires the YubiKey. Automatic PIN entry uses the existing Secret Service entry with `service=gnupg-card-pin` and `username=<card serial>`. If the cache is absent or the keyring is locked, normal pinentry prompts for the PIN. Do not repeat automatic submission after a PIN error or retry-limit warning. The card's touch policy still applies. To use automatic PIN entry, register it once in h82's desktop session. Enter the PIN at the command's prompt, not in its arguments or shell history.
+Signing commits and tags requires a YubiKey carrying the signing subkey. Three cards carry it, and each card has its own User PIN, so a PIN disclosed from one card does not unlock the others. Automatic PIN entry therefore uses one Secret Service entry per card, with `service=gnupg-card-pin` and `username=<normalized card serial>`: three cards mean three entries. If no entry exists for that serial or the keyring is locked, normal pinentry prompts for the PIN. Automatic submission never repeats after a PIN error or a retry-limit warning, and a prompt whose serial cannot be read unambiguously is never answered, because offering one card's PIN to another would burn that card's retry counter.
+
+When a card rejects a PIN that was submitted automatically, the entry for that serial alone is discarded and the prompt falls back to ordinary pinentry. The other cards' entries are left in place. Re-registering the affected card is manual, with the same command below.
+
+Register each card once in h82's desktop session, repeating the command with that card inserted. Enter the PIN at the command's prompt, not in its arguments or shell history.
 
 ```sh
 nix develop
@@ -69,7 +73,7 @@ secret-tool store --label='OpenPGP card PIN' service gnupg-card-pin username "$c
 unset card_serial
 ```
 
-The card serial must match the actual value reported by `gpg --card-status`. Routine rebuilds work without this registration.
+Each card serial must match the value that `gpg --card-status` reports with that card inserted. Routine rebuilds work without any of these registrations.
 
 Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
 
