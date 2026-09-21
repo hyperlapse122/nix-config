@@ -20,4 +20,9 @@
       fpath=($HOME/.local/share/zsh/site-functions(N) $fpath)
     '';
   };
+
+  programs.mise = {
+    enable = true;
+    enableZshIntegration = true;
+  };
 }
