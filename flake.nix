@@ -22,7 +22,7 @@
   };
 
   outputs =
-    inputs@{ nixpkgs, ... }:
+    inputs@{ self, nixpkgs, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
@@ -94,6 +94,19 @@
               python tests/test_publish_cli_auth.py
               touch $out
             '';
+        zsh-prezto =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            zpreztorc = host.config.home-manager.users.h82.home.file."./.zpreztorc".source;
+            zshenv = host.config.home-manager.users.h82.home.file."./.zshenv".source;
+            zshrc = host.config.home-manager.users.h82.home.file."./.zshrc".source;
+          in
+          pkgs.runCommand "zsh-prezto-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+            grep -q "zstyle ':prezto:load' pmodule" ${zpreztorc}
+            grep -q "runcoms/zshenv" ${zshenv}
+            grep -q "runcoms/zshrc" ${zshrc}
+            touch $out
+          '';
       };
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
