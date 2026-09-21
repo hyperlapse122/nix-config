@@ -10,9 +10,12 @@ concurrency:
 
 jobs:
   claude-review:
-    # Gate on the pull request author, never on the pusher or github.actor: the
-    # mention agent pushes as a bot and that push must still re-trigger this review.
-    if: github.event.pull_request.user.type != 'Bot'
+    # Exclude only the agent's own bot, and gate on the pull request author
+    # rather than the pusher or github.actor: the mention agent pushes as a bot
+    # and that push must still re-trigger this review. Excluding every bot would
+    # skip the review on this repository's own flake.lock pull requests, whose
+    # skipped review then reads as missing evidence and holds them forever.
+    if: github.event.pull_request.user.login != 'claude[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

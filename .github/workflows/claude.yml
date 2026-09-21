@@ -65,6 +65,8 @@ jobs:
           use_commit_signing: true
 
           # Extends the action's base tools. Only the fast Nix operations belong
-          # here -- the whole suite is check.yml's job.
+          # here -- the whole suite is check.yml's job. `sleep` is what lets the
+          # agent pace the poll while it waits for the checks its push
+          # re-triggered; without it that wait has no primitive.
           claude_args: >-
-            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake metadata:*),Bash(mise install:*)"
+            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake metadata:*),Bash(mise install:*),Bash(sleep:*)"

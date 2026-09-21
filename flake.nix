@@ -231,7 +231,6 @@
           pkgs.runCommand "github-workflow-conventions-tests"
             {
               nativeBuildInputs = [
-                pkgs.bash
                 pkgs.gawk
                 pkgs.gnugrep
               ];
