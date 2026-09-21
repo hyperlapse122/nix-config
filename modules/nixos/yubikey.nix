@@ -9,6 +9,8 @@
   # that device to the seat's logged-in user. The vendor rules set the same
   # variable only for a fixed USB product-id list, and that list omits the
   # FIDO-plus-smart-card combination. Treat them as something the module owns,
-  # never as the mechanism behind device access here.
+  # never as the mechanism behind device access here. `tests/yubikey-fido.nix`
+  # asserts all three rules so that a change to the two load-bearing ones fails
+  # a build rather than a card.
   programs.yubikey-manager.enable = true;
 }
