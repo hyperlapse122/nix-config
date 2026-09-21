@@ -30,6 +30,7 @@ Add Kleopatra, the KDE graphical front end for GnuPG, to the Home Manager packag
 ### Key Decisions
 
 - Install Kleopatra as a Home Manager user package rather than a system package (session-settled: user-directed — chosen over `environment.systemPackages` in `modules/nixos/`: keeps user-facing applications scoped to user `h82`, matching how every other user application in this repository is declared). Governs R1, R2.
+- GnuPG configuration is managed only through Home Manager; Kleopatra manages certificates and never changes GnuPG settings (session-settled: user-directed — chosen over documenting a workaround for Kleopatra's own GnuPG settings page: configuration stays declarative in one place, so the read-only config files are the intended design rather than a limitation to work around). Governs R3, R4.
 
 ### Requirements
 
@@ -76,6 +77,7 @@ Add Kleopatra, the KDE graphical front end for GnuPG, to the Home Manager packag
 - No system-level package changes in `modules/nixos/`.
 - No Plasma configuration change in `home/h82/kde/`. Kleopatra's desktop entry is discovered through the standard user profile XDG data path; no `kwriteconfig6` activation entry is needed.
 - Kleopatra's own persisted UI preferences are left at their defaults and are not declared.
+- Changing GnuPG configuration through Kleopatra is out of scope. `~/.gnupg/gpg.conf` and `~/.gnupg/scdaemon.conf` stay read-only declarative symlinks, and settings changes go through `home/h82/gpg.nix` and a rebuild. This is the intended design, not a limitation to document a workaround for (KTD in Key Decisions).
 
 ### Deferred to Follow-Up Work
 
