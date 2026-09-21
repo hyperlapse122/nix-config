@@ -21,6 +21,11 @@
     LC_TELEPHONE = "ko_KR.UTF-8";
     LC_TIME = "ko_KR.UTF-8";
   };
+  i18n.supportedLocales = [
+    "ko_KR.UTF-8/UTF-8"
+    "en_US.UTF-8/UTF-8"
+    "C.UTF-8/UTF-8"
+  ];
   users.users.h82 = {
     isNormalUser = true;
     description = "Joosung Park";
@@ -42,6 +47,7 @@
       dmidecode
       sbctl
       cryptsetup
+      e2fsprogs
     ]
     ++ [ (import ../../packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity ];
   system.stateVersion = "26.05";

@@ -56,6 +56,9 @@ If restoring an existing signing bundle, restore the full backup of `/var/lib/sb
 Switch the firmware to Setup Mode so you can enroll user keys. Check the Lenovo firmware menus and the changes they make. Do not delete dbx. Retain Microsoft certificates for compatibility.
 
 ```sh
+# On ThinkPad UEFI, existing EFI variables may have the immutable bit set by efivarfs
+sudo chattr -i /sys/firmware/efi/efivars/{PK,KEK,db}* 2>/dev/null || true
+
 sudo sbctl status
 sudo sbctl enroll-keys --microsoft
 ```
