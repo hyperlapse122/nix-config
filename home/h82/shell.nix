@@ -1,13 +1,29 @@
-{ ... }:
+{ config, ... }:
 {
   programs.zsh = {
     enable = true;
+    dotDir = "${config.xdg.configHome}/zsh";
     enableCompletion = true;
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
 
     prezto = {
       enable = true;
+      pmodules = [
+        "environment"
+        "terminal"
+        "editor"
+        "history"
+        "directory"
+        "spectrum"
+        "git"
+        "utility"
+        "completion"
+        "syntax-highlighting"
+        "history-substring-search"
+        "autosuggestions"
+        "prompt"
+      ];
     };
 
     history = {
