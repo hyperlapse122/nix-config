@@ -1,0 +1,10 @@
+[tools]
+"npm:@sentry/dotagents" = "latest"
+
+[hooks]
+postinstall = [
+  { run = "dotagents --project install" },
+]
+
+[settings]
+lockfile = true
