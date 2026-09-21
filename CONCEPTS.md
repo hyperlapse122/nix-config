@@ -14,6 +14,8 @@ A round only counts when the check failed *for its own reason*. A break that sto
 
 A round that stays green is read the same way. The fixture a check runs against is part of what the round tests: when it seeds two sources the code chooses between with the same value, the broken and the correct version compute the same answer, and the round passes without the assertion ever having been able to tell them apart. So a green round is evidence only once the fixture is known to put those sources in states a wrong choice would distinguish.
 
+The same holds when the operand, rather than the fixture, is fixed. An assertion that interpolates a value settled during evaluation — an option another module sets unconditionally — reaches the builder as a comparison of a constant against itself, so no round can turn it red. Whether an assertion is live is therefore a question about what the code under test can change, not about how many rounds have been run against it.
+
 ## Signing key
 
 **Card stub** — a keyring entry that records where a private key lives rather than holding it. The key material sits on a hardware token and cannot be read back out, so the entry names the token instead. Signing and decryption still work through it, and a listing distinguishes a stub from a real secret key, which matters because operations that move a key onto a token consume the local copy: once every entry is a stub, there is nothing left to move onto the next token.
