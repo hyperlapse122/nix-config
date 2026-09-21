@@ -68,10 +68,10 @@ sudo tar --xattrs --acls --numeric-owner -C /var/lib \
   -cpf "$backup_tmp/sbctl.tar" sbctl
 sudo chown -R "$(id -u):$(id -g)" "$backup_tmp"
 gpg --armor --encrypt \
-  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05 \
   --output "$backup_dir/luks-header.img.asc" "$backup_tmp/luks-header.img"
 gpg --armor --encrypt \
-  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05 \
   --output "$backup_dir/sbctl.tar.asc" "$backup_tmp/sbctl.tar"
 test -s "$backup_dir/luks-header.img.asc" \
   && test -s "$backup_dir/sbctl.tar.asc"
@@ -138,11 +138,13 @@ Do not keep LUKS recovery material only on the locked target disk or rely on tha
 
 ## Lost or replaced YubiKey
 
-Rebuilds remain possible while the existing installation retains its local age identity. Git signing stops. Update the configuration with the replacement signing key's public key and fingerprint, and update the verification keys on the relevant services.
+Three cards carry the same key, so losing one costs a card, not the key. Rebuilds are unaffected either way, and signing continues on any remaining card. Nothing in this repository changes: the fingerprint, `keys/signing.asc`, and every existing ciphertext stay as they are.
 
-Recovering the existing bootstrap ciphertext during reinstallation requires another registered recipient or a separate offline backup. If neither exists, reissue service tokens and create a new age identity and bootstrap ciphertext. A replacement card cannot automatically decrypt ciphertext encrypted for the lost card.
+Provision the replacement from the offline backup, never from another card. YubiKey private keys cannot be extracted, so there is no card-to-card path. Restore the backup into a tmpfs `GNUPGHOME`, set the card's key attributes to ed25519 and cv25519, move the subkeys onto it, and give it its own User and Admin PINs. Because every card holds the same encryption subkey, the replacement decrypts existing ciphertext, `secrets/bootstrap/thinkpad-age-key.asc` and the external media backups included. Nothing has to be re-encrypted for it.
 
-Verify the new card's public encryption key and update the age identity's bootstrap ciphertext for the new recipient. Test actual recovery before deciding whether to retain or discard old recovery material. Update the existing Secret Service cache for automatic PIN entry separately; do not tie it to rebuilds.
+Clear the lost card's Secret Service entry, and register the replacement under its own serial. Automatic PIN entry is per card and is never a rebuild requirement.
+
+Losing the offline backup is the different failure. The cards still in hand are then the last cards, because no further card can ever be provisioned. Treat that as a key loss in slow motion: while a working card remains, generate a replacement key, re-encrypt the bootstrap ciphertext and the external media backups for it, update the fingerprint in this repository and the verification keys on the relevant services, and revoke the old key.
 
 ## Replace tokens or the age identity
 

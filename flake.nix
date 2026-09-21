@@ -148,6 +148,55 @@
               uv --version
               touch $out
             '';
+        gpg-agent-no-cache =
+          let
+            user = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82;
+            gpgAgentConf =
+              pkgs.writeText "gpg-agent.conf"
+                user.home.file."${user.programs.gpg.homedir}/gpg-agent.conf".text;
+          in
+          pkgs.runCommand "gpg-agent-no-cache-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+            set -x
+            if ! grep -Fxq 'default-cache-ttl 0' ${gpgAgentConf}; then
+              echo 'gpg-agent.conf no longer sets default-cache-ttl 0' >&2
+              exit 1
+            fi
+            if ! grep -Fxq 'max-cache-ttl 0' ${gpgAgentConf}; then
+              echo 'gpg-agent.conf no longer sets max-cache-ttl 0' >&2
+              exit 1
+            fi
+            # Any further cache lifetime, ssh variants included, reintroduces the
+            # agent-side cache the card PIN handling is built on doing without.
+            if grep -E 'cache-ttl' ${gpgAgentConf} | grep -qvE '^[a-z-]*cache-ttl(-ssh)? 0$'; then
+              echo 'gpg-agent.conf sets a non-zero cache lifetime' >&2
+              exit 1
+            fi
+            touch $out
+          '';
+        yubikey-manager-shell =
+          let
+            shellPackages = self.devShells.${system}.default.nativeBuildInputs;
+            ykman = pkgs.lib.lists.findFirst (p: (p.pname or "") == "yubikey-manager") null shellPackages;
+            # The store-path interpolation stays inside an optionalString guard so that
+            # dropping the package fails inside the builder with the message below, rather
+            # than aborting evaluation with a null coercion error.
+            absent = pkgs.lib.optionalString (ykman == null) ''
+              echo 'missing yubikey-manager in the development shell' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (ykman != null) ''
+              if [ ! -x ${ykman}/bin/ykman ]; then
+                echo 'yubikey-manager package ships no bin/ykman executable' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "yubikey-manager-shell-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
         kleopatra-gui =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
@@ -216,6 +265,7 @@
           libsecret
           shellcheck
           python3
+          yubikey-manager
         ];
       };
     };

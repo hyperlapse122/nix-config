@@ -6,7 +6,7 @@ A NixOS flake for the ThinkPad X1 Carbon Gen 11. It pins nixos-unstable with a l
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
 ```
 
-After initial installation and key recovery, this command applies the system, Home Manager configuration, and gh/glab authentication files together. The YubiKey handles Git signing and initial secret recovery. Ordinary rebuilds use the local age identity inside LUKS. Sign in to 1Password manually; the SSH agent configuration is declarative.
+After initial installation and key recovery, this command applies the system, Home Manager configuration, and gh/glab authentication files together. Three YubiKeys carry the same signing key, each under its own PIN; any one of them handles Git signing and initial secret recovery. Ordinary rebuilds use the local age identity inside LUKS. Sign in to 1Password manually; the SSH agent configuration is declarative.
 
 ## Included tools
 
@@ -15,7 +15,7 @@ zsh, Git, Ghostty, Claude Code, omp, gh, glab, 1Password GUI and CLI, Kleopatra,
 ## Installation and operation
 
 - [Fresh installation](docs/install.md): initialize the internal NVMe disk, bootstrap, and enroll Secure Boot and TPM2 keys.
-- [Authentication preparation and recovery](docs/provisioning.md): prepare encrypted repository files and recover secrets with the YubiKey for the first time.
+- [Authentication preparation and recovery](docs/provisioning.md): prepare encrypted repository files and recover secrets with a YubiKey for the first time.
 - [Updates and recovery](docs/recovery.md): retry failures, roll back, and recover TPM, card, and signing-key access.
 - [Verification](docs/verification.md): automated checks and hardware checks.
 - [Secret file conventions](secrets/README.md)
