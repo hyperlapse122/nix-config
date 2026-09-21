@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Rebuild helper for this flake. The Nix package replaces the @...@ constants
+# with absolute store paths; nixos-rebuild is deliberately taken from PATH so
+# the running system's own copy is used.
+set -euo pipefail
+
+NVD="@NVD@"
+GIT="@GIT@"
+
+# Overridable so tests can point at a fixture instead of the real marker.
+VARIANT_FILE=${NR_VARIANT_FILE:-/etc/nixos-host-variant}
+# Set to any non-empty value to print the resolved command instead of running it.
+DRY_RUN=${NR_DRY_RUN:-}
+
+PROFILE=/nix/var/nix/profiles/system
+CURRENT=/run/current-system
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: nr {switch|boot|test|build} [--host NAME] [--flake-dir PATH]
+
+  switch  activate the configuration now
+  boot    install it for the next boot without activating
+  test    activate without touching the bootloader
+  build   build the toplevel only, no sudo and no diff
+USAGE
+}
+
+die() {
+  printf 'nr: %s\n' "$*" >&2
+  exit 1
+}
+
+subcommand=${1:-}
+case $subcommand in
+  switch | boot | test | build) shift ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  '') usage; exit 2 ;;
+  *)
+    printf 'nr: unknown subcommand %s\n' "$subcommand" >&2
+    usage
+    exit 2
+    ;;
+esac
+
+host=
+flake_dir=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --host)
+      [[ $# -ge 2 ]] || die 'missing value for --host'
+      host=$2
+      shift 2
+      ;;
+    --flake-dir)
+      [[ $# -ge 2 ]] || die 'missing value for --flake-dir'
+      flake_dir=$2
+      shift 2
+      ;;
+    *) die "unexpected argument $1" ;;
+  esac
+done
+
+if [[ -z $flake_dir ]]; then
+  flake_dir=$("$GIT" rev-parse --show-toplevel 2>/dev/null) ||
+    die 'not inside a git repository; name the checkout with --flake-dir PATH'
+fi
+[[ -f $flake_dir/flake.nix ]] ||
+  die "no flake.nix in $flake_dir; name the checkout with --flake-dir PATH"
+
+host_given=1
+if [[ -z $host ]]; then
+  host_given=
+  host=$(uname -n)
+fi
+
+# Both configurations set the same networking.hostName, so on a bootstrap
+# generation the detected host would silently target the production
+# configuration that docs/install.md sequences after key recovery.
+if [[ -z $host_given && $subcommand != build && -r $VARIANT_FILE ]]; then
+  if [[ $(cat "$VARIANT_FILE") == bootstrap* ]]; then
+    die "running the bootstrap generation; name the target with --host (docs/install.md sequences the move to $host)"
+  fi
+fi
+
+# Nix reads the git index, so anything untracked is invisible to the build.
+untracked=$("$GIT" -C "$flake_dir" status --porcelain --untracked-files=all |
+  sed -n 's/^?? //p')
+if [[ -n $untracked ]]; then
+  printf 'nr: these files are untracked and Nix will not see them:\n' >&2
+  while IFS= read -r path; do
+    printf '  %s\n' "$path" >&2
+  done <<<"$untracked"
+fi
+
+flake_ref="$flake_dir#$host"
+
+if [[ $subcommand == build ]]; then
+  cmd=(nix build --no-link "$flake_dir#nixosConfigurations.$host.config.system.build.toplevel")
+  if [[ -n $DRY_RUN ]]; then
+    printf '%s\n' "${cmd[*]}"
+    exit 0
+  fi
+  exec "${cmd[@]}"
+fi
+
+# boot does not activate, so its new generation lands in the system profile
+# while /run/current-system still points at the running one.
+if [[ $subcommand == boot ]]; then
+  diff_target=$PROFILE
+else
+  diff_target=$CURRENT
+fi
+
+cmd=(sudo nixos-rebuild "$subcommand" --flake "$flake_ref")
+
+if [[ -n $DRY_RUN ]]; then
+  printf '%s\n' "${cmd[*]}"
+  printf 'diff-target: %s\n' "$diff_target"
+  exit 0
+fi
+
+before=$(readlink -f "$CURRENT")
+sudo -v
+"${cmd[@]}"
+after=$(readlink -f "$diff_target")
+
+if [[ $before == "$after" ]]; then
+  printf 'nr: %s produced no change to %s\n' "$subcommand" "$diff_target"
+else
+  "$NVD" diff "$before" "$after"
+fi

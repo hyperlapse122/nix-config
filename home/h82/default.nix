@@ -17,19 +17,21 @@
 
   home.sessionVariables.DISABLE_AUTOUPDATER = "1";
 
-  home.packages = with pkgs; [
-    antigravity-cli
-    bun
-    claude-code
-    gh
-    glab
-    google-chrome
-    kdePackages.kleopatra
-    nodejs
-    omp
-    python3
-    uv
-  ];
+  home.packages =
+    (with pkgs; [
+      antigravity-cli
+      bun
+      claude-code
+      gh
+      glab
+      google-chrome
+      kdePackages.kleopatra
+      nodejs
+      omp
+      python3
+      uv
+    ])
+    ++ [ (import ../../packages/nix-tools.nix { inherit pkgs; }).nr ];
 
   home.sessionVariables.LANGUAGE = "ko_KR:ko:en_US:en";
 }

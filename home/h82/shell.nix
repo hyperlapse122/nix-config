@@ -26,6 +26,13 @@
       ];
     };
 
+    shellAliases = {
+      nrs = "nr switch";
+      nrb = "nr boot";
+      nrt = "nr test";
+      nrd = "nr build";
+    };
+
     history = {
       size = 10000;
       save = 10000;
