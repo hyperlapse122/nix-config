@@ -20,6 +20,10 @@ A round that stays green is read the same way. The fixture a check runs against 
 
 **Offline backup** — the passphrase-protected export of the signing key, kept apart from the tokens that carry it. Because a token's private key cannot be extracted, there is no token-to-token path, and every replacement or additional token is provisioned from this backup. Losing it does not lose the key while a token still works, but it does mean the tokens in hand are the last ones that will ever exist.
 
+## FIDO credentials
+
+**Discoverable credential** — a FIDO credential the token stores itself, together with the site it belongs to, so the token can name that site without being told. Its counterpart, a non-discoverable credential, leaves nothing on the token: the site keeps the material and hands it back at sign-in. The distinction sets the ceiling on what any inventory tool here can report — a discoverable credential is listable, a non-discoverable one is unlistable by construction rather than by a gap in the tooling, so a site missing from a listing is not evidence that the credential is absent.
+
 ## Hosts
 
 **Bootstrap host** — a second configuration built from the same module set as the production host, with private boot keys and user authentication secrets left out, used to install the machine before those secrets exist. It is not a separate machine or a reduced feature set: anything added to the shared modules reaches it too, so a change must be considered against an installer console as well as a logged-in desktop.
