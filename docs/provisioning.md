@@ -1,6 +1,6 @@
 # Authentication preparation and recovery
 
-Use the YubiKey only for Git signing and initial installation or recovery. Routine configuration applies use the root-only age identity inside LUKS. 1Password supplies SSH keys; automatic account login is not configured.
+Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. Routine configuration applies use the root-only age identity inside LUKS. 1Password supplies SSH keys; automatic account login is not configured.
 
 ## Before erasing the existing OS
 
@@ -78,6 +78,20 @@ Each card serial must match the value that `gpg --card-status` reports with that
 Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
 
 1Password and Kleopatra now start at login from `home/h82/kde/autostart.nix`, so neither needs a manual launch. Home Manager owns `~/.config/autostart/1password.desktop` and `~/.config/autostart/kleopatra.desktop` and overwrites them on activation, which makes the apps' own "start at login" toggles inert. Change the module, not the desktop entries.
+
+## FIDO credentials on a card
+
+`ykman` is installed system-wide, so listing a card's FIDO credentials needs no development shell. Yubico Authenticator is installed for h82 and shows the same list under its passkey view. Both are the upstream tools, unmodified.
+
+```sh
+ykman fido credentials list
+```
+
+**Only discoverable credentials can be listed.** A FIDO credential is either discoverable, in which case the card stores it along with the site it belongs to, or non-discoverable, in which case the card keeps no record of it at all and the site handed everything back at sign-in. Registrations made as a second factor are commonly the latter. A site missing from the list is therefore not evidence that the card has no credential for it, and no tool can close that gap.
+
+Listing requires the card's FIDO2 PIN, which is a separate secret from the OpenPGP User PIN. The `gnupg-card-pin` entries described above hold the OpenPGP PIN only; nothing in this repository stores a FIDO2 PIN, and the tools prompt for it themselves.
+
+Device access needs no setup. systemd tags any inserted security key and hands it to the logged-in user, independently of this repository's configuration.
 
 ## Verify after applying
 
