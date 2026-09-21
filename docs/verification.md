@@ -1,6 +1,6 @@
-# 검증
+# Verification
 
-## 저장소 검사
+## Repository checks
 
 ```sh
 nix fmt -- --ci
@@ -10,21 +10,21 @@ nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.syste
 nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
 ```
 
-VM 검사는 `/dev/kvm` 접근이 가능한 Linux에서 실행한다. 임시 VM 디스크만 사용하며 호스트 NVMe에는 접근하지 않는다. `auth-provisioning`은 카드·로그인 세션 없는 인증 적용, 동일 세대 재적용, 키 누락·손상 실패와 복원 재시도, 삭제된 CLI 파일 복구를 검사한다. `boot-layout`은 임시 디스크의 LUKS 레이아웃과 부팅을 검사한다. PIN proxy와 복원 helper 검사는 가짜 PIN·토큰·시험용 키만 사용한다.
+Run VM checks on Linux with access to `/dev/kvm`. Use only temporary VM disks; do not access the host NVMe disk. `auth-provisioning` checks authentication setup without a card or login session, reapplication of the same generation, failures caused by missing or corrupt keys, retries after key recovery, and restoration of deleted CLI files. `boot-layout` checks the LUKS layout and boot on a temporary disk. PIN proxy and recovery helper checks use only fake PINs, tokens, and test keys.
 
-## 실제 설치 후 확인
+## Hardware checks after installation
 
-아래 항목은 VM이나 빌드 성공으로 대체할 수 없다. 실제 실행자가 결과를 기록한다.
+A successful VM test or build does not replace these checks. The person who performs them must record the results.
 
-- [ ] 설치 전에 실제 YubiKey로 bootstrap age identity를 복원할 수 있다.
-- [ ] Secure Boot enabled/user 상태로 설치된 NixOS가 부팅된다.
-- [ ] TPM으로 LUKS가 자동 해제된다.
-- [ ] TPM을 사용할 수 없는 경우 복구 암호로 부팅할 수 있다.
-- [ ] 새 부팅 세대와 이전 세대가 각각 부팅된다.
-- [ ] 기본 Plasma 로그인, Wi-Fi, Bluetooth, 오디오, s2idle 절전·복귀가 동작한다.
-- [ ] YubiKey와 1Password 세션 없이 재빌드가 성공한다.
-- [ ] GitHub·GitLab.com·git.jpi.app 인증이 각 호스트에서 유효하다.
-- [ ] 임시 Git 저장소의 서명 커밋과 태그를 `git verify-commit`·`git verify-tag`로 검증한다.
-- [ ] 1Password 계정 로그인과 SSH agent 활성화 후 선택한 키로 SSH 연결된다.
+- [ ] Before installation, recover the bootstrap age identity with the actual YubiKey.
+- [ ] Boot the installed NixOS with Secure Boot in the enabled/user state.
+- [ ] Confirm that the TPM unlocks LUKS automatically.
+- [ ] Boot with the recovery passphrase when the TPM is unavailable.
+- [ ] Boot both the new generation and a previous generation.
+- [ ] Check the default Plasma login, Wi-Fi, Bluetooth, audio, and s2idle suspend/resume.
+- [ ] Rebuild successfully without a YubiKey or 1Password session.
+- [ ] Confirm valid authentication on GitHub, GitLab.com, and git.jpi.app.
+- [ ] Verify signed commits and tags in a temporary Git repository with `git verify-commit` and `git verify-tag`.
+- [ ] After signing in to 1Password and enabling its SSH agent, connect over SSH with the selected key.
 
-자동화는 실제 노트북을 재설치하지 않는다. 저장소 검증 결과와 이 체크리스트의 실행 여부는 별도로 보고한다.
+Automation does not reinstall the physical laptop. Report repository verification results separately from completion of this checklist.
