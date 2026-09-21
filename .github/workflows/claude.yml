@@ -10,41 +10,61 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Keyed on the issue or pull request, never on github.ref: issue_comment events
+# carry the default branch, so a ref key would let one thread cancel another.
+# In-progress runs are not cancelled -- a cancelled run that already pushed
+# leaves a commit with no report behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number }}
+
 jobs:
   claude:
+    # Gate on the author of the text that becomes the prompt, not on the actor.
+    # On the issues path the action validates whoever assigned the issue, not
+    # whoever wrote its body, so the body author is checked here.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
-    runs-on: ubuntu-latest
+      (github.event_name == 'issue_comment' && github.event.comment.user.login == github.repository_owner && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login == github.repository_owner && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && github.event.review.user.login == github.repository_owner && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && github.event.issue.user.login == github.repository_owner && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-24.04
+    # Covers the agent's own Nix work plus the wait for the checks its push
+    # re-triggers; check.yml's jobs are bounded at 60 minutes each.
+    timeout-minutes: 90
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
 
+      - name: Make room for NixOS closures
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
       - name: Run Claude Code
-        id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # This is an optional setting that allows Claude to read CI results on PRs
+          # Lets Claude read CI results on pull requests, including the runs its
+          # own push re-triggers.
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
+          # Commits are created through the GitHub API under the bot identity, so
+          # they land verified like every human commit here. No git tool is
+          # allowed: one would route commits around signing.
+          use_commit_signing: true
 
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-          # claude_args: '--allowed-tools Bash(gh pr *)'
-
+          # Extends the action's base tools. Only the fast Nix operations belong
+          # here -- the whole suite is check.yml's job.
+          claude_args: >-
+            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake metadata:*),Bash(mise install:*)"
