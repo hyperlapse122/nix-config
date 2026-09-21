@@ -4,8 +4,8 @@ result-*
 *.qcow2
 *.img
 .env
-secrets/*.plain.*
-secrets/bootstrap/*.key
+secrets/**/*.plain.*
+secrets/**/*.key
 __pycache__/
 *.pyc
 
