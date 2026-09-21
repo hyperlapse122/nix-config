@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Generate a host's bootstrap age identity, encrypt it to the OpenPGP card's
+# encryption subkey, and record its public recipient. Plaintext exists only in
+# the invoking user's runtime directory and is verified to decrypt back before
+# it is destroyed.
+set -euo pipefail
+
+# Overridable so tests never touch a card or the real runtime directory.
+GPG_BIN=${PREPARE_AGE_GPG:-gpg}
+AGE_KEYGEN_BIN=${PREPARE_AGE_KEYGEN:-age-keygen}
+RUNTIME_ROOT=${PREPARE_AGE_RUNTIME_DIR:-/run/user/$(id -u)}
+
+die() {
+  printf 'prepare-age-identity: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  printf 'usage: %s --host NAME --recipient GPG_KEY_ID\n' "${0##*/}" >&2
+}
+
+if [[ $(id -u) -eq 0 ]]; then
+  die 'must not run as root; the identity and the files it writes belong to the'\
+' invoking user, not to root. Run it unprivileged.'
+fi
+
+host=
+gpg_recipient=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --host)
+      [[ $# -ge 2 ]] || die 'missing value for --host'
+      host=$2
+      shift 2
+      ;;
+    --recipient)
+      [[ $# -ge 2 ]] || die 'missing value for --recipient'
+      gpg_recipient=$2
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *) die "unexpected argument $1" ;;
+  esac
+done
+
+[[ -n $host ]] || { usage; die 'missing --host'; }
+[[ -n $gpg_recipient ]] || { usage; die 'missing --recipient'; }
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+host_dir=$repo_root/secrets/bootstrap/$host
+ciphertext=$host_dir/age-key.asc
+recipient_file=$host_dir/recipient.txt
+
+[[ -e $host_dir ]] &&
+  die "secrets/bootstrap/$host already exists; remove it deliberately before regenerating"
+
+umask 077
+[[ -d $RUNTIME_ROOT ]] || die "runtime directory $RUNTIME_ROOT does not exist"
+scratch=$(mktemp -d "$RUNTIME_ROOT/prepare-age-identity.XXXXXX")
+cleanup() { rm -rf -- "$scratch"; }
+trap cleanup EXIT
+
+identity=$scratch/age.key
+# Keep age-keygen's own stderr: it reports the public recipient there on
+# success and the real reason on failure. Only stdout is silenced.
+"$AGE_KEYGEN_BIN" -o "$identity" >/dev/null ||
+  die 'age-keygen failed'
+recipient=$("$AGE_KEYGEN_BIN" -y "$identity") ||
+  die 'could not derive the age recipient'
+
+mkdir -p -- "$host_dir"
+written=()
+rollback() {
+  local f
+  for f in "${written[@]:-}"; do
+    [[ -n $f ]] && rm -f -- "$f"
+  done
+  rmdir -- "$host_dir" 2>/dev/null || true
+}
+
+if ! "$GPG_BIN" --armor --encrypt --recipient "$gpg_recipient" \
+  --output "$ciphertext" "$identity"; then
+  rollback
+  die 'GPG encryption failed'
+fi
+written+=("$ciphertext")
+
+# secrets/README.md makes a verified decrypt a precondition of installing, and
+# with one recipient for the whole repository an unopenable ciphertext loses the
+# machine identity and every token encrypted to it. Prove the round trip before
+# the trap destroys the only plaintext copy.
+roundtrip=$scratch/roundtrip.key
+if ! "$GPG_BIN" --batch --no-tty --decrypt --output "$roundtrip" "$ciphertext" 2>/dev/null; then
+  rollback
+  die 'the encrypted identity does not decrypt back; nothing was kept'
+fi
+roundtrip_recipient=$("$AGE_KEYGEN_BIN" -y "$roundtrip") || {
+  rollback
+  die 'could not derive a recipient from the decrypted identity; nothing was kept'
+}
+if [[ $roundtrip_recipient != "$recipient" ]]; then
+  rollback
+  die 'the decrypted identity does not match the generated one; nothing was kept'
+fi
+
+printf '%s\n' "$recipient" >"$recipient_file"
+written+=("$recipient_file")
+
+printf 'prepare-age-identity: wrote secrets/bootstrap/%s/{age-key.asc,recipient.txt}\n' "$host"
+printf 'prepare-age-identity: recipient %s\n' "$recipient"
+printf 'prepare-age-identity: secrets/tokens.yaml is encrypted to one recipient; re-encrypt it to this one before %s can read it\n' "$host"
