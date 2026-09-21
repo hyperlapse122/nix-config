@@ -26,6 +26,7 @@
     "en_US.UTF-8/UTF-8"
     "C.UTF-8/UTF-8"
   ];
+  environment.variables.LANGUAGE = "ko_KR:ko:en_US:en";
   users.users.h82 = {
     isNormalUser = true;
     description = "Joosung Park";

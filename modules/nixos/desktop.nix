@@ -67,4 +67,14 @@
     [Wayland]
     InputMethod=/run/current-system/sw/share/applications/fcitx5-wayland-launcher.desktop
   '';
+
+  environment.etc."xdg/plasma-localerc".text = ''
+    [Translations]
+    LANGUAGE=ko:en_US
+  '';
+
+  environment.etc."xdg/kdeglobals".text = ''
+    [Locale]
+    Language=ko:en_US
+  '';
 }
