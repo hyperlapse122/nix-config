@@ -1,5 +1,3 @@
-# This file intentionally has no creation rule until the migration operator has
-# generated the machine age recipient.  Keeping the list empty makes evaluation
-# safe before that one-time secret-recovery step and prevents a made-up key from
-# becoming part of the repository's trust policy.
-creation_rules: []
+creation_rules:
+  - path_regex: secrets/tokens\.yaml$
+    age: age12wg7w2uex5nc8tdrgynv3an9ywkmd937fmqunk9jldvtd65l9y8s87hmnv
