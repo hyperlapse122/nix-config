@@ -41,9 +41,10 @@ For the first reboot, keep Secure Boot disabled and enter the LUKS passphrase. V
 
 ## Prepare local decryption and signing keys
 
-On the installed NixOS, fetch the repository again over HTTPS and follow the age identity recovery procedure in [provisioning](provisioning.md). This recovery is needed only for initial installation or recovery.
+On the installed NixOS, fetch the repository again over HTTPS and recover the age identity. This recovery is needed only for initial installation or recovery. See [provisioning](provisioning.md) for what the helper does and the boundary it preserves.
 
 ```sh
+./scripts/recover-age-identity
 sudo sbctl create-keys
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
 sudo sbctl verify

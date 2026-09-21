@@ -17,7 +17,7 @@ systemctl status sops-install-secrets.service --no-pager
 sudo journalctl -u sops-install-secrets.service -b --no-pager
 ```
 
-Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [initial recovery](provisioning.md) and run the same rebuild command. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
+Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [initial recovery](provisioning.md) with `./scripts/recover-age-identity` and run the same rebuild command. From the installation media or inside `nixos-enter` the hostname is the image's, not a configuration name, so the helper cannot detect the host and `--host ThinkPad-X1-Carbon-Gen-11` is required there. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
 
 A failed NixOS switch does not transactionally roll back all system changes. If token publication updated only some files, fix the problem and run the same command again. Do not ignore the error or treat provisioning as complete.
 
