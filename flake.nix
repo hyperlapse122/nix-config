@@ -109,6 +109,20 @@
             echo "${dotzshenv}" | grep -q "source /home/h82/.config/zsh/.zshenv"
             touch $out
           '';
+        ghostty-font =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            ghosttyConfig = host.config.home-manager.users.h82.xdg.configFile."ghostty/config".source;
+            monospaceFonts = host.config.fonts.fontconfig.defaultFonts.monospace;
+          in
+          pkgs.runCommand "ghostty-font-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+            grep -Fx "font-family = JetBrainsMono Nerd Font" ${ghosttyConfig}
+            grep -Fx "font-family = D2CodingLigature Nerd Font" ${ghosttyConfig}
+            grep -Fx "font-family = D2KodingLigature Nerd Font" ${ghosttyConfig}
+            echo '${builtins.toJSON monospaceFonts}' | grep -q "D2CodingLigature Nerd Font"
+            echo '${builtins.toJSON monospaceFonts}' | grep -q "D2KodingLigature Nerd Font"
+            touch $out
+          '';
       };
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
