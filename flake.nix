@@ -146,6 +146,35 @@
               uv --version
               touch $out
             '';
+        kleopatra-gui =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            kleopatra = pkgs.lib.lists.findFirst (p: (p.pname or "") == "kleopatra") null userPackages;
+            # Every store-path interpolation stays inside an optionalString guard so that
+            # removing the package fails inside the builder with the message below, rather
+            # than aborting evaluation with a null coercion error.
+            absent = pkgs.lib.optionalString (kleopatra == null) ''
+              echo 'missing kleopatra in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (kleopatra != null) ''
+              if [ ! -x ${kleopatra}/bin/kleopatra ]; then
+                echo 'kleopatra package ships no bin/kleopatra executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${kleopatra}/share/applications/org.kde.kleopatra.desktop ]; then
+                echo 'kleopatra package ships no org.kde.kleopatra.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "kleopatra-gui-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
       };
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
