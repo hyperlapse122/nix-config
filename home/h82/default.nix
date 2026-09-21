@@ -1,8 +1,9 @@
 { pkgs, lib, ... }:
 {
   imports = [
-    ./agent-memory.nix
+    ./claude.nix
     ./fcitx5.nix
+    ./gemini.nix
     ./git.nix
     ./gpg.nix
     ./kde
