@@ -84,7 +84,8 @@
             '';
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
-        agent-memory = import ./tests/agent-memory.nix { inherit pkgs self; };
+        claude = import ./tests/claude.nix { inherit pkgs self; };
+        gemini = import ./tests/gemini.nix { inherit pkgs self; };
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         publish-cli-auth =
