@@ -177,6 +177,33 @@
             ${present}
             touch $out
           '';
+        bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
+        desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
+        nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
+        nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
+          export HOME=$TMPDIR
+          mkdir -p scripts tests
+          cp ${./scripts/nr} scripts/nr
+          cp ${./tests/nr.sh} tests/nr.sh
+          chmod +x scripts/nr
+          patchShebangs scripts/nr
+          bash tests/nr.sh scripts/nr
+          touch $out
+        '';
+        age-identity-helpers =
+          pkgs.runCommand "age-identity-helpers-tests" { nativeBuildInputs = [ pkgs.coreutils ]; }
+            ''
+              export HOME=$TMPDIR
+              mkdir -p scripts tests
+              cp ${./scripts/recover-age-identity} scripts/recover-age-identity
+              cp ${./scripts/prepare-age-identity} scripts/prepare-age-identity
+              cp ${./tests/age-identity-helpers.sh} tests/age-identity-helpers.sh
+              chmod +x scripts/recover-age-identity scripts/prepare-age-identity
+              patchShebangs scripts/recover-age-identity scripts/prepare-age-identity
+              bash tests/age-identity-helpers.sh \
+                scripts/recover-age-identity scripts/prepare-age-identity
+              touch $out
+            '';
       };
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {

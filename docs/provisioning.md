@@ -15,22 +15,23 @@ Do not export private OpenPGP keys to disk. If no usable encryption subkey is av
 
 Generate a dedicated age identity and record its public recipient. Handle temporary plaintext only in a private tmpfs directory. Do not enable shell tracing.
 
+The preparation helper does this. It runs on the pre-migration host, from the development shell, because `age` is not otherwise installed there. It generates the identity in a private runtime directory, encrypts it to the card's subkey, verifies that the result decrypts back to the same identity, records the public recipient, and removes the plaintext. It refuses to run as root and refuses to overwrite an existing host directory.
+
 ```sh
 nix develop
-umask 077
-secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
-age-keygen -o "$secret_tmp/age.key"
-age-keygen -y "$secret_tmp/age.key" > secrets/recipient.txt
-mkdir -p secrets/bootstrap
-gpg --armor --encrypt \
-  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95 \
-  --output secrets/bootstrap/thinkpad-age-key.asc "$secret_tmp/age.key"
+./scripts/prepare-age-identity \
+  --host ThinkPad-X1-Carbon-Gen-11 \
+  --recipient A7F1956CD1A035A139BC7ABFCC740A29852C0E95
 ```
 
-Set the recipient in `.sops.yaml` to the value recorded in `secrets/recipient.txt`. Create the token YAML in the temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
+It writes `secrets/bootstrap/<hostname>/age-key.asc` and `secrets/bootstrap/<hostname>/recipient.txt`.
+
+Set the recipient in `.sops.yaml` to the value it recorded. Only the host whose recipient appears there can decrypt `secrets/tokens.yaml`; a second host prepared with this helper cannot read it until that file is re-encrypted to the new recipient. Create the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
 
 ```sh
-sops --encrypt --age "$(cat secrets/recipient.txt)" \
+umask 077
+secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
+sops --encrypt --age "$(cat secrets/bootstrap/ThinkPad-X1-Carbon-Gen-11/recipient.txt)" \
   --input-type yaml --output-type yaml \
   "$secret_tmp/tokens.yaml" > secrets/tokens.yaml
 ```
@@ -41,7 +42,13 @@ To verify code without a real card or tokens, use only the fake credentials gene
 
 ## Recover once on the installed NixOS
 
-First, log in as h82 with the bootstrap configuration's public GPG key and user agent in place. Card checks and public-key registration must not become requirements for routine rebuilds. Decrypt through h82's GPG agent and pipe the result to the root installer. Follow `secrets/README.md` for the exact helper invocation.
+First, log in as h82 with the bootstrap configuration's public GPG key and user agent in place. Card checks and public-key registration must not become requirements for routine rebuilds. Run the recovery helper from the clone; it resolves the running host, decrypts through h82's GPG agent, and pipes the result to the root installer.
+
+```sh
+./scripts/recover-age-identity
+```
+
+Pass `--host NAME` when the hostname is not the configuration name, which is the case in the installation media and inside `nixos-enter`. See `secrets/README.md` for the pipeline it runs and the boundary it preserves.
 
 The recovery helper verifies the expected age public recipient and atomically installs `/var/lib/sops-nix/key.txt` with ownership root:root and mode 0600. An invalid identity does not overwrite the existing key. Once the key is ready, run the following command to apply the configuration, including user authentication files.
 
@@ -64,7 +71,9 @@ unset card_serial
 
 The card serial must match the actual value reported by `gpg --card-status`. Routine rebuilds work without this registration.
 
-Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests.
+Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
+
+1Password and Kleopatra now start at login from `home/h82/kde/autostart.nix`, so neither needs a manual launch. Home Manager owns `~/.config/autostart/1password.desktop` and `~/.config/autostart/kleopatra.desktop` and overwrites them on activation, which makes the apps' own "start at login" toggles inert. Change the module, not the desktop entries.
 
 ## Verify after applying
 
