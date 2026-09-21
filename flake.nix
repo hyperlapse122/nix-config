@@ -97,14 +97,16 @@
         zsh-prezto =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
-            zpreztorc = host.config.home-manager.users.h82.home.file."./.zpreztorc".source;
-            zshenv = host.config.home-manager.users.h82.home.file."./.zshenv".source;
-            zshrc = host.config.home-manager.users.h82.home.file."./.zshrc".source;
+            zpreztorc = host.config.home-manager.users.h82.home.file.".config/zsh/.zpreztorc".source;
+            zshenv = host.config.home-manager.users.h82.home.file.".config/zsh/.zshenv".source;
+            zshrc = host.config.home-manager.users.h82.home.file.".config/zsh/.zshrc".source;
+            dotzshenv = host.config.home-manager.users.h82.home.file.".zshenv".text;
           in
           pkgs.runCommand "zsh-prezto-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
             grep -q "zstyle ':prezto:load' pmodule" ${zpreztorc}
             grep -q "runcoms/zshenv" ${zshenv}
             grep -q "runcoms/zshrc" ${zshrc}
+            echo "${dotzshenv}" | grep -q "source /home/h82/.config/zsh/.zshenv"
             touch $out
           '';
       };
