@@ -26,6 +26,8 @@
     google-chrome
     nodejs
     omp
+    python3
+    uv
   ];
 
   home.sessionVariables.LANGUAGE = "ko_KR:ko:en_US:en";

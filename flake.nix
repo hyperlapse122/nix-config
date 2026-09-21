@@ -123,6 +123,27 @@
             echo '${builtins.toJSON monospaceFonts}' | grep -q "D2KodingLigature Nerd Font"
             touch $out
           '';
+        python3-runtime =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            hasPython3 = pkgs.lib.lists.any (p: (p.pname or "") == "python3") userPackages;
+            hasUv = pkgs.lib.lists.any (p: (p.pname or "") == "uv") userPackages;
+          in
+          pkgs.runCommand "python3-runtime-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.uv
+              ];
+            }
+            ''
+              ${pkgs.lib.optionalString (!hasPython3) "echo 'missing python3 in user packages' >&2; exit 1;"}
+              ${pkgs.lib.optionalString (!hasUv) "echo 'missing uv in user packages' >&2; exit 1;"}
+              python3 --version
+              uv --version
+              touch $out
+            '';
       };
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
