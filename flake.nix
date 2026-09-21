@@ -228,6 +228,20 @@
             touch $out
           '';
         bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
+        github-workflow-conventions =
+          pkgs.runCommand "github-workflow-conventions-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.gawk
+                pkgs.gnugrep
+              ];
+            }
+            ''
+              bash ${./tests/github-workflow-conventions.sh} \
+                ${./.github/workflows/claude-code-review.yml} \
+                ${./.github/workflows/claude.yml}
+              touch $out
+            '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
         nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
