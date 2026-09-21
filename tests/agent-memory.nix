@@ -8,7 +8,9 @@
 
   Verifies:
   - CLAUDE_CODE_DISABLE_AUTO_MEMORY is exported as "1" in session variables.
-  - ~/.claude/settings.json sets autoMemoryEnabled = false and autoDreamEnabled = false.
+  - /etc/claude-code/managed-settings.json sets autoMemoryEnabled = false.
+  - Home Manager does not manage ~/.claude/settings.json, which Claude Code
+    rewrites itself and would otherwise clobber activation.
   - ~/.gemini/antigravity-cli/settings.json sets disableAutoGenerateMemories = true.
   - ~/.gemini/settings.json sets experimental.autoMemory = false.
 */
@@ -18,9 +20,27 @@ let
   userConfig = host.config.home-manager.users.h82;
 
   sessionVars = userConfig.home.sessionVariables;
-  claudeSettingsJson = userConfig.home.file.".claude/settings.json".text;
+  managedSettingsJson = host.config.environment.etc."claude-code/managed-settings.json".text or null;
+  claudeUserSettingsManaged = userConfig.home.file ? ".claude/settings.json";
   agySettingsJson = userConfig.home.file.".gemini/antigravity-cli/settings.json".text;
   geminiSettingsJson = userConfig.home.file.".gemini/settings.json".text;
+
+  # The managed settings entry is resolved out of the host configuration, so a
+  # mutation that removes it must reach the builder as shell rather than fail
+  # evaluation on a null interpolation.  See
+  # .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
+  managedAbsent = pkgs.lib.optionalString (managedSettingsJson == null) ''
+    echo 'missing /etc/claude-code/managed-settings.json in host configuration' >&2
+    exit 1
+  '';
+  managedPresent = pkgs.lib.optionalString (managedSettingsJson != null) ''
+    echo ${pkgs.lib.escapeShellArg (toString managedSettingsJson)} > managed-settings.json
+    managedAutoMem=$(jq -r '.autoMemoryEnabled' managed-settings.json)
+    if [ "$managedAutoMem" != "false" ]; then
+      echo "Expected autoMemoryEnabled to be false in managed settings, got: '$managedAutoMem'" >&2
+      exit 1
+    fi
+  '';
 in
 pkgs.runCommand "agent-memory-tests"
   {
@@ -39,21 +59,17 @@ pkgs.runCommand "agent-memory-tests"
       exit 1
     fi
 
-    # 2. Verify Claude Code settings.json
-    echo '${claudeSettingsJson}' > claude-settings.json
-    claudeAutoMem=$(jq -r '.autoMemoryEnabled' claude-settings.json)
-    if [ "$claudeAutoMem" != "false" ]; then
-      echo "Expected autoMemoryEnabled to be false in claude settings, got: '$claudeAutoMem'" >&2
+    # 2. Verify Claude Code managed settings
+    ${managedAbsent}${managedPresent}
+
+    # 3. Claude Code writes ~/.claude/settings.json itself, so Home Manager
+    #    must leave it alone or activation fails on an existing file.
+    if [ '${pkgs.lib.boolToString claudeUserSettingsManaged}' != "false" ]; then
+      echo "Home Manager must not manage ~/.claude/settings.json; Claude Code owns it" >&2
       exit 1
     fi
 
-    claudeDream=$(jq -r '.autoDreamEnabled' claude-settings.json)
-    if [ "$claudeDream" != "false" ]; then
-      echo "Expected autoDreamEnabled to be false in claude settings, got: '$claudeDream'" >&2
-      exit 1
-    fi
-
-    # 3. Verify Antigravity CLI settings.json
+    # 4. Verify Antigravity CLI settings.json
     echo '${agySettingsJson}' > agy-settings.json
     agyDisableAutoMem=$(jq -r '.disableAutoGenerateMemories' agy-settings.json)
     if [ "$agyDisableAutoMem" != "true" ]; then
@@ -61,7 +77,7 @@ pkgs.runCommand "agent-memory-tests"
       exit 1
     fi
 
-    # 4. Verify Gemini CLI settings.json
+    # 5. Verify Gemini CLI settings.json
     echo '${geminiSettingsJson}' > gemini-settings.json
     geminiAutoMem=$(jq -r '.experimental.autoMemory' gemini-settings.json)
     if [ "$geminiAutoMem" != "false" ]; then
