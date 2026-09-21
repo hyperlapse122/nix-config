@@ -20,6 +20,8 @@ let
   productionDisk = import ../hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix;
   testDisk = lib.recursiveUpdate productionDisk {
     disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
+    disko.devices.disk.main.content.partitions.luks.content.content.subvolumes."/swap".swap.swapfile.size =
+      "100M";
   };
   testSystem = {
     imports = [
@@ -50,5 +52,7 @@ diskoLib.testLib.makeDiskoTest {
     machine.succeed("btrfs subvolume list / | grep -qs 'path home$'")
     machine.succeed("btrfs subvolume list / | grep -qs 'path nix$'")
     machine.succeed("btrfs subvolume list / | grep -qs 'path log$'")
+    machine.succeed("btrfs subvolume list / | grep -qs 'path swap$'")
+    machine.succeed("test -e /swap/swapfile")
   '';
 }

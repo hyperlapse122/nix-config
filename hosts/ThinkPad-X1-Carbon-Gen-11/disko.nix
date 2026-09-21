@@ -58,6 +58,17 @@
                     "noatime"
                   ];
                 };
+                "/swap" = {
+                  mountpoint = "/swap";
+                  mountOptions = [
+                    "noatime"
+                  ];
+                  swap = {
+                    swapfile = {
+                      size = "64G";
+                    };
+                  };
+                };
               };
             };
           };

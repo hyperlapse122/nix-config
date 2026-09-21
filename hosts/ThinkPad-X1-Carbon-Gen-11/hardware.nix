@@ -14,5 +14,5 @@
   hardware.graphics.enable = true;
   hardware.bluetooth.enable = true;
   services.fstrim.enable = true;
-  zramSwap.enable = true;
+  zramSwap.enable = false;
 }
