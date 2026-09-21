@@ -72,9 +72,11 @@ Check each CLI's authentication status and test Git HTTPS access to the required
 
 ## Coding agent harness configuration
 
-Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`, with persistent memory features explicitly disabled in `home/h82/agent-memory.nix` to prevent mutable per-user history from affecting agent behavior:
+Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `modules/nixos/claude.nix` and `home/h82/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/gemini.nix`. Persistent memory features are explicitly disabled to prevent mutable per-user history from affecting agent behavior:
 
-- **Claude Code**: Environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"` acts as the top-level kill switch. In addition, `~/.claude/settings.json` declaratively sets `"autoMemoryEnabled": false` and `"autoDreamEnabled": false`.
+- **Claude Code**: Environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"` acts as the top-level kill switch. In addition, `/etc/claude-code/managed-settings.json` declaratively sets `"autoMemoryEnabled": false`, `"model": "opus[1m]"`, and `"effortLevel": "medium"`.
 - **Antigravity CLI**: `~/.gemini/antigravity-cli/settings.json` sets `"disableAutoGenerateMemories": true`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
+
+Claude Code rewrites `~/.claude/settings.json` itself, so those defaults live in the managed settings tier instead. That tier outranks user and project settings, so a model or effort chosen at runtime does not persist across sessions. To hand either choice back to the user, remove the corresponding key from `modules/nixos/claude.nix` and its assertion from `tests/claude.nix` in the same change; the `claude` check asserts every declared key. The `opus[1m]` value starts every session on the 1M-context variant; environments where 1M context is unavailable fall back to the standard context. Drop the `[1m]` suffix to default to the standard context instead.
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.

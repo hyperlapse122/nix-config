@@ -3,9 +3,9 @@
   imports = [
     ./hardware.nix
     ./disko.nix
-    ../../modules/nixos/agent-memory.nix
     ../../modules/nixos/base.nix
     ../../modules/nixos/boot.nix
+    ../../modules/nixos/claude.nix
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/keyd.nix
