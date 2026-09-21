@@ -41,6 +41,10 @@ Add regression checks beside related tests and register new checks in `flake.nix
 
 Use lowercase Conventional Commit subjects, matching the history's `feat(nixos):` and `chore:` prefixes. Write imperative, specific subjects, preferably under 50 characters and never over 72. PRs should describe behavior changes, link relevant issues, and report check and build results.
 
+Judge pull request readiness on check evidence, not on a quiet period. Every reviewer here reports as a check, so arm the babysit watch with `--settle-seconds 0`. This supersedes that skill's instruction not to pass `--settle-seconds` on the ordinary arm, and its guidance to re-arm at a longer window after a rejected merge-ready wake. Evidence counts only when at least one check run is registered against the current head, every such run is terminal, and no review check merely skipped; a skipped review is absent evidence, not a clean review. Nothing else relaxes: outstanding threads, comments, `needs-human`, and the base and branch-currency blockers keep their current force. When evidence is missing for the current head, re-arm to wake on a new check run or a new head instead of re-evaluating every poll. When a review check skipped, report the missing review evidence and hand back rather than withholding readiness with no report.
+
+After an agent pushes to a pull request branch from CI, the push re-triggers the checks; wait for them and report what they said, never a result you did not see. Hand a failure you cannot reproduce with the fast Nix commands to `check.yml` rather than guessing at it. On reaching the wait ceiling, report the commit pushed, the runs still in flight, and where to watch them.
+
 ## Security and lifecycle constraints
 
 Never evaluate or build with real plaintext credentials. Ordinary rebuilds use the local LUKS-protected age identity. YubiKey use is for initial recovery and Git signing; three cards carry the same key, each with its own PIN. Publish gh/glab files only after successful decryption and keep them writable by their user. Report failures without printing tokens.
