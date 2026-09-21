@@ -1,6 +1,7 @@
 { pkgs, lib, ... }:
 {
   imports = [
+    ./agent-memory.nix
     ./fcitx5.nix
     ./git.nix
     ./gpg.nix
