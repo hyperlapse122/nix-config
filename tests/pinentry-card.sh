@@ -19,6 +19,7 @@ timeout_bin=$(command -v timeout)
 base64_bin=$(command -v base64)
 tr_bin=$(command -v tr)
 sleep_bin=$(command -v sleep)
+rm_bin=$(command -v rm)
 "$python3_bin" -c 'import py_compile, sys; py_compile.compile(sys.argv[1], cfile=sys.argv[2], doraise=True)' "$wrapper" "$scratch/wrapper.pyc" || fail 'production wrapper does not compile'
 grep -qF 'KEYRING_LOOKUP_TIMEOUT = 5' "$wrapper" || fail 'production keyring timeout is not 5 seconds'
 grep -qF 'IS_LINUX = True' "$wrapper" || fail 'production wrapper is not Linux-only'
@@ -37,6 +38,14 @@ rendered_darwin="$wrapper"
 stored_pin='te%st pin'
 stored_pin_encoded='te%25st pin'
 stored_serial='14963605'
+# The two cards added in the ed25519 rotation.  A serial is laser-printed on
+# the device and is not a secret, but it stays confined to these fixtures.
+serial_nfc='37522734'
+serial_nano='37620322'
+pin_nfc='nfc%pin a'
+pin_nano='nano%pin b'
+pin_nfc_encoded=${pin_nfc//%/%25}
+pin_nano_encoded=${pin_nano//%/%25}
 
 cat >"$scratch/fake-delegate.py" <<'PYEOF'
 #!$python3_bin
@@ -102,23 +111,75 @@ make_delegate_shim fake-gnome-delegate gnome "$gnome_log"
 make_delegate_shim fake-fallback-delegate fallback "$fallback_log"
 make_delegate_shim fake-darwin-delegate darwin "$darwin_log"
 
-# secret-tool lookup service gnupg-card-pin username <serial>
+# secret-tool lookup|clear service gnupg-card-pin username <serial>
+keyring_dir="$scratch/keyring"
+clear_log="$scratch/secret-tool-clear.log"
 cat >"$scratch/bin/secret-tool" <<STUB
 #!$bash_bin
 mode=\${KEYRING_STUB_MODE:-ok}
+op=\$1
 serial=\$5
+case "\$op:\$mode" in
+  clear:clear-fail) exit 1 ;;
+  clear:clear-sleep) "$sleep_bin" 9; exit 0 ;;
+esac
 case "\$mode" in
   fail-nonzero) exit 1 ;;
   empty) printf ''; exit 0 ;;
   sleep) "$sleep_bin" 3; exit 0 ;;
 esac
-if [[ "\$serial" == "$stored_serial" ]]; then
-  printf '%s' "$stored_pin"
+if [[ "\$op" == clear ]]; then
+  printf '%s\n' "\$serial" >>"$clear_log"
+  "$rm_bin" -f "$keyring_dir/\$serial"
+  exit 0
+fi
+if [[ "\$op" == lookup && -f "$keyring_dir/\$serial" ]]; then
+  printf '%s' "\$(<"$keyring_dir/\$serial")"
   exit 0
 fi
 exit 1
 STUB
 chmod +x "$scratch/bin/secret-tool"
+
+reset_keyring() {
+  rm -rf -- "$keyring_dir"
+  mkdir -p "$keyring_dir"
+  printf '%s' "$stored_pin" >"$keyring_dir/$stored_serial"
+  printf '%s' "$pin_nfc" >"$keyring_dir/$serial_nfc"
+  printf '%s' "$pin_nano" >"$keyring_dir/$serial_nano"
+  : >"$clear_log"
+}
+reset_keyring
+
+assert_entry_present() {
+  [[ -f "$keyring_dir/$1" ]] || fail "$2: keychain entry for serial $1 is gone"
+}
+assert_entry_absent() {
+  if [[ -e "$keyring_dir/$1" ]]; then
+    fail "$2: keychain entry for serial $1 survived"
+  fi
+}
+assert_cleared_exactly() {
+  # <serial> <label>: the clear log holds that serial and nothing else.
+  local want=$1 label=$2 lines
+  lines=$(wc -l <"$clear_log")
+  [[ $lines -eq 1 ]] || fail "$label: expected exactly one clear, saw $lines: $(tr '\n' ' ' <"$clear_log")"
+  grep -qFx -- "$want" "$clear_log" || fail "$label: the clear did not target serial $want"
+}
+assert_no_clear() {
+  if [[ -s "$clear_log" ]]; then
+    fail "$1: nothing should have been cleared, but saw $(tr '\n' ' ' <"$clear_log")"
+  fi
+}
+
+card_desc() {
+  # <serial> [extra-line]
+  if [[ $# -eq 2 ]]; then
+    printf 'Please unlock the card%%0A%%0ANumber: %s%%0A%s' "$1" "$2"
+  else
+    printf 'Please unlock the card%%0A%%0ANumber: %s' "$1"
+  fi
+}
 
 # security find-generic-password -s gnupg-card-pin -a <serial> -w
 stored_pin_b64=$(printf '%s' "$stored_pin" | "$base64_bin" | "$tr_bin" -d '\n')
@@ -316,7 +377,9 @@ input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
 run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
 assert_contains "$gnome_log" 'GETPIN' '10 remaining-attempts'
 assert_not_contains "$out" "D $stored_pin_encoded" '10 remaining-attempts'
-pass '10: a Remaining attempts marker passes through; the stored PIN never appears on stdout'
+assert_cleared_exactly "$stored_serial" '10 remaining-attempts'
+pass '10: a Remaining attempts marker passes through, clears that serial, and never puts the stored PIN on stdout'
+reset_keyring
 
 # 11. A SETERROR before the prompt guards exactly the next GETPIN.
 out="$scratch/out11" err="$scratch/err11"
@@ -326,7 +389,11 @@ input=$(printf 'SETPROMPT PIN\nSETDESC %s\nSETERROR Bad PIN\nGETPIN\n' "$desc")
 run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
 assert_contains "$gnome_log" 'GETPIN' '11 seterror-guard'
 assert_not_contains "$out" "D $stored_pin_encoded" '11 seterror-guard'
-pass '11: a SETERROR before the prompt passes the next GETPIN through'
+assert_cleared_exactly "$stored_serial" '11 seterror-guard'
+pass '11: a SETERROR before the prompt passes the next GETPIN through and clears that serial'
+# Cases 10 and 11 legitimately discard the rejected serial's entry; restore it
+# for the cases below, which expect that serial to still be registered.
+reset_keyring
 
 # 12. The keyring stub exits non-zero, prints nothing, or sleeps past the
 #     (1-second, rewritten) bound: pass-through in each case.
@@ -436,5 +503,113 @@ for bad_number in 'abc123' '14-963-605' '14  963 605' '14 9O3 605'; do
   assert_not_contains "$out" "D $stored_pin_encoded" "21 uncovered-number-form '$bad_number'"
 done
 pass '21: a Number value outside the three documented forms passes through, never sending the stored PIN'
+
+# 22. Two registered serials holding different PINs: each prompt is answered
+#     with its own card's PIN, and never with the other card's.
+reset_keyring
+run_case22() {
+  local serial=$1 want=$2 other=$3 tag=$4
+  local out="$scratch/out22-$tag" err="$scratch/err22-$tag"
+  rm -f "$gnome_log"
+  local input
+  input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial")")
+  run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+  assert_contains "$out" "D $want" "22 per-card-pin $tag"
+  assert_not_contains "$out" "$other" "22 per-card-pin $tag (the other card's PIN must never appear)"
+  assert_not_contains "$gnome_log" 'GETPIN' "22 per-card-pin $tag"
+}
+run_case22 "$serial_nfc" "$pin_nfc_encoded" "$pin_nano_encoded" nfc
+run_case22 "$serial_nano" "$pin_nano_encoded" "$pin_nfc_encoded" nano
+pass '22: two serials with different PINs are each answered with that card'"'"'s own PIN'
+
+# 23. A rejected PIN ("Remaining attempts") drops that serial's entry, leaves
+#     every other serial's entry intact, and delegates the prompt.
+reset_keyring
+out="$scratch/out23" err="$scratch/err23"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nfc" 'Remaining attempts: 2')")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_contains "$gnome_log" 'GETPIN' '23 rejection-clears'
+assert_not_contains "$out" "D $pin_nfc_encoded" '23 rejection-clears'
+assert_cleared_exactly "$serial_nfc" '23 rejection-clears'
+assert_entry_absent "$serial_nfc" '23 rejection-clears'
+assert_entry_present "$serial_nano" '23 rejection-clears'
+assert_entry_present "$stored_serial" '23 rejection-clears'
+# The rejected serial is now unregistered: a later clean prompt for it is
+# delegated, while the untouched card still answers from the keychain.
+out="$scratch/out23b" err="$scratch/err23b"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nfc")")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_contains "$gnome_log" 'GETPIN' '23b cleared-serial-no-longer-answers'
+assert_not_contains "$out" "D $pin_nfc_encoded" '23b cleared-serial-no-longer-answers'
+out="$scratch/out23c" err="$scratch/err23c"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nano")")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_contains "$out" "D $pin_nano_encoded" '23c other-serial-still-answers'
+pass '23: a Remaining-attempts rejection clears only that serial, and the other cards keep answering'
+
+# 24. The same, signalled by SETERROR instead of the description.
+reset_keyring
+out="$scratch/out24" err="$scratch/err24"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nSETERROR Bad PIN\nGETPIN\n' "$(card_desc "$serial_nano")")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_contains "$gnome_log" 'GETPIN' '24 seterror-clears'
+assert_not_contains "$out" "D $pin_nano_encoded" '24 seterror-clears'
+assert_cleared_exactly "$serial_nano" '24 seterror-clears'
+assert_entry_absent "$serial_nano" '24 seterror-clears'
+assert_entry_present "$serial_nfc" '24 seterror-clears'
+pass '24: a SETERROR rejection clears only that serial'
+
+# 25. Two GETPINs under one rejected prompt: cleared once, auto-submitted
+#     never, both delegated.
+reset_keyring
+out="$scratch/out25" err="$scratch/err25"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\nGETPIN\n' "$(card_desc "$serial_nfc" 'Remaining attempts: 1')")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_cleared_exactly "$serial_nfc" '25 clear-once-per-rejection'
+assert_not_contains "$out" "D $pin_nfc_encoded" '25 clear-once-per-rejection'
+getpin_count=$(grep -c '^GETPIN' "$gnome_log")
+[[ $getpin_count -eq 2 ]] || fail "25 clear-once-per-rejection: expected both GETPINs delegated, saw $getpin_count"
+pass '25: a repeated GETPIN under one rejection clears once and auto-submits nothing'
+
+# 26. A clear that fails or outruns the (1-second, rewritten) bound never
+#     blocks the delegated prompt.
+for mode in clear-fail clear-sleep; do
+  reset_keyring
+  out="$scratch/out26-$mode" err="$scratch/err26-$mode"
+  rm -f "$gnome_log"
+  input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nfc" 'Remaining attempts: 2')")
+  start=$(date +%s)
+  rc=0
+  run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode" || rc=$?
+  elapsed=$(( $(date +%s) - start ))
+  [[ $rc -ne 124 ]] || fail "26 $mode: the wrapper hung past the 10-second test timeout"
+  (( elapsed < 5 )) || fail "26 $mode: took ${elapsed}s, so the clear was not bounded"
+  assert_contains "$gnome_log" 'GETPIN' "26 $mode"
+  assert_not_contains "$out" "D $pin_nfc_encoded" "26 $mode"
+done
+pass '26: a failing or hanging clear stays bounded and still delegates the prompt'
+
+# 27. Rejections the wrapper cannot attribute to one card clear nothing: a
+#     non-card prompt, and a card prompt whose serial is ambiguous.
+reset_keyring
+out="$scratch/out27-admin" err="$scratch/err27-admin"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT Admin PIN\nSETDESC Please enter the Admin PIN\nSETERROR Bad PIN\nGETPIN\n')
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_no_clear '27 admin-pin-rejection'
+out="$scratch/out27-ambiguous" err="$scratch/err27-ambiguous"
+rm -f "$gnome_log"
+desc="Please unlock the card%0A%0ANumber: $serial_nfc%0ANumber: $serial_nano%0ARemaining attempts: 2"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
+assert_no_clear '27 ambiguous-serial-rejection'
+assert_entry_present "$serial_nfc" '27 ambiguous-serial-rejection'
+assert_entry_present "$serial_nano" '27 ambiguous-serial-rejection'
+pass '27: a rejection with no unambiguous serial clears nothing'
 
 pass 'all U5 test scenarios passed'
