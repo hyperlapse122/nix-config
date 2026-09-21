@@ -1,10 +1,17 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # The host exposes this switch so the bootstrap output can import the same
   # hardware and filesystem declarations without enabling Secure Boot.
   bootstrap = config.my.bootstrap or false;
 in
 {
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+
   boot.initrd.systemd.enable = true;
   boot.initrd.luks.devices.cryptroot = {
     device = "/dev/disk/by-partlabel/disk-main-luks";
