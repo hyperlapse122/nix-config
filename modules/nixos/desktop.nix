@@ -63,6 +63,62 @@
     };
   };
 
+  environment.etc."xdg/fcitx5/conf/classicui.conf".text = ''
+    Vertical Candidate List=False
+    WheelForPaging=True
+    Font="Pretendard 10"
+    MenuFont="Pretendard 10"
+    TrayFont="Pretendard Bold 10"
+    TrayOutlineColor=#000000
+    TrayTextColor=#ffffff
+    PreferTextIcon=False
+    ShowLayoutNameInIcon=True
+    UseInputMethodLanguageToDisplayText=True
+    Theme=default
+    DarkTheme=default-dark
+    UseDarkTheme=True
+    UseAccentColor=True
+    PerScreenDPI=True
+    ForceWaylandDPI=0
+    EnableFractionalScale=True
+  '';
+
+  environment.etc."xdg/fcitx5/conf/hangul.conf".text = ''
+    # 자판 배열
+    Keyboard=Dubeolsik
+    # 자동 재배열
+    AutoReorder=False
+    # 같은 글쇠 두 번 입력 시 결합
+    CombiOnDoubleStroke=False
+    # 초성이 아닌 자모 결합
+    NonChoseongCombi=False
+    # 단어 단위 확정
+    WordCommit=False
+    # 한자 모드
+    HanjaMode=False
+
+    [HanjaModeToggleKey]
+    0=Hangul_Hanja
+    1=F9
+
+    [PrevPage]
+    0=Up
+
+    [NextPage]
+    0=Down
+
+    [PrevCandidate]
+    0=Shift+Tab
+
+    [NextCandidate]
+    0=Tab
+  '';
+
+  environment.etc."xdg/fcitx5/conf/kimpanel.conf".text = ''
+    # 텍스트 아이콘 선호
+    PreferTextIcon=False
+  '';
+
   environment.etc."xdg/kwinrc".text = ''
     [Wayland]
     InputMethod=/run/current-system/sw/share/applications/fcitx5-wayland-launcher.desktop

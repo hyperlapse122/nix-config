@@ -1,6 +1,7 @@
 { pkgs, lib, ... }:
 {
   imports = [
+    ./fcitx5.nix
     ./git.nix
     ./gpg.nix
     ./kde
