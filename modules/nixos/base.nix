@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   nix.settings.experimental-features = [
     "nix-command"
@@ -51,5 +51,10 @@
       e2fsprogs
     ]
     ++ [ (import ../../packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity ];
+
+  # Both hosts share networking.hostName, so the rebuild helper needs another
+  # signal to tell the bootstrap generation from the production one.
+  environment.etc."nixos-host-variant".text = if config.my.bootstrap then "bootstrap\n" else "production\n";
+
   system.stateVersion = "26.05";
 }
