@@ -2,6 +2,12 @@
 let
   kwrite = "${pkgs.kdePackages.kconfig}/bin/kwriteconfig6";
   kread = "${pkgs.kdePackages.kconfig}/bin/kreadconfig6";
+  pinnedLaunchers = lib.concatStringsSep "," [
+    "preferred://browser"
+    "preferred://filemanager"
+    "applications:com.mitchellh.ghostty.desktop"
+    "applications:orca.desktop"
+  ];
 in
 {
   home.activation.kdePlasmaApplets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -14,6 +20,8 @@ in
             org.kde.plasma.icontasks|org.kde.plasma.taskmanager)
               # Do not group applications on task manager panel
               ${kwrite} --file "$applet_file" --group Containments --group "$containment" --group Applets --group "$applet" --group Configuration --group General --key groupingStrategy 0
+              # Pinned application launchers: Google Chrome, Dolphin, Ghostty, Orca
+              ${kwrite} --file "$applet_file" --group Containments --group "$containment" --group Applets --group "$applet" --group Configuration --group General --key launchers "${pinnedLaunchers}"
               ;;
             org.kde.plasma.kickoff)
               # Kickoff launcher: display favorites and applications in list view
