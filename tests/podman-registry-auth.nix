@@ -15,14 +15,16 @@ let
         printf 'github_token: FAKE_ghcr_token\ngitlab_token: FAKE_gitlab_token\njpi_token: FAKE_jpi_token\ndocker_token: FAKE_docker_token\n' > plain.yaml
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tokens.yaml
       '';
-  authJsonFile = pkgs.writeText "test-auth.json" (builtins.toJSON {
-    credHelpers = {
-      "ghcr.io" = "sops";
-      "registry.gitlab.com" = "sops";
-      "registry.jpi.app" = "sops";
-      "docker.io" = "sops";
-    };
-  });
+  authJsonFile = pkgs.writeText "test-auth.json" (
+    builtins.toJSON {
+      credHelpers = {
+        "ghcr.io" = "sops";
+        "registry.gitlab.com" = "sops";
+        "registry.jpi.app" = "sops";
+        "docker.io" = "sops";
+      };
+    }
+  );
 in
 pkgs.testers.nixosTest {
   name = "podman-registry-auth";

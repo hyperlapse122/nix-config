@@ -86,66 +86,66 @@ in
     }
     (lib.mkIf cfg.enable (
       lib.mkMerge [
-      {
-        systemd.services.sops-install-secrets = {
-          wantedBy = [ "sysinit.target" ];
-          requiredBy = [ "sysinit-reactivation.target" ];
-          after = [
-            "local-fs.target"
-            "systemd-sysusers.service"
-            "userborn.service"
-          ];
-          before = [
-            "sysinit.target"
-            "sysinit-reactivation.target"
-          ];
-          unitConfig = {
-            DefaultDependencies = "no";
-            RequiresMountsFor = [
-              "/home/h82"
-              cfg.ageKeyFile
+        {
+          systemd.services.sops-install-secrets = {
+            wantedBy = [ "sysinit.target" ];
+            requiredBy = [ "sysinit-reactivation.target" ];
+            after = [
+              "local-fs.target"
+              "systemd-sysusers.service"
+              "userborn.service"
             ];
+            before = [
+              "sysinit.target"
+              "sysinit-reactivation.target"
+            ];
+            unitConfig = {
+              DefaultDependencies = "no";
+              RequiresMountsFor = [
+                "/home/h82"
+                cfg.ageKeyFile
+              ];
+            };
+            serviceConfig = {
+              Type = "oneshot";
+              # A successful oneshot must be inactive so unchanged switches re-run it.
+              RemainAfterExit = lib.mkForce false;
+            };
           };
-          serviceConfig = {
-            Type = "oneshot";
-            # A successful oneshot must be inactive so unchanged switches re-run it.
-            RemainAfterExit = lib.mkForce false;
+        }
+        (lib.mkIf available {
+          sops = {
+            defaultSopsFile = cfg.sopsFile;
+            age = {
+              keyFile = cfg.ageKeyFile;
+              generateKey = false;
+              sshKeyPaths = [ ];
+            };
+            gnupg.sshKeyPaths = [ ];
+            useSystemdActivation = true;
+            secrets =
+              lib.genAttrs
+                (map (name: "cli-auth/${name}") [
+                  "github_token"
+                  "gitlab_token"
+                  "jpi_token"
+                ])
+                (name: {
+                  key = lib.removePrefix "cli-auth/" name;
+                  owner = "h82";
+                  mode = "0400";
+                });
           };
-        };
-      }
-      (lib.mkIf available {
-        sops = {
-          defaultSopsFile = cfg.sopsFile;
-          age = {
-            keyFile = cfg.ageKeyFile;
-            generateKey = false;
-            sshKeyPaths = [ ];
-          };
-          gnupg.sshKeyPaths = [ ];
-          useSystemdActivation = true;
-          secrets =
-            lib.genAttrs
-              (map (name: "cli-auth/${name}") [
-                "github_token"
-                "gitlab_token"
-                "jpi_token"
-              ])
-              (name: {
-                key = lib.removePrefix "cli-auth/" name;
-                owner = "h82";
-                mode = "0400";
-              });
-        };
-        systemd.services.sops-install-secrets.serviceConfig.ExecStartPost = publishCommand;
-      })
-      (lib.mkIf (!available) {
-        systemd.services.sops-install-secrets.serviceConfig.ExecStart =
-          pkgs.writeShellScript "missing-cli-secrets" ''
-            echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See docs/provisioning.md.' >&2
-            exit 1
-          '';
-      })
-    ]
-  ))
+          systemd.services.sops-install-secrets.serviceConfig.ExecStartPost = publishCommand;
+        })
+        (lib.mkIf (!available) {
+          systemd.services.sops-install-secrets.serviceConfig.ExecStart =
+            pkgs.writeShellScript "missing-cli-secrets" ''
+              echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See docs/provisioning.md.' >&2
+              exit 1
+            '';
+        })
+      ]
+    ))
   ];
 }

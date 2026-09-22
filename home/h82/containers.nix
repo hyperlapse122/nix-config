@@ -28,19 +28,19 @@ in
   '';
 
   home.activation.containersAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    AUTH_DIR="$HOME/.config/containers"
-    AUTH_FILE="$AUTH_DIR/auth.json"
-    if [ ! -e "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then
-      run mkdir -p "$AUTH_DIR"
-      run chmod 0700 "$AUTH_DIR"
-      if [[ -v DRY_RUN ]]; then
-        echo "Creating $AUTH_FILE with initial credHelpers"
-      else
-        cat <<'EOF' > "$AUTH_FILE"
-${initialAuth}
-EOF
-        chmod 0600 "$AUTH_FILE"
-      fi
-    fi
+        AUTH_DIR="$HOME/.config/containers"
+        AUTH_FILE="$AUTH_DIR/auth.json"
+        if [ ! -e "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then
+          run mkdir -p "$AUTH_DIR"
+          run chmod 0700 "$AUTH_DIR"
+          if [[ -v DRY_RUN ]]; then
+            echo "Creating $AUTH_FILE with initial credHelpers"
+          else
+            cat <<'EOF' > "$AUTH_FILE"
+    ${initialAuth}
+    EOF
+            chmod 0600 "$AUTH_FILE"
+          fi
+        fi
   '';
 }

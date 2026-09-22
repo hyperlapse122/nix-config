@@ -17,10 +17,10 @@ let
     let
       packages = hostCfg.config.environment.systemPackages;
       podmanPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "podman") null packages;
-      dockerCompatPkg =
-        pkgs.lib.lists.findFirst (p: pkgs.lib.strings.hasPrefix "podman-docker-compat" p.name) null packages;
-      helperPkg =
-        pkgs.lib.lists.findFirst (p: (p.pname or "") == "docker-credential-sops") null packages;
+      dockerCompatPkg = pkgs.lib.lists.findFirst (
+        p: pkgs.lib.strings.hasPrefix "podman-docker-compat" p.name
+      ) null packages;
+      helperPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "docker-credential-sops") null packages;
 
       absentPodman = pkgs.lib.optionalString (podmanPkg == null) ''
         echo "missing podman in environment.systemPackages on ${hostName}" >&2
