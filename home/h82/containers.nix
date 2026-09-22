@@ -11,17 +11,15 @@ let
       "registry.jpi.app" = "sops";
     };
   };
+  containerSessionVariables = {
+    REGISTRY_AUTH_FILE = "/home/h82/.config/containers/auth.json";
+    DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock";
+  };
 in
 {
-  home.sessionVariables = {
-    REGISTRY_AUTH_FILE = "/home/h82/.config/containers/auth.json";
-    DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock";
-  };
+  home.sessionVariables = containerSessionVariables;
 
-  systemd.user.sessionVariables = {
-    REGISTRY_AUTH_FILE = "/home/h82/.config/containers/auth.json";
-    DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock";
-  };
+  systemd.user.sessionVariables = containerSessionVariables;
 
   xdg.configFile."containers/registries.conf.d/10-unqualified-search.conf".text = ''
     unqualified-search-registries = ["docker.io"]

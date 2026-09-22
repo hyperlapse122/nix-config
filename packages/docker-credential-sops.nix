@@ -1,23 +1,6 @@
 {
   pkgs,
-  routingTable ? {
-    "ghcr.io" = {
-      username = "hyperlapse122";
-      secret = "/run/secrets/cli-auth/github_token";
-    };
-    "registry.gitlab.com" = {
-      username = "hyperlapse";
-      secret = "/run/secrets/cli-auth/gitlab_token";
-    };
-    "registry.jpi.app" = {
-      username = "hyperlapse";
-      secret = "/run/secrets/cli-auth/jpi_token";
-    };
-    "docker.io" = {
-      username = "hyperlapse122";
-      secret = "/run/secrets/cli-auth/docker_token";
-    };
-  },
+  routingTable,
 }:
 
 let

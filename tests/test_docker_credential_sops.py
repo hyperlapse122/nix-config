@@ -46,14 +46,8 @@ class DockerCredentialSopsTests(unittest.TestCase):
         self.map_file = self.tmp_dir / "credential-map.json"
         self.map_file.write_text(json.dumps(self.mapping, indent=2))
 
-    def run_helper(self, action, stdin_data="", map_path=None, extra_args=None):
-        cmd = [sys.executable, str(SCRIPT)]
-        target_map = map_path if map_path is not None else str(self.map_file)
-        if target_map:
-            cmd.extend(["--map", target_map])
-        if extra_args:
-            cmd.extend(extra_args)
-        cmd.append(action)
+    def run_helper(self, action, stdin_data=""):
+        cmd = [sys.executable, str(SCRIPT), "--map", str(self.map_file), action]
         return subprocess.run(
             cmd,
             input=stdin_data,
