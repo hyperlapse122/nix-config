@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Set declared keys in Claude Code's user settings file. Run as the target user.
+
+Claude Code owns this file and rewrites it whenever a /config option changes, so
+Home Manager cannot place a store symlink here.  Activation therefore assigns the
+declared top-level keys and leaves every other key exactly as the agent wrote it.
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+
+def private_directory(path):
+    if path.is_symlink():
+        raise ValueError('settings directory is a symlink')
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+
+def existing_settings(settings):
+    # A symlink here would be replaced by os.replace below, which silently
+    # detaches whatever the user pointed the path at.
+    if settings.is_symlink():
+        raise ValueError('settings file is a symlink')
+    if not settings.exists():
+        return {}
+    try:
+        current = json.loads(settings.read_text())
+    except json.JSONDecodeError:
+        raise ValueError('settings file is not valid JSON')
+    if not isinstance(current, dict):
+        raise ValueError('settings file is not a JSON object')
+    return current
+
+
+def merge(settings, declared):
+    values = json.loads(declared.read_text())
+    if not isinstance(values, dict):
+        raise ValueError('declared settings are not a JSON object')
+    private_directory(settings.parent)
+    current = existing_settings(settings)
+    merged = dict(current)
+    merged.update(values)
+    if merged == current and settings.exists():
+        settings.chmod(0o600)
+        return
+    text = json.dumps(merged, indent=2) + '\n'
+    fd, temporary = tempfile.mkstemp(prefix='.settings-', dir=settings.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, settings)
+        temporary = None
+    finally:
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--settings', required=True, type=Path)
+    parser.add_argument('--declared', required=True, type=Path)
+    args = parser.parse_args(argv)
+    if os.geteuid() == 0:
+        parser.error('must run as the destination user, not root')
+    try:
+        merge(args.settings, args.declared)
+    except (OSError, ValueError) as error:
+        print('Claude Code settings merge failed: {}'.format(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
