@@ -90,20 +90,19 @@ grep -qF 'fprintd-enroll' "$calls" &&
   fail 'enrollment ran even though password authentication failed'
 pass 'a failed password authentication enrolls nothing'
 
-# This is the assertion the security review asked for: every environment
-# override the script honours, set at once, must not reach the authenticator.
+# Every environment override the script honours, set at once, must not reach
+# the authenticator.
+#
+# The decoy must exist and succeed. Pointing it at something absent would make
+# this pass whether or not the script honours the override, because a missing
+# command fails the same way a refused password does -- the fixture would then
+# be unable to tell the bug from the fix.
+make_stub authenticator-decoy 0
 rendered=$(render 1)
-: >"$calls"
-set +e
-ENROLL_FP_ENROLL=$bin/fprintd-enroll \
-ENROLL_FP_LIST=$bin/fprintd-list \
-ENROLL_FP_SUDO=$bin/sudo \
-ENROLL_FP_PAMTESTER=/bin/true \
-PAMTESTER=/bin/true \
-  "$rendered" >"$scratch/out" 2>"$scratch/err"
-status=$?
-set -e
+ENROLL_FP_PAMTESTER=$bin/authenticator-decoy PAMTESTER=$bin/authenticator-decoy run "$rendered"
 [[ $status -ne 0 ]] || fail 'an environment override skipped the password demand'
+grep -qF 'authenticator-decoy' "$calls" &&
+  fail 'an environment override reached the authenticator'
 grep -qF 'fprintd-enroll' "$calls" &&
   fail 'an environment override let enrollment run without the password'
 pass 'no environment override can skip the password demand'
