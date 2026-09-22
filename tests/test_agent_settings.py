@@ -31,7 +31,7 @@ DECLARED = {
     'model': 'opus[1m]',
     'effortLevel': 'medium',
     'language': 'korean',
-    'theme': 'dark-ansi',
+    'theme': 'auto',
 }
 
 # Declared keys hold other values; the rest is state only the agent writes.
