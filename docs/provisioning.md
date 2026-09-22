@@ -148,9 +148,9 @@ Existing memory stores on disk are intentionally left untouched. Disabling the f
 
 The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` keeps only a receipt naming the on-device record, so an enrollment can neither be restored from a backup nor removed by erasing the disk. Nothing about it belongs in `secrets/`.
 
-Enrollment is authorized by the account password alone. The enroll action is denied to interactive sessions, so `fprintd-enroll` and the KDE fingerprint settings page will both refuse; the helper is the only path, and it authenticates against a PAM service that carries no fingerprint factor before it reaches `fprintd`. That is what keeps one enrolled finger from quietly enrolling another.
+Enrollment can be performed directly through KDE Plasma System Settings (Users → Fingerprint Settings) or using the packaged `enroll-fingerprint` helper. The polkit rule authorizes `root` and members of the `wheel` group for `net.reactivated.fprint.device.enroll`, while denying unprivileged non-administrative users.
 
-What that does not buy: the fingerprint reaches `sudo` on this host, so it reaches root, and root can enroll directly via `sudo fprintd-enroll`. The helper and the polkit rule close the unprivileged path, not the privileged one. Treat them as the sanctioned route and as a guard against accident, not as a boundary against someone who already has a finger the sensor accepts.
+The packaged helper provides a dedicated CLI path that authenticates against the factor-free `enroll-fingerprint` PAM service before invoking `fprintd-enroll` via `sudo`:
 
 Run it unprivileged, once per finger:
 
@@ -165,10 +165,10 @@ To see what is actually enrolled, and to remove one:
 
 ```sh
 fprintd-list "$USER"
-sudo fprintd-delete "$USER"
+fprintd-delete "$USER"
 ```
 
-`fprintd-delete` runs as root because the same denied polkit action covers deletion — upstream's policy names one `enroll` action and describes it as "Enroll or Delete fingerprints".
+`fprintd-delete` is authorized for `wheel` users and `root` because upstream's policy names one `enroll` action covering both enrollment and deletion.
 
 Removing every enrolled finger is a required step before the laptop is reinstalled, sold, serviced, or disposed of. Erasing the disk does not reach the sensor, and a template left there is a credential the next installation will happily match.
 
