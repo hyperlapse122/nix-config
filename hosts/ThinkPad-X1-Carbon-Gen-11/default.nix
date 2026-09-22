@@ -9,6 +9,7 @@
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/keyd.nix
+    ../../modules/nixos/nix-cleanup.nix
     ../../modules/nixos/nix-ld.nix
     ../../modules/nixos/podman.nix
     ../../modules/nixos/secrets.nix
