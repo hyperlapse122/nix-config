@@ -30,9 +30,8 @@
     `substack login`, so asserting on `sddm` alone would assert on nothing.
   - nothing in the closure of `enroll-fingerprint` carries it, so a fingerprint
     can never authorize enrolling another fingerprint.
-  - the materialized polkit rules deny `net.reactivated.fprint.device.enroll`
-    to non-root sessions while allowing root, closing unprivileged enrollment
-    outside the password-authenticated helper.
+  - the materialized polkit rules allow `net.reactivated.fprint.device.enroll`
+    to root and members of the wheel group while denying unprivileged users.
   - `passwd`, `chpasswd`, `chsh`, `chfn` and `su` do not carry it, so the weaker
     credential cannot be used to set the stronger one.
   - the exact set of files carrying it equals the allowlist stated below. This
@@ -238,9 +237,11 @@ let
             elif ! grep -q 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile"; then
               ${fail "${hostName}: polkit rules do not name the fprint enroll action"}
             elif ! grep -F -A 6 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile" | grep -q 'return polkit.Result.NO;'; then
-              ${fail "${hostName}: polkit rule does not deny fprint enroll to non-root"}
+              ${fail "${hostName}: polkit rule does not deny fprint enroll to non-wheel users"}
             elif ! grep -F -A 6 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile" | grep -q 'subject.user == "root"'; then
-              ${fail "${hostName}: polkit rule does not restrict fprint enroll to root"}
+              ${fail "${hostName}: polkit rule does not allow fprint enroll to root"}
+            elif ! grep -F -A 6 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile" | grep -q 'subject.isInGroup("wheel")'; then
+              ${fail "${hostName}: polkit rule does not allow fprint enroll to wheel group"}
             fi
           ''
         else

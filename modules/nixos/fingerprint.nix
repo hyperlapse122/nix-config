@@ -73,17 +73,9 @@ in
       };
 
     # nixos/modules/security/polkit.nix declares a single `polkit-1` PAM service
-    # for every polkit action, and that service deliberately carries the
-    # fingerprint factor for authorisation prompts. polkit cannot scope which
-    # factor satisfies which action, and upstream fprintd ships the enroll action
-    # as auth_self_keep, so a swipe would otherwise authorize enrollment and the
-    # grant would then be cached. Closing the action to non-root is the only
-    # place that unprivileged enrollment can be stopped; the helper reaches
-    # fprintd through sudo with the privilege this denial now requires.
-    #
-    # What this does NOT buy: the fingerprint reaches sudo, so it reaches root,
-    # and root may enroll directly via `sudo fprintd-enroll`. This polkit rule
-    # and the helper close the unprivileged route, not the privileged one.
+    # for every polkit action. To allow enrollment and management via KDE
+    # System Settings and interactive tools without granting access to unprivileged
+    # non-administrative users, we authorize root and the wheel group.
     #
     # One action covers both operations: upstream's policy file declares
     # `verify`, `enroll` and `setusername` only, and describes `enroll` as
@@ -92,7 +84,7 @@ in
     security.polkit.extraConfig = ''
       polkit.addRule(function(action, subject) {
         if (action.id == "net.reactivated.fprint.device.enroll") {
-          if (subject.user == "root") {
+          if (subject.user == "root" || subject.isInGroup("wheel")) {
             return polkit.Result.YES;
           }
           return polkit.Result.NO;
