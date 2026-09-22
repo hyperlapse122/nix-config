@@ -1,0 +1,191 @@
+name: Update dependencies
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Every hour
+  workflow_dispatch:
+
+concurrency:
+  group: update-dependencies
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  actions: read
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN_FOR_UPDATES || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN_FOR_UPDATES || secrets.GITHUB_TOKEN }}
+
+      - name: Make room for NixOS closures
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+
+      - name: Enable KVM for the Nix builder
+        run: sudo chmod 666 /dev/kvm || true
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+        with:
+          extra_nix_config: |
+            system-features = nixos-test benchmark big-parallel kvm
+
+      - name: Update flake inputs, agent plugins, and packages
+        id: update
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # 1. Update flake inputs
+          nix flake update
+
+          # 2. Update agent plugins
+          PLUGIN_SOURCE="EveryInc/compound-engineering-plugin"
+          TAG_PREFIX="compound-engineering-"
+          resolved=$(nix run .#agent-plugin-release -- --source "$PLUGIN_SOURCE" --tag-prefix "$TAG_PREFIX")
+          current=$(sed -n 's#.*url = "github:EveryInc/compound-engineering-plugin/\(.*\)";#\1#p' flake.nix)
+          if [ -n "$resolved" ] && [ "$resolved" != "$current" ]; then
+            case "$resolved" in
+              "$TAG_PREFIX"v[0-9]*) ;;
+              *) echo "refusing an unexpected resolved tag: $resolved" >&2; exit 1 ;;
+            esac
+            sed -i "s#compound-engineering-plugin/$current#compound-engineering-plugin/$resolved#" flake.nix
+            sed -i "s#tag = \"$current\";#tag = \"$resolved\";#" home/h82/agent-plugins.nix
+            nix flake lock --update-input compound-engineering-plugin
+            rev=$(jq -r '.nodes["compound-engineering-plugin"].locked.rev' flake.lock)
+            case "$rev" in
+              [0-9a-f][0-9a-f]*) ;;
+              *) echo "flake.lock recorded no usable revision" >&2; exit 1 ;;
+            esac
+            sed -i "s#expectedRev = \"[0-9a-f]*\";#expectedRev = \"$rev\";#" home/h82/agent-plugins.nix
+          fi
+
+          # 3. Update Claude Desktop
+          nix run .#claude-desktop-release -- --output packages/claude-desktop-version.json
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No updates detected across all targets."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Updates detected."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify updates
+        if: steps.update.outputs.changed == 'true'
+        id: verify
+        run: |
+          set +e
+          nix fmt -- --ci 2>&1 | tee fmt.log
+          FMT_EXIT=$?
+          nix flake check --print-build-logs 2>&1 | tee check.log
+          CHECK_EXIT=$?
+          set -e
+
+          if [ "$FMT_EXIT" -eq 0 ] && [ "$CHECK_EXIT" -eq 0 ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "All verification checks passed."
+          else
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+            echo "Verification failed (fmt: $FMT_EXIT, check: $CHECK_EXIT)."
+            {
+              echo "### Verification Failure Details"
+              echo '```text'
+              tail -n 50 check.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push verified updates directly to main
+        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'success'
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git rebase origin/main || { git rebase --abort; echo "Rebase failed, proceeding with current head"; }
+
+          if [ -n "$(git status --porcelain packages/claude-desktop-version.json)" ]; then
+            NEW_VER=$(jq -r .version packages/claude-desktop-version.json)
+            git add packages/claude-desktop-version.json
+            git commit -m "chore(packages): bump claude-desktop to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain home/h82/agent-plugins.nix)" ]; then
+            NEW_TAG=$(sed -n 's/.*tag = "\(.*\)";/\1/p' home/h82/agent-plugins.nix)
+            git add flake.nix flake.lock home/h82/agent-plugins.nix
+            git commit -m "chore(agents): bump compound-engineering to $NEW_TAG"
+          fi
+
+          if [ -n "$(git status --porcelain flake.lock)" ]; then
+            git add flake.lock
+            git commit -m "chore(flake): update flake.lock"
+          fi
+
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore(deps): update dependencies"
+          fi
+
+          git push origin main
+          echo "Successfully pushed verified updates directly to main."
+
+      - name: Open reconciliation PR on failure
+        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
+        id: pr
+        env:
+          BRANCH: update-dependencies-fix
+        run: |
+          set -euo pipefail
+          git checkout -B "$BRANCH"
+          git add -A
+          git commit -m "chore(deps): automated dependency update (reconciliation required)"
+          git push --force-with-lease origin "$BRANCH"
+
+          {
+            echo "## Automated Dependency Update (Reconciliation Required)"
+            echo ""
+            echo "The hourly dependency update job detected changes to flake inputs or packages, but pre-push verification failed."
+            echo ""
+            echo "### Failure Logs"
+            echo '```text'
+            cat check.log | tail -n 80
+            echo '```'
+            echo ""
+            echo "Claude Code Action has been dispatched to reconcile breakages on this branch. Once status checks pass, this PR will be merged automatically."
+          } > pr-body.md
+
+          TITLE="chore(deps): automated dependency update (reconciliation required)"
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --title "$TITLE" --body-file pr-body.md
+          else
+            gh pr create --head "$BRANCH" --title "$TITLE" --body-file pr-body.md --label dependencies --label automated
+          fi
+
+      - name: Reconcile breakages with Claude Code
+        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          use_commit_signing: true
+          claude_args: >-
+            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake check:*),Bash(nix flake metadata:*),Bash(sleep:*)"
+          prompt: |
+            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci` or `nix flake check`).
+            Please inspect the changes and error log, fix the configuration or expression issues so that `nix fmt -- --ci` and `nix flake check` pass, and push the fix commit to this branch.
+
+      - name: Enable auto-merge on reconciliation PR
+        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
+        env:
+          BRANCH: update-dependencies-fix
+        run: |
+          gh pr merge --auto --squash "$BRANCH" || gh pr merge --auto --merge "$BRANCH" || true

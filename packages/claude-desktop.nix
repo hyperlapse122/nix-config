@@ -1,12 +1,15 @@
 { pkgs }:
 
+let
+  source = builtins.fromJSON (builtins.readFile ./claude-desktop-version.json);
+in
 pkgs.stdenv.mkDerivation rec {
   pname = "claude-desktop";
-  version = "2.2553.1";
+  inherit (source) version;
 
   src = pkgs.fetchurl {
     url = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_${version}_amd64.deb";
-    hash = "sha256-ZwD92E53prjJORLC9p610eQPqZvNnTf0OPgJ7ypv5vg=";
+    hash = source.hash;
   };
 
   nativeBuildInputs = [
