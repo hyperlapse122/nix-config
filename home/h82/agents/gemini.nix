@@ -6,7 +6,7 @@
 }:
 let
   merger = "${
-    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
   }/bin/agent-settings";
 
   # The Antigravity CLI owns ~/.gemini/antigravity-cli/settings.json and

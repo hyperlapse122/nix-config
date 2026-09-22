@@ -6,7 +6,7 @@
 # every action through the single polkit-1 PAM stack, which this system
 # deliberately gives the fingerprint factor, so upstream fprintd's
 # auth_self_keep enroll action would otherwise let one swipe mint another
-# finger. modules/nixos/fingerprint.nix closes that action to non-root and
+# finger. modules/nixos/hardware/fingerprint.nix closes that action to non-root and
 # declares the fingerprint-free enroll-fingerprint PAM service this script
 # authenticates against instead.
 #

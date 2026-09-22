@@ -17,7 +17,7 @@ in
       dates = "weekly";
 
       # --keep must stay at or above the boot loader's configurationLimit in
-      # modules/nixos/boot.nix.  The boot menu is rewritten only by a rebuild
+      # modules/nixos/system/boot.nix.  The boot menu is rewritten only by a rebuild
       # while this collection runs on a timer, so a smaller floor would leave
       # menu entries pointing at generations that are already gone -- the
       # rollback path docs/recovery.md sends you to when the system will not

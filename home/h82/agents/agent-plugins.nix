@@ -7,7 +7,7 @@
 }:
 let
   syncTool = "${
-    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentPluginSync
+    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentPluginSync
   }/bin/agent-plugin-sync";
 
   # Neutral source registry: what a plugin is and where it comes from, with no
