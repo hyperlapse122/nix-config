@@ -597,6 +597,11 @@
                 ${./.github/workflows/claude.yml}
               touch $out
             '';
+        ci-workflow-docs-skip =
+          pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
+            bash ${./tests/check-workflow-docs-skip.sh} ${./.github/workflows/check.yml}
+            touch $out
+          '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
