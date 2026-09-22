@@ -630,9 +630,8 @@
         markdown-lint =
           pkgs.runCommand "markdown-lint-tests" { nativeBuildInputs = [ pkgs.markdownlint-cli2 ]; }
             ''
-              cp -r ${self} work
-              chmod -R u+w work
-              cd work
+              export HOME=$TMPDIR
+              cd ${self}
               markdownlint-cli2
               touch $out
             '';

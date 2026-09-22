@@ -19,6 +19,13 @@ jobs:
         run: nix fmt -- --ci
 
   markdown-lint:
+    needs: changes
+    # flake-check's `nix flake check` already builds this same check, so
+    # this job only needs to run standalone in exactly the case flake-check
+    # is skipped in (a genuine docs-only PR) -- the complement of
+    # flake-check/build's condition below, so markdown-lint is exercised
+    # exactly once on every event instead of twice on ordinary PRs and push.
+    if: "!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

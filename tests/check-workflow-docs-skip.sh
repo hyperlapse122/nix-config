@@ -10,7 +10,11 @@
 #   that runs them on any non-pull_request event, or when the changes
 #   job did not complete successfully, and skips only a definitive
 #   docs_only:true (KTD4/R6/R7 in the docs-skip-markdown-lint plan).
-# - fmt and markdown-lint carry no such conditional -- they always run.
+# - markdown-lint declares the complementary condition: it runs only on
+#   a genuine docs_only:true PR, the one case flake-check's own
+#   `nix flake check` does not already build it, so it is exercised
+#   exactly once per event instead of twice on ordinary PRs and push.
+# - fmt carries no such conditional -- it always runs.
 #
 # Each assertion fails inside an explicit if/exit branch, never a
 # negated `! grep`, per this repository's decorative-assertion
@@ -37,7 +41,8 @@ job_block() {
   local job=$1 file=$2
   awk -v job="$job" '
     /^jobs:/ { in_jobs = 1; next }
-    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+    in_jobs && /^[^[:space:]]/ { in_jobs = 0; printing = 0 }
+    in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/ {
       cur = $1
       sub(/:$/, "", cur)
       printing = (cur == job)
@@ -80,7 +85,7 @@ assert_unconditional() {
     fail "job '$job' not found in $file"
   fi
   if printf '%s\n' "$block" | grep -qE '^[[:space:]]*if:'; then
-    fail "job '$job' declares an if: condition; it must always run (R2/R3)"
+    fail "job '$job' declares an if: condition; it must always run (R2)"
   fi
   if printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:'; then
     fail "job '$job' declares needs:; it must not depend on the classifier"
@@ -88,9 +93,39 @@ assert_unconditional() {
   echo "check-workflow-docs-skip: ok - job '$job' runs unconditionally"
 }
 
+# assert_docs_only_only <job>: the complement of assert_gated's condition
+# -- this job runs ONLY when the classifier succeeded and found a genuine
+# docs-only PR, i.e. only in the one case flake-check/build are skipped
+# and nothing else would have exercised it.
+assert_docs_only_only() {
+  local job=$1 block
+  block=$(job_block "$job" "$file")
+  if [ -z "$block" ]; then
+    fail "job '$job' not found in $file"
+  fi
+  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$'; then
+    fail "job '$job' does not declare 'needs: changes'"
+  fi
+  local if_line
+  if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
+  if [ -z "$if_line" ]; then
+    fail "job '$job' declares no if: condition"
+  fi
+  if ! printf '%s' "$if_line" | grep -qF "github.event_name == 'pull_request'"; then
+    fail "job '$job' if: does not require a pull_request event"
+  fi
+  if ! printf '%s' "$if_line" | grep -qF 'needs.changes.result == '"'"'success'"'"; then
+    fail "job '$job' if: does not require the classifier to have succeeded"
+  fi
+  if ! printf '%s' "$if_line" | grep -qF "needs.changes.outputs.docs_only == 'true'"; then
+    fail "job '$job' if: does not require a definitive docs_only:true"
+  fi
+  echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
+}
+
 assert_gated flake-check
 assert_gated build
 assert_unconditional fmt
-assert_unconditional markdown-lint
+assert_docs_only_only markdown-lint
 
 echo "check-workflow-docs-skip: ok - all wiring assertions passed"
