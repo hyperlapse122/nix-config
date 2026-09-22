@@ -28,6 +28,27 @@ let
     "--jpi-user"
     cfg.jpiUser
   ];
+  dockerCredentialHelper = import ../../packages/docker-credential-sops.nix {
+    inherit pkgs;
+    routingTable = {
+      "ghcr.io" = {
+        username = cfg.githubUser;
+        secret = "/run/secrets/cli-auth/github_token";
+      };
+      "registry.gitlab.com" = {
+        username = cfg.gitlabUser;
+        secret = "/run/secrets/cli-auth/gitlab_token";
+      };
+      "registry.jpi.app" = {
+        username = cfg.jpiUser;
+        secret = "/run/secrets/cli-auth/jpi_token";
+      };
+      "docker.io" = {
+        username = cfg.dockerUser;
+        secret = "/run/secrets/cli-auth/docker_token";
+      };
+    };
+  };
 in
 {
   options.my.cliAuth = {
@@ -54,9 +75,17 @@ in
       type = lib.types.str;
       default = "hyperlapse";
     };
+    dockerUser = lib.mkOption {
+      type = lib.types.str;
+      default = "hyperlapse122";
+    };
   };
-  config = lib.mkIf cfg.enable (
-    lib.mkMerge [
+  config = lib.mkMerge [
+    {
+      environment.systemPackages = [ dockerCredentialHelper ];
+    }
+    (lib.mkIf cfg.enable (
+      lib.mkMerge [
       {
         systemd.services.sops-install-secrets = {
           wantedBy = [ "sysinit.target" ];
@@ -117,5 +146,6 @@ in
           '';
       })
     ]
-  );
+  ))
+  ];
 }
