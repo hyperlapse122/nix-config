@@ -8,6 +8,7 @@
     ./git.nix
     ./gpg.nix
     ./kde
+    ./orca.nix
     ./shell.nix
     ./ssh.nix
     ./terminal.nix
