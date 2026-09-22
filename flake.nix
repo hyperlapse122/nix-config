@@ -85,6 +85,45 @@
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
         claude = import ./tests/claude.nix { inherit pkgs self; };
+        claude-settings =
+          let
+            packaged = (import ./packages/claude-tools.nix { inherit pkgs; }).claudeSettings;
+          in
+          pkgs.runCommand "claude-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            mkdir -p scripts tests
+            cp ${./scripts/claude-settings} scripts/claude-settings
+            cp ${./tests/test_claude_settings.py} tests/test_claude_settings.py
+            python tests/test_claude_settings.py
+
+            # Activation runs the packaged binary, not this source copy, and its
+            # unit's PATH carries no python3. Exercise the built file so a lost
+            # +x bit or an unpatched `#!/usr/bin/env python3` fails here rather
+            # than on the laptop.
+            interpreter=$(head -1 ${packaged}/bin/claude-settings)
+            case "$interpreter" in
+              '#!'/nix/store/*) ;;
+              *)
+                echo "packaged merger must carry a store interpreter, got: $interpreter" >&2
+                exit 1
+                ;;
+            esac
+
+            mkdir -p home/.claude
+            printf '{"model":"sonnet","numStartups":41,"retired":"gone"}\n' > home/.claude/settings.json
+            printf '{"set":{"model":"opus[1m]"},"remove":["retired"]}\n' > declared.json
+            env -i ${packaged}/bin/claude-settings \
+              --settings "$PWD/home/.claude/settings.json" --declared "$PWD/declared.json"
+            ${pkgs.python3}/bin/python3 - <<'PY'
+            import json
+            merged = json.load(open('home/.claude/settings.json'))
+            assert merged['model'] == 'opus[1m]', merged
+            assert merged['numStartups'] == 41, merged
+            assert 'retired' not in merged, merged
+            PY
+
+            touch $out
+          '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
