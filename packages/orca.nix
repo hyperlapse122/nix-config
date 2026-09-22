@@ -17,17 +17,15 @@ pkgs.appimageTools.wrapType2 {
   inherit pname version src;
 
   extraInstallCommands = ''
-    if [ -f "${appimageContents}/orca.desktop" ]; then
-      install -m 444 -D ${appimageContents}/orca.desktop $out/share/applications/orca.desktop
-      substituteInPlace $out/share/applications/orca.desktop \
-        --replace-fail 'Exec=AppRun' 'Exec=orca-ide' || true
-    elif [ -f "${appimageContents}/orca-ide.desktop" ]; then
-      install -m 444 -D ${appimageContents}/orca-ide.desktop $out/share/applications/orca.desktop
-      substituteInPlace $out/share/applications/orca.desktop \
-        --replace-fail 'Exec=AppRun' 'Exec=orca-ide' || true
-    fi
+    for desktop in "${appimageContents}/orca.desktop" "${appimageContents}/orca-ide.desktop"; do
+      if [ -f "$desktop" ]; then
+        install -m 444 -D "$desktop" $out/share/applications/orca.desktop
+        substituteInPlace $out/share/applications/orca.desktop \
+          --replace-fail 'Exec=AppRun' 'Exec=orca-ide'
+        break
+      fi
+    done
 
-    # Install desktop icon if available in extracted contents
     if [ -d "${appimageContents}/usr/share/icons" ]; then
       mkdir -p $out/share/icons
       cp -r ${appimageContents}/usr/share/icons/* $out/share/icons/
@@ -35,10 +33,7 @@ pkgs.appimageTools.wrapType2 {
       install -m 444 -D ${appimageContents}/orca.png $out/share/icons/hicolor/512x512/apps/orca.png
     fi
 
-    # Create convenient 'orca' symlink to 'orca-ide'
-    if [ -f "$out/bin/orca-ide" ] && [ ! -e "$out/bin/orca" ]; then
-      ln -s orca-ide $out/bin/orca
-    fi
+    ln -sf orca-ide $out/bin/orca
   '';
 
   meta = with pkgs.lib; {

@@ -35,6 +35,7 @@ let
   };
 
   declared = pkgs.writeText "orca-declared-settings.json" (builtins.toJSON orcaSettingsTier);
+  reconcileCmd = "${reconciler} --mode assert --declared ${declared}";
 in
 {
   home.packages = [ orcaPkg ];
@@ -48,7 +49,7 @@ in
     };
     Service = {
       Type = "oneshot";
-      ExecStart = "${reconciler} --mode assert --declared ${declared}";
+      ExecStart = reconcileCmd;
       RemainAfterExit = true;
     };
     Install = {
@@ -58,6 +59,6 @@ in
 
   # Activation merge runs during rebuilds. If Orca is running, it logs drift and skips writing.
   home.activation.orcaSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${reconciler} --mode assert --declared ${declared}
+    ${reconcileCmd}
   '';
 }

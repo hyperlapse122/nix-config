@@ -10,7 +10,6 @@ This script safely updates only the declared JSON leaf paths when Orca is not ru
 and inspects the SingletonLock symlink to detect live instances and avoid write races.
 """
 import argparse
-import errno
 import json
 import os
 from pathlib import Path
@@ -21,9 +20,6 @@ import tempfile
 def check_orca_running(config_dir):
     """Check if Orca is running by inspecting SingletonLock."""
     lock = config_dir / "SingletonLock"
-    if not lock.is_symlink():
-        return False, None
-
     try:
         target = os.readlink(lock)
     except OSError:
@@ -39,21 +35,30 @@ def check_orca_running(config_dir):
 
     current_host = os.uname().nodename
     if host != current_host:
-        # Lock belongs to a different host (e.g. shared NFS or stale hostname)
         return False, None
 
     pid = int(pid_str)
     try:
         os.kill(pid, 0)
-        return True, pid
-    except OSError as err:
-        if err.errno == errno.ESRCH:
-            # Process does not exist (stale lock)
-            return False, pid
-        elif err.errno == errno.EPERM:
-            # Process exists but owned by another user
-            return True, pid
+    except ProcessLookupError:
+        return False, pid
+    except PermissionError:
+        return False, pid
+    except OSError:
         return False, None
+
+    # Avoid false positives from recycled PIDs after system crash or reboot.
+    # Check if the process name or cmdline actually references orca.
+    try:
+        cmdline_file = Path(f"/proc/{pid}/cmdline")
+        if cmdline_file.exists():
+            cmdline = cmdline_file.read_text(encoding="utf-8", errors="ignore").lower()
+            if "orca" not in cmdline:
+                return False, pid
+    except (OSError, PermissionError):
+        pass
+
+    return True, pid
 
 
 def get_leaf(doc, path_parts):
@@ -69,7 +74,7 @@ def get_leaf(doc, path_parts):
 def set_leaf(doc, path_parts, value):
     """Set value at dotted path parts, creating intermediate dicts if needed."""
     curr = doc
-    for i, part in enumerate(path_parts[:-1]):
+    for part in path_parts[:-1]:
         if part not in curr or not isinstance(curr[part], dict):
             curr[part] = {}
         curr = curr[part]
@@ -105,16 +110,6 @@ def reconcile(config_dir, declared_file, mode="assert"):
         print(f"orca-settings-reconcile: {data_file} is missing; skipping.", file=sys.stderr)
         return 0
 
-    try:
-        declared = json.loads(declared_file.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"orca-settings-reconcile: Failed to parse declared settings {declared_file}: {e}", file=sys.stderr)
-        return 1
-
-    if not isinstance(declared, dict):
-        print(f"orca-settings-reconcile: Declared settings in {declared_file} must be a JSON object.", file=sys.stderr)
-        return 1
-
     is_running, pid = check_orca_running(config_dir)
     if is_running:
         if mode == "assert":
@@ -127,42 +122,42 @@ def reconcile(config_dir, declared_file, mode="assert"):
             print(f"orca-settings-reconcile: Orca is currently running (pid {pid}).", file=sys.stderr)
 
     try:
+        declared = json.loads(declared_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"orca-settings-reconcile: Failed to parse declared settings {declared_file}: {e}", file=sys.stderr)
+        return 1
+
+    if not isinstance(declared, dict):
+        print(f"orca-settings-reconcile: Declared settings in {declared_file} must be a JSON object.", file=sys.stderr)
+        return 1
+
+    try:
         current_data = json.loads(data_file.read_text(encoding="utf-8"))
     except Exception as e:
         print(f"orca-settings-reconcile: Failed to parse {data_file}: {e}", file=sys.stderr)
-        return 1
+        return 0
 
     if not isinstance(current_data, dict):
-        print(f"orca-settings-reconcile: {data_file} is not a JSON object.", file=sys.stderr)
-        return 1
+        print(f"orca-settings-reconcile: {data_file} is not a JSON object; skipping.", file=sys.stderr)
+        return 0
 
-    drift_count = 0
-    drifted_paths = []
-
+    drifted_leaves = []
     for path_str, declared_val in declared.items():
         parts = path_str.split(".")
         found, current_val = get_leaf(current_data, parts)
         if not found or current_val != declared_val:
-            drift_count += 1
-            drifted_paths.append(path_str)
+            drifted_leaves.append((parts, declared_val))
             if mode == "report":
                 print(f"drift\t{path_str}")
-        else:
-            if mode == "report":
-                print(f"converged\t{path_str}")
+        elif mode == "report":
+            print(f"converged\t{path_str}")
 
-    if mode == "report":
+    if mode == "report" or not drifted_leaves:
         return 0
 
-    if drift_count == 0:
-        return 0
+    for parts, declared_val in drifted_leaves:
+        set_leaf(current_data, parts, declared_val)
 
-    # Apply drift to current_data
-    for path_str in drifted_paths:
-        parts = path_str.split(".")
-        set_leaf(current_data, parts, declared[path_str])
-
-    # Atomic write to data_file
     profile_dir = data_file.parent
     temp_fd, temp_path = tempfile.mkstemp(prefix=".orca-data-", dir=profile_dir)
     try:
@@ -174,14 +169,13 @@ def reconcile(config_dir, declared_file, mode="assert"):
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, data_file)
     finally:
-        if os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except OSError:
-                pass
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
 
     print(
-        f"orca-settings-reconcile: Converged {drift_count} declared setting(s) into {data_file.name}.",
+        f"orca-settings-reconcile: Converged {len(drifted_leaves)} declared setting(s) into {data_file.name}.",
         file=sys.stderr,
     )
     return 0

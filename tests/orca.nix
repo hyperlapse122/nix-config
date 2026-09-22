@@ -11,16 +11,14 @@ let
     let
       userConfig = host.config.home-manager.users.h82;
 
-      # Package presence
       orcaPackage = lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null (
         userConfig.home.packages or [ ]
       );
 
-      # Systemd user service
       service = userConfig.systemd.user.services.orca-settings-reconcile or null;
+      serviceEnabled = if service == null then false else (service.enable or true);
       serviceType = if service == null then "" else (service.Service.Type or "");
 
-      # Activation hook
       activation = userConfig.home.activation.orcaSettings or null;
       activationScript = if activation == null then "" else (activation.data or "");
       runsAfterPackages = lib.elem "installPackages" (
@@ -37,6 +35,10 @@ let
           echo 'orca package missing bin/orca-ide on ${hostName}' >&2
           failed=1
         fi
+        if ! [ -f "${orcaPackage}/share/applications/orca.desktop" ]; then
+          echo 'orca package missing share/applications/orca.desktop on ${hostName}' >&2
+          failed=1
+        fi
       '';
 
       serviceAbsent = lib.optionalString (service == null) ''
@@ -45,6 +47,10 @@ let
       '';
 
       servicePresent = lib.optionalString (service != null) ''
+        if [ ${esc (lib.boolToString serviceEnabled)} != "true" ]; then
+          echo 'orca-settings-reconcile service must be enabled on ${hostName}' >&2
+          failed=1
+        fi
         if [ ${esc serviceType} != "oneshot" ]; then
           echo 'orca-settings-reconcile service must be type oneshot on ${hostName}, got: ${esc serviceType}' >&2
           failed=1
@@ -99,7 +105,7 @@ pkgs.runCommand "orca-checks"
     cp ${./test_orca_settings.py} tests/test_orca_settings.py
     python tests/test_orca_settings.py
 
-    # 2. Verify packaged reconciler carries a store interpreter
+    # 2. Verify packaged reconciler carries a store interpreter and executes cleanly
     interpreter=$(head -1 ${packagedReconciler}/bin/orca-settings-reconcile)
     case "$interpreter" in
       '#!'/nix/store/*) ;;
@@ -108,6 +114,7 @@ pkgs.runCommand "orca-checks"
         exit 1
         ;;
     esac
+    ${packagedReconciler}/bin/orca-settings-reconcile --help >/dev/null
 
     # 3. Assert evaluated configuration across hosts
     failed=0
