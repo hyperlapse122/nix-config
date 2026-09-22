@@ -47,7 +47,12 @@ jobs:
       - name: Classify changed paths
         id: classify
         run: |
-          docs_only=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-docs-only-paths)
+          # base.sha is the base branch tip as of the last PR sync event, not
+          # necessarily its current tip -- a two-dot diff against it would
+          # include every unrelated commit main has gained since, so diff
+          # from the merge-base instead.
+          merge_base=$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          docs_only=$(git diff --name-only "$merge_base" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-docs-only-paths)
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
   flake-check:
