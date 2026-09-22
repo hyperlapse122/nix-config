@@ -99,11 +99,35 @@ Check each CLI's authentication status and test Git HTTPS access to the required
 
 ## Coding agent harness configuration
 
-Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `modules/nixos/claude.nix` and `home/h82/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/gemini.nix`. Persistent memory features are explicitly disabled to prevent mutable per-user history from affecting agent behavior:
+Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `home/h82/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/gemini.nix`.
 
-- **Claude Code**: Environment variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1"` acts as the top-level kill switch. In addition, `/etc/claude-code/managed-settings.json` declaratively sets `"autoMemoryEnabled": false`, `"model": "opus[1m]"`, and `"effortLevel": "medium"`.
-- **Antigravity CLI**: `~/.gemini/antigravity-cli/settings.json` sets `"disableAutoGenerateMemories": true`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
+### Which tier owns which setting
 
-Claude Code rewrites `~/.claude/settings.json` itself, so those defaults live in the managed settings tier instead. That tier outranks user and project settings, so a model or effort chosen at runtime does not persist across sessions. To hand either choice back to the user, remove the corresponding key from `modules/nixos/claude.nix` and its assertion from `tests/claude.nix` in the same change; the `claude` check asserts every declared key. The `opus[1m]` value starts every session on the 1M-context variant; environments where 1M context is unavailable fall back to the standard context. Drop the `[1m]` suffix to default to the standard context instead.
+Each Claude Code setting this repository declares is assigned to exactly one settings tier, and `home/h82/claude.nix` holds both lists.
+
+- **Environment variables**, for settings whose persistent form is a variable: `DISABLE_AUTOUPDATER`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. A variable that only overrides a single session, such as `ANTHROPIC_MODEL` or `CLAUDE_CODE_EFFORT_LEVEL`, does not move its setting into this tier. These are session variables, so they reach every program in the session, not only Claude Code — `DISABLE_AUTOUPDATER` in particular is read by other coding-agent CLIs as well; it lives in this module because the declared set belongs in one place.
+- **The user settings file** `~/.claude/settings.json`, for everything else declared: `model`, `effortLevel`, `language`, `theme`, `preferredNotifChannel`, `agentPushNotifEnabled`, `inputNeededNotifEnabled`, and `cleanupPeriodDays`.
+
+Claude Code owns that file and rewrites it whenever a `/config` option changes, so Home Manager cannot place a read-only store symlink there. Activation instead runs the packaged `claude-settings` merger, which assigns the declared keys and leaves every other key exactly as the agent wrote it. A key this repository does not declare stays the user's permanently. To hand a choice back to the user, remove it from the declared set in `home/h82/claude.nix` and from `tests/claude.nix` in the same change; the `claude` check asserts the whole rendered set.
+
+A declared key returns to its declared value on the next rebuild **that produces a new Home Manager generation**, not on every `nixos-rebuild switch`. `home-manager-h82.service` is a `RemainAfterExit` oneshot whose unit embeds the generation store path, so a rebuild that changes nothing in this repository leaves the unit untouched and activation does not re-run. Runtime drift in a declared key therefore persists until the next rebuild that actually changes something here.
+
+Two consequences are worth knowing. A project-level `.claude/settings.json` outranks the user tier, so a repository you work in can still override a declared value for its own sessions. And the merger refuses to act when the settings path is a symlink or its contents are not valid JSON, which fails the rebuild rather than applying the declared values silently — remove the symlink or repair the file, then rebuild. A refusal leaves the file and its directory exactly as they were.
+
+To stop declaring a key, move its name into `retiredKeys` in `home/h82/claude.nix` rather than just deleting it from the declared set. The merge only ever assigns, so a deleted declaration would leave its last written value on every machine forever. Drop the `retiredKeys` entry once every host has rebuilt past it.
+
+The merge is a compare-and-swap, not a plain read-modify-write: Claude Code may rewrite the file while activation is running, and a write that lands in that window is re-merged rather than discarded.
+
+**The managed settings tier is deliberately unused.** `/etc/claude-code/managed-settings.json` outranks every other tier and Claude Code only reads it, which is why this repository used it before. It blocks a change even inside a running session, so it does not scale to settings the user must still be able to adjust. Nothing declares it now, and NixOS removes obsolete `environment.etc` entries on switch, so an already-installed host loses the file on its next rebuild.
+
+The `opus[1m]` value starts every session on the 1M-context variant; environments where 1M context is unavailable fall back to the standard context. Drop the `[1m]` suffix to default to the standard context instead.
+
+### Surfaces that stay unmanaged
+
+Only the scalar settings above are declared. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
+
+### Memory
+
+Persistent memory features are explicitly disabled so mutable per-user history does not affect agent behavior. Claude Code uses the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable above; the Antigravity CLI sets `"disableAutoGenerateMemories": true` in `~/.gemini/antigravity-cli/settings.json`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.

@@ -5,7 +5,6 @@
     ./disko.nix
     ../../modules/nixos/base.nix
     ../../modules/nixos/boot.nix
-    ../../modules/nixos/claude.nix
     ../../modules/nixos/desktop.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/keyd.nix
