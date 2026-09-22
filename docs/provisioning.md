@@ -130,7 +130,7 @@ The merge is a compare-and-swap, not a plain read-modify-write: Claude Code may 
 
 **The managed settings tier is deliberately unused.** `/etc/claude-code/managed-settings.json` outranks every other tier and Claude Code only reads it, which is why this repository used it before. It blocks a change even inside a running session, so it does not scale to settings the user must still be able to adjust. Nothing declares it now, and NixOS removes obsolete `environment.etc` entries on switch, so an already-installed host loses the file on its next rebuild.
 
-The `opus[1m]` value starts every session on the 1M-context variant; environments where 1M context is unavailable fall back to the standard context. Drop the `[1m]` suffix to default to the standard context instead.
+The `sonnet` value configures Claude Code's primary model with `xhigh` reasoning effort level (`home/h82/claude.nix`).
 
 ### Surfaces that stay unmanaged
 
