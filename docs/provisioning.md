@@ -107,3 +107,22 @@ Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed decla
 Claude Code rewrites `~/.claude/settings.json` itself, so those defaults live in the managed settings tier instead. That tier outranks user and project settings, so a model or effort chosen at runtime does not persist across sessions. To hand either choice back to the user, remove the corresponding key from `modules/nixos/claude.nix` and its assertion from `tests/claude.nix` in the same change; the `claude` check asserts every declared key. The `opus[1m]` value starts every session on the 1M-context variant; environments where 1M context is unavailable fall back to the standard context. Drop the `[1m]` suffix to default to the standard context instead.
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
+
+## Container runtime and registry authentication
+
+Rootless Podman is configured declaratively in `modules/nixos/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`.
+
+Supported registries:
+- `ghcr.io` (authenticated via `github_token`)
+- `registry.gitlab.com` (authenticated via `gitlab_token`)
+- `registry.jpi.app` (authenticated via `jpi_token`)
+- `docker.io` (authenticated via `docker_token`)
+
+### Developer prerequisites
+
+1. **Docker Hub token**: To enable authenticated pulls from `docker.io`, generate an access token on Docker Hub, add `docker_token` to `secrets/tokens.yaml`, and re-encrypt the file with SOPS using the host age recipient:
+   ```sh
+   sops secrets/tokens.yaml
+   ```
+   Before that token is added, lookups for `docker.io` report a clean credential miss and fall back to anonymous pulls.
+2. **Token scopes**: Ensure the existing GitHub token carries `read:packages` (or `write:packages` for pushes) and the GitLab tokens carry `read_registry` (or `write_registry`). Tokens issued solely for CLI or Git HTTPS access will return 401 Unauthorized upon pulling container images even when credentials are provided correctly.
