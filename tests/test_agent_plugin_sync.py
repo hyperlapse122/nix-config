@@ -22,8 +22,9 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 sync = importlib.util.module_from_spec(spec)
 loader.exec_module(sync)
 
-FAKE_CLI = '''#!/usr/bin/env python3
-import json, os, sys
+# The sandboxed check has no /usr/bin/env, so the shebang is written from the
+# interpreter running these tests rather than hardcoded.
+FAKE_CLI = '''import json, os, sys
 state = os.environ['FAKE_STATE']
 fail_on = os.environ.get('FAKE_FAIL_ON', '')
 enabled_msg = os.environ.get('FAKE_ENABLE_MSG', '')
@@ -89,7 +90,7 @@ class SyncTestCase(unittest.TestCase):
         self.root = Path(self.tmp.name)
 
         self.cli = self.root / 'fake-claude'
-        self.cli.write_text(FAKE_CLI)
+        self.cli.write_text('#!{}\n{}'.format(sys.executable, FAKE_CLI))
         self.cli.chmod(0o755)
 
         self.state = self.root / 'state.json'
