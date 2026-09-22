@@ -13,22 +13,27 @@ identity's single public `age1...` recipient).  `ThinkPad-X1-Carbon-Gen-11`
 currently has both.  `scripts/prepare-age-identity` creates them for a new
 host; do not write either file by hand.
 
-`.sops.yaml` carries one creation rule with one recipient:
+`.sops.yaml` carries one creation rule per encrypted file, each listing every
+recipient host that may decrypt it:
 
 ```yaml
 creation_rules:
   - path_regex: secrets/tokens\.yaml$
-    age: <the recipient of the host that owns the identity>
+    age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/wifi\.yaml$
+    age: <comma-separated recipients of every host that shares this file>
 ```
 
-That means only the host whose recipient appears there can decrypt
-`secrets/tokens.yaml`.  Adding a second host's bootstrap material does not
-give it access: `secrets/tokens.yaml` has to be re-encrypted to that host's
-recipient first, or the rule split per host.  Per-host token files are not set
-up today.
+Only a host whose recipient appears in a file's rule can decrypt it.
+`secrets/tokens.yaml` and `secrets/wifi.yaml` currently list both
+`ThinkPad-X1-Carbon-Gen-11`'s and `MS-7D91`'s recipients, so either host can
+decrypt either file. Adding a new host's bootstrap material does not by
+itself give it access to an existing file: re-encrypt that file to the new
+recipient first, or split the rule per host.
 
-The encrypted token document is a flat YAML mapping with exactly these string
-fields (the service usernames are public configuration and are not secret):
+The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
+with exactly these string fields (the service usernames are public
+configuration and are not secret):
 
 ```yaml
 github_token: <GitHub token>
@@ -37,9 +42,20 @@ jpi_token: <git.jpi.app token>
 ```
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
-GitLab.com and `git.jpi.app`.  Keep the encrypted document at
-`secrets/tokens.yaml`; do not pass token values as command arguments or print
-decrypted output.  Each host's bootstrap age identity is encrypted with the
+GitLab.com and `git.jpi.app`.
+
+The encrypted Wi-Fi document (`secrets/wifi.yaml`) is a flat YAML mapping with
+one SSID/PSK pair per network label (the label is an arbitrary local name,
+never the literal SSID — see `modules/nixos/wifi.nix`):
+
+```yaml
+wifi/<label>/ssid: <network SSID>
+wifi/<label>/psk: <network passphrase>
+```
+
+Keep each encrypted document at its path above; do not pass SSID, PSK, or
+token values as command arguments or print decrypted output when populating
+either file. Each host's bootstrap age identity is encrypted with the
 public OpenPGP encryption subkey from `keys/signing.asc`.  Verify that it
 decrypts with the real card before installing NixOS;
 `scripts/prepare-age-identity` enforces that round trip as it writes the file
