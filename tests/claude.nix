@@ -75,7 +75,11 @@ let
 
       activation = userConfig.home.activation.claudeSettings or null;
       script = if activation == null then "" else (activation.data or "");
-      runsAfterWriteBoundary = lib.elem "writeBoundary" (
+      # After installPackages, so a refusal cannot strand linkGeneration and
+      # installPackages behind it. Asserting writeBoundary instead would pass
+      # the position that causes that, since installPackages is itself after
+      # writeBoundary.
+      runsAfterPackages = lib.elem "installPackages" (
         if activation == null then [ ] else (activation.after or [ ])
       );
 
@@ -104,8 +108,8 @@ let
       '';
 
       activationPresent = lib.optionalString (activation != null) ''
-        if [ ${esc (lib.boolToString runsAfterWriteBoundary)} != "true" ]; then
-          echo 'home.activation.claudeSettings must run after writeBoundary on ${hostName}' >&2
+        if [ ${esc (lib.boolToString runsAfterPackages)} != "true" ]; then
+          echo 'home.activation.claudeSettings must run after installPackages on ${hostName}' >&2
           failed=1
         fi
 
@@ -174,7 +178,12 @@ let
       fi
     '';
 
-  declaredExpected = pkgs.writeText "claude-expected-settings.json" (builtins.toJSON settingsTier);
+  declaredExpected = pkgs.writeText "claude-expected-settings.json" (
+    builtins.toJSON {
+      set = settingsTier;
+      remove = [ ];
+    }
+  );
 in
 pkgs.runCommand "claude-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x

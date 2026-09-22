@@ -112,7 +112,11 @@ Claude Code owns that file and rewrites it whenever a `/config` option changes, 
 
 A declared key returns to its declared value on the next rebuild **that produces a new Home Manager generation**, not on every `nixos-rebuild switch`. `home-manager-h82.service` is a `RemainAfterExit` oneshot whose unit embeds the generation store path, so a rebuild that changes nothing in this repository leaves the unit untouched and activation does not re-run. Runtime drift in a declared key therefore persists until the next rebuild that actually changes something here.
 
-Two consequences are worth knowing. A project-level `.claude/settings.json` outranks the user tier, so a repository you work in can still override a declared value for its own sessions. And the merger refuses to act when the settings path is a symlink or its contents are not valid JSON, which fails the rebuild rather than applying the declared values silently — remove the symlink or repair the file, then rebuild.
+Two consequences are worth knowing. A project-level `.claude/settings.json` outranks the user tier, so a repository you work in can still override a declared value for its own sessions. And the merger refuses to act when the settings path is a symlink or its contents are not valid JSON, which fails the rebuild rather than applying the declared values silently — remove the symlink or repair the file, then rebuild. A refusal leaves the file and its directory exactly as they were.
+
+To stop declaring a key, move its name into `retiredKeys` in `home/h82/claude.nix` rather than just deleting it from the declared set. The merge only ever assigns, so a deleted declaration would leave its last written value on every machine forever. Drop the `retiredKeys` entry once every host has rebuilt past it.
+
+The merge is a compare-and-swap, not a plain read-modify-write: Claude Code may rewrite the file while activation is running, and a write that lands in that window is re-merged rather than discarded.
 
 **The managed settings tier is deliberately unused.** `/etc/claude-code/managed-settings.json` outranks every other tier and Claude Code only reads it, which is why this repository used it before. It blocks a change even inside a running session, so it does not scale to settings the user must still be able to adjust. Nothing declares it now, and NixOS removes obsolete `environment.etc` entries on switch, so an already-installed host loses the file on its next rebuild.
 

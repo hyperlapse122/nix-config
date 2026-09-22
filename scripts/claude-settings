@@ -2,20 +2,37 @@
 """Set declared keys in Claude Code's user settings file. Run as the target user.
 
 Claude Code owns this file and rewrites it whenever a /config option changes, so
-Home Manager cannot place a store symlink here.  Activation therefore assigns the
-declared top-level keys and leaves every other key exactly as the agent wrote it.
+Home Manager cannot place a read-only store symlink there.  Activation assigns
+the declared top-level keys, drops the ones this repository has retired, and
+leaves every other key exactly as the agent wrote it.
 """
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 
+# The settings file has another writer, so the merge is a compare-and-swap
+# rather than a plain read-modify-write.  A couple of retries is enough: each
+# one costs a read, and a file changing faster than that is a problem the user
+# needs told about rather than one worth spinning on.
+ATTEMPTS = 3
 
-def private_directory(path):
+
+def check_directory(path):
+    """Refuse a symlinked parent without touching anything.
+
+    O_NOFOLLOW below only inspects the final component, so the parent is
+    checked separately. This runs before any mutation so a refusal really does
+    leave the disk alone.
+    """
     if path.is_symlink():
         raise ValueError('settings directory is a symlink: {}'.format(path))
+
+
+def private_directory(path):
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     # mkdir applies its mode only when it creates the directory, and ~/.claude
     # normally exists already -- Claude Code made it under the default umask.
@@ -24,15 +41,61 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-def existing_settings(settings):
-    # A symlink here would be replaced by os.replace below, which silently
-    # detaches whatever the user pointed the path at.
-    if settings.is_symlink():
-        raise ValueError('settings file is a symlink: {}'.format(settings))
-    if not settings.exists():
-        return {}
+def declaration(declared):
+    """Parse the rendered declaration into (assign, retire).
+
+    `remove` is how a key leaves the declared set.  Dropping it from `set`
+    alone would leave its last written value on every machine forever, because
+    the merge only ever assigns.
+    """
+    document = json.loads(declared.read_text())
+    if not isinstance(document, dict):
+        raise ValueError('declared settings are not a JSON object: {}'.format(declared))
+    assign = document.get('set', {})
+    retire = document.get('remove', [])
+    if not isinstance(assign, dict):
+        raise ValueError('declared "set" is not a JSON object: {}'.format(declared))
+    if not isinstance(retire, list) or any(not isinstance(name, str) for name in retire):
+        raise ValueError('declared "remove" is not a list of names: {}'.format(declared))
+    # Assignment is one level deep, so an object-valued declaration would
+    # replace the user's whole object -- their permission allowlist, hooks, or
+    # env map -- rather than merging into it.  Fail closed instead.
+    nested = sorted(name for name, value in assign.items() if isinstance(value, (dict, list)))
+    if nested:
+        raise ValueError('declared settings must be scalars; these are not: {}'.format(', '.join(nested)))
+    contradictory = sorted(set(assign) & set(retire))
+    if contradictory:
+        raise ValueError('declared as both set and removed: {}'.format(', '.join(contradictory)))
+    return assign, retire
+
+
+def snapshot(settings):
+    """Identify the file well enough to notice another writer replacing it."""
     try:
-        current = json.loads(settings.read_text())
+        state = os.lstat(settings)
+    except FileNotFoundError:
+        return None
+    return (state.st_dev, state.st_ino, state.st_mtime_ns, state.st_size)
+
+
+def read_settings(settings):
+    # O_NOFOLLOW refuses a symlinked path in the same syscall that opens it, so
+    # there is no window between deciding the path is safe and reading it.
+    try:
+        descriptor = os.open(settings, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return {}
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.EMLINK):
+            raise ValueError('settings file is a symlink: {}'.format(settings))
+        raise
+    # Explicit UTF-8: the activation unit carries no locale, so letting Python
+    # pick one risks failing to read a file the agent wrote with non-ASCII
+    # content -- likely here, where the interface language is Korean.
+    with os.fdopen(descriptor, 'r', encoding='utf-8') as stream:
+        text = stream.read()
+    try:
+        current = json.loads(text)
     except json.JSONDecodeError:
         raise ValueError('settings file is not valid JSON: {}'.format(settings))
     if not isinstance(current, dict):
@@ -40,36 +103,58 @@ def existing_settings(settings):
     return current
 
 
-def merge(settings, declared):
-    values = json.loads(declared.read_text())
-    if not isinstance(values, dict):
-        raise ValueError('declared settings are not a JSON object: {}'.format(declared))
-    # Assignment is one level deep, so an object-valued declaration would
-    # replace the user's whole object -- their permission allowlist, hooks, or
-    # env map -- rather than merging into it. Fail closed instead.
-    nested = sorted(name for name, value in values.items() if isinstance(value, (dict, list)))
-    if nested:
-        raise ValueError('declared settings must be scalars; these are not: {}'.format(', '.join(nested)))
-    private_directory(settings.parent)
-    current = existing_settings(settings)
-    merged = dict(current)
-    merged.update(values)
-    if merged == current and settings.exists():
-        settings.chmod(0o600)
-        return
-    text = json.dumps(merged, indent=2) + '\n'
-    fd, temporary = tempfile.mkstemp(prefix='.settings-', dir=settings.parent)
+def swap(settings, merged, before):
+    """Write `merged` only if the file still looks like `before`."""
+    # ensure_ascii=False keeps the agent's non-ASCII text as the bytes it wrote
+    # instead of rewriting it to \uXXXX escapes on every activation.
+    text = json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
+    descriptor, temporary = tempfile.mkstemp(prefix='.settings-', dir=settings.parent)
     try:
-        with os.fdopen(fd, 'w') as stream:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temporary, 0o600)
+        # Re-check immediately before the swap.  Claude Code may have rewritten
+        # the file since it was read, and replacing it then would discard what
+        # the agent just wrote -- hooks, plugins, per-project state.
+        if snapshot(settings) != before:
+            return False
         os.replace(temporary, settings)
         temporary = None
+        return True
     finally:
         if temporary is not None:
             Path(temporary).unlink(missing_ok=True)
+
+
+def merge(settings, declared):
+    assign, retire = declaration(declared)
+    check_directory(settings.parent)
+    # Validate before creating or tightening anything, so a refusal leaves the
+    # disk exactly as it found it. The value is deliberately discarded: each
+    # attempt below pairs its own read with its own snapshot, and reusing this
+    # one would break that pairing and let a concurrent write be overwritten.
+    read_settings(settings)
+    private_directory(settings.parent)
+    for _ in range(ATTEMPTS):
+        before = snapshot(settings)
+        current = read_settings(settings)
+        merged = dict(current)
+        merged.update(assign)
+        for name in retire:
+            merged.pop(name, None)
+        if merged == current and before is not None:
+            try:
+                os.chmod(settings, 0o600)
+                return
+            except FileNotFoundError:
+                # Removed between the snapshot and here; fall through and let
+                # the next attempt recreate it rather than failing activation.
+                continue
+        if swap(settings, merged, before):
+            return
+    raise ValueError('settings file kept changing while merging: {}'.format(settings))
 
 
 def main(argv=None):

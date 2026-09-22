@@ -41,7 +41,18 @@ let
     cleanupPeriodDays = 30;
   };
 
-  declared = pkgs.writeText "claude-declared-settings.json" (builtins.toJSON settingsTier);
+  # Keys this repository used to declare and has since retired. The merge only
+  # assigns, so dropping a key from settingsTier alone would leave its last
+  # written value on every machine forever. Move it here instead, and delete
+  # the entry once every host has rebuilt past it.
+  retiredKeys = [ ];
+
+  declared = pkgs.writeText "claude-declared-settings.json" (
+    builtins.toJSON {
+      set = settingsTier;
+      remove = retiredKeys;
+    }
+  );
 in
 {
   home.sessionVariables = environmentTier;
@@ -52,7 +63,13 @@ in
   # be true -- and if it somehow were not, the false branch would skip the
   # merge silently, which is the opposite of what the merge must do. A refusal
   # or a missing binary both have to stop the rebuild loudly.
-  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+  # After installPackages, not merely after writeBoundary. A refusal has to
+  # fail the rebuild, and an activation entry that fails stops every entry
+  # ordered behind it -- from writeBoundary that would strand linkGeneration
+  # and installPackages, leaving the system generation switched while the home
+  # generation is not linked and packages are missing. A file another program
+  # owns should not be able to do that.
+  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
     ${merger} \
       --settings ${config.home.homeDirectory}/.claude/settings.json \
       --declared ${declared}

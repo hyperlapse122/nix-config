@@ -110,8 +110,8 @@
             esac
 
             mkdir -p home/.claude
-            printf '{"model":"sonnet","numStartups":41}\n' > home/.claude/settings.json
-            printf '{"model":"opus[1m]"}\n' > declared.json
+            printf '{"model":"sonnet","numStartups":41,"retired":"gone"}\n' > home/.claude/settings.json
+            printf '{"set":{"model":"opus[1m]"},"remove":["retired"]}\n' > declared.json
             env -i ${packaged}/bin/claude-settings \
               --settings "$PWD/home/.claude/settings.json" --declared "$PWD/declared.json"
             ${pkgs.python3}/bin/python3 - <<'PY'
@@ -119,6 +119,7 @@
             merged = json.load(open('home/.claude/settings.json'))
             assert merged['model'] == 'opus[1m]', merged
             assert merged['numStartups'] == 41, merged
+            assert 'retired' not in merged, merged
             PY
 
             touch $out

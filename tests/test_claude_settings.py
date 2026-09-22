@@ -53,7 +53,10 @@ class MergeTests(unittest.TestCase):
         self.home = Path(self.tmp.name) / 'home'
         self.settings = self.home / '.claude/settings.json'
         self.declared = Path(self.tmp.name) / 'declared.json'
-        self.declared.write_text(json.dumps(DECLARED))
+        self.declare(DECLARED)
+
+    def declare(self, assign, remove=None):
+        self.declared.write_text(json.dumps({'set': assign, 'remove': remove or []}))
 
     def seed(self, data=None):
         self.settings.parent.mkdir(parents=True, exist_ok=True)
@@ -139,10 +142,115 @@ class MergeTests(unittest.TestCase):
         # Assignment is one level deep, so declaring an object would replace
         # the user's whole object rather than merging into it.
         self.seed()
-        self.declared.write_text(json.dumps({'permissions': {'allow': ['Bash']}}))
+        self.declare({'permissions': {'allow': ['Bash']}})
         with self.assertRaises(ValueError):
             self.merge()
         self.assertEqual(self.read(), EXISTING)
+
+    def test_refuses_a_remove_list_that_is_not_names(self):
+        self.seed()
+        self.declare(DECLARED, remove=[{'model': True}])
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.read(), EXISTING)
+
+    def test_refuses_a_key_declared_as_both_set_and_removed(self):
+        self.seed()
+        self.declare(DECLARED, remove=['model'])
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.read(), EXISTING)
+
+    def test_retired_key_is_dropped_and_others_survive(self):
+        self.seed()
+        self.declare(DECLARED, remove=['themePreference'])
+        self.merge()
+        result = self.read()
+        self.assertNotIn('themePreference', result)
+        self.assertEqual(result['numStartups'], EXISTING['numStartups'])
+        self.assertEqual(result['model'], DECLARED['model'])
+
+    def test_retiring_an_absent_key_is_a_no_op(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat().st_mtime_ns
+        self.declare(DECLARED, remove=['neverPresent'])
+        self.merge()
+        self.assertEqual(self.settings.stat().st_mtime_ns, before)
+
+    def test_preserves_a_write_that_lands_while_merging(self):
+        # The file has another writer. A plain read-modify-write would discard
+        # whatever Claude Code wrote between the read and the replace.
+        self.seed()
+        original = merger.read_settings
+
+        calls = []
+
+        def read_then_interfere(path):
+            current = original(path)
+            calls.append(None)
+            # Interfere on the merge loop's first read, not the validation
+            # read that precedes it, so this exercises the compare-and-swap.
+            if len(calls) == 2:
+                concurrent = dict(current)
+                concurrent['writtenByTheAgent'] = 'keep me'
+                path.write_text(json.dumps(concurrent))
+            return current
+
+        with mock.patch.object(merger, 'read_settings', read_then_interfere):
+            self.merge()
+        result = self.read()
+        self.assertEqual(result['writtenByTheAgent'], 'keep me')
+        self.assertEqual(result['model'], DECLARED['model'])
+
+    def test_gives_up_when_the_file_never_settles(self):
+        self.seed()
+        original = merger.read_settings
+
+        def read_then_interfere(path):
+            current = original(path)
+            churn = dict(current)
+            churn['churn'] = os.urandom(4).hex()
+            path.write_text(json.dumps(churn))
+            return current
+
+        with mock.patch.object(merger, 'read_settings', read_then_interfere):
+            with self.assertRaises(ValueError):
+                self.merge()
+
+    def test_keeps_non_ascii_text_as_written(self):
+        # The interface language here is Korean, so non-ASCII in an undeclared
+        # value is expected. ensure_ascii would rewrite it to \uXXXX escapes on
+        # every activation, and a locale-dependent read could fail outright.
+        self.seed(dict(EXISTING, koreanNote='한글 설정'))
+        self.merge()
+        raw = self.settings.read_text(encoding='utf-8')
+        self.assertIn('한글 설정', raw)
+        self.assertNotIn('\\ud55c', raw)
+
+    def test_survives_the_file_disappearing_after_the_snapshot(self):
+        self.seed(dict(DECLARED))
+        original = merger.read_settings
+
+        def read_then_delete(path):
+            current = original(path)
+            if not getattr(read_then_delete, 'fired', False):
+                read_then_delete.fired = True
+                path.unlink()
+            return current
+
+        with mock.patch.object(merger, 'read_settings', read_then_delete):
+            self.merge()
+        self.assertEqual(self.read(), DECLARED)
+
+    def test_refusal_does_not_create_or_tighten_the_parent(self):
+        # A refusal must leave the disk as it found it, including the parent.
+        self.settings.parent.mkdir(parents=True)
+        self.settings.parent.chmod(0o755)
+        self.settings.write_text('{ not json')
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.parent.stat().st_mode & 0o777, 0o755)
 
     def test_tightens_an_existing_loose_parent_directory(self):
         self.settings.parent.mkdir(parents=True)
