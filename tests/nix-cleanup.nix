@@ -14,7 +14,9 @@
 
   Verifies:
   - the production nh-clean service unit exists, and the script its ExecStart
-    names runs `nh clean all` with a retention count and a retention window.
+    names runs `nh clean all` with a retention count, a retention window, and
+    --keep-one, without disabling store collection (--no-gc) or gcroot
+    cleanup (--no-gcroots).
   - the production nh-clean timer carries OnCalendar=weekly and Persistent=true,
     so a run missed while the laptop was off is caught up at the next boot.
   - the materialised system unit tree wires that timer into timers.target.wants.
@@ -107,6 +109,15 @@ let
         fi
         if ! grep -q -- '--keep-since 14d' "$start"; then
           ${fail "the nh-clean start script does not keep generations from the last 14 days"}
+        fi
+        if ! grep -q -- '--keep-one' "$start"; then
+          ${fail "the nh-clean start script does not pass --keep-one to preserve direnv project gcroots"}
+        fi
+        if grep -w -q -- '--no-gc' "$start"; then
+          ${fail "the nh-clean start script disables store garbage collection with --no-gc"}
+        fi
+        if grep -q -- '--no-gcroots' "$start"; then
+          ${fail "the nh-clean start script disables gcroot cleanup with --no-gcroots"}
         fi
         keep=$(grep -o -- '--keep [0-9][0-9]*' "$start" | head -1 | awk '{ print $2 }')
         if [ -z "$keep" ]; then

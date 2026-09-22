@@ -21,10 +21,15 @@ in
       # while this collection runs on a timer, so a smaller floor would leave
       # menu entries pointing at generations that are already gone -- the
       # rollback path docs/recovery.md sends you to when the system will not
-      # boot.  --keep counts the newest generations regardless of age;
+      # boot.  --keep counts the newest profile generations regardless of age;
       # --keep-since is a separate window, and a generation survives if either
       # one covers it.
-      extraArgs = "--keep 10 --keep-since 14d";
+      #
+      # Non-profile gcroots (build result symlinks, dev shells) are not covered
+      # by the --keep count floor; they are governed by --keep-since 14d alone.
+      # --keep-one preserves at least one gcroot per direnv project so inactive
+      # development environments are not pruned entirely.
+      extraArgs = "--keep 10 --keep-since 14d --keep-one";
     };
   };
 }

@@ -256,7 +256,7 @@ Run from the repository root:
 | 4 | Remove the `!bootstrap` guard so the module reaches both outputs | the bootstrap assertions |
 | 5 | Drop `programs.nh.enable` while leaving `clean.enable` on | the absent `bin/nh` on the production system path |
 | 6 | Set `nix.gc.automatic = true` alongside the nh timer | the second-collector assertion |
-| 7 | Set `systemd.units."nh-clean.timer".enable = false` | the `timers.target.wants` wiring assertion, not the schedule assertion |
+| 7 | Set `systemd.timers.nh-clean.wantedBy = lib.mkForce [ ]` | the `timers.target.wants` wiring assertion, not the schedule assertion |
 
 Read the generated `buildCommand` out of the built `.drv` once before recording the rounds, so an assertion that folded to a constant during evaluation is visible rather than inferred.
 
