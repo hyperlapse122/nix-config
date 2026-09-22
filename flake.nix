@@ -598,10 +598,11 @@
               touch $out
             '';
         ci-workflow-docs-skip =
-          pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-            bash ${./tests/check-workflow-docs-skip.sh} ${./.github/workflows/check.yml}
-            touch $out
-          '';
+          pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
+            ''
+              bash ${./tests/check-workflow-docs-skip.sh} ${./.github/workflows/check.yml}
+              touch $out
+            '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
@@ -616,23 +617,25 @@
           touch $out
         '';
         ci-docs-only-paths =
-          pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
-            mkdir -p scripts tests
-            cp ${./scripts/ci-docs-only-paths} scripts/ci-docs-only-paths
-            cp ${./tests/ci-docs-only-paths.sh} tests/ci-docs-only-paths.sh
-            chmod +x scripts/ci-docs-only-paths
-            patchShebangs scripts/ci-docs-only-paths
-            bash tests/ci-docs-only-paths.sh scripts/ci-docs-only-paths
-            touch $out
-          '';
+          pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
+            ''
+              mkdir -p scripts tests
+              cp ${./scripts/ci-docs-only-paths} scripts/ci-docs-only-paths
+              cp ${./tests/ci-docs-only-paths.sh} tests/ci-docs-only-paths.sh
+              chmod +x scripts/ci-docs-only-paths
+              patchShebangs scripts/ci-docs-only-paths
+              bash tests/ci-docs-only-paths.sh scripts/ci-docs-only-paths
+              touch $out
+            '';
         markdown-lint =
-          pkgs.runCommand "markdown-lint-tests" { nativeBuildInputs = [ pkgs.markdownlint-cli2 ]; } ''
-            cp -r ${self} work
-            chmod -R u+w work
-            cd work
-            markdownlint-cli2
-            touch $out
-          '';
+          pkgs.runCommand "markdown-lint-tests" { nativeBuildInputs = [ pkgs.markdownlint-cli2 ]; }
+            ''
+              cp -r ${self} work
+              chmod -R u+w work
+              cd work
+              markdownlint-cli2
+              touch $out
+            '';
         age-identity-helpers =
           pkgs.runCommand "age-identity-helpers-tests" { nativeBuildInputs = [ pkgs.coreutils ]; }
             ''
