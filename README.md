@@ -10,7 +10,7 @@ After initial installation and key recovery, this command applies the system, Ho
 
 ## Included tools
 
-zsh, Git, Ghostty, Claude Code, omp, gh, glab, 1Password GUI and CLI, Kleopatra, and Google Chrome. Claude Code's scalar settings — model, effort level, language, theme, notifications, and transcript retention — are managed declaratively and reapplied on each rebuild, while anything the repository does not declare stays yours to change. Its logins, permissions, hooks, MCP servers, plugins, and skills are not migrated. macOS and Linux distributions other than NixOS are future work.
+zsh, Git, Ghostty, Claude Code, gh, glab, 1Password GUI and CLI, Kleopatra, and Google Chrome. Claude Code's scalar settings — model, effort level, language, theme, notifications, and transcript retention — are managed declaratively and reapplied on each rebuild, while anything the repository does not declare stays yours to change. Its logins, permissions, hooks, MCP servers, plugins, and skills are not migrated. macOS and Linux distributions other than NixOS are future work.
 
 ## Installation and operation
 

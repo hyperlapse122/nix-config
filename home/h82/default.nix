@@ -30,7 +30,6 @@
       kdePackages.kleopatra
       kdePackages.ksshaskpass
       nodejs
-      omp
       python3
       telegram-desktop
       uv
