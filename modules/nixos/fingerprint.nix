@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -49,6 +50,10 @@ in
     # withholds the factor from `kde` and routes the lock screen through
     # `kde-fingerprint` when fprintd is enabled.
     services.fprintd.enable = true;
+
+    # Gated with the factor: a host without it would carry a helper whose only
+    # purpose is a reader it does not use.
+    environment.systemPackages = [ (import ../../packages/enroll-fingerprint.nix { inherit pkgs; }) ];
 
     security.pam.services =
       lib.genAttrs withheld (_: {

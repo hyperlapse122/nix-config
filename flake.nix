@@ -127,6 +127,45 @@
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         pam-fingerprint = import ./tests/pam-fingerprint.nix { inherit pkgs self; };
+        enroll-fingerprint =
+          let
+            packaged = import ./packages/enroll-fingerprint.nix { inherit pkgs; };
+          in
+          pkgs.runCommand "enroll-fingerprint-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.gnugrep
+              ];
+            }
+            ''
+              mkdir -p scripts tests
+              cp ${./scripts/enroll-fingerprint} scripts/enroll-fingerprint
+              cp ${./tests/enroll-fingerprint.sh} tests/enroll-fingerprint.sh
+              chmod +x scripts/enroll-fingerprint
+              patchShebangs scripts/enroll-fingerprint
+              bash tests/enroll-fingerprint.sh scripts/enroll-fingerprint
+
+              # The source test renders the @...@ constants itself, so it never
+              # sees the built file. Activation runs the built one, where a lost
+              # substitution would leave the script reaching a literal
+              # '@PAMTESTER@' and the password gate would fail open-ended.
+              if grep -qE '@[A-Z_]+@' ${packaged}/bin/enroll-fingerprint; then
+                echo "packaged helper still carries an unsubstituted placeholder" >&2
+                grep -nE '@[A-Z_]+@' ${packaged}/bin/enroll-fingerprint >&2
+                exit 1
+              fi
+              interpreter=$(head -1 ${packaged}/bin/enroll-fingerprint)
+              case "$interpreter" in
+                '#!'/nix/store/*) ;;
+                *)
+                  echo "packaged helper must carry a store interpreter, got: $interpreter" >&2
+                  exit 1
+                  ;;
+              esac
+
+              touch $out
+            '';
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         publish-cli-auth =
           pkgs.runCommand "publish-cli-auth-tests" { nativeBuildInputs = [ pkgs.python3 ]; }

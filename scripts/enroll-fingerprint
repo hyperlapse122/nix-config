@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Enroll a fingerprint for the invoking user. The Nix package replaces the
+# @...@ constants with absolute store paths.
+#
+# The account password is the only thing that authorizes an enrollment. That is
+# not a courtesy prompt: polkit authenticates every action through the single
+# polkit-1 PAM stack, and this system deliberately gives that stack the
+# fingerprint factor, so upstream fprintd's auth_self_keep enroll action would
+# otherwise let one finger mint another. modules/nixos/fingerprint.nix denies
+# the action to interactive sessions and declares the fingerprint-free
+# enroll-fingerprint PAM service this script authenticates against instead.
+#
+# PAMTESTER is a build-time constant, never an environment override. The
+# fprintd commands below are overridable so the test can drive this script
+# without a reader; the authentication step is not, because an override there
+# would be the bypass the password demand exists to prevent.
+set -euo pipefail
+
+PAMTESTER="@PAMTESTER@"
+PAM_SERVICE=enroll-fingerprint
+
+# Overridable so tests never touch a real reader.
+FPRINTD_ENROLL=${ENROLL_FP_ENROLL:-@FPRINTD_ENROLL@}
+FPRINTD_LIST=${ENROLL_FP_LIST:-@FPRINTD_LIST@}
+SUDO=${ENROLL_FP_SUDO:-/run/wrappers/bin/sudo}
+
+# Exit codes beyond the usual 1 (error) and 2 (usage).
+EXIT_NO_READER=3
+EXIT_CAPTURE_FAILED=4
+
+die() {
+  printf 'enroll-fingerprint: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: enroll-fingerprint [--finger NAME]
+
+  --finger NAME  which finger to enroll (default: right-index-finger)
+
+Authorized by the account password. Run it unprivileged; it escalates itself.
+USAGE
+}
+
+if [[ $(id -u) -eq 0 ]]; then
+  die 'must not run as root; the invoking user is who gets enrolled, and running'\
+' as root would enroll a finger for root instead'
+fi
+
+finger=right-index-finger
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --finger)
+      [[ $# -ge 2 ]] || die 'missing value for --finger'
+      finger=$2
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'enroll-fingerprint: unknown argument %s\n' "$1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+user=$(id -un)
+
+# The reader is checked before the password is asked for: being told to type a
+# password and only then that the hardware is missing wastes the one thing the
+# user actually has to do by hand.
+if ! "$FPRINTD_LIST" "$user" >/dev/null 2>&1; then
+  printf 'enroll-fingerprint: no fingerprint reader is available\n' >&2
+  exit "$EXIT_NO_READER"
+fi
+
+# Re-enrolling a named finger replaces it rather than adding a second record;
+# say so, because fprintd is silent about it and the two readings differ.
+if "$FPRINTD_LIST" "$user" 2>/dev/null | grep -qF -- "$finger"; then
+  printf 'enroll-fingerprint: %s is already enrolled; it will be replaced\n' "$finger" >&2
+fi
+
+printf 'enroll-fingerprint: authorizing with your account password\n' >&2
+"$PAMTESTER" "$PAM_SERVICE" "$user" authenticate ||
+  die 'password authentication failed; nothing was enrolled'
+
+if ! "$SUDO" -- "$FPRINTD_ENROLL" -f "$finger" "$user"; then
+  printf 'enroll-fingerprint: capturing %s failed; nothing was enrolled\n' "$finger" >&2
+  exit "$EXIT_CAPTURE_FAILED"
+fi
+
+printf 'enroll-fingerprint: enrolled %s for %s\n' "$finger" "$user"
