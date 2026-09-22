@@ -60,7 +60,7 @@ let
     model = "opus[1m]";
     effortLevel = "medium";
     language = "korean";
-    theme = "dark-ansi";
+    theme = "auto";
     preferredNotifChannel = "ghostty";
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
