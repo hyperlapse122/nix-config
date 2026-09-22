@@ -61,19 +61,19 @@ assert_gated() {
   if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$'; then
     fail "job '$job' does not declare 'needs: changes'"
   fi
-  local if_line
+  local if_line expected
   if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  if ! printf '%s' "$if_line" | grep -qF "github.event_name != 'pull_request'"; then
-    fail "job '$job' if: does not run on non-pull_request events (R7)"
-  fi
-  if ! printf '%s' "$if_line" | grep -qF 'needs.changes.result != '"'"'success'"'"; then
-    fail "job '$job' if: does not fail open when the changes job did not succeed (R6/KTD4)"
-  fi
-  if ! printf '%s' "$if_line" | grep -qF "needs.changes.outputs.docs_only != 'true'"; then
-    fail "job '$job' if: does not gate on a definitive docs_only:true (R1)"
+  # The full literal condition as one fixed string, connectives included --
+  # three independent substring checks would each still match a mutation
+  # that swaps || for && (a real, verified false pass): only an exact match
+  # on the whole expression proves the clauses are joined the way R1/R6/R7
+  # require, not just present somewhere in the line.
+  expected="!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
+  if ! printf '%s' "$if_line" | grep -qF -- "$expected"; then
+    fail "job '$job' if: does not match the expected fail-open condition exactly (R1/R6/R7/KTD4); got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' is gated on the changes job (R1/R6/R7/KTD4)"
 }
@@ -106,19 +106,17 @@ assert_docs_only_only() {
   if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$'; then
     fail "job '$job' does not declare 'needs: changes'"
   fi
-  local if_line
+  local if_line expected
   if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  if ! printf '%s' "$if_line" | grep -qF "github.event_name == 'pull_request'"; then
-    fail "job '$job' if: does not require a pull_request event"
-  fi
-  if ! printf '%s' "$if_line" | grep -qF 'needs.changes.result == '"'"'success'"'"; then
-    fail "job '$job' if: does not require the classifier to have succeeded"
-  fi
-  if ! printf '%s' "$if_line" | grep -qF "needs.changes.outputs.docs_only == 'true'"; then
-    fail "job '$job' if: does not require a definitive docs_only:true"
+  # Exact match on the whole expression, connectives included -- see the
+  # comment in assert_gated for why independent substring checks do not
+  # prove the clauses are joined with &&.
+  expected="!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
+  if ! printf '%s' "$if_line" | grep -qF -- "$expected"; then
+    fail "job '$job' if: does not match the expected docs-only-only condition exactly; got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
 }
