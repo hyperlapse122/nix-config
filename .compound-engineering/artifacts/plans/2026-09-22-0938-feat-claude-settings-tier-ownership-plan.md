@@ -73,7 +73,7 @@ Scope Boundaries below, not this list, is the authority for what this plan exclu
 
 **Write mechanism**
 
-- R5. Activation sets each declared key in the user settings file to its declared value on every rebuild, replacing whatever value the file held.
+- R5. Activation sets each declared key in the user settings file to its declared value, replacing whatever value the file held, on every rebuild that produces a new Home Manager generation.
 - R6. Activation preserves every key it does not declare, including keys Claude Code wrote itself, so the write is a key merge rather than a whole-file replacement.
 - R7. The settings file stays a user-owned, user-writable regular file after activation, and activation refuses to write through a symlink.
 - R8. Activation leaves the file unchanged when every declared key already holds its declared value.
@@ -214,7 +214,7 @@ flowchart TD
 - C3. No assertion may be a negated command. POSIX exempts a `!`-inverted command from `set -e`, so `! grep -Fxq …` never fails a Nix builder. Use explicit `if … then exit 1`.
 - C4. Every option lookup carries `or null` / `or ""`, and each absent branch reports from inside the builder via `lib.optionalString`. A removal mutation must reach the builder as shell, not abort evaluation.
 - C5. Checks collect failures and exit once, so one mutation round yields evidence about every assertion rather than only the first.
-- C6. All declared settings-file keys are top-level scalars. The merger therefore assigns top-level keys and never descends into an object, which keeps R6 simple and avoids replacing a nested object wholesale.
+- C6. All declared settings-file keys are top-level scalars. The merger assigns top-level keys and never descends into an object, so it refuses an object- or list-valued declaration rather than replacing the user's whole object wholesale. Code review established that leaving this as a comment let a future declaration destroy a permission allowlist with every check green, so the merger now fails closed on it.
 
 ### Sequencing
 

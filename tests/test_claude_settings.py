@@ -15,8 +15,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/claude-settings'
 loader = importlib.machinery.SourceFileLoader('claude_settings', str(SCRIPT))
@@ -118,6 +121,45 @@ class MergeTests(unittest.TestCase):
             self.merge()
         self.assertEqual(self.settings.read_text(), '{ not json')
 
+    def test_refuses_settings_that_are_valid_json_but_not_an_object(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text('[]')
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_text(), '[]')
+
+    def test_refuses_declared_settings_that_are_not_an_object(self):
+        self.seed()
+        self.declared.write_text('["model"]')
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.read(), EXISTING)
+
+    def test_refuses_an_object_valued_declaration(self):
+        # Assignment is one level deep, so declaring an object would replace
+        # the user's whole object rather than merging into it.
+        self.seed()
+        self.declared.write_text(json.dumps({'permissions': {'allow': ['Bash']}}))
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.read(), EXISTING)
+
+    def test_tightens_an_existing_loose_parent_directory(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.parent.chmod(0o755)
+        self.seed()
+        self.merge()
+        self.assertEqual(self.settings.parent.stat().st_mode & 0o777, 0o700)
+
+    def test_removes_the_temporary_file_when_the_replace_fails(self):
+        self.seed()
+        with mock.patch.object(merger.os, 'replace', side_effect=OSError('nope')):
+            with self.assertRaises(OSError):
+                self.merge()
+        leftovers = [p.name for p in self.settings.parent.iterdir() if p.name != 'settings.json']
+        self.assertEqual(leftovers, [])
+        self.assertEqual(self.read(), EXISTING)
+
     def test_restores_a_declared_key_the_user_removed(self):
         self.seed({'numStartups': 41})
         self.merge()
@@ -143,12 +185,39 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self.read()['model'], 'opus[1m]')
 
-    def test_refuses_to_run_as_root(self):
-        if os.geteuid() == 0:
-            self.skipTest('test runs as root; the guard cannot be observed from here')
+    def run_script(self):
+        # Importing the module skips `if __name__ == '__main__': sys.exit(main())`
+        # entirely, so the link between a refusal and a non-zero process status
+        # is only observable by running the script the way activation does.
+        return subprocess.run(
+            [sys.executable, str(SCRIPT),
+             '--settings', str(self.settings), '--declared', str(self.declared)],
+            capture_output=True, text=True)
+
+    def test_process_exits_zero_and_merges_on_success(self):
         self.seed()
-        self.assertEqual(merger.main(['--settings', str(self.settings),
-                                      '--declared', str(self.declared)]), 0)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(self.read()['model'], 'opus[1m]')
+
+    def test_process_exits_non_zero_and_names_the_path_on_refusal(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text('{ not json')
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(self.settings), result.stderr)
+        self.assertEqual(self.settings.read_text(), '{ not json')
+
+    def test_refuses_to_run_as_root(self):
+        # Patch the euid rather than reading the ambient one: a test that only
+        # asserts the non-root path can never go red for a removed guard.
+        self.seed()
+        with mock.patch.object(merger.os, 'geteuid', return_value=0):
+            with self.assertRaises(SystemExit) as raised:
+                merger.main(['--settings', str(self.settings),
+                             '--declared', str(self.declared)])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(self.read(), EXISTING)
 
 
 if __name__ == '__main__':

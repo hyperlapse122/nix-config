@@ -46,13 +46,15 @@ in
 {
   home.sessionVariables = environmentTier;
 
+  # Unguarded on purpose, unlike the KDE activation blocks. Those test their
+  # tool with `[ -x ]` because it comes from a package that may be absent; this
+  # merger is a store path built from this module, so the test could only ever
+  # be true -- and if it somehow were not, the false branch would skip the
+  # merge silently, which is the opposite of what the merge must do. A refusal
+  # or a missing binary both have to stop the rebuild loudly.
   home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    if [ -x "${merger}" ]; then
-      # No `|| true` here: a symlinked or malformed settings file must stop the
-      # rebuild loudly rather than leave the declared values unapplied.
-      ${merger} \
-        --settings ${config.home.homeDirectory}/.claude/settings.json \
-        --declared ${declared}
-    fi
+    ${merger} \
+      --settings ${config.home.homeDirectory}/.claude/settings.json \
+      --declared ${declared}
   '';
 }

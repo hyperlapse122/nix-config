@@ -114,14 +114,18 @@ let
           failed=1
         fi
 
-        # A `|| true` would turn a refusal into a silent no-op, which is the
-        # failure mode the no-swallow rule exists for. The merger invocation
-        # spans several lines, so this looks for the swallow anywhere in this
-        # single-purpose block rather than on the line naming the binary --
-        # a line-anchored pattern silently passes the mutation that adds it.
-        # Comment lines are stripped first: the block documents why the swallow
-        # is absent, and matching that sentence would fail the honest script.
-        if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' | grep -qF '|| true'; then
+        # Swallowing the merger's exit status turns a refusal into a silent
+        # no-op, which is the failure mode the no-swallow rule exists for.
+        # `|| true` is only the most obvious spelling, so this matches the
+        # equivalents too -- a check that names one of them lets the others
+        # through while reporting the guarantee as held. The merger invocation
+        # spans several lines, so this looks anywhere in this single-purpose
+        # block rather than on the line naming the binary; a line-anchored
+        # pattern silently passes the mutation that adds the swallow. Comment
+        # lines are stripped first, because the block documents why the swallow
+        # is absent and matching that sentence would fail the honest script.
+        if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
+          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
           echo 'the claudeSettings activation script must not swallow the merger exit status on ${hostName}' >&2
           failed=1
         fi
@@ -136,17 +140,28 @@ let
       ${environmentChecks}
       ${activationAbsent}${activationPresent}${managedPresent}
 
-      # Read the file the module actually renders, found through the store path
-      # its activation script carries. Re-deriving the JSON from this check's
-      # own attribute set would compare a literal against itself, and no
-      # mutation of the module could turn that comparison red.
+      # Read the flags the merger is actually invoked with, not merely whether
+      # the script mentions a path somewhere. A check that greps for the store
+      # path anywhere in the text passes a script that names the right file in
+      # a comment and hands the merger a different one, and a check that
+      # re-derives the JSON from this file's own attribute set compares a
+      # literal against itself, which no mutation of the module can turn red.
       # The builder runs under `set -e -o pipefail`, so a non-matching grep
-      # here would abort before the remaining assertions ran and leave one
-      # mutation round with evidence about a single assertion.
+      # would abort before the remaining assertions ran and leave one mutation
+      # round with evidence about a single assertion.
+      settingsArg=$(printf '%s' ${esc script} \
+        | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
+        | head -1 | awk '{print $2}' || true)
+      if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/.claude/settings.json"} ]; then
+        echo "the merger must be pointed at the real settings file on ${hostName}, got: '$settingsArg'" >&2
+        failed=1
+      fi
+
       declaredPath=$(printf '%s' ${esc script} \
-        | grep -oE '/nix/store/[a-z0-9]{32}-claude-declared-settings\.json' | head -1 || true)
+        | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
+        | head -1 | awk '{print $2}' || true)
       if [ -z "$declaredPath" ]; then
-        echo 'the claudeSettings activation script names no declared-settings file on ${hostName}' >&2
+        echo 'the claudeSettings activation script passes no declared-settings file on ${hostName}' >&2
         failed=1
       elif ! diff -u "$declaredPath" "$declaredExpected" >/dev/null; then
         echo 'the declared settings this repository renders drifted from the asserted values on ${hostName}' >&2

@@ -15,30 +15,41 @@ import tempfile
 
 def private_directory(path):
     if path.is_symlink():
-        raise ValueError('settings directory is a symlink')
+        raise ValueError('settings directory is a symlink: {}'.format(path))
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # mkdir applies its mode only when it creates the directory, and ~/.claude
+    # normally exists already -- Claude Code made it under the default umask.
+    # It holds credentials, OAuth state, and transcripts, so tighten it either
+    # way rather than promising a private directory only on a fresh machine.
+    path.chmod(0o700)
 
 
 def existing_settings(settings):
     # A symlink here would be replaced by os.replace below, which silently
     # detaches whatever the user pointed the path at.
     if settings.is_symlink():
-        raise ValueError('settings file is a symlink')
+        raise ValueError('settings file is a symlink: {}'.format(settings))
     if not settings.exists():
         return {}
     try:
         current = json.loads(settings.read_text())
     except json.JSONDecodeError:
-        raise ValueError('settings file is not valid JSON')
+        raise ValueError('settings file is not valid JSON: {}'.format(settings))
     if not isinstance(current, dict):
-        raise ValueError('settings file is not a JSON object')
+        raise ValueError('settings file is not a JSON object: {}'.format(settings))
     return current
 
 
 def merge(settings, declared):
     values = json.loads(declared.read_text())
     if not isinstance(values, dict):
-        raise ValueError('declared settings are not a JSON object')
+        raise ValueError('declared settings are not a JSON object: {}'.format(declared))
+    # Assignment is one level deep, so an object-valued declaration would
+    # replace the user's whole object -- their permission allowlist, hooks, or
+    # env map -- rather than merging into it. Fail closed instead.
+    nested = sorted(name for name, value in values.items() if isinstance(value, (dict, list)))
+    if nested:
+        raise ValueError('declared settings must be scalars; these are not: {}'.format(', '.join(nested)))
     private_directory(settings.parent)
     current = existing_settings(settings)
     merged = dict(current)
