@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Drives scripts/enroll-fingerprint with the reader and the authenticator both
-# stubbed.
+# Drives scripts/enroll-fingerprint with every external command stubbed.
 #
-# The authenticator is reached through the build-time @PAMTESTER@ constant
-# rather than an environment variable, so this harness renders its own copy of
-# the source the way tests/nr.sh does. That distinction is the point of the
-# "environment overrides cannot skip the password" assertion below: a rendered
-# copy is a test artifact, while the installed binary carries a store path no
-# environment variable can displace.
+# The script carries build-time constants and no environment fallbacks, so this
+# harness renders its own copy the way tests/nr.sh does. That is the point of
+# the shape: the installed helper's authenticator and escalation target are
+# store paths nothing in the environment can displace, and the assertion below
+# proves no ENROLL_FP_* variable changes anything.
+#
+# Every block asserts that the step it is about actually ran, not only that the
+# exit code looked right. A stub that cannot execute fails the same way a stub
+# that ran and reported failure does, so an exit code alone cannot tell the two
+# apart -- and a fixture that cannot tell them apart cannot tell a bug from its
+# fix.
 set -euo pipefail
 
 script=${1:-}
@@ -26,10 +30,8 @@ pass() { printf 'enroll-fingerprint: ok - %s\n' "$*"; }
 bin=$scratch/bin
 mkdir -p "$bin"
 calls=$scratch/calls
+user=$(id -un)
 
-# Stubs record that they ran, so an assertion can prove a step was skipped
-# rather than merely that the exit code looked right.
-#
 # The shebang names the bash running this harness rather than /usr/bin/env: the
 # Nix build sandbox has no /usr/bin/env, and a stub that cannot execute reads
 # exactly like the failure it is standing in for.
@@ -45,12 +47,16 @@ make_stub() {
   chmod +x "$bin/$name"
 }
 
+ran() { grep -qF "$1" "$calls"; }
+
+# Renders every constant, so the copy under test reaches only stubs.
 render() {
   local auth_status=$1 rendered=$scratch/enroll-fingerprint
   make_stub pamtester "$auth_status"
   sed -e "s|@PAMTESTER@|$bin/pamtester|" \
-      -e "s|@FPRINTD_ENROLL@|/nonexistent/fprintd-enroll|" \
-      -e "s|@FPRINTD_LIST@|/nonexistent/fprintd-list|" \
+      -e "s|@FPRINTD_ENROLL@|$bin/fprintd-enroll|" \
+      -e "s|@FPRINTD_LIST@|$bin/fprintd-list|" \
+      -e "s|@SUDO@|$bin/sudo|" \
       "$script" >"$rendered"
   chmod +x "$rendered"
   printf '%s' "$rendered"
@@ -59,10 +65,7 @@ render() {
 run() {
   : >"$calls"
   set +e
-  ENROLL_FP_ENROLL=$bin/fprintd-enroll \
-  ENROLL_FP_LIST=$bin/fprintd-list \
-  ENROLL_FP_SUDO=$bin/sudo \
-    "$@" >"$scratch/out" 2>"$scratch/err"
+  "$@" >"$scratch/out" 2>"$scratch/err"
   status=$?
   set -e
 }
@@ -81,31 +84,45 @@ grep -q 'enrolled right-index-finger' "$scratch/out" ||
   fail "happy path did not report the enrollment: $(cat "$scratch/out")"
 pass 'a working reader and a correct password enroll the default finger'
 
+# The service the helper authenticates against is half the design: a helper
+# that prompted against polkit-1 would be authenticating through a stack that
+# carries the fingerprint, so one finger would mint another.
+grep -qxF "pamtester enroll-fingerprint $user authenticate" "$calls" ||
+  fail "the helper did not authenticate against enroll-fingerprint: $(cat "$calls")"
+pass 'the password is demanded against the fingerprint-free enroll-fingerprint service'
+
+# The script makes ordering deliberate: the reader is probed before the
+# password is asked for, and enrollment happens only after both.
+order=$(cut -d' ' -f1 "$calls" | tr '\n' ' ')
+[[ $order == "fprintd-list fprintd-list pamtester sudo fprintd-enroll "* ]] ||
+  fail "steps ran out of order: $order"
+pass 'the reader is probed, then the password demanded, then the finger captured'
+
 # --- the password gate -----------------------------------------------------
 
 rendered=$(render 1)
 run "$rendered"
 [[ $status -ne 0 ]] || fail 'a failed password authentication still exited 0'
-grep -qF 'fprintd-enroll' "$calls" &&
-  fail 'enrollment ran even though password authentication failed'
-pass 'a failed password authentication enrolls nothing'
+ran 'pamtester' || fail 'the authenticator was never reached'
+! ran 'fprintd-enroll' || fail 'enrollment ran even though password authentication failed'
+pass 'a failed password authentication is reached, and enrolls nothing'
 
-# Every environment override the script honours, set at once, must not reach
-# the authenticator.
-#
-# The decoy must exist and succeed. Pointing it at something absent would make
-# this pass whether or not the script honours the override, because a missing
-# command fails the same way a refused password does -- the fixture would then
-# be unable to tell the bug from the fix.
+# Every ENROLL_FP_* name the earlier design honoured, set at once. The decoy
+# must exist and succeed: pointing it at something absent would make this pass
+# whether or not the script honours an override, because a missing command
+# fails the same way a refused password does.
 make_stub authenticator-decoy 0
 rendered=$(render 1)
-ENROLL_FP_PAMTESTER=$bin/authenticator-decoy PAMTESTER=$bin/authenticator-decoy run "$rendered"
+ENROLL_FP_PAMTESTER=$bin/authenticator-decoy \
+PAMTESTER=$bin/authenticator-decoy \
+ENROLL_FP_ENROLL=$bin/authenticator-decoy \
+ENROLL_FP_LIST=$bin/authenticator-decoy \
+ENROLL_FP_SUDO=$bin/authenticator-decoy \
+  run "$rendered"
 [[ $status -ne 0 ]] || fail 'an environment override skipped the password demand'
-grep -qF 'authenticator-decoy' "$calls" &&
-  fail 'an environment override reached the authenticator'
-grep -qF 'fprintd-enroll' "$calls" &&
-  fail 'an environment override let enrollment run without the password'
-pass 'no environment override can skip the password demand'
+! ran 'authenticator-decoy' || fail 'an environment override displaced a build-time constant'
+ran 'pamtester' || fail 'the real authenticator was not reached'
+pass 'no environment variable displaces a build-time constant'
 
 # --- absent reader vs failed capture ---------------------------------------
 
@@ -113,19 +130,20 @@ rendered=$(render 0)
 make_stub fprintd-list 1
 run "$rendered"
 [[ $status -eq 3 ]] || fail "an absent reader exited $status, expected 3"
+ran 'fprintd-list' || fail 'the reader probe never ran'
 grep -qi 'no fingerprint reader' "$scratch/err" ||
   fail "the absent-reader message did not name the reader: $(cat "$scratch/err")"
-grep -qF 'pamtester' "$calls" &&
-  fail 'the password was demanded before the reader was found to be missing'
-pass 'an absent reader exits 3, names the reader, and asks for no password'
+! ran 'pamtester' || fail 'the password was demanded before the reader was found to be missing'
+pass 'an absent reader is probed, exits 3, and asks for no password'
 
 make_stub fprintd-list 0 'printf "Fingers enrolled for %s:\n" "$1"'
 make_stub fprintd-enroll 1
 run "$rendered"
 [[ $status -eq 4 ]] || fail "a failed capture exited $status, expected 4"
+ran 'fprintd-enroll' || fail 'the capture step never ran, so exit 4 proves nothing'
 grep -qi 'capturing right-index-finger failed' "$scratch/err" ||
   fail "the failed-capture message was not distinct: $(cat "$scratch/err")"
-pass 'a failed capture exits 4 with a message distinct from an absent reader'
+pass 'a failed capture actually ran, exits 4, and reads differently from an absent reader'
 
 # --- re-enrollment ---------------------------------------------------------
 
@@ -139,25 +157,18 @@ pass 'enrolling an already-enrolled finger reports replacement, not a second rec
 
 # --- refuses root ----------------------------------------------------------
 
-if [[ $(id -u) -eq 0 ]]; then
-  run "$rendered"
-  [[ $status -ne 0 ]] || fail 'running as root was allowed'
-  grep -qF 'pamtester' "$calls" && fail 'root reached the password step'
-  pass 'running as root is refused'
-else
-  # id is resolved through PATH, so a stub proves the guard without root.
-  make_stub id 0 'case "$*" in -u) echo 0 ;; -un) echo root ;; esac'
-  : >"$calls"
-  set +e
-  PATH=$bin:$PATH "$rendered" >"$scratch/out" 2>"$scratch/err"
-  status=$?
-  set -e
-  [[ $status -ne 0 ]] || fail 'running as root was allowed'
-  grep -qi 'must not run as root' "$scratch/err" ||
-    fail "the root refusal was not reported: $(cat "$scratch/err")"
-  rm -f "$bin/id"
-  pass 'running as root is refused'
-fi
+make_stub id 0 'case "$*" in -u) echo 0 ;; -un) echo root ;; esac'
+: >"$calls"
+set +e
+PATH=$bin:$PATH "$rendered" >"$scratch/out" 2>"$scratch/err"
+status=$?
+set -e
+[[ $status -ne 0 ]] || fail 'running as root was allowed'
+grep -qi 'must not run as root' "$scratch/err" ||
+  fail "the root refusal was not reported: $(cat "$scratch/err")"
+! ran 'pamtester' || fail 'root reached the password step'
+rm -f "$bin/id"
+pass 'running as root is refused before anything else runs'
 
 # --- usage -----------------------------------------------------------------
 

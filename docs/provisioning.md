@@ -150,6 +150,8 @@ The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` ke
 
 Enrollment is authorized by the account password alone. The enroll action is denied to interactive sessions, so `fprintd-enroll` and the KDE fingerprint settings page will both refuse; the helper is the only path, and it authenticates against a PAM service that carries no fingerprint factor before it reaches `fprintd`. That is what keeps one enrolled finger from quietly enrolling another.
 
+What that does not buy: the fingerprint reaches `sudo` on this host, so it reaches root, and root can enroll directly via `sudo fprintd-enroll`. The helper and the polkit rule close the unprivileged path, not the privileged one. Treat them as the sanctioned route and as a guard against accident, not as a boundary against someone who already has a finger the sensor accepts.
+
 Run it unprivileged, once per finger:
 
 ```sh

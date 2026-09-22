@@ -2,27 +2,35 @@
 # Enroll a fingerprint for the invoking user. The Nix package replaces the
 # @...@ constants with absolute store paths.
 #
-# The account password is the only thing that authorizes an enrollment. That is
-# not a courtesy prompt: polkit authenticates every action through the single
-# polkit-1 PAM stack, and this system deliberately gives that stack the
-# fingerprint factor, so upstream fprintd's auth_self_keep enroll action would
-# otherwise let one finger mint another. modules/nixos/fingerprint.nix denies
-# the action to interactive sessions and declares the fingerprint-free
-# enroll-fingerprint PAM service this script authenticates against instead.
+# Enrolling through this helper costs the account password. polkit authenticates
+# every action through the single polkit-1 PAM stack, which this system
+# deliberately gives the fingerprint factor, so upstream fprintd's
+# auth_self_keep enroll action would otherwise let one swipe mint another
+# finger. modules/nixos/fingerprint.nix closes that action to non-root and
+# declares the fingerprint-free enroll-fingerprint PAM service this script
+# authenticates against instead.
 #
-# PAMTESTER is a build-time constant, never an environment override. The
-# fprintd commands below are overridable so the test can drive this script
-# without a reader; the authentication step is not, because an override there
-# would be the bypass the password demand exists to prevent.
+# What that does NOT buy: the fingerprint reaches sudo on this host, so it
+# reaches root, and root may enroll directly. This helper and that polkit rule
+# close the unprivileged path, not the privileged one. Treat them as the
+# sanctioned route and as a guard against accident, never as a boundary against
+# someone who already has a finger the sensor accepts.
+#
+# Every external command is a build-time constant with no environment
+# fallback. The test renders its own copy of this file to stub them, the way
+# tests/nr.sh does, so the installed helper carries store paths that nothing in
+# the environment can displace -- an override on the authenticator would be the
+# bypass the password demand exists to prevent, and an override on the
+# escalation target would be a root-shell primitive waiting for a NOPASSWD
+# entry or a setuid wrapper to make it live.
 set -euo pipefail
 
 PAMTESTER="@PAMTESTER@"
 PAM_SERVICE=enroll-fingerprint
 
-# Overridable so tests never touch a real reader.
-FPRINTD_ENROLL=${ENROLL_FP_ENROLL:-@FPRINTD_ENROLL@}
-FPRINTD_LIST=${ENROLL_FP_LIST:-@FPRINTD_LIST@}
-SUDO=${ENROLL_FP_SUDO:-/run/wrappers/bin/sudo}
+FPRINTD_ENROLL="@FPRINTD_ENROLL@"
+FPRINTD_LIST="@FPRINTD_LIST@"
+SUDO="@SUDO@"
 
 # Exit codes beyond the usual 1 (error) and 2 (usage).
 EXIT_NO_READER=3

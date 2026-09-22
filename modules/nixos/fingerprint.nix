@@ -22,9 +22,11 @@ let
   ];
 
   # nixos/modules/programs/shadow.nix declares `passwd = { }` with the default
-  # rules, so without this list a fingerprint would satisfy passwd's auth phase
-  # and set a new account password without the old one -- promoting the weaker
-  # credential into the stronger one.
+  # rules, so without this list an unprivileged user running `passwd` could
+  # authenticate with a fingerprint and change their account password without
+  # entering the old password. Note: this does not block `sudo passwd <user>`,
+  # because the fingerprint reaches sudo (root) on this host, which bypasses the
+  # old password check entirely. This list closes the unprivileged path.
   credentialMutating = [
     "passwd"
     "chpasswd"
@@ -62,7 +64,8 @@ in
       // {
         # The enrollment helper authenticates against this service. It carries
         # neither the fingerprint nor the smartcard factor, so a fingerprint can
-        # never mint a second fingerprint.
+        # never mint a second fingerprint through the helper. Note: this closes
+        # the unprivileged enrollment path, not the root path (`sudo fprintd-enroll`).
         enroll-fingerprint = {
           fprintAuth = false;
           p11Auth = false;
@@ -74,9 +77,13 @@ in
     # fingerprint factor for authorisation prompts. polkit cannot scope which
     # factor satisfies which action, and upstream fprintd ships the enroll action
     # as auth_self_keep, so a swipe would otherwise authorize enrollment and the
-    # grant would then be cached. Closing the action to interactive sessions is
-    # the only place that can be stopped; the helper reaches fprintd with the
-    # privilege this denial now requires.
+    # grant would then be cached. Closing the action to non-root is the only
+    # place that unprivileged enrollment can be stopped; the helper reaches
+    # fprintd through sudo with the privilege this denial now requires.
+    #
+    # What this does NOT buy: the fingerprint reaches sudo, so it reaches root,
+    # and root may enroll directly via `sudo fprintd-enroll`. This polkit rule
+    # and the helper close the unprivileged route, not the privileged one.
     #
     # One action covers both operations: upstream's policy file declares
     # `verify`, `enroll` and `setusername` only, and describes `enroll` as

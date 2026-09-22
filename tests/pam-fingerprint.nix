@@ -30,6 +30,9 @@
     `substack login`, so asserting on `sddm` alone would assert on nothing.
   - nothing in the closure of `enroll-fingerprint` carries it, so a fingerprint
     can never authorize enrolling another fingerprint.
+  - the materialized polkit rules deny `net.reactivated.fprint.device.enroll`
+    to non-root sessions while allowing root, closing unprivileged enrollment
+    outside the password-authenticated helper.
   - `passwd`, `chpasswd`, `chsh`, `chfn` and `su` do not carry it, so the weaker
     credential cannot be used to set the stronger one.
   - the exact set of files carrying it equals the allowlist stated below. This
@@ -222,6 +225,31 @@ let
           fi
         done
       '';
+
+      polkitEntry = host.config.environment.etc."polkit-1/rules.d/10-nixos.rules" or null;
+      polkitSource = if polkitEntry != null then polkitEntry.source or null else null;
+
+      polkitLines =
+        if forHost carriesFactor hostName != [ ] then
+          ''
+            polkitFile=${esc (toString polkitSource)}
+            if [ -z "$polkitFile" ] || [ ! -f "$polkitFile" ]; then
+              ${fail "${hostName}: polkit rules file is missing"}
+            elif ! grep -q 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile"; then
+              ${fail "${hostName}: polkit rules do not name the fprint enroll action"}
+            elif ! grep -F -A 6 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile" | grep -q 'return polkit.Result.NO;'; then
+              ${fail "${hostName}: polkit rule does not deny fprint enroll to non-root"}
+            elif ! grep -F -A 6 'action.id == "net.reactivated.fprint.device.enroll"' "$polkitFile" | grep -q 'subject.user == "root"'; then
+              ${fail "${hostName}: polkit rule does not restrict fprint enroll to root"}
+            fi
+          ''
+        else
+          ''
+            polkitFile=${esc (toString polkitSource)}
+            if [ -n "$polkitFile" ] && [ -f "$polkitFile" ] && grep -q 'net.reactivated.fprint.device.enroll' "$polkitFile"; then
+              ${fail "${hostName}: polkit rules carry fprint enroll rule unexpectedly"}
+            fi
+          '';
     in
     ''
       mkdir -p ${esc dir}
@@ -235,6 +263,7 @@ let
       ${absentLines}
       ${closureLines "the login greeter" greeterRoots}
       ${closureLines "fingerprint enrollment" (forHost enrollRoots hostName)}
+      ${polkitLines}
 
       : > ${esc "${dir}.expected"}
       ${expectedLines}
