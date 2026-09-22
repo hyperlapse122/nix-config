@@ -139,6 +139,7 @@
             touch $out
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
+        nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         publish-cli-auth =
