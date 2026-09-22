@@ -5,7 +5,7 @@
   ...
 }:
 let
-  orcaPkg = import ../../packages/orca.nix { inherit pkgs; };
+  rawOrcaPkg = import ../../packages/orca.nix { inherit pkgs; };
   reconciler = "${
     (import ../../packages/orca-tools.nix { inherit pkgs; }).orcaSettingsReconcile
   }/bin/orca-settings-reconcile";
@@ -36,9 +36,23 @@ let
 
   declared = pkgs.writeText "orca-declared-settings.json" (builtins.toJSON orcaSettingsTier);
   reconcileCmd = "${reconciler} --mode assert --declared ${declared}";
+
+  # Wrap Orca launcher to reconcile settings immediately before every startup
+  orcaWrapped = pkgs.symlinkJoin {
+    pname = "orca-ide";
+    version = rawOrcaPkg.version;
+    paths = [ rawOrcaPkg ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/orca-ide \
+        --run "${reconcileCmd}"
+      rm -f $out/bin/orca
+      ln -s orca-ide $out/bin/orca
+    '';
+  };
 in
 {
-  home.packages = [ orcaPkg ];
+  home.packages = [ orcaWrapped ];
 
   # Systemd user service to assert declared settings before graphical session
   systemd.user.services.orca-settings-reconcile = {
