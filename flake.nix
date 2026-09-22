@@ -85,7 +85,6 @@
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
         claude = import ./tests/claude.nix { inherit pkgs self; };
-        orca = import ./tests/orca.nix { inherit pkgs self; };
         agent-settings =
           let
             packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
@@ -329,6 +328,56 @@
             set -x
             ${absent}
             ${present}
+            touch $out
+          '';
+        orca-desktop =
+          let
+            assertHost =
+              hostName: host:
+              let
+                userConfig = host.config.home-manager.users.h82;
+                userPackages = userConfig.home.packages;
+                orcaPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null userPackages;
+                service = userConfig.systemd.user.services.orca-settings-reconcile or null;
+                activation = userConfig.home.activation.orcaSettings or null;
+                absent = pkgs.lib.optionalString (orcaPkg == null) ''
+                  echo 'missing orca-ide in user packages on ${hostName}' >&2
+                  exit 1
+                '';
+                present = pkgs.lib.optionalString (orcaPkg != null) ''
+                  if [ ! -x ${orcaPkg}/bin/orca-ide ]; then
+                    echo 'orca package ships no bin/orca-ide executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  if [ ! -x ${orcaPkg}/bin/orca ]; then
+                    echo 'orca package ships no bin/orca executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  if [ ! -f ${orcaPkg}/share/applications/orca.desktop ]; then
+                    echo 'orca package ships no share/applications/orca.desktop on ${hostName}' >&2
+                    exit 1
+                  fi
+                '';
+                servicePresent = pkgs.lib.optionalString (service != null) ''
+                  echo 'unexpected systemd.user.services.orca-settings-reconcile on ${hostName}' >&2
+                  exit 1
+                '';
+                activationPresent = pkgs.lib.optionalString (activation != null) ''
+                  echo 'unexpected home.activation.orcaSettings on ${hostName}' >&2
+                  exit 1
+                '';
+              in
+              ''
+                ${absent}
+                ${present}
+                ${servicePresent}
+                ${activationPresent}
+              '';
+          in
+          pkgs.runCommand "orca-desktop-tests" { } ''
+            set -x
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
             touch $out
           '';
         bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };

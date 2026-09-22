@@ -8,7 +8,6 @@
     ./git.nix
     ./gpg.nix
     ./kde
-    ./orca.nix
     ./shell.nix
     ./ssh.nix
     ./terminal.nix
@@ -35,7 +34,10 @@
       uv
       yubioath-flutter
     ])
-    ++ [ (import ../../packages/nix-tools.nix { inherit pkgs; }).nr ];
+    ++ [
+      (import ../../packages/nix-tools.nix { inherit pkgs; }).nr
+      (import ../../packages/orca.nix { inherit pkgs; })
+    ];
 
   home.sessionVariables.LANGUAGE = "ko_KR:ko:en_US:en";
 }
