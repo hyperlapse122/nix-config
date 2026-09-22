@@ -23,6 +23,7 @@
       antigravity-cli
       bun
       claude-code
+      discord
       gh
       glab
       google-chrome
@@ -31,6 +32,7 @@
       nodejs
       omp
       python3
+      telegram-desktop
       uv
       yubioath-flutter
     ])
