@@ -6,7 +6,6 @@
   ];
   nix.settings.auto-optimise-store = true;
   nixpkgs.config.allowUnfree = true;
-  networking.hostName = "ThinkPad-X1-Carbon-Gen-11";
   networking.networkmanager.enable = true;
   time.timeZone = "Asia/Seoul";
   i18n.defaultLocale = "ko_KR.UTF-8";

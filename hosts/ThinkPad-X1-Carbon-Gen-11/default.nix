@@ -1,5 +1,6 @@
 { config, lib, ... }:
 {
+  config.networking.hostName = "ThinkPad-X1-Carbon-Gen-11";
   imports = [
     ./hardware.nix
     ./disko.nix

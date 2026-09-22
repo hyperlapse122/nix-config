@@ -34,7 +34,7 @@
       nixosConfigurations =
         let
           mkHost =
-            bootstrap:
+            { hostModule, bootstrap }:
             nixpkgs.lib.nixosSystem {
               inherit system;
               specialArgs = { inherit inputs; };
@@ -43,7 +43,7 @@
                 inputs.home-manager.nixosModules.home-manager
                 inputs.sops-nix.nixosModules.sops
                 inputs.lanzaboote.nixosModules.lanzaboote
-                ./hosts/ThinkPad-X1-Carbon-Gen-11
+                hostModule
                 {
                   my.bootstrap = bootstrap;
                   home-manager.useGlobalPkgs = true;
@@ -54,8 +54,14 @@
             };
         in
         {
-          ThinkPad-X1-Carbon-Gen-11 = mkHost false;
-          ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost true;
+          ThinkPad-X1-Carbon-Gen-11 = mkHost {
+            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
+            bootstrap = false;
+          };
+          ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost {
+            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
+            bootstrap = true;
+          };
         };
       packages.${system}.disko = inputs.disko.packages.${system}.disko;
       checks.${system} = {
