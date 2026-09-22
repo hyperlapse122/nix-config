@@ -36,7 +36,7 @@ A run that skipped is absent evidence rather than a passing one: skipping is how
 
 ## Generations
 
-**Retention floor** — the number of most recent generations a cleanup policy keeps regardless of their age, as opposed to the age window it keeps alongside them. The two are a union, so the floor is what survives a long gap between rebuilds. It is not a free parameter: the boot menu's entries are rewritten only by a rebuild while collection runs on a timer, so a floor below the boot loader's `configurationLimit` leaves the menu offering entries whose generations are gone — and those entries are the rollback path a system that will not boot has left.
+**Retention floor** — the number of most recent generations a cleanup policy keeps regardless of their age, as opposed to the age window it keeps alongside them. The two are a union, so the floor is what survives a long gap between rebuilds. It is not a free parameter: the boot menu's entries are rewritten only by a rebuild while collection runs on a timer, so a floor that does not cover the boot loader's `configurationLimit` leaves the menu offering entries whose generations are gone — and those entries are the rollback path a system that will not boot has left. An unset limit is the unbounded case rather than a low one, and no finite floor covers it.
 
 ## Coding agent configuration
 
