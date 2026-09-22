@@ -12,7 +12,7 @@ sudo nixos-rebuild switch --flake .#MS-7D91
 
 This command does not format disks or enroll TPM or UEFI keys. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
 
-Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check` and all host builds before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update flake.lock` GitHub Actions workflow (`.github/workflows/update-flake-lock.yml`), which opens a pull request with updated channel inputs for CI validation.
+Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check` and all host builds before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
 
 ## Failed authentication applies
 

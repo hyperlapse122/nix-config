@@ -31,7 +31,15 @@ let
   # goes through an overridable command so the repository check can drive it
   # with fixtures; a sandboxed check has no network.
   agentPluginRelease = pythonHelper "agent-plugin-release" ../scripts/agent-plugin-release;
+
+  # Resolves the latest release of Claude Desktop from the Debian APT repository.
+  claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 in
 {
-  inherit agentSettings agentPluginSync agentPluginRelease;
+  inherit
+    agentSettings
+    agentPluginSync
+    agentPluginRelease
+    claudeDesktopRelease
+    ;
 }

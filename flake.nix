@@ -88,6 +88,7 @@
         # Exposed so the release-tracking workflow invokes the packaged helper
         # rather than running scripts/ with whatever interpreter the runner has.
         agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
+        claude-desktop-release = (import ./packages/agent-tools.nix { inherit pkgs; }).claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
       };
       checks.${system} = {
@@ -177,6 +178,16 @@
               cp ${./scripts/agent-plugin-release} scripts/agent-plugin-release
               cp ${./tests/test_agent_plugin_release.py} tests/test_agent_plugin_release.py
               python tests/test_agent_plugin_release.py
+              touch $out
+            '';
+        claude-desktop-release =
+          pkgs.runCommand "claude-desktop-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
+              cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
+              python tests/test_claude_desktop_release.py
               touch $out
             '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
