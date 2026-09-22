@@ -132,6 +132,32 @@ Persistent memory features are explicitly disabled so mutable per-user history d
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
 
+## Fingerprint enrollment
+
+The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` keeps only a receipt naming the on-device record, so an enrollment can neither be restored from a backup nor removed by erasing the disk. Nothing about it belongs in `secrets/`.
+
+Enrollment is authorized by the account password alone. The enroll action is denied to interactive sessions, so `fprintd-enroll` and the KDE fingerprint settings page will both refuse; the helper is the only path, and it authenticates against a PAM service that carries no fingerprint factor before it reaches `fprintd`. That is what keeps one enrolled finger from quietly enrolling another.
+
+Run it unprivileged, once per finger:
+
+```sh
+enroll-fingerprint
+enroll-fingerprint --finger left-index-finger
+```
+
+It writes the template to the sensor and a receipt under `/var/lib/fprint/`. It exits 3 when no reader answers and 4 when the capture itself failed, so the two are distinguishable in a log. Re-running it for a finger that is already enrolled replaces that finger rather than adding a second record, and says so.
+
+To see what is actually enrolled, and to remove one:
+
+```sh
+fprintd-list "$USER"
+sudo fprintd-delete "$USER"
+```
+
+`fprintd-delete` runs as root because the same denied polkit action covers deletion — upstream's policy names one `enroll` action and describes it as "Enroll or Delete fingerprints".
+
+Removing every enrolled finger is a required step before the laptop is reinstalled, sold, serviced, or disposed of. Erasing the disk does not reach the sensor, and a template left there is a credential the next installation will happily match.
+
 ## Container runtime and registry authentication
 
 Rootless Podman is configured declaratively in `modules/nixos/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`.
