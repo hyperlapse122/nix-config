@@ -31,43 +31,40 @@ let
     "HandleLidSwitchDocked=ignore"
   ];
 
-  assertLogindHandled =
-    hostName: host:
+  assertLogindLines =
+    hostName: host: expectPresent:
     let
       logindFile = pkgs.writeText "${hostName}-logind.conf" (
         host.config.environment.etc."systemd/logind.conf".text
       );
     in
-    lib.concatMapStringsSep "\n" (line: ''
-      if ! grep -Fxq -- '${line}' "${logindFile}"; then
-        echo "${hostName}: logind.conf is missing expected line: ${line}" >&2
-        exit 1
-      fi
-    '') logindExpectedLines;
-
-  assertLogindUnaffected =
-    hostName: host:
-    let
-      logindFile = pkgs.writeText "${hostName}-logind.conf" (
-        host.config.environment.etc."systemd/logind.conf".text
-      );
-    in
-    lib.concatMapStringsSep "\n" (line: ''
-      if grep -Fxq -- '${line}' "${logindFile}"; then
-        echo "${hostName}: logind.conf unexpectedly carries: ${line}" >&2
-        exit 1
-      fi
-    '') logindExpectedLines;
+    lib.concatMapStringsSep "\n" (
+      line:
+      if expectPresent then
+        ''
+          if ! grep -Fxq -- '${line}' "${logindFile}"; then
+            echo "${hostName}: logind.conf is missing expected line: ${line}" >&2
+            exit 1
+          fi
+        ''
+      else
+        ''
+          if grep -Fxq -- '${line}' "${logindFile}"; then
+            echo "${hostName}: logind.conf unexpectedly carries: ${line}" >&2
+            exit 1
+          fi
+        ''
+    ) logindExpectedLines;
 
   powerdevilExpectedLines = [
-    "--group Battery --group SuspendAndShutdown --key LidAction -- 1"
-    "--group Battery --group SuspendAndShutdown --key SleepMode -- 3"
-    "--group LowBattery --group SuspendAndShutdown --key LidAction -- 1"
-    "--group LowBattery --group SuspendAndShutdown --key SleepMode -- 3"
-    "--group AC --group SuspendAndShutdown --key LidAction -- 0"
-    "--group AC --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
-    "--group Battery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
-    "--group LowBattery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
+    "--file powerdevilrc --group Battery --group SuspendAndShutdown --key LidAction -- 1"
+    "--file powerdevilrc --group Battery --group SuspendAndShutdown --key SleepMode -- 3"
+    "--file powerdevilrc --group LowBattery --group SuspendAndShutdown --key LidAction -- 1"
+    "--file powerdevilrc --group LowBattery --group SuspendAndShutdown --key SleepMode -- 3"
+    "--file powerdevilrc --group AC --group SuspendAndShutdown --key LidAction -- 0"
+    "--file powerdevilrc --group AC --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
+    "--file powerdevilrc --group Battery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
+    "--file powerdevilrc --group LowBattery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
   ];
 
   assertPowerdevilHandled =
@@ -108,9 +105,14 @@ pkgs.runCommand "logind-lid-switch-tests"
   ''
     set -x
 
-    ${assertLogindHandled "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-    ${assertLogindHandled "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
-    ${assertLogindUnaffected "MS-7D91" self.nixosConfigurations.MS-7D91}
+    ${assertLogindLines "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11
+      true
+    }
+    ${assertLogindLines "ThinkPad-X1-Carbon-Gen-11-bootstrap"
+      self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap
+      true
+    }
+    ${assertLogindLines "MS-7D91" self.nixosConfigurations.MS-7D91 false}
 
     ${assertPowerdevilHandled "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
     ${assertPowerdevilHandled "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
