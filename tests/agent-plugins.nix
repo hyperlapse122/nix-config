@@ -3,9 +3,14 @@
 
     import ./tests/agent-plugins.nix { inherit pkgs self; }
 
-  Asserts that the Nix-owned agent plugin layer reaches user `h82` on both the
-  production and bootstrap ThinkPad configurations, and that its pin still
-  names the revision this repository expects.
+  Asserts that the Nix-owned agent plugin layer reaches user `h82` on every
+  host this flake declares, and that its pin still names the revision this
+  repository expects.
+
+  The host list is taken from `self.nixosConfigurations` rather than written
+  out, so a host added later is covered the day it is added instead of
+  silently escaping the assertions. Every host here shares `home/h82`, so the
+  layer holds on all of them.
 
   What this check can and cannot reach:
 
@@ -212,9 +217,7 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
     failed=1
   fi
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList assertHost self.nixosConfigurations)}
 
   if [ "$failed" != "0" ]; then
     exit 1

@@ -106,7 +106,7 @@ This plan covers one area: the pinned source, the version-keyed materialization,
 **Repository checks**
 
 - R16. A repository check asserts the wiring that evaluated configuration actually materializes — the commands invoked and the path passed to them — rather than the option values that produce them.
-- R17. The checks cover both the production and the bootstrap host configuration, and assert that this work leaves the project-scope dotagents declaration unchanged.
+- R17. The checks cover every host this flake declares, and assert that this work leaves the project-scope dotagents declaration unchanged.
 
 ### Acceptance Examples
 
@@ -133,7 +133,7 @@ This plan covers one area: the pinned source, the version-keyed materialization,
 
 - Antigravity CLI wiring. Deferred to its own plan; the registry contract accommodates it (R10).
 - The dotagents, mise, and `agents.toml` project-scope layer. Untouched, and asserted untouched (R17).
-- The `opencode` and `pi` harnesses already declared in `agents.toml:2`. Not wired here.
+- The other harnesses already declared in `agents.toml`. Not wired here.
 - Plugins other than Compound Engineering. The registry admits them; declaring them is separate work.
 - Installing on the physical laptop. This plan produces configuration and checks; hardware installation needs an explicit instruction.
 
@@ -164,7 +164,7 @@ All planning-time questions this Product Contract deferred are resolved in the P
 
 ### Sources and Research
 
-- `agents.toml:2,11-14` — the unpinned plugin declaration and the harness list that omits any Gemini or Antigravity target.
+- `agents.toml` — the unpinned plugin declaration, and the harness list, which omits any Gemini or Antigravity target.
 - `agents.lock:10,14` — the resolved commit that never leaves the machine, given `.gitignore:13`.
 - `.gitignore:13,17-20` — the gitignored agent layer.
 - `mise.toml:2,5-7` and `mise.lock:3-4` — the imperative postinstall path; the installer is pinned, the plugin it installs is not.
@@ -452,7 +452,7 @@ U1 and U2 are independent of each other and come first. U3 needs both. U4 extend
   - Adding `|| true` after a CLI step turns the check red.
   - Renaming the activation attribute turns the check red, which is the wiring mutation the materialized-output learning requires.
   - Removing the activation entry entirely turns the check red from the builder's absent branch, not from a Nix evaluation error.
-  - Gating the module out of `home/h82/default.nix` turns the check red on both hosts.
+  - Gating the module out of `home/h82/default.nix` turns the check red and the failure names every host this flake declares.
   - Setting a non-empty exclusion for the `claude` harness changes what the materialized wiring offers, proving the field is read rather than declared and ignored.
   - Removing the plugin entry from `agents.toml` turns the R17 assertion red.
 - **Verification:** `nix flake check` passes with the checks registered, and every scenario above has been observed red for its own reason and then restored.
@@ -465,8 +465,7 @@ U1 and U2 are independent of each other and come first. U3 needs both. U4 extend
 |---|---|---|
 | Formatting | `nix fmt -- --ci` | every unit |
 | Evaluation and checks | `nix flake check --print-build-logs` | U1, U2, U3, U4, U5, U7 |
-| Production host builds | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | U2, U3, U4 |
-| Bootstrap host builds | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel` | U2, U3, U4 |
+| Every host builds | `nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel` for each of `ThinkPad-X1-Carbon-Gen-11`, `ThinkPad-X1-Carbon-Gen-11-bootstrap`, `MS-7D91`, `MS-7D91-bootstrap` | U2, U3, U4 |
 | Mutation rounds | one substitution plus one `nix build --no-link` per assertion class in U7 | U7 |
 | Action pinning in the new workflow | read the file; `tests/github-workflow-conventions.sh` is scoped to the two agent workflows and does not cover it | U6 |
 
