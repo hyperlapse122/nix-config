@@ -39,6 +39,9 @@
   boot.kernelModules = [ "vhost_vsock" ];
   programs.zsh.enable = true;
   services.pcscd.enable = true;
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="usb", DRIVERS=="usb", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c52b|c548", ATTR{power/wakeup}="disabled"
+  '';
   environment.systemPackages =
     with pkgs;
     [
