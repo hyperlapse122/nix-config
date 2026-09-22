@@ -55,7 +55,9 @@ in
 
     # Gated with the factor: a host without it would carry a helper whose only
     # purpose is a reader it does not use.
-    environment.systemPackages = [ (import ../../packages/enroll-fingerprint.nix { inherit pkgs; }) ];
+    environment.systemPackages = [
+      (import ../../../packages/enroll-fingerprint.nix { inherit pkgs; })
+    ];
 
     security.pam.services =
       lib.genAttrs withheld (_: {

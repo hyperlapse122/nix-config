@@ -9,7 +9,7 @@ let
   available = cfg.sopsFile != null;
   publisher = pkgs.writeScriptBin "publish-cli-auth" ''
     #!${pkgs.python3}/bin/python3
-    ${builtins.readFile ../../scripts/publish-cli-auth}
+    ${builtins.readFile ../../../scripts/publish-cli-auth}
   '';
   publishCommand = lib.escapeShellArgs [
     "${pkgs.util-linux}/bin/runuser"
@@ -28,7 +28,7 @@ let
     "--jpi-user"
     cfg.jpiUser
   ];
-  dockerCredentialHelper = import ../../packages/docker-credential-sops.nix {
+  dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
     routingTable = {
       "ghcr.io" = {
@@ -55,7 +55,8 @@ in
     enable = lib.mkEnableOption "CLI authentication publication during activation";
     sopsFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = if builtins.pathExists ../../secrets/tokens.yaml then ../../secrets/tokens.yaml else null;
+      default =
+        if builtins.pathExists ../../../secrets/tokens.yaml then ../../../secrets/tokens.yaml else null;
       description = "Encrypted token YAML. Missing input fails at activation, not evaluation.";
     };
     ageKeyFile = lib.mkOption {

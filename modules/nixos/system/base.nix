@@ -51,7 +51,7 @@
       cryptsetup
       e2fsprogs
     ]
-    ++ [ (import ../../packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity ];
+    ++ [ (import ../../../packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity ];
 
   # Both hosts share networking.hostName, so the rebuild helper needs another
   # signal to tell the bootstrap generation from the production one.
