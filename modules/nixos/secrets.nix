@@ -79,6 +79,11 @@ in
       type = lib.types.str;
       default = "hyperlapse122";
     };
+    enableDockerToken = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Decrypt docker_token from secrets/tokens.yaml when provisioned.";
+    };
   };
   config = lib.mkMerge [
     {
@@ -125,11 +130,14 @@ in
             useSystemdActivation = true;
             secrets =
               lib.genAttrs
-                (map (name: "cli-auth/${name}") [
-                  "github_token"
-                  "gitlab_token"
-                  "jpi_token"
-                ])
+                (map (name: "cli-auth/${name}") (
+                  [
+                    "github_token"
+                    "gitlab_token"
+                    "jpi_token"
+                  ]
+                  ++ lib.optional cfg.enableDockerToken "docker_token"
+                ))
                 (name: {
                   key = lib.removePrefix "cli-auth/" name;
                   owner = "h82";

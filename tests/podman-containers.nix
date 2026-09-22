@@ -64,8 +64,11 @@ let
       userSessionDocker = hm.systemd.user.sessionVariables.DOCKER_HOST or "";
 
       activationScript = hm.home.activation.containersAuth.data or "";
-      registriesConf =
-        hm.xdg.configFile."containers/registries.conf.d/10-unqualified-search.conf".text or "";
+      registriesConfEntry =
+        hm.xdg.configFile."containers/registries.conf.d/10-unqualified-search.conf" or null;
+      registriesConf = if registriesConfEntry != null then (registriesConfEntry.text or "") else "";
+      registriesConfEnabled =
+        if registriesConfEntry != null then (registriesConfEntry.enable or true) else false;
     in
     ''
       # 1. Verify systemPackages contains podman, podman-docker-compat, and docker-credential-sops
@@ -101,40 +104,26 @@ let
       fi
 
       # 4. Verify home.activation.containersAuth has credHelpers mappings and no embedded tokens
-      if echo '${activationScript}' | grep -q '"docker.io":"sops"'; then
-        :
-      else
-        echo "home.activation.containersAuth missing docker.io helper mapping on ${hostName}" >&2
-        exit 1
-      fi
+      activationScriptData=${pkgs.lib.escapeShellArg activationScript}
+      for reg in "docker.io" "ghcr.io" "registry.gitlab.com" "registry.jpi.app"; do
+        if echo "$activationScriptData" | grep -q "\"$reg\":\"sops\""; then
+          :
+        else
+          echo "home.activation.containersAuth missing $reg helper mapping on ${hostName}" >&2
+          exit 1
+        fi
+      done
 
-      if echo '${activationScript}' | grep -q '"ghcr.io":"sops"'; then
-        :
-      else
-        echo "home.activation.containersAuth missing ghcr.io helper mapping on ${hostName}" >&2
-        exit 1
-      fi
-
-      if echo '${activationScript}' | grep -q '"registry.gitlab.com":"sops"'; then
-        :
-      else
-        echo "home.activation.containersAuth missing registry.gitlab.com helper mapping on ${hostName}" >&2
-        exit 1
-      fi
-
-      if echo '${activationScript}' | grep -q '"registry.jpi.app":"sops"'; then
-        :
-      else
-        echo "home.activation.containersAuth missing registry.jpi.app helper mapping on ${hostName}" >&2
-        exit 1
-      fi
-
-      if echo '${activationScript}' | grep -q -E '(auths|token|password)'; then
+      if echo "$activationScriptData" | grep -q -E '(auths|token|password)'; then
         echo "home.activation.containersAuth contains embedded tokens on ${hostName}" >&2
         exit 1
       fi
 
-      # 5. Verify registries search drop-in sets unqualified-search-registries
+      # 5. Verify registries search drop-in is enabled and sets unqualified-search-registries
+      if [ '${if registriesConfEnabled then "1" else "0"}' != "1" ]; then
+        echo "registries search drop-in is disabled on ${hostName}" >&2
+        exit 1
+      fi
       if echo '${registriesConf}' | grep -q 'unqualified-search-registries = \["docker.io"\]'; then
         :
       else

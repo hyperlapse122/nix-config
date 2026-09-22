@@ -69,12 +69,8 @@ pkgs.testers.nixosTest {
       my.podman.enable = true;
       my.cliAuth = {
         enable = true;
+        enableDockerToken = true;
         sopsFile = "${fixtures}/tokens.yaml";
-      };
-      sops.secrets."cli-auth/docker_token" = {
-        key = "docker_token";
-        owner = "h82";
-        mode = "0400";
       };
       system.activationScripts.fixture = ''
         install -d -m 0700 /var/lib/sops-nix
@@ -92,10 +88,7 @@ pkgs.testers.nixosTest {
   testScript = ''
     import json
 
-    missing.start()
-    missing.wait_for_unit("multi-user.target")
-    machine.start()
-    machine.wait_for_unit("multi-user.target")
+    start_all()
 
     registries = {
         "ghcr.io": ("hyperlapse122", "FAKE_ghcr_token"),
@@ -118,17 +111,20 @@ pkgs.testers.nixosTest {
         out = missing.fail(f"printf '{reg}' | su - h82 -c 'docker-credential-sops get'")
         assert "credentials not found in native keychain" in out
 
-    machine.succeed("install -d -m 0700 /home/h82/.config/containers && cp ${authJsonFile} /home/h82/.config/containers/auth.json && chmod 0600 /home/h82/.config/containers/auth.json && chown -R h82:users /home/h82/.config")
-    missing.succeed("install -d -m 0700 /home/h82/.config/containers && cp ${authJsonFile} /home/h82/.config/containers/auth.json && chmod 0600 /home/h82/.config/containers/auth.json && chown -R h82:users /home/h82/.config")
+    setup_auth_cmd = "install -d -m 0700 /home/h82/.config/containers && cp ${authJsonFile} /home/h82/.config/containers/auth.json && chmod 0600 /home/h82/.config/containers/auth.json && chown -R h82:users /home/h82/.config"
+    for node in (machine, missing):
+        node.succeed(setup_auth_cmd)
 
     login_out = machine.succeed("su - h82 -c 'REGISTRY_AUTH_FILE=/home/h82/.config/containers/auth.json podman login --get-login ghcr.io'")
     assert "hyperlapse122" in login_out
 
     missing.fail("su - h82 -c 'REGISTRY_AUTH_FILE=/home/h82/.config/containers/auth.json podman login --get-login ghcr.io'")
 
-    fake_tokens = ["FAKE_ghcr_token", "FAKE_gitlab_token", "FAKE_jpi_token", "FAKE_docker_token"]
+    machine_journal = machine.succeed("journalctl --no-pager")
+    missing_journal = missing.succeed("journalctl --no-pager")
+    fake_tokens = [tok for _, tok in registries.values()]
     for token in fake_tokens:
-        machine.fail(f"journalctl --no-pager | grep '{token}'")
-        missing.fail(f"journalctl --no-pager | grep '{token}'")
+        assert token not in machine_journal, f"Token {token} leaked in machine journal"
+        assert token not in missing_journal, f"Token {token} leaked in missing journal"
   '';
 }

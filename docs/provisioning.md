@@ -124,5 +124,9 @@ Supported registries:
    ```sh
    sops secrets/tokens.yaml
    ```
-   Before that token is added, lookups for `docker.io` report a clean credential miss and fall back to anonymous pulls.
+   Then enable Docker Hub token decryption in your host configuration:
+   ```nix
+   my.cliAuth.enableDockerToken = true;
+   ```
+   Before that token is added and enabled, lookups for `docker.io` report a clean credential miss and fall back to anonymous pulls.
 2. **Token scopes**: Ensure the existing GitHub token carries `read:packages` (or `write:packages` for pushes) and the GitLab tokens carry `read_registry` (or `write_registry`). Tokens issued solely for CLI or Git HTTPS access will return 401 Unauthorized upon pulling container images even when credentials are provided correctly.
