@@ -62,6 +62,14 @@
             hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
             bootstrap = true;
           };
+          MS-7D91 = mkHost {
+            hostModule = ./hosts/MS-7D91;
+            bootstrap = false;
+          };
+          MS-7D91-bootstrap = mkHost {
+            hostModule = ./hosts/MS-7D91;
+            bootstrap = true;
+          };
         };
       packages.${system}.disko = inputs.disko.packages.${system}.disko;
       checks.${system} = {

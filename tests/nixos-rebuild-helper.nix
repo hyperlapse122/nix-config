@@ -27,6 +27,8 @@ let
 
   host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
   bootstrapHost = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap;
+  msHost = self.nixosConfigurations.MS-7D91;
+  msBootstrapHost = self.nixosConfigurations.MS-7D91-bootstrap;
 
   userConfig = host.config.home-manager.users.h82;
   aliases = userConfig.programs.zsh.shellAliases;
@@ -52,6 +54,8 @@ let
 
   hostMarker = markerFor host.config;
   bootstrapMarker = markerFor bootstrapHost.config;
+  msHostMarker = markerFor msHost.config;
+  msBootstrapMarker = markerFor msBootstrapHost.config;
 
   markerCheck =
     label: marker: expected:
@@ -115,9 +119,11 @@ pkgs.runCommand "nixos-rebuild-helper-tests" { nativeBuildInputs = [ pkgs.gnugre
   ${nrAbsent}
   ${nrPresent}
 
-  # 3. Both configurations report their own variant.
-  ${markerCheck "production" hostMarker "production"}
-  ${markerCheck "bootstrap" bootstrapMarker "bootstrap"}
+  # 3. Both configurations report their own variant across all hosts.
+  ${markerCheck "ThinkPad production" hostMarker "production"}
+  ${markerCheck "ThinkPad bootstrap" bootstrapMarker "bootstrap"}
+  ${markerCheck "MS-7D91 production" msHostMarker "production"}
+  ${markerCheck "MS-7D91 bootstrap" msBootstrapMarker "bootstrap"}
 
   touch $out
 ''

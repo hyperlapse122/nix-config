@@ -48,7 +48,8 @@ jobs:
       - name: Build production host configuration without secrets
         run: |
           nix build --no-link \
-            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel
+            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel \
+            .#nixosConfigurations.MS-7D91.config.system.build.toplevel
 
   build-bootstrap:
     runs-on: ubuntu-24.04
@@ -64,4 +65,5 @@ jobs:
       - name: Build bootstrap host configuration without secrets
         run: |
           nix build --no-link \
-            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
+            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel \
+            .#nixosConfigurations.MS-7D91-bootstrap.config.system.build.toplevel
