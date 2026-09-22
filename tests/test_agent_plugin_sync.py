@@ -180,6 +180,28 @@ class SyncTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(os.readlink(self.base / 'v3.28.0'), str(self.source))
 
+    def test_converged_rerun_does_not_touch_the_registration(self):
+        """Re-registering would end in the same state while briefly leaving none."""
+        self.assertEqual(self.run_sync().returncode, 0)
+        markets = self.read_state()['markets']
+        self.reset_state(markets)
+        self.assertEqual(self.run_sync().returncode, 0)
+
+        verbs = self.verbs()
+        self.assertNotIn('plugin marketplace remove', verbs)
+        self.assertNotIn('plugin marketplace add', verbs)
+
+    def test_converged_rerun_still_reasserts_the_plugin(self):
+        """A plugin removed by hand between rebuilds has to come back."""
+        self.assertEqual(self.run_sync().returncode, 0)
+        markets = self.read_state()['markets']
+        self.reset_state(markets)
+        self.assertEqual(self.run_sync().returncode, 0)
+
+        verbs = self.verbs()
+        self.assertIn('plugin install compound-engineering@compound-engineering-plugin', verbs)
+        self.assertIn('plugin update compound-engineering@compound-engineering-plugin', verbs)
+
     # -- version bump --------------------------------------------------
 
     def test_bump_repoints_registration_and_prunes_the_old_version(self):

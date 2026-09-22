@@ -157,17 +157,13 @@ let
         # Read the flags the helper is actually invoked with, not merely whether
         # the script mentions a path somewhere: a script naming the right source
         # in a comment and handing the helper a different one would pass.
-        sourceArg=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--source[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+        sourceArg=$(argValue ${esc script} source)
         if [ "$sourceArg" != ${esc pinnedSource} ]; then
           echo "the helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
           failed=1
         fi
 
-        segmentArg=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--segment[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+        segmentArg=$(argValue ${esc script} segment)
         if [ "$segmentArg" != ${
           esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
         } ]; then
@@ -175,9 +171,7 @@ let
           failed=1
         fi
 
-        claudeArg=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--claude[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+        claudeArg=$(argValue ${esc script} claude)
         case "$claudeArg" in
           /nix/store/*/bin/claude) ;;
           *)
@@ -201,6 +195,14 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
   set -x
   failed=0
 
+  # Reads one flag's value out of a rendered activation script. The `|| true`
+  # keeps a non-matching grep from aborting the builder under pipefail, so an
+  # absent flag reaches its own assertion as an empty string.
+  argValue() {
+    printf '%s' "$1" | tr '\n' ' ' \
+      | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | head -1 | awk '{print $2}' || true
+  }
+
   if [ -z ${esc lockedRev} ]; then
     echo 'flake.lock records no revision for the compound-engineering-plugin input' >&2
     failed=1
@@ -211,7 +213,8 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
     failed=1
   fi
 
-  # R17: this work leaves the project-scope dotagents declaration alone.
+  # This work installs the plugin for the user; the project-scope dotagents
+  # declaration is a separate layer and stays exactly as it was.
   if ! printf '%s' ${esc agentsToml} | grep -qF 'EveryInc/compound-engineering-plugin'; then
     echo 'agents.toml no longer declares the plugin for the project scope' >&2
     failed=1

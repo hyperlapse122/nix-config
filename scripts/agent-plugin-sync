@@ -128,6 +128,18 @@ def find(entries, name):
     return None
 
 
+def resolves_to(entry, segment, destination):
+    """Whether a listed marketplace already points at this version.
+
+    An agent that names only its own cache location reports nothing to compare,
+    which is not evidence either way -- callers decide what to do with False.
+    """
+    recorded = recorded_source(entry)
+    if not recorded:
+        return False
+    return segment in recorded or str(destination) in recorded
+
+
 def prune(base, segment, dry_run):
     """Remove superseded version entries, leaving anything this script did not create."""
     if dry_run or not base.is_dir():
@@ -169,33 +181,40 @@ def main(argv=None):
         destination = link_version(args.base, args.segment, args.source, args.dry_run)
         plugin_id = '{}@{}'.format(args.plugin, args.marketplace)
 
-        # Remove before adding rather than tolerating whatever `add` does with an
-        # existing name. The destination changes on every version bump, so
-        # same-name-different-path is the ordinary case, and a deterministic
-        # prologue keeps `enable`'s already-enabled message the only tolerated
-        # non-zero outcome.
+        # Leave a registration that already points here alone. Re-registering it
+        # would end in the same state while briefly leaving the agent with none,
+        # and a converged run is supposed to change nothing.
         existing = find(registrations(args.claude, args.dry_run), args.marketplace)
-        if existing is not None:
-            previous = recorded_source(existing)
-            require(
-                [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
-                args.dry_run,
-                'marketplace remove',
-            )
-            removed_registration = True
+        if existing is None or not resolves_to(existing, args.segment, destination):
+            # Remove before adding rather than tolerating whatever `add` does
+            # with an existing name. The destination changes on every version
+            # bump, so same-name-different-path is the ordinary case, and a
+            # deterministic prologue keeps `enable`'s already-enabled message the
+            # only tolerated non-zero outcome.
+            if existing is not None:
+                previous = recorded_source(existing)
+                require(
+                    [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
+                    args.dry_run,
+                    'marketplace remove',
+                )
+                removed_registration = True
 
-        require(
-            [args.claude, 'plugin', 'marketplace', 'add', str(destination), '--scope', 'user'],
-            args.dry_run,
-            'marketplace add',
-        )
+            require(
+                [args.claude, 'plugin', 'marketplace', 'add', str(destination), '--scope', 'user'],
+                args.dry_run,
+                'marketplace add',
+            )
+
+        # install, update and enable still run on a converged machine: they are
+        # how a plugin removed or disabled by hand between rebuilds comes back.
+        # install is a no-op at any present version, so update is what re-resolves
+        # a moved pin.
         require(
             [args.claude, 'plugin', 'install', plugin_id, '--scope', 'user'],
             args.dry_run,
             'plugin install',
         )
-        # `install` is a no-op once the plugin is present at any version, so
-        # `update` is what re-resolves a moved pin.
         require(
             [args.claude, 'plugin', 'update', plugin_id, '--scope', 'user'],
             args.dry_run,
@@ -227,7 +246,7 @@ def main(argv=None):
                     'versions'.format(args.marketplace),
                     file=sys.stderr,
                 )
-            elif args.segment not in resolved and str(destination) not in resolved:
+            elif not resolves_to(entry, args.segment, destination):
                 raise Failure(
                     'marketplace {} resolves to {!r}, not the current version {}; '
                     'refusing to prune'.format(args.marketplace, resolved, args.segment)
