@@ -7,6 +7,7 @@
     ../../modules/nixos/base.nix
     ../../modules/nixos/boot.nix
     ../../modules/nixos/desktop.nix
+    ../../modules/nixos/fingerprint.nix
     ../../modules/nixos/fonts.nix
     ../../modules/nixos/keyd.nix
     ../../modules/nixos/nix-ld.nix
@@ -16,6 +17,7 @@
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
+  config.my.fingerprint.enable = !config.my.bootstrap;
   # The Gen 11 predates the Copilot key, so the chord binding stays out of the
   # generated keyd configuration on this host.
   config.my.keyd.copilotKey = false;
