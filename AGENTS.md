@@ -2,16 +2,17 @@
 
 ## Project structure
 
-This flake configures one NixOS ThinkPad X1 Carbon Gen 11. Preserve the default Plasma desktop. Other operating systems, desktop customization, and coding-agent settings are outside the first migration.
+This flake configures two machines: a ThinkPad X1 Carbon Gen 11 laptop and an MS-7D91 desktop workstation. Preserve the default Plasma desktop. Other operating systems, desktop customization, and coding-agent settings are outside the migration.
 
 - `flake.nix`: production and bootstrap hosts, checks, and development tools.
-- `hosts/ThinkPad-X1-Carbon-Gen-11/`: hardware and disk configuration.
+- `hosts/ThinkPad-X1-Carbon-Gen-11/`: hardware and disk configuration for ThinkPad laptop.
+- `hosts/MS-7D91/`: hardware, NVIDIA, secondary storage, and disk configuration for desktop.
 - `modules/nixos/`: system modules; `home/h82/`: Home Manager modules.
 - `scripts/`: authentication and rebuild helpers; `packages/`: Nix packaging for those helpers.
 - `tests/`: Python, shell, and NixOS VM checks.
 - `docs/`: installation, provisioning, recovery, and verification. `secrets/README.md` defines secret conventions.
 
-The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-feat-thinkpad-nixos-declarative-environment-plan.md) records migration scope.
+The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-feat-thinkpad-nixos-declarative-environment-plan.md) and [desktop plan](.compound-engineering/artifacts/plans/2026-09-22-1646-feat-ms-7d91-desktop-nixos-plan.md) record migration scope.
 
 ## Build and development commands
 
@@ -20,11 +21,13 @@ The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-
 - `nix fmt -- --ci`: check formatting without edits.
 - `nix flake check`: run declared checks.
 
-Before shipping, run `nix flake check` and both builds:
+Before shipping, run `nix flake check` and all host builds:
 
 ```sh
 nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel
 nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
+nix build --no-link .#nixosConfigurations.MS-7D91.config.system.build.toplevel
+nix build --no-link .#nixosConfigurations.MS-7D91-bootstrap.config.system.build.toplevel
 ```
 
 ## Coding style and naming
