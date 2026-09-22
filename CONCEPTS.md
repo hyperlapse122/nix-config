@@ -33,3 +33,9 @@ A run that skipped is absent evidence rather than a passing one: skipping is how
 ## Hosts
 
 **Bootstrap host** — a second configuration built from the same module set as the production host, with private boot keys and user authentication secrets left out, used to install the machine before those secrets exist. It is not a separate machine or a reduced feature set: anything added to the shared modules reaches it too, so a change must be considered against an installer console as well as a logged-in desktop.
+
+## Coding agent configuration
+
+**Settings tier** — one of the layers a coding agent reads its configuration from, chosen per setting rather than per module. The tiers differ in who may write them and who wins, so the choice decides whether the user can still change a value at all: a tier the agent only reads outranks everything and locks the setting even inside a running session, while a tier the agent writes itself must be merged into rather than replaced. A setting is assigned to exactly one tier, and the assignment is recorded with its reason, because a tier chosen to dodge a write conflict silently also chooses how much control the user keeps.
+
+**Declared set** — the settings this repository states a value for, as opposed to the ones it leaves alone. The distinction is what makes the boundary legible: a setting inside the set returns to its declared value on the next rebuild, and a setting outside it is the user's permanently. Growing the set therefore trades the user's freedom for reproducibility one key at a time, which is why membership is decided by stated categories rather than by whichever values happen to be convenient to declare.
