@@ -18,7 +18,30 @@ jobs:
       - name: Check formatting
         run: nix fmt -- --ci
 
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: classify
+        run: |
+          docs_only=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-docs-only-paths)
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   flake-check:
+    needs: changes
+    # A skipped or failed classifier must not silently skip real Nix
+    # validation, so this condition (not the implicit needs-succeeded
+    # default) decides whether the job runs: any event other than
+    # pull_request, or a classifier that did not complete successfully,
+    # always runs; only a definitive docs_only:true skips.
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -35,6 +58,8 @@ jobs:
         run: nix flake check --print-build-logs
 
   build:
+    needs: changes
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
