@@ -19,19 +19,26 @@ The preparation helper does this. It runs on the pre-migration host, from the de
 
 ```sh
 nix develop
+# For ThinkPad:
 ./scripts/prepare-age-identity \
   --host ThinkPad-X1-Carbon-Gen-11 \
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05
+
+# For MS-7D91 Desktop:
+./scripts/prepare-age-identity \
+  --host MS-7D91 \
   --recipient 621512777E6933FEB4458FDC4945855D4F283F05
 ```
 
 It writes `secrets/bootstrap/<hostname>/age-key.asc` and `secrets/bootstrap/<hostname>/recipient.txt`.
 
-Set the recipient in `.sops.yaml` to the value it recorded. Only the host whose recipient appears there can decrypt `secrets/tokens.yaml`; a second host prepared with this helper cannot read it until that file is re-encrypted to the new recipient. Create the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
+Set the recipient in `.sops.yaml` to the value it recorded under `&<hostname>`. Every host whose recipient appears in the creation rules list can decrypt `secrets/tokens.yaml`; adding a new host requires re-encrypting the file with `sops updatekeys -y secrets/tokens.yaml`. Create or update the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
 
 ```sh
 umask 077
 secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
-sops --encrypt --age "$(cat secrets/bootstrap/ThinkPad-X1-Carbon-Gen-11/recipient.txt)" \
+# When encrypting for both hosts listed in .sops.yaml:
+sops --encrypt \
   --input-type yaml --output-type yaml \
   "$secret_tmp/tokens.yaml" > secrets/tokens.yaml
 ```
@@ -53,7 +60,10 @@ Pass `--host NAME` when the hostname is not the configuration name, which is the
 The recovery helper verifies the expected age public recipient and atomically installs `/var/lib/sops-nix/key.txt` with ownership root:root and mode 0600. An invalid identity does not overwrite the existing key. Once the key is ready, run the following command to apply the configuration, including user authentication files.
 
 ```sh
+# On ThinkPad:
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
+# On MS-7D91:
+sudo nixos-rebuild switch --flake .#MS-7D91
 ```
 
 Use the same command for later applies. It works with the YubiKey disconnected or Secret Service and 1Password locked. The gh/glab authentication files are user-owned regular files with mode 0600. The next apply restores their declared contents. Do not repeat manual `gh auth login` or `glab auth login` as follow-up steps.
