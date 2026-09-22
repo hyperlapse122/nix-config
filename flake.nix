@@ -88,6 +88,7 @@
         # Exposed so the release-tracking workflow invokes the packaged helper
         # rather than running scripts/ with whatever interpreter the runner has.
         agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
+        claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
       };
       checks.${system} = {
         pinentry-card =
@@ -521,6 +522,53 @@
             set -x
             ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
             ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+            touch $out
+          '';
+        claude-desktop =
+          let
+            assertHost =
+              hostName: host:
+              let
+                userPackages = host.config.home-manager.users.h82.home.packages;
+                claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-desktop") null userPackages;
+                hasKvmGroup = builtins.elem "kvm" host.config.users.users.h82.extraGroups;
+                hasVhostVsock = builtins.elem "vhost_vsock" host.config.boot.kernelModules;
+                absent = pkgs.lib.optionalString (claudePkg == null) ''
+                  echo 'missing claude-desktop in user packages on ${hostName}' >&2
+                  exit 1
+                '';
+                present = pkgs.lib.optionalString (claudePkg != null) ''
+                  if [ ! -x ${claudePkg}/bin/claude-desktop ]; then
+                    echo 'claude-desktop package ships no bin/claude-desktop executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  if [ ! -f ${claudePkg}/share/applications/com.anthropic.Claude.desktop ]; then
+                    echo 'claude-desktop package ships no share/applications/com.anthropic.Claude.desktop on ${hostName}' >&2
+                    exit 1
+                  fi
+                '';
+                kvmGroupCheck = pkgs.lib.optionalString (!hasKvmGroup) ''
+                  echo 'user h82 missing kvm group on ${hostName}' >&2
+                  exit 1
+                '';
+                vhostVsockCheck = pkgs.lib.optionalString (!hasVhostVsock) ''
+                  echo 'missing vhost_vsock kernel module on ${hostName}' >&2
+                  exit 1
+                '';
+              in
+              ''
+                ${absent}
+                ${present}
+                ${kvmGroupCheck}
+                ${vhostVsockCheck}
+              '';
+          in
+          pkgs.runCommand "claude-desktop-tests" { } ''
+            set -x
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+            ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
+            ${assertHost "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap}
             touch $out
           '';
         bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };

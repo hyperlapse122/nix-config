@@ -36,6 +36,7 @@
       yubioath-flutter
     ])
     ++ [
+      (import ../../packages/claude-desktop.nix { inherit pkgs; })
       (import ../../packages/nix-tools.nix { inherit pkgs; }).nr
       (import ../../packages/orca.nix { inherit pkgs; })
     ];

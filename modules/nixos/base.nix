@@ -32,9 +32,11 @@
     extraGroups = [
       "wheel"
       "networkmanager"
+      "kvm"
     ];
     shell = pkgs.zsh;
   };
+  boot.kernelModules = [ "vhost_vsock" ];
   programs.zsh.enable = true;
   services.pcscd.enable = true;
   environment.systemPackages =
