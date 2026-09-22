@@ -84,7 +84,7 @@ let
   /*
     DUPLICATION IS DELIBERATE. This allowlist is an independent literal. It is
     not derived from, and must not be derived from, the `fprintAuth = false`
-    lists in modules/nixos/fingerprint.nix, and that module must not read this.
+    lists in modules/nixos/hardware/fingerprint.nix, and that module must not read this.
     If one edit could change both sides, a change that hands the factor to the
     greeter would arrive with a matching allowlist and this check would stay
     green -- which is the entire failure mode it exists to prevent.

@@ -21,7 +21,7 @@ pkgs.testers.nixosTest {
   nodes.missing = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
-      ../modules/nixos/secrets.nix
+      ../modules/nixos/system/secrets.nix
     ];
     system.switch.enable = true;
     boot.loader.grub.enable = pkgs.lib.mkForce false;
@@ -34,7 +34,7 @@ pkgs.testers.nixosTest {
   nodes.machine = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
-      ../modules/nixos/secrets.nix
+      ../modules/nixos/system/secrets.nix
     ];
     system.switch.enable = true;
     boot.loader.grub.enable = pkgs.lib.mkForce false;
