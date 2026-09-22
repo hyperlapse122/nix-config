@@ -22,6 +22,14 @@
   # The Gen 11 predates the Copilot key, so the chord binding stays out of the
   # generated keyd configuration on this host.
   config.my.keyd.copilotKey = false;
+  # Fallback lid-switch policy: consulted only when no Plasma session holds
+  # the systemd-logind handle-lid-switch inhibitor (Powerdevil normally does;
+  # see home/h82/kde/power-lid.nix for the mechanism actually in effect).
+  config.services.logind.settings.Login = {
+    HandleLidSwitch = "suspend-then-hibernate";
+    HandleLidSwitchExternalPower = "ignore";
+    HandleLidSwitchDocked = "ignore";
+  };
   options.my.bootstrap = lib.mkOption {
     type = lib.types.bool;
     default = false;
