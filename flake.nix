@@ -19,6 +19,15 @@
       url = "github:nix-community/lanzaboote/v1.1.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pinned to a release tag rather than a branch, and the registry in
+    # home/h82/agent-plugins.nix records the revision that tag is expected to
+    # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
+    # is not a pin -- the agent-plugins check compares this input's locked
+    # revision against that recorded value and fails when upstream moves it.
+    compound-engineering-plugin = {
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.28.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -48,6 +57,9 @@
                   my.bootstrap = bootstrap;
                   home-manager.useGlobalPkgs = true;
                   home-manager.useUserPackages = true;
+                  # specialArgs reaches NixOS modules only; the agent-plugin
+                  # registry needs the pinned plugin source, which is an input.
+                  home-manager.extraSpecialArgs = { inherit inputs; };
                   home-manager.users.h82 = import ./home/h82;
                 }
               ];
@@ -71,7 +83,13 @@
             bootstrap = true;
           };
         };
-      packages.${system}.disko = inputs.disko.packages.${system}.disko;
+      packages.${system} = {
+        disko = inputs.disko.packages.${system}.disko;
+        # Exposed so the release-tracking workflow invokes the packaged helper
+        # rather than running scripts/ with whatever interpreter the runner has.
+        agent-plugin-release =
+          (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
+      };
       checks.${system} = {
         pinentry-card =
           pkgs.runCommand "pinentry-card-tests"
@@ -139,6 +157,27 @@
             touch $out
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
+        agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+        agent-plugin-sync =
+          pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/agent-plugin-sync} scripts/agent-plugin-sync
+              cp ${./tests/test_agent_plugin_sync.py} tests/test_agent_plugin_sync.py
+              python tests/test_agent_plugin_sync.py
+              touch $out
+            '';
+        agent-plugin-release =
+          pkgs.runCommand "agent-plugin-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/agent-plugin-release} scripts/agent-plugin-release
+              cp ${./tests/test_agent_plugin_release.py} tests/test_agent_plugin_release.py
+              python tests/test_agent_plugin_release.py
+              touch $out
+            '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         publish-cli-auth =

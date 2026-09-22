@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Materialize a pinned agent plugin and register it with a coding agent.
+
+Creates a version-keyed symlink to the pinned source, drives the agent's own
+plugin commands against that path, and removes superseded versions only after
+the registration is observed pointing at the current one.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# A segment names a directory this script creates and later prunes siblings of.
+# Anything that could escape the base directory is refused rather than quoted.
+SEGMENT = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+
+# `enable` reports this when the plugin is already enabled. It is the one
+# non-zero outcome treated as success; every other failure stops the run, so a
+# broken registration can never be mistaken for a converged one.
+ALREADY_ENABLED = 'already enabled'
+
+
+class Failure(Exception):
+    """A refusal that should stop activation with a readable message."""
+
+
+def run(argv, dry_run, capture=True):
+    if dry_run:
+        print('would run: ' + ' '.join(argv))
+        return 0, ''
+    proc = subprocess.run(
+        argv,
+        stdin=subprocess.DEVNULL,
+        capture_output=capture,
+        text=True,
+    )
+    output = ((proc.stdout or '') + (proc.stderr or '')).strip()
+    return proc.returncode, output
+
+
+def require(argv, dry_run, what):
+    code, output = run(argv, dry_run)
+    if code != 0:
+        raise Failure('{} failed: {}'.format(what, output or 'no output'))
+    return output
+
+
+def read_manifests(source):
+    """Return the marketplace manifest, refusing a tree this wiring cannot drive."""
+    marketplace = source / '.claude-plugin' / 'marketplace.json'
+    plugin = source / '.claude-plugin' / 'plugin.json'
+    for path in (marketplace, plugin):
+        if not path.is_file():
+            raise Failure('pinned source is missing {}'.format(path))
+
+    try:
+        manifest = json.loads(marketplace.read_text())
+    except ValueError as exc:
+        raise Failure('{} is not valid JSON: {}'.format(marketplace, exc))
+
+    # A marketplace-declared command would make `install` want --accept-command,
+    # i.e. run upstream-authored shell during activation. This wiring never
+    # passes that flag, so a tree that declares one is refused instead.
+    declared = []
+    for entry in [manifest] + list(manifest.get('plugins') or []):
+        if not isinstance(entry, dict):
+            continue
+        for key in ('command', 'commands', 'headersHelper'):
+            if entry.get(key):
+                declared.append(key)
+    if declared:
+        raise Failure(
+            'pinned source declares marketplace commands ({}); refusing to '
+            'install, because that would need --accept-command'.format(
+                ', '.join(sorted(set(declared)))
+            )
+        )
+    return manifest
+
+
+def link_version(base, segment, source, dry_run):
+    destination = base / segment
+    if dry_run:
+        print('would link {} -> {}'.format(destination, source))
+        return destination
+    base.mkdir(parents=True, exist_ok=True)
+    if destination.is_symlink() and os.readlink(destination) == str(source):
+        return destination
+    staging = base / ('.{}.staging'.format(segment))
+    if staging.is_symlink() or staging.exists():
+        staging.unlink()
+    staging.symlink_to(source)
+    os.replace(staging, destination)
+    return destination
+
+
+def registrations(claude, dry_run):
+    if dry_run:
+        return []
+    code, output = run([claude, 'plugin', 'marketplace', 'list', '--json'], False)
+    if code != 0:
+        raise Failure('marketplace list failed: {}'.format(output or 'no output'))
+    try:
+        parsed = json.loads(output)
+    except ValueError as exc:
+        raise Failure('marketplace list did not return JSON: {}'.format(exc))
+    return parsed if isinstance(parsed, list) else []
+
+
+def recorded_source(entry):
+    """The path or repository a listed marketplace resolves to."""
+    for key in ('path', 'url', 'repo', 'installLocation'):
+        value = entry.get(key)
+        if value:
+            return str(value)
+    return ''
+
+
+def find(entries, name):
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get('name') == name:
+            return entry
+    return None
+
+
+def prune(base, segment, dry_run):
+    """Remove superseded version entries, leaving anything this script did not create."""
+    if dry_run or not base.is_dir():
+        return []
+    removed = []
+    for child in sorted(base.iterdir()):
+        if child.name == segment:
+            continue
+        if not (child.is_symlink() or child.is_dir()):
+            continue
+        if child.is_symlink():
+            child.unlink()
+        else:
+            shutil.rmtree(child)
+        removed.append(child.name)
+    return removed
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--claude', required=True, help='path to the agent CLI')
+    parser.add_argument('--source', required=True, type=Path, help='pinned plugin source')
+    parser.add_argument('--base', required=True, type=Path, help='version-keyed base directory')
+    parser.add_argument('--segment', required=True, help='version segment, e.g. v3.28.0')
+    parser.add_argument('--plugin', required=True, help='plugin name from plugin.json')
+    parser.add_argument('--marketplace', required=True, help='marketplace name from marketplace.json')
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args(argv)
+
+    if os.geteuid() == 0:
+        parser.error('must run as the destination user, not root')
+    if not SEGMENT.match(args.segment):
+        parser.error('refusing unsafe version segment: {!r}'.format(args.segment))
+
+    previous = None
+    removed_registration = False
+    try:
+        read_manifests(args.source)
+        destination = link_version(args.base, args.segment, args.source, args.dry_run)
+        plugin_id = '{}@{}'.format(args.plugin, args.marketplace)
+
+        # Remove before adding rather than tolerating whatever `add` does with an
+        # existing name. The destination changes on every version bump, so
+        # same-name-different-path is the ordinary case, and a deterministic
+        # prologue keeps `enable`'s already-enabled message the only tolerated
+        # non-zero outcome.
+        existing = find(registrations(args.claude, args.dry_run), args.marketplace)
+        if existing is not None:
+            previous = recorded_source(existing)
+            require(
+                [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
+                args.dry_run,
+                'marketplace remove',
+            )
+            removed_registration = True
+
+        require(
+            [args.claude, 'plugin', 'marketplace', 'add', str(destination), '--scope', 'user'],
+            args.dry_run,
+            'marketplace add',
+        )
+        require(
+            [args.claude, 'plugin', 'install', plugin_id, '--scope', 'user'],
+            args.dry_run,
+            'plugin install',
+        )
+        # `install` is a no-op once the plugin is present at any version, so
+        # `update` is what re-resolves a moved pin.
+        require(
+            [args.claude, 'plugin', 'update', plugin_id, '--scope', 'user'],
+            args.dry_run,
+            'plugin update',
+        )
+        code, output = run([args.claude, 'plugin', 'enable', plugin_id], args.dry_run)
+        if code != 0 and ALREADY_ENABLED not in output.lower():
+            raise Failure('plugin enable failed: {}'.format(output or 'no output'))
+
+        # Read the registration back before pruning. The remove-then-add
+        # prologue already rules out keeping a stale source, so this guards the
+        # remaining case: an `add` that recorded something other than what it
+        # was handed.
+        prunable = True
+        if not args.dry_run:
+            entry = find(registrations(args.claude, False), args.marketplace)
+            if entry is None:
+                raise Failure(
+                    'marketplace {} is not registered after wiring'.format(args.marketplace)
+                )
+            resolved = recorded_source(entry)
+            if not resolved:
+                # The agent may describe a local marketplace only by its own
+                # cache location. That is not evidence of staleness, so keep the
+                # superseded version rather than failing every rebuild.
+                prunable = False
+                print(
+                    'agent-plugin-sync: {} reports no source path; keeping superseded '
+                    'versions'.format(args.marketplace),
+                    file=sys.stderr,
+                )
+            elif args.segment not in resolved and str(destination) not in resolved:
+                raise Failure(
+                    'marketplace {} resolves to {!r}, not the current version {}; '
+                    'refusing to prune'.format(args.marketplace, resolved, args.segment)
+                )
+
+        if prunable:
+            for name in prune(args.base, args.segment, args.dry_run):
+                print('removed superseded plugin version {}'.format(name))
+        return 0
+
+    except (Failure, OSError) as exc:
+        if removed_registration and previous and not args.dry_run:
+            # Put the agent back where it was so a failed bump leaves a working
+            # plugin rather than no registration at all.
+            restore, restore_output = run(
+                [args.claude, 'plugin', 'marketplace', 'add', previous, '--scope', 'user'],
+                False,
+            )
+            if restore != 0:
+                print(
+                    'agent-plugin-sync: could not restore the previous marketplace '
+                    'registration {}: {}'.format(previous, restore_output),
+                    file=sys.stderr,
+                )
+        print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

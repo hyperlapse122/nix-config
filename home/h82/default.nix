@@ -1,6 +1,7 @@
 { pkgs, lib, ... }:
 {
   imports = [
+    ./agent-plugins.nix
     ./claude.nix
     ./containers.nix
     ./fcitx5.nix
