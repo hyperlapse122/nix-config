@@ -156,6 +156,7 @@
             touch $out
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
+        nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
         agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
         agent-plugin-sync =
           pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }

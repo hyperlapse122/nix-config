@@ -35,6 +35,8 @@ sudo nixos-rebuild switch --rollback
 
 The initial boot generation limit is 5. Before removing old generations, confirm that the current generation boots with Secure Boot. Rollback alone cannot fix changes to firmware/db/dbx that alter whether an older generation is trusted.
 
+Weekly cleanup keeps the 10 newest generations regardless of age, so every entry the menu offers still resolves even after months without a rebuild. That retention floor is what makes the menu trustworthy, not the generation limit: the menu is rewritten only by a rebuild, while collection runs on a timer. Raising `configurationLimit` above the retention count in `modules/nixos/nix-cleanup.nix` would break that guarantee, and the `nix-cleanup` check fails when it does.
+
 ## An authentication stack that refuses
 
 If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself — but confirm the passphrase works before you ever need it, because a change to Secure Boot policy is exactly what would make it mandatory at the worst moment.

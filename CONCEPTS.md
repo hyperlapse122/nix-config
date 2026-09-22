@@ -34,6 +34,10 @@ A run that skipped is absent evidence rather than a passing one: skipping is how
 
 **Bootstrap host** — a second configuration built from the same module set as the production host, with private boot keys and user authentication secrets left out, used to install the machine before those secrets exist. It is not a separate machine or a reduced feature set: anything added to the shared modules reaches it too, so a change must be considered against an installer console as well as a logged-in desktop.
 
+## Generations
+
+**Retention floor** — the number of most recent generations a cleanup policy keeps regardless of their age, as opposed to the age window it keeps alongside them. The two are a union, so the floor is what survives a long gap between rebuilds. It is not a free parameter: the boot menu's entries are rewritten only by a rebuild while collection runs on a timer, so a floor that does not cover the boot loader's `configurationLimit` leaves the menu offering entries whose generations are gone — and those entries are the rollback path a system that will not boot has left. An unset limit is the unbounded case rather than a low one, and no finite floor covers it. The count floor applies to profile generations (`/nix/var/nix/profiles` and user profiles); other gcroots (such as build result symlinks and development shells) ride on the age window (`--keep-since`), with `--keep-one` preserving the active root for direnv projects.
+
 ## Coding agent configuration
 
 **Settings tier** — one of the layers a coding agent reads its configuration from, chosen per setting rather than per module. The tiers differ in who may write them and who wins, so the choice decides whether the user can still change a value at all: a tier the agent only reads outranks everything and locks the setting even inside a running session, while a tier the agent writes itself must be merged into rather than replaced. A setting is assigned to exactly one tier, and the assignment is recorded with its reason, because a tier chosen to dodge a write conflict silently also chooses how much control the user keeps.
