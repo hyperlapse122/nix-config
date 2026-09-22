@@ -26,6 +26,14 @@
   this assertion goes red instead of the change arriving as a lock diff.
   Seeding both from the lock would compare a value with itself.
 
+  What the segment comparison does and does not catch, established by mutation
+  rounds rather than by reading it: changing the registry's `tag` without
+  relocking turns it red for its own reason on both hosts, which is the drift
+  it exists for. Changing `tagPrefix` leaves it green, because the prefix is
+  stripped from both the registry's tag and the lock's ref -- both sides move
+  together, so that axis is consistent by construction rather than guarded.
+  Do not read the prefix as protected here.
+
   Every lookup carries an `or` fallback and every conditional block is behind
   `lib.optionalString`, so a mutation that removes a declaration reaches the
   builder as shell rather than failing evaluation on a null interpolation. See
@@ -67,9 +75,9 @@ let
       # Home Manager resolves a file's destination from `target`, which only
       # defaults to the attribute name, so this compares resolved targets.
       destination = if registry == null then "" else (registry.destination or "");
-      destinationTargeted = lib.any (
-        file: destination != "" && (file.target or "") == destination
-      ) (lib.attrValues (userConfig.home.file or { }));
+      destinationTargeted = lib.any (file: destination != "" && (file.target or "") == destination) (
+        lib.attrValues (userConfig.home.file or { })
+      );
 
       registryAbsent = lib.optionalString (registry == null) ''
         echo 'missing my.agentPlugins.${pluginName} on ${hostName}' >&2
@@ -155,7 +163,9 @@ let
         segmentArg=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--segment[[:space:]]+[^[:space:]]+' \
           | head -1 | awk '{print $2}' || true)
-        if [ "$segmentArg" != ${esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)} ]; then
+        if [ "$segmentArg" != ${
+          esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
+        } ]; then
           echo "the helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
           failed=1
         fi

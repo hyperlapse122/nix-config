@@ -87,8 +87,7 @@
         disko = inputs.disko.packages.${system}.disko;
         # Exposed so the release-tracking workflow invokes the packaged helper
         # rather than running scripts/ with whatever interpreter the runner has.
-        agent-plugin-release =
-          (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
+        agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
       };
       checks.${system} = {
         pinentry-card =

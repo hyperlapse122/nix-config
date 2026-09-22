@@ -61,11 +61,9 @@ let
         lib.concatMapStringsSep ", " (row: row.harness) badHarness
       }"
       (
-        lib.throwIf (badName != [ ])
-          "agent-plugins: membership names undeclared plugin(s): ${
-            lib.concatMapStringsSep ", " (row: row.name) badName
-          }"
-          membership
+        lib.throwIf (badName != [ ]) "agent-plugins: membership names undeclared plugin(s): ${
+          lib.concatMapStringsSep ", " (row: row.name) badName
+        }" membership
       );
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
