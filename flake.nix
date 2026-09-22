@@ -137,6 +137,18 @@
               python tests/test_publish_cli_auth.py
               touch $out
             '';
+        docker-credential-sops =
+          pkgs.runCommand "docker-credential-sops-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/docker-credential-sops} scripts/docker-credential-sops
+              cp ${./tests/test_docker_credential_sops.py} tests/test_docker_credential_sops.py
+              python tests/test_docker_credential_sops.py
+              touch $out
+            '';
+        podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
+        podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
         zsh-prezto =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;

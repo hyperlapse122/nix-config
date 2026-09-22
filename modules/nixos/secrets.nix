@@ -28,6 +28,27 @@ let
     "--jpi-user"
     cfg.jpiUser
   ];
+  dockerCredentialHelper = import ../../packages/docker-credential-sops.nix {
+    inherit pkgs;
+    routingTable = {
+      "ghcr.io" = {
+        username = cfg.githubUser;
+        secret = "/run/secrets/cli-auth/github_token";
+      };
+      "registry.gitlab.com" = {
+        username = cfg.gitlabUser;
+        secret = "/run/secrets/cli-auth/gitlab_token";
+      };
+      "registry.jpi.app" = {
+        username = cfg.jpiUser;
+        secret = "/run/secrets/cli-auth/jpi_token";
+      };
+      "docker.io" = {
+        username = cfg.dockerUser;
+        secret = "/run/secrets/cli-auth/docker_token";
+      };
+    };
+  };
 in
 {
   options.my.cliAuth = {
@@ -54,68 +75,85 @@ in
       type = lib.types.str;
       default = "hyperlapse";
     };
+    dockerUser = lib.mkOption {
+      type = lib.types.str;
+      default = "hyperlapse122";
+    };
+    enableDockerToken = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Decrypt docker_token from secrets/tokens.yaml when provisioned.";
+    };
   };
-  config = lib.mkIf cfg.enable (
-    lib.mkMerge [
-      {
-        systemd.services.sops-install-secrets = {
-          wantedBy = [ "sysinit.target" ];
-          requiredBy = [ "sysinit-reactivation.target" ];
-          after = [
-            "local-fs.target"
-            "systemd-sysusers.service"
-            "userborn.service"
-          ];
-          before = [
-            "sysinit.target"
-            "sysinit-reactivation.target"
-          ];
-          unitConfig = {
-            DefaultDependencies = "no";
-            RequiresMountsFor = [
-              "/home/h82"
-              cfg.ageKeyFile
+  config = lib.mkMerge [
+    {
+      environment.systemPackages = [ dockerCredentialHelper ];
+    }
+    (lib.mkIf cfg.enable (
+      lib.mkMerge [
+        {
+          systemd.services.sops-install-secrets = {
+            wantedBy = [ "sysinit.target" ];
+            requiredBy = [ "sysinit-reactivation.target" ];
+            after = [
+              "local-fs.target"
+              "systemd-sysusers.service"
+              "userborn.service"
             ];
+            before = [
+              "sysinit.target"
+              "sysinit-reactivation.target"
+            ];
+            unitConfig = {
+              DefaultDependencies = "no";
+              RequiresMountsFor = [
+                "/home/h82"
+                cfg.ageKeyFile
+              ];
+            };
+            serviceConfig = {
+              Type = "oneshot";
+              # A successful oneshot must be inactive so unchanged switches re-run it.
+              RemainAfterExit = lib.mkForce false;
+            };
           };
-          serviceConfig = {
-            Type = "oneshot";
-            # A successful oneshot must be inactive so unchanged switches re-run it.
-            RemainAfterExit = lib.mkForce false;
+        }
+        (lib.mkIf available {
+          sops = {
+            defaultSopsFile = cfg.sopsFile;
+            age = {
+              keyFile = cfg.ageKeyFile;
+              generateKey = false;
+              sshKeyPaths = [ ];
+            };
+            gnupg.sshKeyPaths = [ ];
+            useSystemdActivation = true;
+            secrets =
+              lib.genAttrs
+                (map (name: "cli-auth/${name}") (
+                  [
+                    "github_token"
+                    "gitlab_token"
+                    "jpi_token"
+                  ]
+                  ++ lib.optional cfg.enableDockerToken "docker_token"
+                ))
+                (name: {
+                  key = lib.removePrefix "cli-auth/" name;
+                  owner = "h82";
+                  mode = "0400";
+                });
           };
-        };
-      }
-      (lib.mkIf available {
-        sops = {
-          defaultSopsFile = cfg.sopsFile;
-          age = {
-            keyFile = cfg.ageKeyFile;
-            generateKey = false;
-            sshKeyPaths = [ ];
-          };
-          gnupg.sshKeyPaths = [ ];
-          useSystemdActivation = true;
-          secrets =
-            lib.genAttrs
-              (map (name: "cli-auth/${name}") [
-                "github_token"
-                "gitlab_token"
-                "jpi_token"
-              ])
-              (name: {
-                key = lib.removePrefix "cli-auth/" name;
-                owner = "h82";
-                mode = "0400";
-              });
-        };
-        systemd.services.sops-install-secrets.serviceConfig.ExecStartPost = publishCommand;
-      })
-      (lib.mkIf (!available) {
-        systemd.services.sops-install-secrets.serviceConfig.ExecStart =
-          pkgs.writeShellScript "missing-cli-secrets" ''
-            echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See docs/provisioning.md.' >&2
-            exit 1
-          '';
-      })
-    ]
-  );
+          systemd.services.sops-install-secrets.serviceConfig.ExecStartPost = publishCommand;
+        })
+        (lib.mkIf (!available) {
+          systemd.services.sops-install-secrets.serviceConfig.ExecStart =
+            pkgs.writeShellScript "missing-cli-secrets" ''
+              echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See docs/provisioning.md.' >&2
+              exit 1
+            '';
+        })
+      ]
+    ))
+  ];
 }

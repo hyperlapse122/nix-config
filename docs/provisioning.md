@@ -131,3 +131,26 @@ Only the scalar settings above are declared. Permission allowlists and hooks, MC
 Persistent memory features are explicitly disabled so mutable per-user history does not affect agent behavior. Claude Code uses the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable above; the Antigravity CLI sets `"disableAutoGenerateMemories": true` in `~/.gemini/antigravity-cli/settings.json`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
+
+## Container runtime and registry authentication
+
+Rootless Podman is configured declaratively in `modules/nixos/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`.
+
+Supported registries:
+- `ghcr.io` (authenticated via `github_token`)
+- `registry.gitlab.com` (authenticated via `gitlab_token`)
+- `registry.jpi.app` (authenticated via `jpi_token`)
+- `docker.io` (authenticated via `docker_token`)
+
+### Developer prerequisites
+
+1. **Docker Hub token**: To enable authenticated pulls from `docker.io`, generate an access token on Docker Hub, add `docker_token` to `secrets/tokens.yaml`, and re-encrypt the file with SOPS using the host age recipient:
+   ```sh
+   sops secrets/tokens.yaml
+   ```
+   Then enable Docker Hub token decryption in your host configuration:
+   ```nix
+   my.cliAuth.enableDockerToken = true;
+   ```
+   Before that token is added and enabled, lookups for `docker.io` report a clean credential miss and fall back to anonymous pulls.
+2. **Token scopes**: Ensure the existing GitHub token carries `read:packages` (or `write:packages` for pushes) and the GitLab tokens carry `read_registry` (or `write_registry`). Tokens issued solely for CLI or Git HTTPS access will return 401 Unauthorized upon pulling container images even when credentials are provided correctly.
