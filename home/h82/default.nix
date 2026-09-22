@@ -2,6 +2,7 @@
 {
   imports = [
     ./claude.nix
+    ./containers.nix
     ./fcitx5.nix
     ./gemini.nix
     ./git.nix
