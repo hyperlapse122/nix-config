@@ -620,6 +620,14 @@
             bash tests/ci-docs-only-paths.sh scripts/ci-docs-only-paths
             touch $out
           '';
+        markdown-lint =
+          pkgs.runCommand "markdown-lint-tests" { nativeBuildInputs = [ pkgs.markdownlint-cli2 ]; } ''
+            cp -r ${self} work
+            chmod -R u+w work
+            cd work
+            markdownlint-cli2
+            touch $out
+          '';
         age-identity-helpers =
           pkgs.runCommand "age-identity-helpers-tests" { nativeBuildInputs = [ pkgs.coreutils ]; }
             ''
