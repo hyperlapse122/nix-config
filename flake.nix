@@ -20,7 +20,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Pinned to a release tag rather than a branch, and the registry in
-    # home/h82/agent-plugins.nix records the revision that tag is expected to
+    # home/h82/agents/agent-plugins.nix records the revision that tag is expected to
     # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.

@@ -35,7 +35,7 @@ sudo nixos-rebuild switch --rollback
 
 The initial boot generation limit is 5. Before removing old generations, confirm that the current generation boots with Secure Boot. Rollback alone cannot fix changes to firmware/db/dbx that alter whether an older generation is trusted.
 
-Weekly cleanup keeps the 10 newest generations regardless of age, so every entry the menu offers still resolves even after months without a rebuild. That retention floor is what makes the menu trustworthy, not the generation limit: the menu is rewritten only by a rebuild, while collection runs on a timer. Raising `configurationLimit` above the retention count in `modules/nixos/nix-cleanup.nix` would break that guarantee, and the `nix-cleanup` check fails when it does.
+Weekly cleanup keeps the 10 newest generations regardless of age, so every entry the menu offers still resolves even after months without a rebuild. That retention floor is what makes the menu trustworthy, not the generation limit: the menu is rewritten only by a rebuild, while collection runs on a timer. Raising `configurationLimit` above the retention count in `modules/nixos/system/nix-cleanup.nix` would break that guarantee, and the `nix-cleanup` check fails when it does.
 
 ## An authentication stack that refuses
 
