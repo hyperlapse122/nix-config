@@ -19,6 +19,9 @@
     so a run missed while the laptop was off is caught up at the next boot.
   - the materialised system unit tree wires that timer into timers.target.wants.
     Without this the two assertions above pass on a timer nothing ever starts.
+  - the boot loader's configurationLimit is a number at all.  Both loader options
+    are nullOr int and null is their default, meaning an unbounded menu that no
+    finite retention count can cover.
   - the retention count is at or above the boot loader's configurationLimit.  The
     boot menu is rewritten only by a rebuild while collection runs on a timer, so
     a smaller count would leave menu entries naming collected generations.  The
@@ -73,7 +76,18 @@ let
   # aborting evaluation with a null coercion error.
   # Bound once so the comparison operand and the message it prints cannot drift
   # apart when one of them is edited.
-  limit = esc (bootLimit host.config);
+  limitValue = bootLimit host.config;
+  limit = esc limitValue;
+
+  # Both configurationLimit options are nullOr int, and null is their default
+  # and their documented "no limit, every surviving generation" value.  It has
+  # to fail here rather than reach the shell: toString null is the empty string,
+  # so the comparison below would become [ "$keep" -lt '' ], which errors to
+  # stderr, leaves the branch untaken, and passes the whole check in exactly the
+  # case the retention floor exists to catch.
+  limitUnbounded = lib.optionalString (limitValue == null) (
+    fail "the boot loader configurationLimit is null, so the boot menu offers every surviving generation and no finite retention count can cover it"
+  );
 
   serviceAbsent = lib.optionalString (serviceUnit == null) (
     fail "the production system renders no nh-clean.service unit"
@@ -97,10 +111,13 @@ let
         keep=$(grep -o -- '--keep [0-9][0-9]*' "$start" | head -1 | awk '{ print $2 }')
         if [ -z "$keep" ]; then
           ${fail "the nh-clean start script names no retention count"}
-        elif [ "$keep" -lt ${limit} ]; then
-          echo "retention count $keep is below the boot loader configurationLimit ${limit}; the boot menu would offer entries whose generations were collected" >&2
-          failed=1
         fi
+        ${lib.optionalString (limitValue != null) ''
+          if [ -n "$keep" ] && [ "$keep" -lt ${limit} ]; then
+            echo "retention count $keep is below the boot loader configurationLimit ${limit}; the boot menu would offer entries whose generations were collected" >&2
+            failed=1
+          fi
+        ''}
       fi
     fi
   '';
@@ -164,6 +181,7 @@ pkgs.runCommand "nix-cleanup-tests"
 
     ${serviceAbsent}
     ${servicePresent}
+    ${limitUnbounded}
     ${timerAbsent}
     ${timerPresent}
     ${unitsAbsent}
