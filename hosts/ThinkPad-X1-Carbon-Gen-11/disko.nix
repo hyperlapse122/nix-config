@@ -3,7 +3,7 @@
     type = "disk";
     # This is the only supported installation target.  Daily rebuilds never
     # invoke disko's format or destroy actions.
-    device = "/dev/disk/by-id/nvme-KBG5AZNV512G_LA_KIOXIA_44FPD2S3QAMU";
+    device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X";
     content = {
       type = "gpt";
       partitions = {
