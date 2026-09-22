@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "compound-engineering-plugin": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790035278,
+        "narHash": "sha256-bzfbfBVN0ScOQ7nEDq0f36nm4VIhYSmkGbCGV267wek=",
+        "owner": "EveryInc",
+        "repo": "compound-engineering-plugin",
+        "rev": "c152896f1cda13548fc1a05b2aff88caf8ae8dba",
+        "type": "github"
+      },
+      "original": {
+        "owner": "EveryInc",
+        "ref": "compound-engineering-v3.28.0",
+        "repo": "compound-engineering-plugin",
+        "type": "github"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1781825982,
@@ -158,6 +175,7 @@
     },
     "root": {
       "inputs": {
+        "compound-engineering-plugin": "compound-engineering-plugin",
         "disko": "disko",
         "home-manager": "home-manager",
         "lanzaboote": "lanzaboote",
