@@ -6,8 +6,8 @@
 }:
 let
   merger = "${
-    (import ../../packages/claude-tools.nix { inherit pkgs; }).claudeSettings
-  }/bin/claude-settings";
+    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+  }/bin/agent-settings";
 
   # Declared through the environment because that is where these settings
   # persist.  A variable that only overrides one session -- ANTHROPIC_MODEL,
@@ -32,9 +32,9 @@ let
     # no per-model form to use instead.
     effortLevel = "medium";
     language = "korean";
-    # The ansi themes render from the terminal's own 16 colours instead of
-    # pinning a palette of their own.
-    theme = "dark-ansi";
+    # `auto` follows the background the terminal reports, so the palette
+    # tracks whichever theme Ghostty is running rather than pinning one here.
+    theme = "auto";
     preferredNotifChannel = "ghostty";
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
@@ -71,6 +71,7 @@ in
   # owns should not be able to do that.
   home.activation.claudeSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
     ${merger} \
+      --label 'Claude Code' \
       --settings ${config.home.homeDirectory}/.claude/settings.json \
       --declared ${declared}
   '';

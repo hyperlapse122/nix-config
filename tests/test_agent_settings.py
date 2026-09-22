@@ -1,8 +1,8 @@
 """Check interface:
 
-    python tests/test_claude_settings.py
+    python tests/test_agent_settings.py
 
-Exercises scripts/claude-settings against a seeded settings file.
+Exercises scripts/agent-settings against a seeded settings file.
 
 The fixture starts divergent on purpose: declared keys hold values other than
 the declared ones, and undeclared keys sit beside them.  A fixture that already
@@ -21,8 +21,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/claude-settings'
-loader = importlib.machinery.SourceFileLoader('claude_settings', str(SCRIPT))
+SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/agent-settings'
+loader = importlib.machinery.SourceFileLoader('agent_settings', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 merger = importlib.util.module_from_spec(spec)
 loader.exec_module(merger)
@@ -31,7 +31,7 @@ DECLARED = {
     'model': 'opus[1m]',
     'effortLevel': 'medium',
     'language': 'korean',
-    'theme': 'dark-ansi',
+    'theme': 'auto',
 }
 
 # Declared keys hold other values; the rest is state only the agent writes.
@@ -180,7 +180,7 @@ class MergeTests(unittest.TestCase):
 
     def test_preserves_a_write_that_lands_while_merging(self):
         # The file has another writer. A plain read-modify-write would discard
-        # whatever Claude Code wrote between the read and the replace.
+        # whatever the agent wrote between the read and the replace.
         self.seed()
         original = merger.read_settings
 
@@ -286,6 +286,18 @@ class MergeTests(unittest.TestCase):
         self.settings.write_text('{ not json')
         code = merger.main(['--settings', str(self.settings), '--declared', str(self.declared)])
         self.assertEqual(code, 1)
+
+    def test_refusal_names_the_agent_the_caller_labelled(self):
+        # Two agents share this merger, so a failure in the rebuild log has to
+        # say which file it was about.
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text('{ not json')
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--label', 'Antigravity CLI',
+             '--settings', str(self.settings), '--declared', str(self.declared)],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Antigravity CLI settings merge failed', result.stderr)
 
     def test_main_returns_zero_on_success(self):
         self.seed()

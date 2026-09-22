@@ -34,9 +34,17 @@ jobs:
       - name: Evaluate and test
         run: nix flake check --print-build-logs
 
-  build-production:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - ThinkPad-X1-Carbon-Gen-11
+          - ThinkPad-X1-Carbon-Gen-11-bootstrap
+          - MS-7D91
+          - MS-7D91-bootstrap
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Make room for NixOS closures
@@ -45,23 +53,7 @@ jobs:
         with:
           extra_nix_config: |
             system-features = big-parallel benchmark
-      - name: Build production host configuration without secrets
+      - name: Build host configuration without secrets
         run: |
           nix build --no-link \
-            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel
-
-  build-bootstrap:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Make room for NixOS closures
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
-        with:
-          extra_nix_config: |
-            system-features = big-parallel benchmark
-      - name: Build bootstrap host configuration without secrets
-        run: |
-          nix build --no-link \
-            .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
+            .#nixosConfigurations.${{ matrix.target }}.config.system.build.toplevel

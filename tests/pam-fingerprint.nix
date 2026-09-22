@@ -3,8 +3,10 @@
 
     import ./tests/pam-fingerprint.nix { inherit pkgs self; }
 
-  Asserts which PAM services the fingerprint factor reaches, on
-  ThinkPad-X1-Carbon-Gen-11 and ThinkPad-X1-Carbon-Gen-11-bootstrap.
+  Asserts which PAM services the fingerprint factor reaches, on every host this
+  flake builds. A host with no entry in the tables below is checked against an
+  empty allowlist rather than skipped, so enabling the factor on a host added
+  later turns this check red until the allowlist says so deliberately.
 
   It reads `config.environment.etc."pam.d/<name>".source` -- the file the etc
   module materialises into /etc -- rather than
@@ -36,9 +38,11 @@
     any deny list, and turns this check red rather than inheriting the factor
     unnoticed.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11-bootstrap:
-  - the same negatives, and an empty allowlist: the installer console
-    materialises no PAM file carrying the factor at all.
+  Verifies, on every other host — ThinkPad-X1-Carbon-Gen-11-bootstrap, MS-7D91
+  and MS-7D91-bootstrap today:
+  - the same negatives, and an empty allowlist. The installer consoles have no
+    enrolled finger and the desktop host does not import the fingerprint
+    module, so none of them materialises a PAM file carrying the factor.
 
   The collected set is asserted non-empty per host, so the negatives can never
   pass over nothing.
@@ -88,6 +92,11 @@ let
     deliberate entry or is denied in the module. Adding an entry here later is a
     deliberate act, which is the property this closed-world comparison buys.
   */
+  # Looked up per host, defaulting to "no file may carry the factor". A host
+  # absent from these tables is not unchecked; it is checked against nothing
+  # being allowed.
+  forHost = table: hostName: table.${hostName} or [ ];
+
   allowlist = {
     ThinkPad-X1-Carbon-Gen-11 = [
       # The three surfaces this feature exists for.
@@ -186,7 +195,7 @@ let
 
       expectedLines = concatMapStrings (
         name: "printf '%s\\n' ${esc name} >> ${esc "${dir}.expected"}\n"
-      ) allowlist.${hostName};
+      ) (forHost allowlist hostName);
 
       presentLines = concatMapStrings (name: ''
         if [ ! -f ${esc "${dir}/${name}"} ]; then
@@ -194,7 +203,7 @@ let
         elif ! authStack ${esc "${dir}/${name}"} | grep -q pam_fprintd.so; then
           ${fail "${hostName}: ${name} no longer carries the fingerprint factor"}
         fi
-      '') carriesFactor.${hostName};
+      '') (forHost carriesFactor hostName);
 
       absentLines = concatMapStrings (name: ''
         if [ ! -f ${esc "${dir}/${name}"} ]; then
@@ -225,7 +234,7 @@ let
       ${presentLines}
       ${absentLines}
       ${closureLines "the login greeter" greeterRoots}
-      ${closureLines "fingerprint enrollment" enrollRoots.${hostName}}
+      ${closureLines "fingerprint enrollment" (forHost enrollRoots hostName)}
 
       : > ${esc "${dir}.expected"}
       ${expectedLines}
@@ -248,12 +257,14 @@ let
 
   # optionalString keeps the whole body out of the builder if a host ever stops
   # existing, rather than aborting evaluation on a missing attribute.
+  # Every host the flake builds, not a named pair. A host added later inherits
+  # an empty allowlist, so enabling the factor there without saying so here
+  # turns the build red -- which is the same closed-world property applied to
+  # the host set rather than to the service set.
   hostBodies = concatStringsSep "\n" (
-    mapAttrsToList (hostName: host: optionalString (host != null) (hostAssertions hostName host)) {
-      ThinkPad-X1-Carbon-Gen-11 = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11 or null;
-      ThinkPad-X1-Carbon-Gen-11-bootstrap =
-        self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap or null;
-    }
+    mapAttrsToList (
+      hostName: host: optionalString (host != null) (hostAssertions hostName host)
+    ) self.nixosConfigurations
   );
 in
 pkgs.runCommand "pam-fingerprint-tests"

@@ -19,19 +19,26 @@ The preparation helper does this. It runs on the pre-migration host, from the de
 
 ```sh
 nix develop
+# For ThinkPad:
 ./scripts/prepare-age-identity \
   --host ThinkPad-X1-Carbon-Gen-11 \
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05
+
+# For MS-7D91 Desktop:
+./scripts/prepare-age-identity \
+  --host MS-7D91 \
   --recipient 621512777E6933FEB4458FDC4945855D4F283F05
 ```
 
 It writes `secrets/bootstrap/<hostname>/age-key.asc` and `secrets/bootstrap/<hostname>/recipient.txt`.
 
-Set the recipient in `.sops.yaml` to the value it recorded. Only the host whose recipient appears there can decrypt `secrets/tokens.yaml`; a second host prepared with this helper cannot read it until that file is re-encrypted to the new recipient. Create the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
+Set the recipient in `.sops.yaml` to the value it recorded under `&<hostname>`. Every host whose recipient appears in the creation rules list can decrypt `secrets/tokens.yaml`; adding a new host requires re-encrypting the file with `sops updatekeys -y secrets/tokens.yaml`. Create or update the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
 
 ```sh
 umask 077
 secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
-sops --encrypt --age "$(cat secrets/bootstrap/ThinkPad-X1-Carbon-Gen-11/recipient.txt)" \
+# When encrypting for both hosts listed in .sops.yaml:
+sops --encrypt \
   --input-type yaml --output-type yaml \
   "$secret_tmp/tokens.yaml" > secrets/tokens.yaml
 ```
@@ -53,7 +60,10 @@ Pass `--host NAME` when the hostname is not the configuration name, which is the
 The recovery helper verifies the expected age public recipient and atomically installs `/var/lib/sops-nix/key.txt` with ownership root:root and mode 0600. An invalid identity does not overwrite the existing key. Once the key is ready, run the following command to apply the configuration, including user authentication files.
 
 ```sh
+# On ThinkPad:
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
+# On MS-7D91:
+sudo nixos-rebuild switch --flake .#MS-7D91
 ```
 
 Use the same command for later applies. It works with the YubiKey disconnected or Secret Service and 1Password locked. The gh/glab authentication files are user-owned regular files with mode 0600. The next apply restores their declared contents. Do not repeat manual `gh auth login` or `glab auth login` as follow-up steps.
@@ -108,7 +118,7 @@ Each Claude Code setting this repository declares is assigned to exactly one set
 - **Environment variables**, for settings whose persistent form is a variable: `DISABLE_AUTOUPDATER`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. A variable that only overrides a single session, such as `ANTHROPIC_MODEL` or `CLAUDE_CODE_EFFORT_LEVEL`, does not move its setting into this tier. These are session variables, so they reach every program in the session, not only Claude Code — `DISABLE_AUTOUPDATER` in particular is read by other coding-agent CLIs as well; it lives in this module because the declared set belongs in one place.
 - **The user settings file** `~/.claude/settings.json`, for everything else declared: `model`, `effortLevel`, `language`, `theme`, `preferredNotifChannel`, `agentPushNotifEnabled`, `inputNeededNotifEnabled`, and `cleanupPeriodDays`.
 
-Claude Code owns that file and rewrites it whenever a `/config` option changes, so Home Manager cannot place a read-only store symlink there. Activation instead runs the packaged `claude-settings` merger, which assigns the declared keys and leaves every other key exactly as the agent wrote it. A key this repository does not declare stays the user's permanently. To hand a choice back to the user, remove it from the declared set in `home/h82/claude.nix` and from `tests/claude.nix` in the same change; the `claude` check asserts the whole rendered set.
+Claude Code owns that file and rewrites it whenever a `/config` option changes, so Home Manager cannot place a read-only store symlink there. Activation instead runs the packaged `agent-settings` merger, which assigns the declared keys and leaves every other key exactly as the agent wrote it. A key this repository does not declare stays the user's permanently. To hand a choice back to the user, remove it from the declared set in `home/h82/claude.nix` and from `tests/claude.nix` in the same change; the `claude` check asserts the whole rendered set.
 
 A declared key returns to its declared value on the next rebuild **that produces a new Home Manager generation**, not on every `nixos-rebuild switch`. `home-manager-h82.service` is a `RemainAfterExit` oneshot whose unit embeds the generation store path, so a rebuild that changes nothing in this repository leaves the unit untouched and activation does not re-run. Runtime drift in a declared key therefore persists until the next rebuild that actually changes something here.
 
@@ -129,6 +139,8 @@ Only the scalar settings above are declared. Permission allowlists and hooks, MC
 ### Memory
 
 Persistent memory features are explicitly disabled so mutable per-user history does not affect agent behavior. Claude Code uses the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable above; the Antigravity CLI sets `"disableAutoGenerateMemories": true` in `~/.gemini/antigravity-cli/settings.json`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
+
+The two Gemini-side files reach the home directory differently, and `home/h82/gemini.nix` holds both. The Gemini CLI only reads `~/.gemini/settings.json`, so a Home Manager store symlink holds it. The Antigravity CLI rewrites `~/.gemini/antigravity-cli/settings.json` itself — trusting a workspace replaces the whole file — so a symlink there is replaced by a regular file, and the next activation refuses to clobber it and fails the rebuild. That file therefore goes through the same `agent-settings` merger as `~/.claude/settings.json`, with the same consequences: the declared key returns to its declared value only on a rebuild that produces a new Home Manager generation, everything the agent wrote (trusted workspaces included) is preserved, and a retired key belongs in `retiredKeys` rather than simply deleted.
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
 

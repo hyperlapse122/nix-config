@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Set declared keys in Claude Code's user settings file. Run as the target user.
+"""Set declared keys in a coding agent's user settings file. Run as the target user.
 
-Claude Code owns this file and rewrites it whenever a /config option changes, so
-Home Manager cannot place a read-only store symlink there.  Activation assigns
-the declared top-level keys, drops the ones this repository has retired, and
-leaves every other key exactly as the agent wrote it.
+Claude Code and the Antigravity CLI each own their settings file and rewrite it
+whenever a setting changes at runtime, so Home Manager cannot place a read-only
+store symlink there.  Activation assigns the declared top-level keys, drops the
+ones this repository has retired, and leaves every other key exactly as the
+agent wrote it.
+
+--label names the agent in failure messages only.  Nothing else in the merge
+depends on which agent owns the file: both write a flat JSON object that the
+user also edits through the agent's own interface.
 """
 import argparse
 import errno
@@ -34,10 +39,11 @@ def check_directory(path):
 
 def private_directory(path):
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    # mkdir applies its mode only when it creates the directory, and ~/.claude
-    # normally exists already -- Claude Code made it under the default umask.
-    # It holds credentials, OAuth state, and transcripts, so tighten it either
-    # way rather than promising a private directory only on a fresh machine.
+    # mkdir applies its mode only when it creates the directory, and the
+    # settings directory normally exists already -- the agent made it under the
+    # default umask.  It holds credentials, OAuth state, and transcripts, so
+    # tighten it either way rather than promising a private directory only on a
+    # fresh machine.
     path.chmod(0o700)
 
 
@@ -91,7 +97,8 @@ def read_settings(settings):
         raise
     # Explicit UTF-8: the activation unit carries no locale, so letting Python
     # pick one risks failing to read a file the agent wrote with non-ASCII
-    # content -- likely here, where the interface language is Korean.
+    # content -- likely here, where the interface language is Korean, and where
+    # a declared path can carry any name the user typed.
     with os.fdopen(descriptor, 'r', encoding='utf-8') as stream:
         text = stream.read()
     try:
@@ -115,9 +122,10 @@ def swap(settings, merged, before):
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temporary, 0o600)
-        # Re-check immediately before the swap.  Claude Code may have rewritten
+        # Re-check immediately before the swap.  The agent may have rewritten
         # the file since it was read, and replacing it then would discard what
-        # the agent just wrote -- hooks, plugins, per-project state.
+        # it just wrote -- hooks, plugins, trusted workspaces, per-project
+        # state.
         if snapshot(settings) != before:
             return False
         os.replace(temporary, settings)
@@ -161,13 +169,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', required=True, type=Path)
     parser.add_argument('--declared', required=True, type=Path)
+    parser.add_argument('--label', default='Agent', help='agent name used in failure messages')
     args = parser.parse_args(argv)
     if os.geteuid() == 0:
         parser.error('must run as the destination user, not root')
     try:
         merge(args.settings, args.declared)
     except (OSError, ValueError) as error:
-        print('Claude Code settings merge failed: {}'.format(error), file=sys.stderr)
+        print('{} settings merge failed: {}'.format(args.label, error), file=sys.stderr)
         return 1
     return 0
 

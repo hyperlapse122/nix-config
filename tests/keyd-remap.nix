@@ -26,6 +26,8 @@ let
   keydConf = machine: machine.config.environment.etc."keyd/default.conf".source;
   quirks = host.config.environment.etc."libinput/local-overrides.quirks".source;
   serviceEnabled = host.config.services.keyd.enable;
+  msHost = self.nixosConfigurations.MS-7D91;
+  msServiceEnabled = msHost.config.services.keyd.enable;
 in
 pkgs.runCommand "keyd-remap-tests"
   {
@@ -50,6 +52,9 @@ pkgs.runCommand "keyd-remap-tests"
 
     # R1: the remapping service is enabled on the host.
     echo '${builtins.toJSON serviceEnabled}' | grep -Fxq "true"
+
+    # keyd service is disabled on MS-7D91 (mechanical keyboard with custom firmware).
+    echo '${builtins.toJSON msServiceEnabled}' | grep -Fxq "false"
 
     # The bindings that must hold whatever the Copilot option is set to.
     for conf in "$default" "$copilot"; do

@@ -22,17 +22,22 @@
       antigravity-cli
       bun
       claude-code
+      discord
       gh
       glab
       google-chrome
       kdePackages.kleopatra
+      kdePackages.ksshaskpass
       nodejs
-      omp
       python3
+      telegram-desktop
       uv
       yubioath-flutter
     ])
-    ++ [ (import ../../packages/nix-tools.nix { inherit pkgs; }).nr ];
+    ++ [
+      (import ../../packages/nix-tools.nix { inherit pkgs; }).nr
+      (import ../../packages/orca.nix { inherit pkgs; })
+    ];
 
   home.sessionVariables.LANGUAGE = "ko_KR:ko:en_US:en";
 }

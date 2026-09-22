@@ -34,7 +34,7 @@
       nixosConfigurations =
         let
           mkHost =
-            bootstrap:
+            { hostModule, bootstrap }:
             nixpkgs.lib.nixosSystem {
               inherit system;
               specialArgs = { inherit inputs; };
@@ -43,7 +43,7 @@
                 inputs.home-manager.nixosModules.home-manager
                 inputs.sops-nix.nixosModules.sops
                 inputs.lanzaboote.nixosModules.lanzaboote
-                ./hosts/ThinkPad-X1-Carbon-Gen-11
+                hostModule
                 {
                   my.bootstrap = bootstrap;
                   home-manager.useGlobalPkgs = true;
@@ -54,8 +54,22 @@
             };
         in
         {
-          ThinkPad-X1-Carbon-Gen-11 = mkHost false;
-          ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost true;
+          ThinkPad-X1-Carbon-Gen-11 = mkHost {
+            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
+            bootstrap = false;
+          };
+          ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost {
+            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
+            bootstrap = true;
+          };
+          MS-7D91 = mkHost {
+            hostModule = ./hosts/MS-7D91;
+            bootstrap = false;
+          };
+          MS-7D91-bootstrap = mkHost {
+            hostModule = ./hosts/MS-7D91;
+            bootstrap = true;
+          };
         };
       packages.${system}.disko = inputs.disko.packages.${system}.disko;
       checks.${system} = {
@@ -85,22 +99,22 @@
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
         claude = import ./tests/claude.nix { inherit pkgs self; };
-        claude-settings =
+        agent-settings =
           let
-            packaged = (import ./packages/claude-tools.nix { inherit pkgs; }).claudeSettings;
+            packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
           in
-          pkgs.runCommand "claude-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             export PYTHONDONTWRITEBYTECODE=1
             mkdir -p scripts tests
-            cp ${./scripts/claude-settings} scripts/claude-settings
-            cp ${./tests/test_claude_settings.py} tests/test_claude_settings.py
-            python tests/test_claude_settings.py
+            cp ${./scripts/agent-settings} scripts/agent-settings
+            cp ${./tests/test_agent_settings.py} tests/test_agent_settings.py
+            python tests/test_agent_settings.py
 
             # Activation runs the packaged binary, not this source copy, and its
             # unit's PATH carries no python3. Exercise the built file so a lost
             # +x bit or an unpatched `#!/usr/bin/env python3` fails here rather
             # than on the laptop.
-            interpreter=$(head -1 ${packaged}/bin/claude-settings)
+            interpreter=$(head -1 ${packaged}/bin/agent-settings)
             case "$interpreter" in
               '#!'/nix/store/*) ;;
               *)
@@ -112,7 +126,7 @@
             mkdir -p home/.claude
             printf '{"model":"sonnet","numStartups":41,"retired":"gone"}\n' > home/.claude/settings.json
             printf '{"set":{"model":"opus[1m]"},"remove":["retired"]}\n' > declared.json
-            env -i ${packaged}/bin/claude-settings \
+            env -i ${packaged}/bin/agent-settings \
               --settings "$PWD/home/.claude/settings.json" --declared "$PWD/declared.json"
             ${pkgs.python3}/bin/python3 - <<'PY'
             import json
@@ -316,6 +330,108 @@
             set -x
             ${absent}
             ${present}
+            touch $out
+          '';
+        telegram-desktop =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            telegram = pkgs.lib.lists.findFirst (p: (p.pname or "") == "telegram-desktop") null userPackages;
+            absent = pkgs.lib.optionalString (telegram == null) ''
+              echo 'missing telegram-desktop in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (telegram != null) ''
+              if [ ! -x ${telegram}/bin/Telegram ]; then
+                echo 'telegram-desktop package ships no bin/Telegram executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${telegram}/share/applications/org.telegram.desktop.desktop ]; then
+                echo 'telegram-desktop package ships no org.telegram.desktop.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "telegram-desktop-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
+        discord =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            discordPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "discord") null userPackages;
+            absent = pkgs.lib.optionalString (discordPkg == null) ''
+              echo 'missing discord in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (discordPkg != null) ''
+              if [ ! -x ${discordPkg}/bin/discord ]; then
+                echo 'discord package ships no bin/discord executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${discordPkg}/share/applications/discord.desktop ]; then
+                echo 'discord package ships no discord.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "discord-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
+        orca-desktop =
+          let
+            assertHost =
+              hostName: host:
+              let
+                userConfig = host.config.home-manager.users.h82;
+                userPackages = userConfig.home.packages;
+                orcaPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null userPackages;
+                service = userConfig.systemd.user.services.orca-settings-reconcile or null;
+                activation = userConfig.home.activation.orcaSettings or null;
+                absent = pkgs.lib.optionalString (orcaPkg == null) ''
+                  echo 'missing orca-ide in user packages on ${hostName}' >&2
+                  exit 1
+                '';
+                present = pkgs.lib.optionalString (orcaPkg != null) ''
+                  if [ ! -x ${orcaPkg}/bin/orca-ide ]; then
+                    echo 'orca package ships no bin/orca-ide executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  if [ ! -x ${orcaPkg}/bin/orca ]; then
+                    echo 'orca package ships no bin/orca executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  if [ ! -f ${orcaPkg}/share/applications/orca.desktop ]; then
+                    echo 'orca package ships no share/applications/orca.desktop on ${hostName}' >&2
+                    exit 1
+                  fi
+                '';
+                servicePresent = pkgs.lib.optionalString (service != null) ''
+                  echo 'unexpected systemd.user.services.orca-settings-reconcile on ${hostName}' >&2
+                  exit 1
+                '';
+                activationPresent = pkgs.lib.optionalString (activation != null) ''
+                  echo 'unexpected home.activation.orcaSettings on ${hostName}' >&2
+                  exit 1
+                '';
+              in
+              ''
+                ${absent}
+                ${present}
+                ${servicePresent}
+                ${activationPresent}
+              '';
+          in
+          pkgs.runCommand "orca-desktop-tests" { } ''
+            set -x
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
             touch $out
           '';
         bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
