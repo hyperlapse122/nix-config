@@ -1,14 +1,14 @@
 { pkgs, ... }:
 
 let
-  gpgTools = import ../../packages/gpg-tools.nix { inherit pkgs; };
+  gpgTools = import ../../../packages/gpg-tools.nix { inherit pkgs; };
 in
 {
   programs.gpg = {
     enable = true;
     publicKeys = [
       {
-        source = ../../keys/signing.asc;
+        source = ../../../keys/signing.asc;
         trust = "ultimate";
       }
       # The retired rsa2048 key, kept so commits and tags signed before the
@@ -20,7 +20,7 @@ in
       # reports a good signature and then adds a revocation warning, which git
       # treats as failure.  Do not "resync" this file with the keyserver.
       {
-        source = ../../keys/signing-legacy.asc;
+        source = ../../../keys/signing-legacy.asc;
       }
     ];
     settings = {

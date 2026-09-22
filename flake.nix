@@ -20,7 +20,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Pinned to a release tag rather than a branch, and the registry in
-    # home/h82/agent-plugins.nix records the revision that tag is expected to
+    # home/h82/agents/agent-plugins.nix records the revision that tag is expected to
     # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
@@ -600,6 +600,7 @@
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
+        logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
         nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
           export HOME=$TMPDIR

@@ -7,7 +7,8 @@ This flake configures two machines: a ThinkPad X1 Carbon Gen 11 laptop and an MS
 - `flake.nix`: production and bootstrap hosts, checks, and development tools.
 - `hosts/ThinkPad-X1-Carbon-Gen-11/`: hardware and disk configuration for ThinkPad laptop.
 - `hosts/MS-7D91/`: hardware, NVIDIA, secondary storage, and disk configuration for desktop.
-- `modules/nixos/`: system modules; `home/h82/`: Home Manager modules.
+- `modules/nixos/`: system modules by subsystem -- `hardware/` (udev, keyd, fingerprint, YubiKey), `system/` (base, boot, sysctl/cleanup, nix-ld, secrets), `desktop/` (Plasma/SDDM, fonts), `services/` (Podman). No domain-level `default.nix`: each host's `hosts/*/default.nix` cherry-picks the exact modules it imports.
+- `home/h82/`: Home Manager modules by domain, each with its own `default.nix` that `home/h82/default.nix` imports -- `agents/` (Claude Code, Gemini CLI, agent plugins), `desktop/` (Fcitx5, terminal, `kde/`), `dev/` (Git, containers), `security/` (GPG, SSH), `shell/` (Zsh/shell config).
 - `scripts/`: authentication and rebuild helpers; `packages/`: Nix packaging for those helpers.
 - `tests/`: Python, shell, and NixOS VM checks.
 - `docs/`: installation, provisioning, recovery, and verification. `secrets/README.md` defines secret conventions.

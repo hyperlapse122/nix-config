@@ -6,7 +6,7 @@
 }:
 let
   merger = "${
-    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
   }/bin/agent-settings";
 
   # Declared through the environment because that is where these settings

@@ -1,17 +1,11 @@
 { pkgs, lib, ... }:
 {
   imports = [
-    ./agent-plugins.nix
-    ./claude.nix
-    ./containers.nix
-    ./fcitx5.nix
-    ./gemini.nix
-    ./git.nix
-    ./gpg.nix
-    ./kde
-    ./shell.nix
-    ./ssh.nix
-    ./terminal.nix
+    ./agents
+    ./desktop
+    ./dev
+    ./security
+    ./shell
   ];
 
   home.username = "h82";

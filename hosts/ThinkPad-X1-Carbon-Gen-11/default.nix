@@ -4,17 +4,17 @@
   imports = [
     ./hardware.nix
     ./disko.nix
-    ../../modules/nixos/base.nix
-    ../../modules/nixos/boot.nix
-    ../../modules/nixos/desktop.nix
-    ../../modules/nixos/fingerprint.nix
-    ../../modules/nixos/fonts.nix
-    ../../modules/nixos/keyd.nix
-    ../../modules/nixos/nix-cleanup.nix
-    ../../modules/nixos/nix-ld.nix
-    ../../modules/nixos/podman.nix
-    ../../modules/nixos/secrets.nix
-    ../../modules/nixos/yubikey.nix
+    ../../modules/nixos/system/base.nix
+    ../../modules/nixos/system/boot.nix
+    ../../modules/nixos/desktop/desktop.nix
+    ../../modules/nixos/hardware/fingerprint.nix
+    ../../modules/nixos/desktop/fonts.nix
+    ../../modules/nixos/hardware/keyd.nix
+    ../../modules/nixos/system/nix-cleanup.nix
+    ../../modules/nixos/system/nix-ld.nix
+    ../../modules/nixos/services/podman.nix
+    ../../modules/nixos/system/secrets.nix
+    ../../modules/nixos/hardware/yubikey.nix
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;

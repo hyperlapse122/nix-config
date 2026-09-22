@@ -64,6 +64,18 @@ On the installed NixOS, fetch the repository again over HTTPS and recover the ag
 
 ```sh
 ./scripts/recover-age-identity
+```
+
+Register this card's PIN now so later Git signing does not prompt for it again. See [provisioning](provisioning.md) for the full per-card, multi-serial design. Enter the PIN at the command's prompt, not in its arguments or shell history.
+
+```sh
+nix develop
+card_serial='<normalized serial from gpg --card-status>'
+secret-tool store --label='OpenPGP card PIN' service gnupg-card-pin username "$card_serial"
+unset card_serial
+```
+
+```sh
 sudo sbctl create-keys
 # On ThinkPad:
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11

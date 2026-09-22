@@ -16,7 +16,7 @@ let
     eval-config = import "${inputs.nixpkgs}/nixos/lib/eval-config.nix";
     qemu-common = import "${inputs.nixpkgs}/nixos/lib/qemu-common.nix";
   };
-  bootModule = ../modules/nixos/boot.nix;
+  bootModule = ../modules/nixos/system/boot.nix;
   productionDisk = import ../hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix;
   testDisk = lib.recursiveUpdate productionDisk {
     disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
