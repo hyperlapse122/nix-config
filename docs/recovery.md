@@ -37,6 +37,23 @@ The initial boot generation limit is 5. Before removing old generations, confirm
 
 Weekly cleanup keeps the 10 newest generations regardless of age, so every entry the menu offers still resolves even after months without a rebuild. That retention floor is what makes the menu trustworthy, not the generation limit: the menu is rewritten only by a rebuild, while collection runs on a timer. Raising `configurationLimit` above the retention count in `modules/nixos/nix-cleanup.nix` would break that guarantee, and the `nix-cleanup` check fails when it does.
 
+## An authentication stack that refuses
+
+If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself — but confirm the passphrase works before you ever need it, because a change to Secure Boot policy is exactly what would make it mandatory at the worst moment.
+
+There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
+
+Booting an older generation escapes the stack but does not undo anything else in it, and it revokes no enrollment: a finger enrolled under the newer generation still matches after the rollback, because the template lives in the sensor rather than in the configuration.
+
+## A compromised fingerprint
+
+A fingerprint that reaches `sudo` reaches root, and root on this host holds `/var/lib/sbctl` and `/var/lib/sops-nix/key.txt`. Deleting the finger is therefore the smallest part of the response, not the whole of it. Treat it the way [lost Secure Boot signing keys](#lost-secure-boot-signing-keys) are treated: re-key `sbctl`, re-enroll the TPM under the new policy, and replace every token the age identity protects. Unlike a password or a token, the template itself cannot be rotated — removing it and not re-enrolling that finger is the only revocation there is.
+
+```sh
+fprintd-list "$USER"
+sudo fprintd-delete "$USER"
+```
+
 ## TPM unlock failure
 
 Changes to firmware or Secure Boot policy can prevent automatic unlocking. Boot with the LUKS recovery passphrase and check whether an intended change caused the failure. Update TPM enrollment after verifying the correct final Secure Boot state.

@@ -19,6 +19,15 @@
       url = "github:nix-community/lanzaboote/v1.1.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pinned to a release tag rather than a branch, and the registry in
+    # home/h82/agent-plugins.nix records the revision that tag is expected to
+    # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
+    # is not a pin -- the agent-plugins check compares this input's locked
+    # revision against that recorded value and fails when upstream moves it.
+    compound-engineering-plugin = {
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.28.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -48,6 +57,9 @@
                   my.bootstrap = bootstrap;
                   home-manager.useGlobalPkgs = true;
                   home-manager.useUserPackages = true;
+                  # specialArgs reaches NixOS modules only; the agent-plugin
+                  # registry needs the pinned plugin source, which is an input.
+                  home-manager.extraSpecialArgs = { inherit inputs; };
                   home-manager.users.h82 = import ./home/h82;
                 }
               ];
@@ -71,7 +83,12 @@
             bootstrap = true;
           };
         };
-      packages.${system}.disko = inputs.disko.packages.${system}.disko;
+      packages.${system} = {
+        disko = inputs.disko.packages.${system}.disko;
+        # Exposed so the release-tracking workflow invokes the packaged helper
+        # rather than running scripts/ with whatever interpreter the runner has.
+        agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
+      };
       checks.${system} = {
         pinentry-card =
           pkgs.runCommand "pinentry-card-tests"
@@ -140,7 +157,118 @@
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
         nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
+        agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+        agent-plugin-sync =
+          pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/agent-plugin-sync} scripts/agent-plugin-sync
+              cp ${./tests/test_agent_plugin_sync.py} tests/test_agent_plugin_sync.py
+              python tests/test_agent_plugin_sync.py
+              touch $out
+            '';
+        agent-plugin-release =
+          pkgs.runCommand "agent-plugin-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/agent-plugin-release} scripts/agent-plugin-release
+              cp ${./tests/test_agent_plugin_release.py} tests/test_agent_plugin_release.py
+              python tests/test_agent_plugin_release.py
+              touch $out
+            '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
+        pam-fingerprint = import ./tests/pam-fingerprint.nix { inherit pkgs self; };
+        enroll-fingerprint =
+          let
+            # The host's own copy, not a fresh build of the package file: a
+            # module that stopped installing the helper would otherwise leave
+            # this check green while the system ships an enrollment PAM service
+            # and no program that uses it.
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            packaged = pkgs.lib.lists.findFirst (
+              p: (p.pname or "") == "enroll-fingerprint"
+            ) null host.config.environment.systemPackages;
+          in
+          pkgs.runCommand "enroll-fingerprint-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.gnugrep
+              ];
+            }
+            ''
+              mkdir -p scripts tests
+              cp ${./scripts/enroll-fingerprint} scripts/enroll-fingerprint
+              cp ${./tests/enroll-fingerprint.sh} tests/enroll-fingerprint.sh
+              chmod +x scripts/enroll-fingerprint
+              patchShebangs scripts/enroll-fingerprint
+              bash tests/enroll-fingerprint.sh scripts/enroll-fingerprint
+
+              # The source test renders the @...@ constants itself, so it never
+              # sees the built file. Activation runs the built one, and what
+              # matters there is not that substitution happened but WHAT it
+              # produced: asserting only the absence of a placeholder would pass
+              # a package that substituted the authenticator for coreutils'
+              # `true`, and the installed helper would enroll with no password
+              # at all while every check stayed green.
+              ${pkgs.lib.optionalString (packaged == null) ''
+                echo "no enroll-fingerprint package reaches the host's system path" >&2
+                exit 1
+              ''}
+              ${pkgs.lib.optionalString (packaged != null) ''
+                helper=${packaged}/bin/enroll-fingerprint
+                fail=0
+                assert_line() {
+                  grep -qxF "$1" "$helper" || {
+                    echo "packaged helper is missing the line: $1" >&2
+                    fail=1
+                  }
+                }
+                assert_line 'PAMTESTER="${pkgs.pamtester}/bin/pamtester"'
+                assert_line 'FPRINTD_ENROLL="${pkgs.fprintd}/bin/fprintd-enroll"'
+                assert_line 'FPRINTD_LIST="${pkgs.fprintd}/bin/fprintd-list"'
+                assert_line 'SUDO="/run/wrappers/bin/sudo"'
+                assert_line 'PAM_SERVICE=enroll-fingerprint'
+                test -x ${pkgs.pamtester}/bin/pamtester || {
+                  echo "the authenticator the helper names is not executable" >&2
+                  fail=1
+                }
+
+                # A mutation that deletes a substitution line reddens the
+                # package derivation itself, via --replace-fail, so it never
+                # reaches these assertions. The mutation that exercises them is
+                # substituting a constant for the wrong store path.
+                if grep -qE '@[A-Z_]+@' "$helper"; then
+                  echo "packaged helper still carries an unsubstituted placeholder" >&2
+                  grep -nE '@[A-Z_]+@' "$helper" >&2
+                  fail=1
+                fi
+                interpreter=$(head -1 "$helper")
+                case "$interpreter" in
+                  '#!'/nix/store/*) ;;
+                  *)
+                    echo "packaged helper must carry a store interpreter, got: $interpreter" >&2
+                    fail=1
+                    ;;
+                esac
+
+                # Run it once, so a helper that cannot execute at all is
+                # distinguishable from one that merely reads correctly.
+                if "$helper" --nonsense >/dev/null 2>&1; then
+                  echo "packaged helper accepted an unknown argument" >&2
+                  fail=1
+                elif [ $? -ne 2 ]; then
+                  echo "packaged helper did not reject an unknown argument with status 2" >&2
+                  fail=1
+                fi
+
+                [ "$fail" = 0 ] || exit 1
+              ''}
+
+              touch $out
+            '';
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         publish-cli-auth =
           pkgs.runCommand "publish-cli-auth-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
