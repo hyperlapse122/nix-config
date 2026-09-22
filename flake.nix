@@ -85,6 +85,16 @@
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
         claude = import ./tests/claude.nix { inherit pkgs self; };
+        claude-settings =
+          pkgs.runCommand "claude-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/claude-settings} scripts/claude-settings
+              cp ${./tests/test_claude_settings.py} tests/test_claude_settings.py
+              python tests/test_claude_settings.py
+              touch $out
+            '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
