@@ -26,6 +26,7 @@
       glab
       google-chrome
       kdePackages.kleopatra
+      kdePackages.ksshaskpass
       nodejs
       omp
       python3
