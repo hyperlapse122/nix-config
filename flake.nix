@@ -598,6 +598,7 @@
               touch $out
             '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
+        plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
         nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
           export HOME=$TMPDIR
