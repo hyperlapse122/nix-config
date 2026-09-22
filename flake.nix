@@ -279,6 +279,58 @@
             ${present}
             touch $out
           '';
+        telegram-desktop =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            telegram = pkgs.lib.lists.findFirst (p: (p.pname or "") == "telegram-desktop") null userPackages;
+            absent = pkgs.lib.optionalString (telegram == null) ''
+              echo 'missing telegram-desktop in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (telegram != null) ''
+              if [ ! -x ${telegram}/bin/Telegram ]; then
+                echo 'telegram-desktop package ships no bin/Telegram executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${telegram}/share/applications/org.telegram.desktop.desktop ]; then
+                echo 'telegram-desktop package ships no org.telegram.desktop.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "telegram-desktop-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
+        discord =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            discordPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "discord") null userPackages;
+            absent = pkgs.lib.optionalString (discordPkg == null) ''
+              echo 'missing discord in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (discordPkg != null) ''
+              if [ ! -x ${discordPkg}/bin/discord ]; then
+                echo 'discord package ships no bin/discord executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${discordPkg}/share/applications/discord.desktop ]; then
+                echo 'discord package ships no discord.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "discord-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
         bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
         github-workflow-conventions =
           pkgs.runCommand "github-workflow-conventions-tests"
