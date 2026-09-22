@@ -71,6 +71,10 @@ let
   # Store-path interpolations stay inside optionalString guards so that removing
   # what they name fails inside the builder with the message below, rather than
   # aborting evaluation with a null coercion error.
+  # Bound once so the comparison operand and the message it prints cannot drift
+  # apart when one of them is edited.
+  limit = esc (bootLimit host.config);
+
   serviceAbsent = lib.optionalString (serviceUnit == null) (
     fail "the production system renders no nh-clean.service unit"
   );
@@ -93,8 +97,8 @@ let
         keep=$(grep -o -- '--keep [0-9][0-9]*' "$start" | head -1 | awk '{ print $2 }')
         if [ -z "$keep" ]; then
           ${fail "the nh-clean start script names no retention count"}
-        elif [ "$keep" -lt ${esc (bootLimit host.config)} ]; then
-          echo "retention count $keep is below the boot loader configurationLimit ${esc (bootLimit host.config)}; the boot menu would offer entries whose generations were collected" >&2
+        elif [ "$keep" -lt ${limit} ]; then
+          echo "retention count $keep is below the boot loader configurationLimit ${limit}; the boot menu would offer entries whose generations were collected" >&2
           failed=1
         fi
       fi
