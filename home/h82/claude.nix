@@ -6,8 +6,8 @@
 }:
 let
   merger = "${
-    (import ../../packages/claude-tools.nix { inherit pkgs; }).claudeSettings
-  }/bin/claude-settings";
+    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+  }/bin/agent-settings";
 
   # Declared through the environment because that is where these settings
   # persist.  A variable that only overrides one session -- ANTHROPIC_MODEL,
@@ -71,6 +71,7 @@ in
   # owns should not be able to do that.
   home.activation.claudeSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
     ${merger} \
+      --label 'Claude Code' \
       --settings ${config.home.homeDirectory}/.claude/settings.json \
       --declared ${declared}
   '';

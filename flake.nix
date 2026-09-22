@@ -85,22 +85,22 @@
         boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
         keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
         claude = import ./tests/claude.nix { inherit pkgs self; };
-        claude-settings =
+        agent-settings =
           let
-            packaged = (import ./packages/claude-tools.nix { inherit pkgs; }).claudeSettings;
+            packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
           in
-          pkgs.runCommand "claude-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             export PYTHONDONTWRITEBYTECODE=1
             mkdir -p scripts tests
-            cp ${./scripts/claude-settings} scripts/claude-settings
-            cp ${./tests/test_claude_settings.py} tests/test_claude_settings.py
-            python tests/test_claude_settings.py
+            cp ${./scripts/agent-settings} scripts/agent-settings
+            cp ${./tests/test_agent_settings.py} tests/test_agent_settings.py
+            python tests/test_agent_settings.py
 
             # Activation runs the packaged binary, not this source copy, and its
             # unit's PATH carries no python3. Exercise the built file so a lost
             # +x bit or an unpatched `#!/usr/bin/env python3` fails here rather
             # than on the laptop.
-            interpreter=$(head -1 ${packaged}/bin/claude-settings)
+            interpreter=$(head -1 ${packaged}/bin/agent-settings)
             case "$interpreter" in
               '#!'/nix/store/*) ;;
               *)
@@ -112,7 +112,7 @@
             mkdir -p home/.claude
             printf '{"model":"sonnet","numStartups":41,"retired":"gone"}\n' > home/.claude/settings.json
             printf '{"set":{"model":"opus[1m]"},"remove":["retired"]}\n' > declared.json
-            env -i ${packaged}/bin/claude-settings \
+            env -i ${packaged}/bin/agent-settings \
               --settings "$PWD/home/.claude/settings.json" --declared "$PWD/declared.json"
             ${pkgs.python3}/bin/python3 - <<'PY'
             import json

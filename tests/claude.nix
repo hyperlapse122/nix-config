@@ -32,7 +32,7 @@
 
   Whether the merge preserves undeclared keys is not assertable from evaluated
   configuration at all -- it is behaviour of the packaged script. The
-  `claude-settings` check in flake.nix runs that script against a seeded,
+  `agent-settings` check in flake.nix runs that script against a seeded,
   divergent settings file instead.
 
   Every lookup carries an `or` fallback so a mutation that removes an entry or
@@ -113,7 +113,7 @@ let
           failed=1
         fi
 
-        if ! printf '%s' ${esc script} | grep -qF '/bin/claude-settings'; then
+        if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
           echo 'the claudeSettings activation script must invoke the packaged merger on ${hostName}' >&2
           failed=1
         fi

@@ -1,8 +1,8 @@
 { pkgs }:
 
 let
-  claudeSettings = pkgs.stdenvNoCC.mkDerivation {
-    pname = "claude-settings";
+  agentSettings = pkgs.stdenvNoCC.mkDerivation {
+    pname = "agent-settings";
     version = "1";
     dontUnpack = true;
     # patchShebangs resolves the interpreter from the build PATH, so python3
@@ -10,12 +10,12 @@ let
     # into a store path rather than left dangling.
     nativeBuildInputs = [ pkgs.python3 ];
     installPhase = ''
-      install -Dm755 ${../scripts/claude-settings} $out/bin/claude-settings
-      patchShebangs $out/bin/claude-settings
+      install -Dm755 ${../scripts/agent-settings} $out/bin/agent-settings
+      patchShebangs $out/bin/agent-settings
     '';
-    meta.mainProgram = "claude-settings";
+    meta.mainProgram = "agent-settings";
   };
 in
 {
-  inherit claudeSettings;
+  inherit agentSettings;
 }
