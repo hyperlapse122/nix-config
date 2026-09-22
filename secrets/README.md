@@ -44,13 +44,16 @@ jpi_token: <git.jpi.app token>
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
 
-The encrypted Wi-Fi document (`secrets/wifi.yaml`) is a flat YAML mapping with
-one SSID/PSK pair per network label (the label is an arbitrary local name,
-never the literal SSID — see `modules/nixos/wifi.nix`):
+The encrypted Wi-Fi document (`secrets/wifi.yaml`) nests one SSID/PSK pair per
+network label under a top-level `wifi` key (the label is an arbitrary local
+name, never the literal SSID — see `modules/nixos/wifi.nix`), matching
+sops-nix's `/`-separated key lookup (`sops.secrets."wifi/<label>/ssid"`):
 
 ```yaml
-wifi/<label>/ssid: <network SSID>
-wifi/<label>/psk: <network passphrase>
+wifi:
+  <label>:
+    ssid: <network SSID>
+    psk: <network passphrase>
 ```
 
 Keep each encrypted document at its path above; do not pass SSID, PSK, or
