@@ -37,10 +37,12 @@ The developer environment packages Node.js, Bun, and coding agent CLIs in Home M
 ### Requirements
 
 **Runtimes and Tooling**
+
 - R1. User `h82` has `pkgs.python3` available globally on PATH via Home Manager packages.
 - R2. User `h82` has `pkgs.uv` available globally on PATH via Home Manager packages.
 
 **Toolchain Interoperability**
+
 - R3. User `h82` can create and activate Python virtual environments using `uv venv` without PEP 668 errors or Nix store mutations.
 - R4. Project-level version configuration via `mise` takes precedence in subdirectories without conflicting with global Nix-installed Python.
 
@@ -130,7 +132,7 @@ The implementation modifies `home/h82/default.nix` to include `python3` and `uv`
 ## Verification Contract
 
 | Verification Command | Purpose | Expected Outcome |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | Formatting compliance | Clean exit 0 |
 | `nix flake check` | All flake checks including `python3-runtime` | Clean exit 0 |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Host system build check | Builds successfully |

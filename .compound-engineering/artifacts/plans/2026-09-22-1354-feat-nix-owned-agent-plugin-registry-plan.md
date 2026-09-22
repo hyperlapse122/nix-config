@@ -438,8 +438,8 @@ U1 and U2 are independent of each other and come first. U3 needs both. U4 extend
   7. Assert no Home Manager file entry targets the materialized destination, comparing resolved `target` values over `lib.attrValues`, never attribute names.
   8. Assert the revision `flake.lock` records for the plugin input equals the expected revision the registry declares (KTD1). This is what turns a re-pointed upstream tag into a red check rather than a two-line lock diff.
   9. Assert `agents.toml` still declares the plugin for the project scope, which is R17's untouched-layer claim.
-  9. Accumulate failures into `failed` and exit once at the end; put `set -x` at the top of the builder.
-  10. Register this check in `flake.nix` beside `claude` and `gemini`, using `{ inherit pkgs self; }`. The Python test for the helper registers in U5, not here.
+  10. Accumulate failures into `failed` and exit once at the end; put `set -x` at the top of the builder.
+  11. Register this check in `flake.nix` beside `claude` and `gemini`, using `{ inherit pkgs self; }`. The Python test for the helper registers in U5, not here.
 - **Execution note:** Mutate before believing. Run one substitution plus one `nix build --no-link` per assertion class, run both a removal and a content mutation, and read where each round went red — a failure raised by the Nix evaluator before the builder ran is not evidence about the check. Read the generated `buildCommand` out of the built `.drv` once so no assertion is silently comparing a constant.
 - **Patterns to follow:** `tests/claude.nix` and `tests/gemini.nix` end to end; `flake.nix:87,127` for registration; `flake.nix:130-138` for the Python-test shape.
 - **Test scenarios:**
@@ -462,7 +462,7 @@ U1 and U2 are independent of each other and come first. U3 needs both. U4 extend
 ## Verification Contract
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | every unit |
 | Evaluation and checks | `nix flake check --print-build-logs` | U1, U2, U3, U4, U5, U7 |
 | Every host builds | `nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel` for each of `ThinkPad-X1-Carbon-Gen-11`, `ThinkPad-X1-Carbon-Gen-11-bootstrap`, `MS-7D91`, `MS-7D91-bootstrap` | U2, U3, U4 |

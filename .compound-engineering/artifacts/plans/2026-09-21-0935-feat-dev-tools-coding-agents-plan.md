@@ -38,14 +38,17 @@ The developer environment on the ThinkPad X1 Carbon currently packages system in
 ### Requirements
 
 **Coding Agents**
+
 - R1. User `h82` has `antigravity-cli` available on PATH from Home Manager packages.
 - R2. User `h82` retains `claude-code` availability on PATH from Home Manager packages.
 
 **Language Runtimes**
+
 - R3. User `h82` has Node.js (`pkgs.nodejs`) available globally on PATH via Home Manager.
 - R4. User `h82` has Bun (`pkgs.bun`) available globally on PATH via Home Manager.
 
 **Toolchain & Version Management**
+
 - R5. User `h82` has `mise` enabled via Home Manager with automatic Zsh shell integration.
 - R6. Project-level version configuration files (`.tool-versions` or `mise.toml`) take precedence in subdirectories without conflicting with global Nix-installed runtimes.
 
@@ -130,6 +133,7 @@ flowchart TD
 - **Test Scenarios:**
   - Evaluate `nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.home.packages` and assert `antigravity-cli`, `bun`, `nodejs`, and `claude-code` are present in the list.
 - **Verification:**
+
   ```sh
   nix eval --raw .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.home.packages
   ```
@@ -144,6 +148,7 @@ flowchart TD
   - Evaluate `nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.programs.mise.enable` and assert `true`.
   - Evaluate `nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.programs.mise.enableZshIntegration` and assert `true`.
 - **Verification:**
+
   ```sh
   nix eval .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.programs.mise.enable
   ```
@@ -159,6 +164,7 @@ flowchart TD
   - `nix flake check` succeeds with exit 0.
   - Both `nixosConfigurations` build cleanly.
 - **Verification:**
+
   ```sh
   nix fmt -- --ci
   nix flake check
@@ -171,7 +177,7 @@ flowchart TD
 ## Verification Contract
 
 | Phase | Target | Command | Success Signal |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Evaluation | Nix package presence | `nix eval .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.programs.mise.enable` | Output is `true` |
 | Formatting | Nix formatting | `nix fmt -- --ci` | Zero diff, exit 0 |
 | Checks | Flake checks | `nix flake check` | All tests pass, exit 0 |

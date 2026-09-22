@@ -37,13 +37,16 @@ Anthropic released the official beta of Claude Desktop for Linux (distributed as
 ### Requirements
 
 **Availability & Execution**
+
 - R1. User `h82` has Claude Desktop installed through `home.packages`, providing the `claude-desktop` executable on PATH and the `com.anthropic.Claude.desktop` desktop launcher with Wayland Ozone platform hint flags.
 - R2. Claude Desktop packaging provides patched references to `OVMFFull.fd` and `virtiofsd`, and includes `qemu_kvm` on PATH for Cowork support.
 
 **System Virtualization**
+
 - R3. NixOS hosts declare `kvm` in `users.users.h82.extraGroups` and `vhost_vsock` in `boot.kernelModules` in `modules/nixos/base.nix`.
 
 **Flake Checks & Regression Guard**
+
 - R4. A flake check `claude-desktop` in `flake.nix` asserts that user `h82` packages contain `claude-desktop` with executable `bin/claude-desktop` and desktop entry `share/applications/com.anthropic.Claude.desktop`.
 - R5. The flake check `claude-desktop` asserts that `kvm` is present in `users.users.h82.extraGroups` and `vhost_vsock` is present in `boot.kernelModules`.
 

@@ -113,7 +113,7 @@ nix build --no-link .#checks.x86_64-linux.nix-cleanup
 ```
 
 | Round | Mutation | Before the fix | After the fix |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Retention count `--keep 3` | a floor below the limit | red: `retention count 3 is below the boot loader configurationLimit 5` | same |
 | `configurationLimit = 15` | the limit raised past the floor | red, from the other side | same |
 | `configurationLimit = null` | the limit removed entirely | **green** — `[ "10" -lt '' ]` errored and the branch was skipped | red, in the builder: `the boot loader configurationLimit is null, so the boot menu offers every surviving generation and no finite retention count can cover it` |

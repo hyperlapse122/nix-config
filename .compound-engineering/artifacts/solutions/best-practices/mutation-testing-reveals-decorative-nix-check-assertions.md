@@ -55,7 +55,7 @@ git checkout -- modules/nixos/keyd.nix
 Repeat once per assertion class, not once per assertion.
 
 | Mutation | What it breaks | Must be caught by |
-|---|---|---|
+| --- | --- | --- |
 | Force the Copilot binding on for the default host | Option-gated output | the `f23` branch |
 | Add `*` to the default id list | Keyboard scoping | the wildcard branch |
 | Transpose `control.capslock` and `main.capslock` | Section semantics | the sectioned greps |

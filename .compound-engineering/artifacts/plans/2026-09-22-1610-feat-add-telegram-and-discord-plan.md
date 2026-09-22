@@ -35,10 +35,12 @@ The ThinkPad X1 Carbon Gen 11 environment currently provides productivity tools,
 ### Requirements
 
 **Availability**
+
 - R1. User `h82` has Telegram Desktop installed through `home.packages`, providing the `Telegram` executable on PATH and the `org.telegram.desktop.desktop` desktop launcher.
 - R2. User `h82` has Discord installed through `home.packages`, providing the `discord` executable on PATH and the `discord.desktop` desktop launcher.
 
 **Regression Guard**
+
 - R3. A flake check `telegram-desktop` fails inside the builder if `telegram-desktop` is missing from user packages or if it lacks its executable or desktop file.
 - R4. A flake check `discord` fails inside the builder if `discord` is missing from user packages or if it lacks its executable or desktop file.
 

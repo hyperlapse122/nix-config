@@ -214,7 +214,7 @@ These are planning bets, recorded because the scoping confirmation was skipped f
 - keyd 2.6.0 `docs/keyd.scdoc` and CHANGELOG — modifier-layer semantics (bindings are unaffected by the modifiers of the layer that defines them), the panic sequence, the 50 ms chording interval, and the `keyd check` subcommand.
 - nixpkgs#290161 (creating a `keyd` group crashes the daemon), keyd#723 and the keyd README FAQ (the libinput quirk), keyd#497 (FreeBSD-only suspend breakage).
 - `.compound-engineering/artifacts/solutions/integration-issues/sops-service-umask-blocks-user-secrets.md` — precedent for verifying a system service's real activation behavior rather than trusting declared configuration alone.
-- Reference implementation: `home/.chezmoiscripts/30-linux/run_onchange_after_install-system-24-keyd.sh.tmpl` and `system/linux/etc/libinput/local-overrides.quirks` in https://github.com/hyperlapse122/dotfiles, with the keyboard id declared in `home/.chezmoidata/system.yaml`.
+- Reference implementation: `home/.chezmoiscripts/30-linux/run_onchange_after_install-system-24-keyd.sh.tmpl` and `system/linux/etc/libinput/local-overrides.quirks` in <https://github.com/hyperlapse122/dotfiles>, with the keyboard id declared in `home/.chezmoidata/system.yaml`.
 
 ---
 
@@ -295,7 +295,7 @@ These are planning bets, recorded because the scoping confirmation was skipped f
 ## Verification Contract
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | U1, U2, U3 |
 | New regression check | `nix build --no-link .#checks.x86_64-linux.keyd-remap` | U3 |
 | All declared checks | `nix flake check` | U1-U4 |

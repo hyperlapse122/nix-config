@@ -157,6 +157,7 @@ Product Contract preservation: restructured, no scope change. R2 kept its intent
 - All repository checks must guard store path interpolations, avoid `! cmd` constructs in builders, assert materialized outputs on both production and bootstrap hosts, and use distinct fixture tokens.
 
 Sequencing:
+
 - U1 (Podman NixOS runtime) and U2 (credential helper script and unit tests) can be developed independently.
 - U3 (helper packaging and NixOS wiring) depends on U1 and U2.
 - U4 (Home Manager containers configuration) depends on U1 and U3 for environment variables and helper references.
@@ -333,7 +334,7 @@ Sequencing:
 Run from the repository root, in this order:
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | U1–U6 |
 | Evaluation | `nix flake check --no-build` | U1–U5 |
 | Standalone script check | `nix build --no-link .#checks.x86_64-linux.docker-credential-sops` | U2 |
@@ -344,6 +345,7 @@ Run from the repository root, in this order:
 | Bootstrap build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel` | U1, U3, U4 |
 
 What these prove:
+
 - `docker-credential-sops` proves protocol compliance, exact not-found string equality, trailing newline stripping, and absent secret handling in isolation.
 - `podman-containers` proves that rootless Podman, disabled rootful socket, helper package, environment variables, registries search drop-in, and `auth.json` activation logic materialize correctly on both production and bootstrap hosts.
 - `podman-registry-auth` proves end-to-end credential retrieval, anonymous fallback, offline `podman login --get-login` verification, and absence of token leakage in journal logs.
@@ -372,4 +374,3 @@ Per unit:
 - U4 — `home/h82/containers.nix` created and imported in `home/h82/default.nix` in alphabetical order, managing writable `auth.json`, search registries drop-in, and environment variables.
 - U5 — checks registered in `flake.nix`, materialized check and VM test implemented and passing.
 - U6 — both documentation files updated, check catalog order matching `flake.nix`.
-

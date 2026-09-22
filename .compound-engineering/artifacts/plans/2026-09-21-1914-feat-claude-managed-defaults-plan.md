@@ -169,7 +169,7 @@ U1 -> U2 -> U3 -> U4. U3 comes after U1 and U2 because its checks read the struc
 ## Verification Contract
 
 | Gate | Command | Units |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | U1-U3 |
 | All checks | `nix flake check` | all |
 | Production build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | U1, U2 |

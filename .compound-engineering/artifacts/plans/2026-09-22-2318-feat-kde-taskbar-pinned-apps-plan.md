@@ -121,7 +121,7 @@ Product Contract unchanged.
 ## Verification Contract
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Formatting validation |
 | `nix build --no-link .#checks.x86_64-linux.plasma-taskbar` | Taskbar launchers regression check |
 | `nix flake check` | All flake checks pass |

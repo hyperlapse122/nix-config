@@ -124,6 +124,7 @@ The ThinkPad NixOS system currently declares zero custom font packages or fontco
 - **Acceptance:** AE1, AE2, AE3, AE4
 - **Approach:**
   - Create `modules/nixos/fonts.nix`:
+
     ```nix
     { pkgs, ... }:
     {
@@ -146,6 +147,7 @@ The ThinkPad NixOS system currently declares zero custom font packages or fontco
       };
     }
     ```
+
   - In `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`, add `../../modules/nixos/fonts.nix` to `imports`.
 - **Test Scenarios:**
   - Test 1: Evaluate `config.fonts.packages` on `ThinkPad-X1-Carbon-Gen-11` and ensure all 4 packages are present.
@@ -163,6 +165,7 @@ The ThinkPad NixOS system currently declares zero custom font packages or fontco
 - **Acceptance:** AE2
 - **Approach:**
   - In `home/h82/terminal.nix`, migrate from `home.packages = [ pkgs.ghostty ];` to:
+
     ```nix
     { pkgs, ... }:
     {
@@ -174,6 +177,7 @@ The ThinkPad NixOS system currently declares zero custom font packages or fontco
       };
     }
     ```
+
 - **Test Scenarios:**
   - Test 1: Evaluate `config.home-manager.users.h82.programs.ghostty.enable` to verify it is `true`.
   - Test 2: Evaluate `config.home-manager.users.h82.programs.ghostty.settings.font-family` to verify it equals `"JetBrainsMono Nerd Font"`.

@@ -203,6 +203,7 @@ flowchart TD
 ## Verification Contract
 
 Run the repository verification suite:
+
 1. `nix fmt -- --ci`
 2. `nix build --no-link .#checks.x86_64-linux.agent-memory`
 3. `nix flake check`
