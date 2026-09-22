@@ -610,6 +610,16 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
+        ci-docs-only-paths =
+          pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
+            mkdir -p scripts tests
+            cp ${./scripts/ci-docs-only-paths} scripts/ci-docs-only-paths
+            cp ${./tests/ci-docs-only-paths.sh} tests/ci-docs-only-paths.sh
+            chmod +x scripts/ci-docs-only-paths
+            patchShebangs scripts/ci-docs-only-paths
+            bash tests/ci-docs-only-paths.sh scripts/ci-docs-only-paths
+            touch $out
+          '';
         age-identity-helpers =
           pkgs.runCommand "age-identity-helpers-tests" { nativeBuildInputs = [ pkgs.coreutils ]; }
             ''
