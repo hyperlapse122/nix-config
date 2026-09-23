@@ -267,7 +267,7 @@ flowchart TB
 ## Verification Contract
 
 | Command | Proves |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Formatting matches repo convention |
 | `nix flake check` | Every registered check, including the two new ones and `agent-plugins`/`update-dependencies-push-order` |
 | `nix build --no-link .#checks.x86_64-linux.claude-code` | Package present, executable, and version-equal to the pin, on all four hosts |
