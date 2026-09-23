@@ -14,6 +14,7 @@
     ../../modules/nixos/system/nix-ld.nix
     ../../modules/nixos/services/podman.nix
     ../../modules/nixos/system/secrets.nix
+    ../../modules/nixos/wifi.nix
     ../../modules/nixos/hardware/yubikey.nix
   ];
   config.my.podman.enable = true;

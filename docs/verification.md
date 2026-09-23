@@ -23,6 +23,7 @@ A successful VM test or build does not replace these checks. The person who perf
 - [ ] Boot both the new generation and a previous generation.
 - [ ] Confirm `systemctl list-timers nh-clean.timer` reports the timer loaded with a next run, and that `nh clean all --keep 10 --keep-since 14d --keep-one -n` lists what it would remove without removing it.
 - [ ] Check the default Plasma login, Wi-Fi, Bluetooth, audio, and s2idle suspend/resume.
+- [ ] After populating `secrets/wifi.yaml` with real values and rebuilding, confirm a declared network auto-connects with no manual `nmcli`/GUI configuration on each host that comes into its range. This is distinct from the generic Wi-Fi check above, which only confirms the hardware itself works, not that this repo's declared profile is what connected.
 - [ ] Rebuild successfully without a YubiKey or 1Password session.
 - [ ] Confirm valid authentication on GitHub, GitLab.com, and git.jpi.app.
 - [ ] Verify signed commits and tags in a temporary Git repository with `git verify-commit` and `git verify-tag`.
