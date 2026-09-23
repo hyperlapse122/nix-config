@@ -173,7 +173,7 @@ flowchart TB
 - **Execution note:** Before writing the full two-node `nixosTest`, run one cheap build-level checkpoint — `nix build`/`nixos-rebuild build-vm` of a single host with a fixture `secrets/wifi.yaml` — to confirm the untested `sops.templates` + `ensureProfiles.environmentFiles` combination (KTD2) actually materializes a keyfile with the substituted SSID and PSK, since neither mechanism has any precedent in this repo. Only after that checkpoint passes, write `tests/wifi-provisioning.nix`'s assertions and implement `modules/nixos/wifi.nix` to satisfy them.
 - **Technical design** (directional, not implementation-ready):
 
-```
+```nix
 options.my.wifi = {
   sopsFile = <guarded-optional path, mirrors modules/nixos/secrets.nix>;
   networks = [ "home" "office" ];  # arbitrary labels, never the literal SSID
@@ -228,7 +228,7 @@ config = lib.mkIf (cfg.sopsFile != null) {
 ## Verification Contract
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Formatting check on all changed/new files (`.sops.yaml`, `modules/nixos/wifi.nix`, both hosts' `default.nix`, `tests/wifi-provisioning.nix`, `flake.nix`). |
 | `nix flake check` | Runs the full check set, including the new `wifi-provisioning` VM check (U2) and the existing `bootstrap-recipients` check (unaffected — it matches recipients as raw substrings, not per-rule). |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Production ThinkPad build succeeds with `secrets/wifi.yaml` absent. |

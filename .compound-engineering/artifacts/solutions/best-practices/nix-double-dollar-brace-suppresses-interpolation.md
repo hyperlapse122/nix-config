@@ -46,7 +46,7 @@ let
 in ...
 ```
 
-```
+```text
 doubleQuoted=[$${pkgs.lib.toUpper label}_SSID]
 indented=[$${pkgs.lib.toUpper label}_SSID]
 concat=[$HOME_SSID]
