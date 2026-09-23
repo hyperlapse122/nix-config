@@ -10,12 +10,15 @@
     ../../modules/nixos/desktop/fonts.nix
     ../../modules/nixos/system/nix-ld.nix
     ../../modules/nixos/services/podman.nix
+    ../../modules/nixos/services/tailscale.nix
     ../../modules/nixos/system/secrets.nix
     ../../modules/nixos/wifi.nix
     ../../modules/nixos/hardware/yubikey.nix
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
+  config.my.tailscale.enable = !config.my.bootstrap;
+  config.my.tailscale.advertiseRoutes = !config.my.bootstrap;
   config.fileSystems."/mnt/data" = {
     device = "/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1";
     fsType = "exfat";
