@@ -122,30 +122,35 @@ execution: code
 ### Key Technical Decisions
 
 - KTD1. **전용 firewall 모듈을 만들지 않는다.** NixOS의 `networking.firewall`은 이미 기본 활성화 상태이며, 이 작업에 필요한 유일한 방화벽 변경은 `services.tailscale.openFirewall = true`(UDP 41641 개방)뿐이다. 별도 `modules/nixos/system/firewall.nix`는 빈 껍데기가 된다. Governs R1.
-- KTD2. **시크릿은 `sops.secrets`/`sops.templates`로만 유닛에 전달하고, `extraSetFlags` 등 Nix 문자열에는 절대 넣지 않는다.** 빌드 시점 문자열 보간은 Nix 스토어에 평문으로 남는다 — `tests/wifi-provisioning.nix`가 이미 이 함정을 `nix-store -qR | grep`로 검증하는 패턴을 갖고 있다. authkey는 `services.tailscale.authKeyFile`(네이티브 옵션)로, API 토큰과 라우트 목록은 `sops.templates."tailscale.env"`가 렌더링하는 파일을 통해 런타임에만 주입한다. Governs R7.
-- KTD3. **재등록 정리(dedup) 유닛은 `tailscaled-autoconnect` 성공 *이후*에 돌며, "이 hostname과 일치하지만 지금 등록된 자신과 device ID가 다른" 기기만 삭제한다.** (ce-doc-review adversarial 지적으로 사전 게이트 방식에서 교체됨.) `tailscaled-autoconnect`는 `Type=notify`라 자신이 `Running`에 도달해야만 시작된 것으로 간주되므로, dedup 유닛을 `After=tailscaled-autoconnect.service`로 순서화하면 tailscaled가 이미 인증·등록된 뒤에만 실행된다 — 별도의 BackendState 폴링이 필요 없다. 이 유닛은 `tailscale status --json`으로 자신의 현재 device ID를 얻고, `GET /api/v2/tailnet/-/devices`로 같은 hostname의 다른 device ID들을 찾아 그것들만 `DELETE /api/v2/device/{deviceid}`한다(인증은 `Authorization: Bearer <token>`, [Tailscale API 문서 미러](https://github.com/gbraad/tailscale/blob/main/api.md)). 이 방식은 일반 rebuild(이미 `Running`이라 `tailscaled-autoconnect`가 즉시 종료)와 key-expiry 재인증(디스크 상태가 남아 있어 같은 device ID로 재인증됨, 삭제 대상 없음) 모두에서 안전하게 no-op하고, 진짜 재설치(디스크가 비어 새 device ID로 등록됨)에서만 이전 기기를 지운다 — device ID 비교이므로 BackendState만으로는 구분 못 하는 이 두 경우가 자동으로 구분된다. `Wants`/`After=tailscaled-autoconnect.service`는 그 유닛이 실패(예: 오프라인 부팅에서 `TimeoutStartSec` 만료)로 끝나도 순서 제약이 풀려 dedup 유닛이 시작될 수 있다는 systemd의 실제 동작을 U6의 VM 테스트로 확인했다 — 이 경우 자신의 device ID를 아직 모르는 상태이므로, 자신의 ID가 비어 있으면 아무것도 지우지 않고 종료하는 방어 로직을 둔다. Governs R4, R8.
+- KTD2. **시크릿은 `sops.secrets`/`sops.templates`로만 유닛에 전달하고, `extraSetFlags` 등 Nix 문자열에는 절대 넣지 않는다.** 빌드 시점 문자열 보간은 Nix 스토어에 평문으로 남는다 — `tests/wifi-provisioning.nix`가 이미 이 함정을 `nix-store -qR | grep`로 검증하는 패턴을 갖고 있다. authkey는 `services.tailscale.authKeyFile`(네이티브 옵션)로, API 토큰과 라우트 목록은 각각 별도의 `sops.templates`(`tailscale-api.env`, `tailscale-routes.env` — route-advertisement 유닛이 안 쓰는 API 토큰을 받지 않도록 분리)가 렌더링하는 파일을 통해 런타임에만 주입한다. Governs R7.
+- KTD3. **재등록 정리(dedup) 유닛은 `tailscaled-autoconnect` *이전*에 돌며, tailscaled의 상태 파일(`/var/lib/tailscale/tailscaled.state`)이 아직 없을 때만 이 hostname과 일치하는 기기를 전부 삭제한다.** (ce-doc-review로 두 차례 교정됨 — 아래 이력 참고.) 상태 파일이 있으면 일반 rebuild이거나 key-expiry 재인증이며, 두 경우 모두 이 hostname의 기존 등록이 곧 자기 자신이므로 아무것도 건드리지 않는다. 상태 파일이 없으면 디스크가 비워진 진짜 재설치이므로, 이 hostname과 일치하는 모든 기기를 등록 *전에* 지운다 — Tailscale은 hostname이 충돌하면 이미 등록된 기존 기기가 아니라 새로 등록을 시도하는 기기 쪽에 접미사(`-1` 등)를 붙이므로, 정리가 등록보다 먼저 일어나야 깨끗한 이름을 유지한다. `Before=tailscaled-autoconnect.service`만으로 충분하다 — 그 유닛은 이미 nixpkgs 자체의 `wantedBy = [ "multi-user.target" ]`로 끌어당겨지기 때문이다. API 호출은 `GET /api/v2/tailnet/-/devices`(응답의 `hostname` 필드로 대소문자 무시 매칭)와 `DELETE /api/v2/device/{deviceid}`이며, 인증은 `Authorization: Bearer <token>`이다([Tailscale API 문서 미러](https://github.com/gbraad/tailscale/blob/main/api.md)). Governs R4, R8.
+
+  **교정 이력**: 최초 설계는 `tailscaled-autoconnect` *이후*에 돌며 자신의 device ID와 다른 기기만 지우는 방식이었다. ce-doc-review adversarial 리뷰가 key-expiry 재인증 시 BackendState만으로는 진짜 재설치와 구분이 안 돼 살아있는 기기를 지울 위험을 지적해, 등록 후 device-ID 비교 방식으로 1차 교정했다. 이어진 `code-review` 패스가 그 1차 교정 자체의 결함을 발견했다: 정리가 등록 *이후*에 일어나면, 재설치 시 새 기기가 등록되는 시점에 이전 기기가 아직 남아 있어 hostname이 충돌하고, Tailscale이 새 기기 쪽에 접미사를 붙여버린 뒤에야 정리가 실행되므로 깨끗한 이름이 영구히 돌아오지 않는다. 상태 파일 존재 여부를 신호로 쓰는 현재 설계는 두 문제를 동시에 해결한다: key-expiry 재인증은 상태 파일이 남아 있어 처음부터 아무것도 건드리지 않고, 진짜 재설치는 상태 파일이 없어 등록 *전에* 안전하게 정리된다.
 - KTD4. **`useRoutingFeatures = "server"`는 `advertiseRoutes = true`인 호스트(`MS-7D91`)에만 설정한다.** nixpkgs 모듈이 IP forwarding sysctl을 자동으로 켜므로 수동 sysctl이 필요 없고, `client`/`both`에서만 켜지는 `checkReversePath = "loose"`는 이 경우 해당하지 않는다. Governs R5, R6.
 - KTD5. **dedup 조회의 호스트명 비교는 대소문자를 무시한다.** Tailscale은 등록 시 호스트명을 소문자로 정규화할 수 있어, API가 돌려주는 `hostname` 필드를 `networking.hostName`(예: `MS-7D91`)과 대소문자 구분 없이 비교해야 오탐 없이 이전 기기만 정확히 삭제한다. Governs R4.
 - KTD6. **두 호스트 모두 `extraUpFlags`에 `--accept-routes`를 켠다.** (ce-doc-review adversarial 지적.) Tailscale의 Linux 클라이언트는 광고된 서브넷 라우트를 기본적으로 수신하지 않는다 — 이 플래그 없이는 `MS-7D91`이 세 경로를 광고해도 `ThinkPad-X1-Carbon-Gen-11`이 실제로 그 경로에 도달할 수 없어, R9와 Goal Capsule의 라우트 도달 목표가 깨진다. `MS-7D91`에도 동일하게 켜 두어도 무해하다(스스로 광고하는 경로를 스스로 수신하는 것은 아무 효과가 없음). Governs R9.
 
 ### High-Level Technical Design
 
-두 신규 systemd 유닛이 nixpkgs 기본 `tailscaled-autoconnect.service` 이후에 순서화되는 흐름이다(KTD3, KTD4, KTD6). `tailscaled-autoconnect`는 `Type=notify`라 자신이 `Running`에 도달해야 "시작됨"으로 간주되므로, 이후 유닛은 별도 상태 폴링 없이 안전하게 인증된 상태에서 시작한다.
+dedup 유닛은 `tailscaled-autoconnect.service` *이전*에 순서화되고(KTD3), route-advertisement 유닛은 그 *이후*에 순서화된다(KTD4, KTD6).
 
 ```mermaid
 flowchart TB
-  A[activation] --> B["tailscaled-autoconnect:\n이미 Running이면 즉시 종료,\n아니면 tailscale up --auth-key ... --ssh --accept-routes"]
-  B --> C[dedup 유닛: 자신의 device ID 확인\nGET tailnet/-/devices로 같은 hostname의\n다른 device ID를 찾아 DELETE]
-  C --> D[route-advertisement 유닛]
-  D --> E{advertiseRoutes?}
-  E -->|true, MS-7D91| F["tailscale set --advertise-routes=$TAILSCALE_ROUTES"]
-  E -->|false, ThinkPad| G[유닛 자체가 존재하지 않음]
+  A[activation] --> B{"/var/lib/tailscale/tailscaled.state\n존재?"}
+  B -->|있음: reboot/key-expiry| D
+  B -->|없음: 진짜 재설치| C["dedup 유닛: GET tailnet/-/devices로\n이 hostname과 일치하는 기기 전부 DELETE"]
+  C --> D["tailscaled-autoconnect:\n이미 Running이면 즉시 종료,\n아니면 tailscale up --auth-key ... --ssh --accept-routes"]
+  D --> E[route-advertisement 유닛]
+  E --> F{advertiseRoutes?}
+  F -->|true, MS-7D91| G["tailscale set --advertise-routes=$TAILSCALE_ROUTES"]
+  F -->|false, ThinkPad| H[유닛 자체가 존재하지 않음]
 ```
 
 ### Risks & Dependencies
 
 - Tailscale의 공개 API가 호출 대상이다 — 스키마나 인증 방식이 바뀌면 dedup 유닛이 조용히 실패할 수 있다. `curl`의 HTTP 상태 코드를 확인하고 실패 시 activation을 막지 않고 경고만 남기는 방향을 권장한다(재시도는 다음 activation에서 자연스럽게 이뤄짐).
-- API 토큰을 `curl -H "Authorization: Bearer $TOKEN"`처럼 리터럴 인자로 넘기면 `/proc/<pid>/cmdline`을 통해 같은 호스트의 다른 로컬 사용자에게 노출된다(ce-doc-review security-lens 지적) — 짧게 사는 헤더 파일을 통해 전달하거나(`curl -K`/`--config`) argv에 토큰 문자열이 남지 않는 방식을 써야 한다.
+- API 토큰을 `curl -H "Authorization: Bearer $TOKEN"`처럼 리터럴 인자로 넘기면 `/proc/<pid>/cmdline`을 통해 같은 호스트의 다른 로컬 사용자에게 노출된다(ce-doc-review security-lens 지적) — `curl -K -`로 헤더를 stdin에서 읽어 파일도 argv도 거치지 않게 한다.
+- dedup 유닛은 이제 `tailscaled-autoconnect` *이전*에 돌아 네트워크가 아직 준비되지 않았을 수 있다(code-review 지적으로 순서가 뒤바뀌면서 생긴 대가). API 호출이 실패하면 정리를 건너뛰고 조용히 종료하므로, 진짜 재설치의 바로 그 첫 부팅에서만, 그리고 네트워크가 특히 늦게 올라올 때만 접미사 문제가 재발할 수 있다 — 재시도 루프는 추가하지 않는다(이 좁은 경우를 위한 폴링 로직은 지금 얻는 이득에 비해 과하다). 실제 하드웨어 재설치 시 이 경계 상황이 발생하는지는 수동 검증 대상이다.
 - API 토큰(`op://H82/Tailscale/API Key`)은 2026-12-22 만료 — Product Contract Dependencies에 이미 기록됨; 만료 후에는 dedup 유닛이 인증 실패로 no-op한다.
 - Tailnet ACL의 route auto-approver 설정 여부는 이 리포의 Nix 코드로 확인·자동화할 수 없는 외부 상태다 — Product Contract Dependencies에 기록된 대로 운영자가 admin console에서 1회 확인해야 한다.
 
@@ -155,7 +160,7 @@ flowchart TB
 
 ### U1. Tailscale 모듈 골격 + secrets 배선
 
-- **Goal:** `modules/nixos/services/tailscale.nix`를 신설하고 `options.my.tailscale`(`enable`, `advertiseRoutes`)을 정의하며, `sops.secrets`와 `sops.templates."tailscale.env"`를 배선한다.
+- **Goal:** `modules/nixos/services/tailscale.nix`를 신설하고 `options.my.tailscale`(`enable`, `advertiseRoutes`, `apiBase`)을 정의하며, `sops.secrets`와 `sops.templates`(`tailscale-api.env`, `tailscale-routes.env`)를 배선한다.
 - **Requirements:** R2, R7.
 - **Dependencies:** none.
 - **Files:**
@@ -163,7 +168,7 @@ flowchart TB
 - **Approach:**
   1. `modules/nixos/wifi.nix`의 `sopsFile`/`available` 패턴을 그대로 따른다 — `secrets/tailscale.yaml` 존재 여부로 `available`을 판정한다.
   2. `sops.secrets`를 `tailscale/auth_key`, `tailscale/api_token`, `tailscale/routes/lan_10`, `tailscale/routes/lan_1`, `tailscale/routes/wp_jpi_co_kr`로 선언한다(owner=root, mode=0400).
-  3. `sops.templates."tailscale.env"`가 `TAILSCALE_API_TOKEN=...`과, `advertiseRoutes`일 때만 콤마 join된 `TAILSCALE_ROUTES=...`를 렌더링한다(KTD2). 여기에 `TAILSCALE_API_BASE`도 함께 두되 기본값은 `https://api.tailscale.com`으로 하고, `my.tailscale`의 (테스트 전용) 옵션으로 override 가능하게 한다 — U6의 VM 테스트가 실제 Tailscale API 대신 mock 서버를 가리키게 하기 위함(feasibility 지적).
+  3. `sops.templates."tailscale-api.env"`가 `TAILSCALE_API_TOKEN=...`과 `TAILSCALE_API_BASE=...`를 렌더링하고(KTD2), `advertiseRoutes`일 때만 별도의 `sops.templates."tailscale-routes.env"`가 콤마 join된 `TAILSCALE_ROUTES=...`를 렌더링한다. `apiBase`는 기본값 `https://api.tailscale.com`을 갖는 일반 옵션이며, U6의 VM 테스트는 이를 override해 실제 Tailscale API 대신 mock 서버를 가리킨다(feasibility 지적).
 - **Patterns to follow:** `modules/nixos/wifi.nix`(sops 시크릿 + 템플릿), `modules/nixos/services/podman.nix`(`options.my.<name>` + `mkIf cfg.enable` 형태).
 - **Test scenarios:**
   - `available = false`(secrets 파일 없음)일 때 `my.tailscale.enable = true`가 평가 오류 없이 빌드되고 tailscaled는 인증 없이 대기한다.
@@ -188,23 +193,25 @@ flowchart TB
 
 ### U3. 재등록 정리(dedup) systemd 유닛
 
-- **Goal:** 재설치 시 동일 호스트명의 이전 기기를 등록 *후*에 자동 제거하는 oneshot 유닛을 추가한다(KTD3 — ce-doc-review adversarial/feasibility 지적으로 사전 게이트 방식에서 교체됨).
+- **Goal:** 재설치 시 동일 호스트명의 이전 기기를 등록 *전에* 자동 제거하는 oneshot 유닛을 추가한다(KTD3 — ce-doc-review와 code-review로 두 차례 교정됨).
 - **Requirements:** R4, R8.
 - **Dependencies:** U1, U2.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (extend)
+  - `scripts/tailscale-dedup-device` (create)
 - **Approach:**
-  1. `After = ["tailscaled-autoconnect.service"]`이면서, `wantedBy = ["multi-user.target"]`(또는 `tailscaled-autoconnect.service` 쪽에 `wants`를 추가)로 유닛을 정의한다 — `after`만으로는 순서만 강제될 뿐 시작을 보장하지 않으므로(`modules/nixos/wifi.nix:78-81`의 `after`+`wants` 짝짓기 패턴을 따른다), 반드시 pull-in 관계를 함께 선언한다. `tailscaled-autoconnect`는 `Type=notify`라 자신이 `Running`에 도달해야 시작된 것으로 간주되므로, 이 순서만으로 tailscaled가 이미 인증됨이 보장된다 — 별도 BackendState 폴링은 불필요하다(HTD 참조).
-  2. `tailscale status --json`으로 자신의 현재 device ID를 얻는다.
-  3. `$TAILSCALE_API_BASE/api/v2/tailnet/-/devices`(`GET`)를 `tailscale.env`의 `TAILSCALE_API_TOKEN`으로 인증 호출하고, KTD5의 대소문자 무시 비교로 이 호스트명과 일치하되 device ID가 자신과 다른 기기만 `$TAILSCALE_API_BASE/api/v2/device/{id}`(`DELETE`)한다. `TAILSCALE_API_BASE`는 U1의 `tailscale.env`가 기본값 `https://api.tailscale.com`으로 제공하며, U6의 VM 테스트에서만 mock 서버 주소로 override된다.
-  4. bearer 토큰은 `curl` 인자로 직접 넘기지 않는다 — `/proc/*/cmdline` 노출을 피하기 위해 짧게 사는 헤더 파일이나 `curl -K`/`--config`를 사용한다(Risks 참조).
+  1. `before = ["tailscaled-autoconnect.service"]`, `wantedBy = ["multi-user.target"]`로 유닛을 정의한다 — `tailscaled-autoconnect`는 nixpkgs 자체가 이미 `wantedBy = [ "multi-user.target" ]`로 끌어당기므로, `before` 하나로 순서가 보장된다.
+  2. 스크립트는 `/var/lib/tailscale/tailscaled.state`(tailscaled 패키지가 실제로 쓰는 상태 파일 경로) 존재 여부만 확인한다 — 있으면 즉시 종료(HTD 참조).
+  3. 없으면 `$TAILSCALE_API_BASE/api/v2/tailnet/-/devices`(`GET`)를 `tailscale-api.env`의 `TAILSCALE_API_TOKEN`으로 인증 호출하고, KTD5의 대소문자 무시 비교로 이 호스트명과 일치하는 기기를 전부 `$TAILSCALE_API_BASE/api/v2/device/{id}`(`DELETE`)한다(아직 등록 전이므로 자신을 구분할 필요가 없다). `TAILSCALE_API_BASE`는 U1의 `tailscale-api.env`가 기본값 `https://api.tailscale.com`으로 제공하며, U6의 VM 테스트에서만 mock 서버 주소로 override된다.
+  4. bearer 토큰은 `curl` 인자로 직접 넘기지 않는다 — `/proc/*/cmdline` 노출을 피하기 위해 `curl -K`/`--config`로 stdin에서 읽는다(Risks 참조).
+  5. `scripts/tailscale-dedup-device`는 이 리포의 `scripts/` + 직접 호출 테스트 관례를 따르는 독립 실행 파일로 작성하고, 모듈에서는 `pkgs.writeShellScript`로 감싼다 — 테스트 전용 내부 옵션을 두지 않는다.
 - **Execution note:** 이 유닛은 실패해도 activation을 막지 않아야 한다 — API 실패 시 경고만 남기고 종료한다(Risks 참조).
 - **Test scenarios:**
-  - 유닛이 `wantedBy`(또는 짝이 되는 `wants`)로 실제 boot transaction에 포함되며, `tailscaled-autoconnect.service` 뒤에 순서화된다.
+  - 유닛이 `wantedBy`로 실제 boot transaction에 포함되며, `tailscaled-autoconnect.service` 앞에 순서화된다. 이 확인은 nix 평가값이 아니라 부팅된 VM에서 `systemctl`로 실제 설치된 유닛을 대상으로 한다(선언값만 읽는 체크는 `systemd.services.<name>.enable`이 꺼져도 통과하므로 — [관련 학습](.compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md) 참고).
   - `advertiseRoutes` 값과 무관하게 두 호스트 모두에 이 유닛이 존재한다(R4는 두 호스트 공통).
-  - `EnvironmentFile`이 `sops.templates."tailscale.env".path`를 가리킨다.
-  - Covers AE1. (U6의 VM 테스트에서, mock API 서버를 대상으로) 자신과 다른 device ID를 가진 동일 hostname 기기가 있으면 그 기기만 삭제되고 자신은 남는다; 동일 hostname의 다른 device ID가 없으면 아무것도 삭제하지 않는다(일반 rebuild·key-expiry 재인증 시나리오).
-- **Verification:** 유닛의 `After`/`Wants`(또는 `WantedBy`)/`EnvironmentFile`이 기대한 값과 일치하고, U6의 mock-API VM 테스트가 실제 삭제 로직을 통과한다.
+  - `EnvironmentFile`이 `sops.templates."tailscale-api.env".path`를 가리킨다.
+  - Covers AE1. (U6의 VM 테스트에서, mock API 서버를 대상으로) `tailscaled.state`가 없고 동일 hostname 기기가 있으면 그 기기가 삭제된다; `tailscaled.state`가 있으면(또는 동일 hostname 기기가 없으면) 아무것도 삭제하지 않는다(일반 rebuild·key-expiry 재인증 시나리오).
+- **Verification:** 부팅된 VM에서 `systemctl cat`/`systemctl show`로 실제 설치된 유닛의 순서·`EnvironmentFile`을 확인하고, U6의 mock-API VM 테스트가 실제 삭제 로직을 통과한다.
 
 ### U4. 경로 광고(route-advertisement) systemd 유닛
 
@@ -213,7 +220,7 @@ flowchart TB
 - **Dependencies:** U2.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (extend)
-- **Approach:** `mkIf cfg.advertiseRoutes`로 유닛 전체를 가드한다. `After = ["tailscaled-autoconnect.service"]`와 함께 `wantedBy = ["multi-user.target"]`(또는 짝이 되는 `wants`)를 반드시 선언한다 — U3와 동일하게, `after`만으로는 시작이 보장되지 않는다(`modules/nixos/wifi.nix:78-81` 패턴). `TAILSCALE_ROUTES` 환경변수를 `tailscale set --advertise-routes=$TAILSCALE_ROUTES`에 그대로 전달한다(KTD2, KTD3 — `extraSetFlags`는 쓰지 않고, 게이트 없이 매번 실행).
+- **Approach:** `mkIf cfg.advertiseRoutes`로 유닛 전체를 가드한다. `after`만으로는 시작이 보장되지 않으므로(`modules/nixos/wifi.nix:78-81` 패턴), `After = ["tailscaled-autoconnect.service"]`와 함께 `wantedBy = ["multi-user.target"]`를 반드시 선언한다 — U3(재설치 전에 정리)와 달리 이 유닛은 등록 이후 라우트를 광고해야 하므로 반대 방향으로 순서화된다. `TAILSCALE_ROUTES` 환경변수를 `tailscale set --advertise-routes=$TAILSCALE_ROUTES`에 그대로 전달한다(KTD2, KTD3 — `extraSetFlags`는 쓰지 않고, 게이트 없이 매번 실행).
 - **Test scenarios:**
   - `advertiseRoutes = false`인 ThinkPad에는 이 유닛이 아예 존재하지 않는다(R6).
   - `advertiseRoutes = true`인 MS-7D91에는 존재하고, `wantedBy`(또는 짝이 되는 `wants`)로 실제 boot transaction에 포함되며 `After=tailscaled-autoconnect.service`이다.
@@ -233,26 +240,29 @@ flowchart TB
 
 ### U6. 호스트 배선 + 회귀 테스트
 
-- **Goal:** 두 호스트에 모듈을 연결하고, `wifi-provisioning.nix`를 본뜬 VM 테스트로 전체를 회귀 검증한다.
+- **Goal:** 두 호스트에 모듈을 연결하고, `wifi-provisioning.nix`를 본뜬 VM 테스트로 전체를 회귀 검증하며, `advertiseRoutes`가 두 호스트에 동시에 켜지는 것을 막는 정적 가드를 추가한다.
 - **Requirements:** R1–R9 전체.
 - **Dependencies:** U1, U2, U3, U4, U5.
 - **Files:**
   - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix` (modify)
   - `hosts/MS-7D91/default.nix` (modify)
   - `tests/tailscale-provisioning.nix` (create)
-  - `flake.nix` (modify — `checks.tailscale-provisioning` 등록)
+  - `tests/tailscale-mock-api.py` (create)
+  - `flake.nix` (modify — `checks.tailscale-provisioning`와 `checks.tailscale-single-router` 등록)
 - **Approach:**
   1. 두 `hosts/*/default.nix`의 `imports`에 `../../modules/nixos/services/tailscale.nix`를 추가하고 `config.my.tailscale.enable = true;`를 설정한다.
   2. `hosts/MS-7D91/default.nix`에만 `config.my.tailscale.advertiseRoutes = true;`를 추가한다.
-  3. `tests/wifi-provisioning.nix`을 본떠 `pkgs.testers.nixosTest`로 fake age 키 + `FAKE_` 접두사 시크릿을 만들고, 렌더링된 `services.tailscale`/dedup/route-advertisement 유닛 설정을 검증하며, `nix-store -qR | xargs grep -rl FAKE_`로 시크릿이 빌드된 클로저에 새지 않는지 확인한다.
-  4. dedup 유닛의 실제 삭제 로직(AE1)을 검증하기 위해, VM 테스트에 세 번째 노드로 작은 mock HTTP 서버(예: `pkgs.python3`의 표준 라이브러리 HTTP 서버, 미리 정한 device 목록으로 `GET /api/v2/tailnet/-/devices`에 응답하고 `DELETE /api/v2/device/{id}` 호출을 기록)를 추가하고, 피검사 호스트의 `TAILSCALE_API_BASE`를 이 mock 노드로 override한다. 자신과 다른 device ID를 가진 동일 hostname 항목이 있는 케이스와 없는 케이스 둘 다 확인한다(feasibility 지적 — mock 없이는 AE1이 실제로 검증되지 않음).
-- **Patterns to follow:** `tests/wifi-provisioning.nix`(fixture + `nixosTest` + 스토어 누출 검사), `flake.nix`의 기존 `checks` 등록 스타일.
+  3. `tests/wifi-provisioning.nix`을 본떠 `pkgs.testers.nixosTest`로 fake age 키 + `FAKE_` 접두사 시크릿을 만들고, 부팅된 VM에서 `systemctl`로 실제 설치된 유닛을 검증하며(U3 참고 — 선언값만 읽는 체크는 `enable=false` 같은 곁가지 옵션에 속을 수 있다), `nix-store -qR | xargs grep -rlE 'FAKE_...'`로 시크릿이 빌드된 클로저에 새지 않는지 확인한다.
+  4. dedup 유닛의 실제 삭제 로직(AE1)을 검증하기 위해, VM 테스트에 세 번째 노드로 작은 mock HTTP 서버(`tests/tailscale-mock-api.py`, 표준 라이브러리 `http.server`로 미리 정한 device 목록에 `GET /api/v2/tailnet/-/devices`로 응답하고 `DELETE /api/v2/device/{id}` 호출을 기록)를 추가하고, 피검사 호스트의 `apiBase`를 이 mock 노드로 override한다. `tailscaled.state`가 없고 동일 hostname 기기가 있는 케이스와, 있거나(또는 그런 기기가 없는) 케이스 둘 다 확인한다(feasibility 지적 — mock 없이는 AE1이 실제로 검증되지 않음). mock 노드는 다른 실제 노드들과 마찬가지로 `boot.loader.grub.enable = lib.mkForce false;`로 GRUB 이미지 빌드를 생략한다(code-review 지적).
+  5. `flake.nix`에 순수 평가 체크(`pkgs.runCommand`, VM 아님)를 하나 추가해 `self.nixosConfigurations.{ThinkPad-X1-Carbon-Gen-11,MS-7D91}.config.my.tailscale.advertiseRoutes`를 둘 다 읽고 동시에 `true`이면 실패시킨다 — "라우터는 한 호스트만" 불변식이 미래의 복붙 실수로 조용히 깨지지 않도록 한다(code-review 지적, R5/R6 근거).
+- **Patterns to follow:** `tests/wifi-provisioning.nix`(fixture + `nixosTest` + 스토어 누출 검사), `flake.nix`의 기존 `checks` 등록 스타일과 `self.nixosConfigurations`를 여러 호스트에서 읽어 비교하는 기존 체크들(예: `claude-desktop`, `orca-desktop`).
 - **Test scenarios:**
   - Covers AE3, R9. 두 호스트 빌드에서 `advertiseRoutes`에 따라 라우트 유닛 존재 여부가 갈리고, 두 호스트 모두 `--accept-routes`가 켜져 있다.
-  - Covers AE1, U3. mock API 서버를 대상으로: (a) 자신과 다른 device ID의 동일 hostname 기기가 있으면 그것만 삭제되고 mock 서버가 그 `DELETE` 호출을 기록한다, (b) 그런 기기가 없으면 아무 `DELETE`도 발생하지 않는다.
+  - Covers AE1, U3. mock API 서버를 대상으로: (a) `tailscaled.state`가 없고 동일 hostname 기기가 있으면 그것만 삭제되고 mock 서버가 그 `DELETE` 호출을 기록한다, (b) `tailscaled.state`가 있으면(또는 그런 기기가 없으면) 아무 `DELETE`도 발생하지 않는다.
   - Covers AE2. `authKeyFile`/`EnvironmentFile` 경로가 실제 sops secret 경로를 가리켜, 대화형 로그인 없이 도달 가능함을 정적으로 증명한다.
   - 빌드된 시스템 클로저(`nix-store -qR`)에 fake `auth_key`/`api_token`/라우트 값이 전혀 나타나지 않는다.
-- **Verification:** `nix flake check`와 4개 호스트 빌드(AGENTS.md) 통과, 새 `checks.tailscale-provisioning` 통과.
+  - `checks.tailscale-single-router`: 두 호스트 모두 `advertiseRoutes = true`로 바꾼 임시 평가는 실패해야 하고, 현재 상태(`MS-7D91`만 `true`)는 통과해야 한다.
+- **Verification:** `nix flake check`와 4개 호스트 빌드(AGENTS.md) 통과, 새 `checks.tailscale-provisioning`과 `checks.tailscale-single-router` 통과.
 
 ---
 
@@ -261,7 +271,7 @@ flowchart TB
 | 명령 | 적용 대상 |
 | --- | --- |
 | `nix fmt -- --ci` | 전체 diff |
-| `nix flake check` | 전체 (신규 `checks.tailscale-provisioning` 포함) |
+| `nix flake check` | 전체 (신규 `checks.tailscale-provisioning`, `checks.tailscale-single-router` 포함) |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | U6 |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel` | U6 |
 | `nix build --no-link .#nixosConfigurations.MS-7D91.config.system.build.toplevel` | U6 |
