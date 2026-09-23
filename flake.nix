@@ -604,7 +604,8 @@
             ''
               export HOME=$TMPDIR
               bash ${./tests/update-dependencies-push-order.sh} \
-                ${./.github/workflows/update-dependencies.yml}
+                ${./.github/workflows/update-dependencies.yml} \
+                ${./.gitignore}
               touch $out
             '';
         ci-workflow-docs-skip =

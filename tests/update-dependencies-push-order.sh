@@ -2,7 +2,13 @@
 #
 # Check interface:
 #
-#   bash tests/update-dependencies-push-order.sh <update-dependencies-workflow>
+#   bash tests/update-dependencies-push-order.sh <update-dependencies-workflow> <gitignore>
+#
+# <gitignore> is the repository's real .gitignore, copied into the sandboxed
+# clone rather than reconstructed here -- a hand-written fixture would prove
+# only that git honors *some* .gitignore, not that this repo's real one lists
+# fmt.log/check.log. Passing the real file as a derivation input also makes
+# Nix rebuild this check whenever .gitignore changes.
 #
 # Extracts the literal script of the "Push verified updates directly to main"
 # step from the given workflow file and runs it against a real sandboxed git
@@ -30,8 +36,9 @@
 set -euo pipefail
 
 workflow=${1:-}
-if [[ $# -ne 1 || -z $workflow || ! -f $workflow ]]; then
-  printf 'usage: %s WORKFLOW_FILE\n' "${0##*/}" >&2
+gitignore=${2:-}
+if [[ $# -ne 2 || -z $workflow || ! -f $workflow || -z $gitignore || ! -f $gitignore ]]; then
+  printf 'usage: %s WORKFLOW_FILE GITIGNORE_FILE\n' "${0##*/}" >&2
   exit 2
 fi
 
@@ -80,7 +87,7 @@ setup_clone() {
   "$git_bin" -C "$clone" config user.name Test
   "$git_bin" -C "$clone" checkout -qb main
   printf 'base\n' >"$clone/tracked.txt"
-  printf '/fmt.log\n/check.log\n' >"$clone/.gitignore"
+  cp "$gitignore" "$clone/.gitignore"
   "$git_bin" -C "$clone" add tracked.txt .gitignore
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q "$origin" main
