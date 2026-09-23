@@ -89,10 +89,19 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("already up to date", result.stdout)
 
+    def test_malformed_existing_pin_is_treated_as_absent(self):
+        # A pin file that parses as JSON but isn't an object (e.g. from a bad
+        # manual edit or an unresolved merge) must not crash the resolver;
+        # it should be treated the same as no pin existing yet.
+        output_file = Path(self.tmp.name) / "manifest.json"
+        output_file.write_text(json.dumps([1, 2, 3]))
+        result = self.run_release(extra_args=["-o", str(output_file)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("updated", result.stdout)
+
     def test_refuses_a_downgrade(self):
         output_file = Path(self.tmp.name) / "manifest.json"
-        newer = dict(SAMPLE_MANIFEST, version="2.1.280")
-        output_file.write_text(json.dumps(newer))
+        output_file.write_text(json.dumps(SAMPLE_MANIFEST))
         result = self.run_release(latest_body="2.1.279", extra_args=["-o", str(output_file)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("already up to date", result.stdout)
