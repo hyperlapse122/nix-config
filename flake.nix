@@ -38,6 +38,7 @@
         inherit system;
         config.allowUnfree = true;
       };
+      agentTools = import ./packages/agent-tools.nix { inherit pkgs; };
     in
     {
       nixosConfigurations =
@@ -87,10 +88,10 @@
         disko = inputs.disko.packages.${system}.disko;
         # Exposed so the release-tracking workflow invokes the packaged helper
         # rather than running scripts/ with whatever interpreter the runner has.
-        agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
-        claude-desktop-release = (import ./packages/agent-tools.nix { inherit pkgs; }).claudeDesktopRelease;
+        agent-plugin-release = agentTools.agentPluginRelease;
+        claude-desktop-release = agentTools.claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
-        claude-code-release = (import ./packages/agent-tools.nix { inherit pkgs; }).claudeCodeRelease;
+        claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
       };
       checks.${system} = {
@@ -600,8 +601,12 @@
           let
             # Presence and an executable bin/claude alone would stay green even if
             # the override silently fell back to nixpkgs' own bundled manifest, so
-            # this also asserts the running binary reports this repo's pinned
-            # version (AE1).
+            # this also asserts the package's own version attribute matches this
+            # repo's pinned version (AE1). Reading `claudePkg.version` rather than
+            # re-invoking `--version` doesn't re-check anything new: nixpkgs'
+            # claude-code derivation already runs `versionCheckHook` unconditionally
+            # at build time, which fails the build unless the binary's own
+            # `--version` output already matches this exact attribute.
             pinnedVersion =
               (builtins.fromJSON (builtins.readFile ./packages/claude-code-manifest.json)).version;
             assertHost =
@@ -618,19 +623,18 @@
                     echo 'claude-code package ships no bin/claude executable on ${hostName}' >&2
                     exit 1
                   fi
-                  actualVersion=$(${claudePkg}/bin/claude --version)
-                  case "$actualVersion" in
-                    *"${pinnedVersion}"*) ;;
-                    *)
-                      echo "claude-code on ${hostName} reports version '$actualVersion', expected pin ${pinnedVersion}" >&2
-                      exit 1
-                      ;;
-                  esac
                 '';
+                versionMismatch =
+                  pkgs.lib.optionalString (claudePkg != null && claudePkg.version != pinnedVersion)
+                    ''
+                      echo "claude-code on ${hostName} is built from version '${claudePkg.version or "unknown"}', expected pin ${pinnedVersion}" >&2
+                      exit 1
+                    '';
               in
               ''
                 ${absent}
                 ${present}
+                ${versionMismatch}
               '';
           in
           pkgs.runCommand "claude-code-tests" { } ''
