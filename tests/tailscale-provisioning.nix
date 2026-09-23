@@ -33,6 +33,8 @@ let
     exit 1
   '';
 
+  dedupScriptSrc = ../scripts/tailscale-dedup-device;
+
   mkTestHost =
     hostName: advertiseRoutes:
     { ... }:
@@ -122,6 +124,13 @@ pkgs.testers.nixosTest {
           "ThinkPad (advertiseRoutes=false) must not have a route-advertisement unit"
       assert "tailscale-advertise-routes" in msdesktop_units
 
+      # ThinkPad (advertiseRoutes=false) must not even render a routes secret
+      # template -- not just an empty one.
+      assert not ${if nodes.thinkpad.sops.templates ? "tailscale-routes.env" then "True" else "False"}, \
+          "ThinkPad must not have a tailscale-routes.env template"
+      assert ${if nodes.msdesktop.sops.templates ? "tailscale-routes.env" then "True" else "False"}, \
+          "MS-7D91 must have a tailscale-routes.env template"
+
       dedup_after = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.after})
       dedup_wants = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.wants})
       dedup_wanted_by = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.wantedBy})
@@ -136,22 +145,34 @@ pkgs.testers.nixosTest {
       assert "multi-user.target" in route_wanted_by
 
       dedup_env_file = ${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.serviceConfig.EnvironmentFile}
-      assert dedup_env_file == ${builtins.toJSON nodes.msdesktop.sops.templates."tailscale.env".path}
+      assert dedup_env_file == ${builtins.toJSON nodes.msdesktop.sops.templates."tailscale-api.env".path}
+
+      # Route-advertisement never touches the API, so it must not receive
+      # the API bearer token's env file.
+      route_env_file = ${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-advertise-routes.serviceConfig.EnvironmentFile}
+      assert route_env_file == ${
+        builtins.toJSON nodes.msdesktop.sops.templates."tailscale-routes.env".path
+      }
+      assert route_env_file != dedup_env_file
 
       # --- Runtime: TAILSCALE_ROUTES rendering (U4 test scenario) ---
 
-      msdesktop_env = msdesktop.succeed("cat ${nodes.msdesktop.sops.templates."tailscale.env".path}")
-      assert "TAILSCALE_ROUTES=192.168.10.0/24,192.168.1.0/24,203.0.113.99/32" in msdesktop_env, msdesktop_env
-
-      thinkpad_env = thinkpad.succeed("cat ${nodes.thinkpad.sops.templates."tailscale.env".path}")
-      assert "TAILSCALE_ROUTES" not in thinkpad_env, thinkpad_env
+      msdesktop_routes_env = msdesktop.succeed("cat ${
+        nodes.msdesktop.sops.templates."tailscale-routes.env".path
+      }")
+      assert "TAILSCALE_ROUTES=192.168.10.0/24,192.168.1.0/24,203.0.113.99/32" in msdesktop_routes_env, msdesktop_routes_env
 
       # --- Runtime: dedup script against the mock API (U3 test scenario, AE1) ---
+      #
+      # Invokes the real scripts/tailscale-dedup-device directly -- the same
+      # file the systemd unit's ExecStart wraps -- with a stubbed `tailscale`
+      # on PATH standing in for a real authenticated tailnet connection.
 
       run_dedup = (
-          "set -a; . ${nodes.msdesktop.sops.templates."tailscale.env".path}; set +a; "
+          "set -a; . ${nodes.msdesktop.sops.templates."tailscale-api.env".path}; set +a; "
+          + "SELF_HOSTNAME=${nodes.msdesktop.networking.hostName} "
           + "PATH=${fakeTailscale}/bin:$PATH "
-          + "${nodes.msdesktop.my.tailscale.dedupScriptPath}"
+          + "bash ${dedupScriptSrc}"
       )
 
       # Scenario A: a stale device shares this hostname under a different ID.

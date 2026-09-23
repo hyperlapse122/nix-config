@@ -8,57 +8,15 @@ let
   cfg = config.my.tailscale;
   available = cfg.sopsFile != null;
   tailscalePkg = config.services.tailscale.package;
+  routeLabels = [
+    "lan_10"
+    "lan_1"
+    "wp_jpi_co_kr"
+  ];
 
-  # Reads the Authorization header from stdin via `curl -K -` rather than a
-  # CLI argument, so the bearer token never appears in this unit's
-  # /proc/<pid>/cmdline (readable by any local user).
-  authedCurl = ''printf 'header = "Authorization: Bearer %s"\n' "$TAILSCALE_API_TOKEN" | curl -sS --fail -K -'';
-
-  # A plain derivation (rather than the systemd module's inline `script`
-  # sugar) so tests/tailscale-provisioning.nix can invoke this exact script
-  # directly -- with a stubbed `tailscale` on PATH -- without needing a real
-  # authenticated tailnet connection inside an isolated VM test.
-  dedupScript = pkgs.writeShellScript "tailscale-dedup-device" ''
-    set -uo pipefail
-
-    self_hostname="${config.networking.hostName}"
-
-    if ! status_json="$(tailscale status --json)"; then
-      echo "tailscale-dedup-device: could not read tailscale status; skipping" >&2
-      exit 0
-    fi
-    device_id_self="$(printf '%s' "$status_json" | jq -r '.Self.ID')"
-    if [ -z "$device_id_self" ] || [ "$device_id_self" = "null" ]; then
-      # Not authenticated yet (e.g. tailscaled-autoconnect hasn't reached
-      # Running by the time systemd's ordering let this unit start). Without
-      # a real self ID every other device would look like a stranger, so
-      # deleting anything here risks removing a still-live registration.
-      echo "tailscale-dedup-device: no self device ID yet; skipping" >&2
-      exit 0
-    fi
-
-    if ! devices_json="$(${authedCurl} "$TAILSCALE_API_BASE/api/v2/tailnet/-/devices")"; then
-      echo "tailscale-dedup-device: Tailscale API request failed; skipping cleanup this run" >&2
-      exit 0
-    fi
-
-    stale_ids="$(printf '%s' "$devices_json" | jq -r --arg host "$self_hostname" --arg self "$device_id_self" \
-      '.devices[] | select((.hostname | ascii_downcase) == ($host | ascii_downcase)) | select(.id != $self) | .id')"
-
-    if [ -z "$stale_ids" ]; then
-      echo "tailscale-dedup-device: no stale devices for $self_hostname"
-      exit 0
-    fi
-
-    printf '%s\n' "$stale_ids" | while IFS= read -r stale_id; do
-      [ -n "$stale_id" ] || continue
-      if ${authedCurl} -X DELETE "$TAILSCALE_API_BASE/api/v2/device/$stale_id"; then
-        echo "tailscale-dedup-device: removed stale device $stale_id"
-      else
-        echo "tailscale-dedup-device: failed to remove stale device $stale_id" >&2
-      fi
-    done
-  '';
+  dedupScript = pkgs.writeShellScript "tailscale-dedup-device" (
+    builtins.readFile ../../../scripts/tailscale-dedup-device
+  );
 in
 {
   options.my.tailscale = {
@@ -81,13 +39,6 @@ in
       type = lib.types.str;
       default = "https://api.tailscale.com";
       description = "Tailscale API base URL. Overridden in VM tests to point at a mock server instead of the real API.";
-    };
-    dedupScriptPath = lib.mkOption {
-      type = lib.types.path;
-      internal = true;
-      readOnly = true;
-      default = dedupScript;
-      description = "Store path of the dedup unit's script, exposed only so tests/tailscale-provisioning.nix can invoke it directly.";
     };
   };
 
@@ -119,11 +70,7 @@ in
                 "tailscale/auth_key"
                 "tailscale/api_token"
               ]
-              ++ lib.optionals cfg.advertiseRoutes [
-                "tailscale/routes/lan_10"
-                "tailscale/routes/lan_1"
-                "tailscale/routes/wp_jpi_co_kr"
-              ]
+              ++ lib.optionals cfg.advertiseRoutes (map (r: "tailscale/routes/${r}") routeLabels)
             )
             (name: {
               sopsFile = cfg.sopsFile;
@@ -131,19 +78,23 @@ in
               mode = "0400";
             });
 
-        sops.templates."tailscale.env".content = ''
-          TAILSCALE_API_TOKEN=${config.sops.placeholder."tailscale/api_token"}
-          TAILSCALE_API_BASE=${cfg.apiBase}
-        ''
-        + lib.optionalString cfg.advertiseRoutes ''
-          TAILSCALE_ROUTES=${
-            lib.concatStringsSep "," [
-              config.sops.placeholder."tailscale/routes/lan_10"
-              config.sops.placeholder."tailscale/routes/lan_1"
-              config.sops.placeholder."tailscale/routes/wp_jpi_co_kr"
-            ]
+        # Split so tailscale-advertise-routes (which never calls the API)
+        # isn't hand the bearer token it has no use for.
+        sops.templates = lib.mkMerge [
+          {
+            "tailscale-api.env".content = ''
+              TAILSCALE_API_TOKEN=${config.sops.placeholder."tailscale/api_token"}
+              TAILSCALE_API_BASE=${cfg.apiBase}
+            '';
           }
-        '';
+          (lib.mkIf cfg.advertiseRoutes {
+            "tailscale-routes.env".content = ''
+              TAILSCALE_ROUTES=${
+                lib.concatMapStringsSep "," (r: config.sops.placeholder."tailscale/routes/${r}") routeLabels
+              }
+            '';
+          })
+        ];
 
         services.tailscale.authKeyFile = config.sops.secrets."tailscale/auth_key".path;
 
@@ -163,7 +114,8 @@ in
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
             Type = "oneshot";
-            EnvironmentFile = config.sops.templates."tailscale.env".path;
+            EnvironmentFile = config.sops.templates."tailscale-api.env".path;
+            Environment = "SELF_HOSTNAME=${config.networking.hostName}";
             ExecStart = dedupScript;
           };
           path = [
@@ -180,7 +132,7 @@ in
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
             Type = "oneshot";
-            EnvironmentFile = config.sops.templates."tailscale.env".path;
+            EnvironmentFile = config.sops.templates."tailscale-routes.env".path;
           };
           path = [ tailscalePkg ];
           # tailscale set --advertise-routes is idempotent, so this needs no
