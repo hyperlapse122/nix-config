@@ -32,7 +32,7 @@ tags:
 
 That second clone failed even though the origin already held a real, pushed `main` branch:
 
-```
+```text
 warning: You appear to have cloned an empty repository.
 warning: remote HEAD refers to nonexistent ref, unable to checkout
 error: src refspec main does not match any
@@ -85,7 +85,7 @@ Any future Nix check in this repo (or a similar sandboxed-build test harness els
 
 Symptom without the fix, on a second clone of the same origin:
 
-```
+```text
 warning: remote HEAD refers to nonexistent ref, unable to checkout
 error: src refspec main does not match any
 ```
