@@ -34,6 +34,11 @@ let
 
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
+
+  # Resolves the latest claude-code release manifest from Anthropic's own
+  # release endpoints. Its network calls go through an overridable command so
+  # the sandboxed repository check can drive it with fixtures.
+  claudeCodeRelease = pythonHelper "claude-code-release" ../scripts/claude-code-release;
 in
 {
   inherit
@@ -41,5 +46,6 @@ in
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
+    claudeCodeRelease
     ;
 }

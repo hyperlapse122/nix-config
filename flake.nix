@@ -90,6 +90,8 @@
         agent-plugin-release = (import ./packages/agent-tools.nix { inherit pkgs; }).agentPluginRelease;
         claude-desktop-release = (import ./packages/agent-tools.nix { inherit pkgs; }).claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
+        claude-code-release = (import ./packages/agent-tools.nix { inherit pkgs; }).claudeCodeRelease;
+        claude-code = import ./packages/claude-code.nix { inherit pkgs; };
       };
       checks.${system} = {
         pinentry-card =
@@ -188,6 +190,16 @@
               cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
               cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
               python tests/test_claude_desktop_release.py
+              touch $out
+            '';
+        claude-code-release =
+          pkgs.runCommand "claude-code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/claude-code-release} scripts/claude-code-release
+              cp ${./tests/test_claude_code_release.py} tests/test_claude_code_release.py
+              python tests/test_claude_code_release.py
               touch $out
             '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
@@ -577,6 +589,51 @@
               '';
           in
           pkgs.runCommand "claude-desktop-tests" { } ''
+            set -x
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
+            ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+            ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
+            ${assertHost "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap}
+            touch $out
+          '';
+        claude-code =
+          let
+            # Presence and an executable bin/claude alone would stay green even if
+            # the override silently fell back to nixpkgs' own bundled manifest, so
+            # this also asserts the running binary reports this repo's pinned
+            # version (AE1).
+            pinnedVersion =
+              (builtins.fromJSON (builtins.readFile ./packages/claude-code-manifest.json)).version;
+            assertHost =
+              hostName: host:
+              let
+                userPackages = host.config.home-manager.users.h82.home.packages;
+                claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-code") null userPackages;
+                absent = pkgs.lib.optionalString (claudePkg == null) ''
+                  echo 'missing claude-code in user packages on ${hostName}' >&2
+                  exit 1
+                '';
+                present = pkgs.lib.optionalString (claudePkg != null) ''
+                  if [ ! -x ${claudePkg}/bin/claude ]; then
+                    echo 'claude-code package ships no bin/claude executable on ${hostName}' >&2
+                    exit 1
+                  fi
+                  actualVersion=$(${claudePkg}/bin/claude --version)
+                  case "$actualVersion" in
+                    *"${pinnedVersion}"*) ;;
+                    *)
+                      echo "claude-code on ${hostName} reports version '$actualVersion', expected pin ${pinnedVersion}" >&2
+                      exit 1
+                      ;;
+                  esac
+                '';
+              in
+              ''
+                ${absent}
+                ${present}
+              '';
+          in
+          pkgs.runCommand "claude-code-tests" { } ''
             set -x
             ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
             ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
