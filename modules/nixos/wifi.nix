@@ -37,63 +37,53 @@ in
         }
       ];
     }
-    (lib.mkIf available (
-      let
-        secretFor = label: field: {
-          name = "wifi/${label}/${field}";
-          value = {
+    (lib.mkIf available {
+      # Independent of modules/nixos/secrets.nix's own cliAuth.sopsFile state:
+      # this module must decrypt secrets/wifi.yaml even when tokens.yaml is
+      # absent, so it configures its own age key source rather than relying
+      # on cliAuth's `mkIf available` block to have already set one. Reads
+      # cliAuth's own ageKeyFile option (rather than repeating its literal
+      # default) so the two modules cannot silently diverge if it is ever
+      # overridden per host.
+      sops.age.keyFile = config.my.cliAuth.ageKeyFile;
+      sops.age.generateKey = false;
+
+      sops.secrets =
+        lib.genAttrs
+          (lib.concatMap (label: [
+            "wifi/${label}/ssid"
+            "wifi/${label}/psk"
+          ]) cfg.networks)
+          (name: {
             sopsFile = cfg.sopsFile;
-            key = "wifi/${label}/${field}";
             owner = "root";
             mode = "0400";
+          });
+
+      sops.templates."wifi.env".content = lib.concatMapStrings (label: ''
+        ${lib.toUpper label}_SSID=${config.sops.placeholder."wifi/${label}/ssid"}
+        ${lib.toUpper label}_PSK=${config.sops.placeholder."wifi/${label}/psk"}
+      '') cfg.networks;
+
+      systemd.services."NetworkManager-ensure-profiles" = {
+        after = [ "sops-install-secrets.service" ];
+        wants = [ "sops-install-secrets.service" ];
+      };
+
+      networking.networkmanager.ensureProfiles = {
+        environmentFiles = [ config.sops.templates."wifi.env".path ];
+        profiles = lib.genAttrs cfg.networks (label: {
+          connection = {
+            id = label;
+            type = "wifi";
           };
-        };
-      in
-      {
-        # Independent of modules/nixos/secrets.nix's own cliAuth.sopsFile state:
-        # this module must decrypt secrets/wifi.yaml even when tokens.yaml is
-        # absent, so it configures its own age key source rather than relying
-        # on cliAuth's `mkIf available` block to have already set one.
-        sops.age.keyFile = "/var/lib/sops-nix/key.txt";
-        sops.age.generateKey = false;
-
-        sops.secrets = lib.listToAttrs (
-          lib.concatMap (label: [
-            (secretFor label "ssid")
-            (secretFor label "psk")
-          ]) cfg.networks
-        );
-
-        sops.templates."wifi.env".content = lib.concatMapStrings (label: ''
-          ${lib.toUpper label}_SSID=${config.sops.placeholder."wifi/${label}/ssid"}
-          ${lib.toUpper label}_PSK=${config.sops.placeholder."wifi/${label}/psk"}
-        '') cfg.networks;
-
-        systemd.services."NetworkManager-ensure-profiles" = {
-          after = [ "sops-install-secrets.service" ];
-          wants = [ "sops-install-secrets.service" ];
-        };
-
-        networking.networkmanager.ensureProfiles = {
-          environmentFiles = [ config.sops.templates."wifi.env".path ];
-          profiles = lib.listToAttrs (
-            map (label: {
-              name = label;
-              value = {
-                connection = {
-                  id = label;
-                  type = "wifi";
-                };
-                wifi.ssid = "$" + lib.toUpper label + "_SSID";
-                wifi-security = {
-                  key-mgmt = "wpa-psk";
-                  psk = "$" + lib.toUpper label + "_PSK";
-                };
-              };
-            }) cfg.networks
-          );
-        };
-      }
-    ))
+          wifi.ssid = "$" + lib.toUpper label + "_SSID";
+          wifi-security = {
+            key-mgmt = "wpa-psk";
+            psk = "$" + lib.toUpper label + "_PSK";
+          };
+        });
+      };
+    })
   ];
 }

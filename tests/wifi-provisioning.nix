@@ -29,6 +29,7 @@ pkgs.testers.nixosTest {
   nodes.missing = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
+      ../modules/nixos/secrets.nix
       ../modules/nixos/wifi.nix
     ];
     system.switch.enable = true;
@@ -45,6 +46,7 @@ pkgs.testers.nixosTest {
   nodes.machine = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
+      ../modules/nixos/secrets.nix
       ../modules/nixos/wifi.nix
     ];
     system.switch.enable = true;
@@ -90,12 +92,11 @@ pkgs.testers.nixosTest {
         assert "ssid=TestOfficeNet" in office
         assert "psk=FAKE_office_psk_2" in office
         assert "TestHomeNet" not in office and "FAKE_home_psk_1" not in office
-        for f in [home_keyfile, office_keyfile]:
+        for f, content in [(home_keyfile, home), (office_keyfile, office)]:
             machine.succeed("test $(stat -c '%a:%U' " + f + ") = 600:root")
-        for f in [home_keyfile, office_keyfile]:
-            assert "dns=" not in machine.succeed("cat " + f)
-            assert "gateway=" not in machine.succeed("cat " + f)
-            assert "route" not in machine.succeed("cat " + f)
+            assert "dns=" not in content
+            assert "gateway=" not in content
+            assert "route" not in content
 
     verify()
     machine.succeed(switch)
