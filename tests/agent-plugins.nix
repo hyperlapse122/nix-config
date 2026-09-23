@@ -25,7 +25,7 @@
     the lock actually resolved.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
-  which Nix writes, and the registry in home/h82/agent-plugins.nix, which a
+  which Nix writes, and the registry in home/h82/agents/agent-plugins.nix, which a
   person writes. A tag is mutable and a relock re-resolves the ref, so the tag
   alone is not a pin -- if upstream moves it, the lock's revision changes and
   this assertion goes red instead of the change arriving as a lock diff.

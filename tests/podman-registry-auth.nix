@@ -33,8 +33,8 @@ pkgs.testers.nixosTest {
     {
       imports = [
         inputs.sops-nix.nixosModules.sops
-        ../modules/nixos/secrets.nix
-        ../modules/nixos/podman.nix
+        ../modules/nixos/system/secrets.nix
+        ../modules/nixos/services/podman.nix
       ];
       system.switch.enable = true;
       boot.loader.grub.enable = pkgs.lib.mkForce false;
@@ -57,8 +57,8 @@ pkgs.testers.nixosTest {
     {
       imports = [
         inputs.sops-nix.nixosModules.sops
-        ../modules/nixos/secrets.nix
-        ../modules/nixos/podman.nix
+        ../modules/nixos/system/secrets.nix
+        ../modules/nixos/services/podman.nix
       ];
       system.switch.enable = true;
       boot.loader.grub.enable = pkgs.lib.mkForce false;

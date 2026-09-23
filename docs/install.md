@@ -2,7 +2,7 @@
 
 The supported host configurations are:
 
-- `ThinkPad-X1-Carbon-Gen-11`: Lenovo ThinkPad X1 Carbon Gen 11 laptop (internal KIOXIA 512 GB NVMe).
+- `ThinkPad-X1-Carbon-Gen-11`: Lenovo ThinkPad X1 Carbon Gen 11 laptop (internal Samsung 980 PRO 1TB NVMe).
 - `MS-7D91`: MSI MS-7D91 desktop workstation with Intel i7-13700F, NVIDIA GeForce RTX 3060, Samsung 980 PRO 1TB NVMe, and preserved secondary 2TB HDD at `/mnt/data`.
 
 This procedure erases the existing operating system and data on the target installation NVMe disk. Do not repeat it for routine configuration changes.
@@ -31,7 +31,7 @@ sudo dmidecode -s system-product-name
 
 Confirm that the by-id path declared in the host's `disko.nix` matches the target NVMe drive:
 
-- For ThinkPad: `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies `/dev/disk/by-id/nvme-KIOXIA_..._512GB`.
+- For ThinkPad: `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X`.
 - For MS-7D91: `hosts/MS-7D91/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNF0WB26038A`. (Note: The secondary HDD `/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1` is not touched by disko and will be mounted read-write at `/mnt/data`).
 
 Do not select the target solely by its enumeration as `/dev/nvme0n1`.
@@ -68,6 +68,18 @@ On the installed NixOS, fetch the repository again over HTTPS and recover the ag
 
 ```sh
 ./scripts/recover-age-identity
+```
+
+Register this card's PIN now so later Git signing does not prompt for it again. See [provisioning](provisioning.md) for the full per-card, multi-serial design. Enter the PIN at the command's prompt, not in its arguments or shell history.
+
+```sh
+nix develop
+card_serial='<normalized serial from gpg --card-status>'
+secret-tool store --label='OpenPGP card PIN' service gnupg-card-pin username "$card_serial"
+unset card_serial
+```
+
+```sh
 sudo sbctl create-keys
 # On ThinkPad:
 sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
