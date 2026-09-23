@@ -597,6 +597,14 @@
                 ${./.github/workflows/claude.yml}
               touch $out
             '';
+        update-dependencies-push-order =
+          pkgs.runCommand "update-dependencies-push-order-tests" { nativeBuildInputs = [ pkgs.git ]; }
+            ''
+              export HOME=$TMPDIR
+              bash ${./tests/update-dependencies-push-order.sh} \
+                ${./.github/workflows/update-dependencies.yml}
+              touch $out
+            '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
