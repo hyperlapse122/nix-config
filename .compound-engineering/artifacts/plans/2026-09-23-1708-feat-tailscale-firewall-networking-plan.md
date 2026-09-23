@@ -12,108 +12,108 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** `ThinkPad-X1-Carbon-Gen-11`과 `MS-7D91`이 Tailscale로 서로 및 외부에서 안전하게 원격 접속되고, `MS-7D91`을 통해 지정된 홈 네트워크/사내 서버 대역에 도달할 수 있으며, 최초 시크릿·ACL 준비 이후에는 재설치를 포함한 모든 activation이 사람 개입 없이 완료된다.
-- **Means:** NixOS 내장 `networking.firewall` + `services.tailscale`를 두 호스트에 선언적으로 구성한다. firewalld는 사용하지 않는다.
-- **Product authority:** 이 `ce-brainstorm` 대화에서 사용자가 직접 결정 — 전 항목 user-directed.
-- **Open blockers:** 없음. 남은 준비 작업(`.sops.yaml` 규칙 추가, tailnet ACL auto-approver 설정)은 구현 단계의 일부이며 Dependencies에 기록되어 있다.
+- **Objective:** `ThinkPad-X1-Carbon-Gen-11` and `MS-7D91` can reach each other and be reached remotely over Tailscale, `MS-7D91` provides reachability to the specified home-network/office-server ranges, and after the one-time secret/ACL setup every activation — including a full reinstall — completes with no human involvement.
+- **Means:** Configure NixOS's built-in `networking.firewall` plus `services.tailscale` declaratively on both hosts. firewalld is not used.
+- **Product authority:** Decided directly by the user in this `ce-brainstorm` conversation — every item is user-directed.
+- **Open blockers:** None. The remaining prep work (adding a `.sops.yaml` rule, configuring the tailnet ACL auto-approver) is part of implementation and is recorded under Dependencies.
 
 ---
 
 ## Product Contract
 
-**Product Contract preservation:** restructured, no scope change — added R9 (route-accepting host must opt in; Linux does not auto-accept advertised routes, so the Goal Capsule's reachability objective could not otherwise hold) and redacted the literal route IP from R5/Dependencies prose (ce-doc-review security-lens finding: R7 already requires this value stay out of git history, and the plan text itself is git-tracked). Both are completions of the already-stated objective, not new scope. Otherwise unchanged; this enrichment adds the Planning Contract, Implementation Units, Verification Contract, and Definition of Done below.
+**Product Contract preservation:** restructured, no scope change — added R9 (a route-accepting host must opt in; Linux does not auto-accept advertised routes, so the Goal Capsule's reachability objective could not otherwise hold) and redacted the literal route IP from R5/Dependencies prose (ce-doc-review security-lens finding: R7 already requires this value stay out of git history, and the plan text itself is git-tracked). Both are completions of the already-stated objective, not new scope. Otherwise unchanged; this enrichment adds the Planning Contract, Implementation Units, Verification Contract, and Definition of Done below.
 
 ### Summary
 
-두 호스트(`ThinkPad-X1-Carbon-Gen-11`, `MS-7D91`)에 NixOS 내장 방화벽과 Tailscale을 선언적으로 구성한다. 두 머신은 Tailscale SSH로 서로/외부에서 원격 접속 가능해지고, `MS-7D91`은 홈 네트워크 두 대역과 사내 서버 한 곳을 서브넷 라우터로 광고한다. 등록과 재설치 시 기존 기기 정리까지 sops로 암호화된 시크릿만으로 완전히 무인 동작한다.
+Declaratively configure NixOS's built-in firewall and Tailscale on both hosts (`ThinkPad-X1-Carbon-Gen-11`, `MS-7D91`). Both machines become reachable for remote login to/from each other and the outside over Tailscale SSH, and `MS-7D91` advertises two home-network ranges plus one office server as a subnet router. Registration, and cleanup of a stale device on reinstall, run fully unattended from sops-encrypted secrets alone.
 
 ### Requirements
 
 **Firewall**
 
-- R1. 두 호스트 모두 firewalld가 아닌 NixOS 내장 `networking.firewall`을 유일한 방화벽 백엔드로 사용하며, 기존 기본 거부(default-deny) 인바운드 태세 위에 Tailscale 동작에 필요한 포트만 추가로 연다.
+- R1. Both hosts use NixOS's built-in `networking.firewall` as their sole firewall backend, not firewalld, opening only the ports Tailscale needs on top of the existing default-deny inbound posture.
 
 **Tailscale connectivity**
 
-- R2. 두 호스트 모두 activation 시 인증 키로 자동 등록되며, 대화형 브라우저 로그인을 요구하지 않는다.
-- R3. 두 호스트 모두 원격 로그인은 Tailscale SSH로 이루어지며, 별도의 `sshd`는 실행하지 않는다.
-- R4. 호스트를 재설치해도 동일 호스트명의 이전 기기가 tailnet에 중복으로 남지 않는다 — 새 등록 전 또는 그 일부로 이전 기기가 자동 제거된다.
+- R2. Both hosts register automatically with an auth key at activation, with no interactive browser login required.
+- R3. Remote login to both hosts happens over Tailscale SSH; neither runs a separate `sshd`.
+- R4. Reinstalling a host does not leave a duplicate prior device under the same hostname in the tailnet — the prior device is removed automatically before, or as part of, the new registration.
 
 **Subnet routing**
 
-- R5. `MS-7D91`은 정확히 세 개의 경로 — `192.168.10.0/24`, `192.168.1.0/24`, `wp.jpi.co.kr`의 단일 IP(정확한 값은 `secrets/tailscale.yaml`에만 보관하며 이 문서에는 기록하지 않는다) — 만 광고한다. 그 외 경로나 전체 트래픽을 넘기는 default route는 광고하지 않는다.
-- R6. `ThinkPad-X1-Carbon-Gen-11`은 어떤 경로도 광고하지 않으며 exit node로 동작하지 않는다.
-- R9. 경로를 사용하는 호스트(`ThinkPad-X1-Carbon-Gen-11`)는 명시적으로 라우트 수신을 켠다. Tailscale의 Linux 클라이언트는 광고된 서브넷 라우트를 기본적으로 수신하지 않으므로, 이 설정 없이는 Goal Capsule의 라우트 도달 목표가 성립하지 않는다.
+- R5. `MS-7D91` advertises exactly three routes — `192.168.10.0/24`, `192.168.1.0/24`, and a single IP for `wp.jpi.co.kr` (the exact value is kept only in `secrets/tailscale.yaml`, never recorded in this document) — and nothing else. No other route, and no default route carrying all traffic, is advertised.
+- R6. `ThinkPad-X1-Carbon-Gen-11` advertises no routes and does not act as an exit node.
+- R9. The host that consumes those routes (`ThinkPad-X1-Carbon-Gen-11`) explicitly turns route acceptance on. Tailscale's Linux client does not accept advertised subnet routes by default, so without this setting the Goal Capsule's reachability objective cannot hold.
 
 **Secrets & unattended operation**
 
-- R7. Tailscale 인증 키, 기기 정리용 API 자격 증명, 세 경로 값은 오직 sops로 암호화된 시크릿(`secrets/tailscale.yaml`)으로만 보관되며, Nix 스토어나 git 이력에 평문으로 남지 않는다.
-- R8. 시크릿과 tailnet ACL을 최초 1회 준비한 뒤에는, 재설치를 포함한 이후의 모든 `nixos-rebuild`/activation이 대화형 로그인·기기 승인·경로 승인 없이 완료된다.
+- R7. The Tailscale auth key, the device-cleanup API credential, and the three route values are kept only in the sops-encrypted secret (`secrets/tailscale.yaml`), never in plaintext in the Nix store or git history.
+- R8. After the secrets and the tailnet ACL are prepared once, every subsequent `nixos-rebuild`/activation — including a reinstall — completes with no interactive login, device-approval, or route-approval step.
 
 ### Key Decisions
 
-- **적용 범위: 두 호스트 모두** (session-settled: user-directed — chosen over ThinkPad 단독/MS-7D91 단독: 두 머신이 서로 tailnet으로 연결되어야 의미 있는 구성이므로).
-- **NixOS 내장 방화벽 사용, firewalld 대신** (session-settled: user-directed — chosen over firewalld: 노출 포트가 Tailscale UDP 포트뿐이라 zone/dbus 계층이 불필요한 복잡도였음). Governs R1.
-- **authkey 기반 자동 등록** (session-settled: user-directed — chosen over 수동 `tailscale up` 로그인: 재설치 시에도 무인 등록이 가능함). Governs R2, R7.
-- **Tailscale SSH로 원격 접속** (session-settled: user-directed — chosen over 별도 openssh: 키 관리와 방화벽 규칙이 줄어듦). Governs R3.
-- **개인 API 액세스 토큰으로 중복 기기 자동 삭제** (session-settled: user-directed — chosen over scoped OAuth client 및 수동 admin console 삭제: 이미 발급받은 토큰이 있고, 재설치마다 사람 개입 없이 정리되어야 함). Governs R4, R7.
-- **`MS-7D91`이 서브넷 라우터** (session-settled: user-directed — chosen over `ThinkPad` 단독 또는 둘 다: 고정 데스크톱이라 항상 켜져 있고 홈 네트워크에 상주함). Governs R5, R6.
-- **라우트 IP는 정적 secret 값, 활성화 시마다 DNS 재조회하지 않음** (session-settled: user-directed — chosen over 매 activation마다 `wp.jpi.co.kr` 재조회: 단순하며 그 IP가 자주 바뀌지 않음). Governs R5.
+- **Scope: both hosts** (session-settled: user-directed — chosen over ThinkPad alone or MS-7D91 alone: the two machines only make sense connected to each other over the tailnet).
+- **Use NixOS's built-in firewall, not firewalld** (session-settled: user-directed — chosen over firewalld: the only exposed ports are Tailscale's UDP ports, so firewalld's zone/dbus layer was unneeded complexity). Governs R1.
+- **Automatic registration via auth key** (session-settled: user-directed — chosen over a manual `tailscale up` login: keeps registration unattended even across a reinstall). Governs R2, R7.
+- **Remote access via Tailscale SSH** (session-settled: user-directed — chosen over a separate openssh: fewer keys to manage and fewer firewall rules). Governs R3.
+- **Automatic duplicate-device deletion via a personal API access token** (session-settled: user-directed — chosen over a scoped OAuth client and over manual admin-console deletion: a token was already issued, and cleanup must happen unattended on every reinstall). Governs R4, R7.
+- **`MS-7D91` is the subnet router** (session-settled: user-directed — chosen over `ThinkPad` alone or both: it is a stationary desktop, always on, resident on the home network). Governs R5, R6.
+- **Route IPs are a static secret value; no DNS re-resolution at activation** (session-settled: user-directed — chosen over re-resolving `wp.jpi.co.kr` on every activation: simpler, and that IP rarely changes). Governs R5.
 
 ### Actors
 
-- A1. **운영자(사용자)** — `secrets/tailscale.yaml`과 tailnet ACL의 route auto-approver를 최초 1회 out-of-band로 준비한다. 이후의 일반적인 rebuild에는 관여하지 않는다.
-- A2. **`ThinkPad-X1-Carbon-Gen-11` / `MS-7D91`** — 각 호스트는 activation 시 F1의 흐름으로 스스로 등록한다.
-- A3. **Tailscale 코디네이션 서비스 / API** — 노드를 인증하고 ACL 정책에 따라 경로 승인을 적용하며, F1의 정리 단계에서 조회·수정된다.
+- A1. **Operator (the user)** — prepares `secrets/tailscale.yaml` and the tailnet ACL's route auto-approver once, out of band. Not involved in ordinary rebuilds afterward.
+- A2. **`ThinkPad-X1-Carbon-Gen-11` / `MS-7D91`** — each host registers itself at activation via the F1 flow.
+- A3. **Tailscale coordination service / API** — authenticates nodes and applies route approval per ACL policy; queried and mutated by the cleanup step in F1.
 
 ### Key Flows
 
-- F1. **무인 Tailscale activation** — Covers R2, R4, R8.
-  - **Trigger:** 두 호스트 중 하나에서 `nixos-rebuild switch`가 activate되거나(재설치 후 첫 부팅 포함).
+- F1. **Unattended Tailscale activation** — Covers R2, R4, R8.
+  - **Trigger:** `nixos-rebuild switch` activates on either host (including the first boot after a reinstall).
   - **Actors:** A2, A3.
-  - **Steps:** sops-nix가 `secrets/tailscale.yaml`을 복호화한다 → 정리 단계가 Tailscale API로 동일 호스트명의 기존 기기를 조회해 제거한다 → 인증 키로 `tailscale up`이 노드를 등록한다 → `MS-7D91`인 경우 세 경로를 추가로 광고한다.
-  - **Outcome:** 해당 호스트가 tailnet에서 `Running` 상태에 도달하고, 중복 없이 하나의 현재 기기 항목만 존재하며, 어떤 대화형 단계도 필요하지 않다.
+  - **Steps:** sops-nix decrypts `secrets/tailscale.yaml` → the cleanup step queries the Tailscale API for any existing device under this hostname and removes it → `tailscale up` registers the node with the auth key → on `MS-7D91`, the three routes are additionally advertised.
+  - **Outcome:** the host reaches `Running` state in the tailnet, exactly one current device entry exists with no duplicate, and no interactive step is required.
 
 ### Acceptance Examples
 
-- AE1. **Covers R4.** Given `MS-7D91`이 이전에 등록되어 있고 재설치 중일 때, When 동일 호스트명으로 새 설치가 activate되면, Then tailnet에 이전 기기 항목이 더 이상 남아 있지 않고 `MS-7D91` 기기는 하나만 나열된다.
-- AE2. **Covers R2, R8.** Given `secrets/tailscale.yaml`이 채워져 있고 tailnet ACL의 route auto-approver가 설정되어 있을 때, When 두 호스트 중 하나가 `nixos-rebuild switch`를 실행하거나(또는 재설치 후 첫 부팅) activate되면, Then 대화형 로그인·기기 승인·경로 승인 프롬프트 없이 Tailscale이 `Running` 상태에 도달한다.
-- AE3. **Covers R5, R6, R9.** Given `MS-7D91`이 정상 동작 중일 때, When 다른 tailnet 피어가 광고된 경로를 조회하면, Then 정확히 secret에 기록된 세 대역만 광고되어 있고, `ThinkPad-X1-Carbon-Gen-11`은 아무 경로도 광고하지 않으며, 어느 호스트도 default route(`0.0.0.0/0`)를 광고하지 않는다. 또한 `ThinkPad-X1-Carbon-Gen-11`의 tailscale 설정에서 라우트 수신이 켜져 있어, 실제로 그 대역에 도달할 수 있다.
+- AE1. **Covers R4.** Given `MS-7D91` was previously registered and is being reinstalled, When a fresh install under the same hostname activates, Then the prior device entry no longer exists in the tailnet and only one `MS-7D91` device is listed.
+- AE2. **Covers R2, R8.** Given `secrets/tailscale.yaml` is populated and the tailnet ACL's route auto-approver is configured, When either host runs (or activates via) `nixos-rebuild switch` (including first boot after a reinstall), Then Tailscale reaches `Running` state with no interactive login, device-approval, or route-approval prompt.
+- AE3. **Covers R5, R6, R9.** Given `MS-7D91` is operating normally, When another tailnet peer queries the advertised routes, Then exactly the three ranges recorded in the secret are advertised, `ThinkPad-X1-Carbon-Gen-11` advertises no routes, and neither host advertises a default route (`0.0.0.0/0`). Also, route acceptance is on in `ThinkPad-X1-Carbon-Gen-11`'s Tailscale configuration, so it can actually reach those ranges.
 
 ### Scope Boundaries
 
 **Deferred for later**
 
-- 전체 트래픽 경로를 넘기는 exit-node(default route) 기능.
-- `wp.jpi.co.kr` 라우트 IP의 activation-time 자동 DNS 재조회 — 지금은 정적 secret 값이며, IP가 바뀌면 사람이 secret을 수정하고 재빌드한다.
+- An exit-node (default-route) capability that carries all traffic.
+- Automatic activation-time DNS re-resolution of the `wp.jpi.co.kr` route IP — it is a static secret value for now; if the IP changes, a human updates the secret and rebuilds.
 
 **Outside this work**
 
-- KDE Connect, Avahi, 프린팅 등 기존에 리포에 구성되어 있지 않던 LAN 디스커버리 서비스에 대한 방화벽 예외 — 이번 작업의 대상이 아니다.
+- Firewall exceptions for LAN-discovery services (KDE Connect, Avahi, printing, etc.) that are not already configured in this repo — not the target of this work.
 
 ### Success Criteria
 
-- `nix flake check`와 네 개 호스트 빌드(`ThinkPad-X1-Carbon-Gen-11`, `-bootstrap`, `MS-7D91`, `-bootstrap`)가 새 모듈을 포함한 채로 모두 통과한다 (AGENTS.md 기준).
-- 구현 과정에서 어떤 도구도 실제 시크릿 평문을 파일이나 로그에 남기지 않는다 — 최초 1회 시크릿 채움은 사용자가 직접 실행한다.
+- `nix flake check` and all four host builds (`ThinkPad-X1-Carbon-Gen-11`, `-bootstrap`, `MS-7D91`, `-bootstrap`) pass with the new module included (per AGENTS.md).
+- No tool used during implementation leaves real secret plaintext in a file or a log — the one-time secret population is run by the user directly.
 
 ### Dependencies / Assumptions
 
-- `secrets/tailscale.yaml`은 이미 존재하며(이 브레인스토밍 세션에서 사용자가 직접 `op read | sops encrypt`로 준비함), `tailscale.auth_key`, `tailscale.api_token`, `tailscale.routes.{lan_10,lan_1,wp_jpi_co_kr}` 키를 담고 있다. Nix 모듈은 이 구조를 소비 대상으로 삼되, 정확한 키 이름은 계획 단계에서 확정한다.
-- `.sops.yaml`에는 아직 `secrets/tailscale\.yaml$` 생성 규칙이 없다 — sops 일반 툴링(`sops edit` 등)이 이 파일을 인식하려면 계획 단계에서 규칙을 추가해야 한다.
-- API 토큰(`op://H82/Tailscale/API Key`)은 2026-12-22 만료 예정이다 — 그 전에 로테이션이 필요하다.
-- R8이 성립하려면 tailnet ACL에 광고된 세 경로에 대한 route auto-approver가 설정되어 있어야 한다 — 아직 설정되지 않았다면 admin console에서의 1회성 작업이 필요하다.
-- `wp.jpi.co.kr`은 내부망에서만 해석되는 도메인이다. 실제 IP는 `secrets/tailscale.yaml`에만 보관하며, 이 값이 바뀌면 secret을 수동으로 갱신하고 재빌드해야 한다.
-- `tailscale.auth_key`는 반드시 **Reusable**(재사용 가능) 키여야 한다 — 일반(1회용) auth key는 첫 등록 이후 재사용할 수 없어, 두 번째 호스트의 최초 등록이나 이후 어떤 재설치도 즉시 실패한다. R2/R4/R8은 이 하나의 secret이 매 등록마다 다시 쓰인다고 전제한다. 이미 준비된 `secrets/tailscale.yaml`의 키가 Reusable로 발급되었는지는 사용자가 확인해야 한다 — 아니라면 admin console에서 재발급해 secret을 갱신해야 한다.
-- Tailscale SSH(R3)가 실제로 로그인을 허용하려면 tailnet ACL에 명시적인 `ssh` action이 의도한 사용자/태그로 스코프되어 있어야 한다 — route auto-approver와 마찬가지로 admin console에서의 1회성 작업이다.
+- `secrets/tailscale.yaml` already exists (the user prepared it directly during this brainstorming session via `op read | sops encrypt`) and holds the keys `tailscale.auth_key`, `tailscale.api_token`, `tailscale.routes.{lan_10,lan_1,wp_jpi_co_kr}`. The Nix module consumes this structure; the exact key names are finalized during planning.
+- `.sops.yaml` does not yet have a creation rule for `secrets/tailscale\.yaml$` — planning must add one so ordinary sops tooling (`sops edit`, etc.) recognizes the file.
+- The API token (`op://H82/Tailscale/API Key`) expires 2026-12-22 — it needs rotation before then.
+- For R8 to hold, the tailnet ACL needs a route auto-approver configured for the three advertised routes — if not already set, this is a one-time admin-console task.
+- `wp.jpi.co.kr` is a domain that only resolves on the internal network. The real IP is kept only in `secrets/tailscale.yaml`; if it changes, the secret must be updated manually and the system rebuilt.
+- `tailscale.auth_key` must be a **Reusable** key — an ordinary (single-use) auth key cannot be reused after its first registration, so the second host's initial registration, or any later reinstall, would fail immediately. R2/R4/R8 assume this one secret is reused for every registration. Whether the key already in `secrets/tailscale.yaml` was issued as Reusable needs user confirmation — if not, it must be reissued from the admin console and the secret updated.
+- For Tailscale SSH (R3) to actually permit login, the tailnet ACL needs an explicit `ssh` action scoped to the intended user/tag — like the route auto-approver, this is a one-time admin-console task.
 
 ### Sources / Research
 
-- 리포 조사: `modules/`, `hosts/`, `flake.nix`에 `networking.firewall`, `services.firewalld`, `services.tailscale`, `services.openssh` 설정이 이전에 전혀 없었다.
-- `modules/nixos/services/podman.nix` — 이 리포가 서비스 모듈에 쓰는 `options.my.<name>` + `mkIf cfg.enable` 패턴.
-- `modules/nixos/wifi.nix`, `modules/nixos/system/secrets.nix`, `secrets/README.md` — 이 플랜의 `secrets/tailscale.yaml`이 따르는 sops-secret + 호스트별 `.sops.yaml` 생성 규칙 관례.
-- nixpkgs(pinned rev `20b1ddd1aa5ace70c9468305030aa4f9ef79671b`, nixos-unstable) `nixos/modules/services/networking/tailscale.nix` — `services.tailscale`의 `openFirewall`, `useRoutingFeatures`, `authKeyFile`, `extraUpFlags` 옵션. `openFirewall`은 `networking.firewall.allowedUDPPorts`만 연동하므로 firewalld가 아닌 내장 방화벽과 바로 맞물린다.
-- [Tailscale — Auth keys](https://tailscale.com/docs/features/access-control/auth-keys) — 동일 호스트명 기기를 자동으로 교체하는 내장 메커니즘은 없으며, 기존 기기는 admin console 또는 API로 제거해야 한다는 점이 R4의 근거다.
-- 참고용 외부 스크립트 `hyperlapse122/dotfiles`의 `home/.chezmoiscripts/30-linux/run_onchange_after_install-system-30-network.sh.tmpl` (Fedora/chezmoi, firewalld 기반, 명령형) — 최초 firewalld 프레이밍(trusted zone 바인딩, WireGuard/STUN 포트 개방, exit-node masquerade 근거)의 출발점이었으나, 이 플랜은 Key Decision에 따라 내장 방화벽으로 pivot했으므로 firewalld 관련 메커니즘은 더 이상 적용되지 않는다. Tailscale이 필요로 하는 포트라는 근거만 R1에 이어진다.
+- Repo survey: `modules/`, `hosts/`, and `flake.nix` had no prior `networking.firewall`, `services.firewalld`, `services.tailscale`, or `services.openssh` configuration at all.
+- `modules/nixos/services/podman.nix` — this repo's `options.my.<name>` + `mkIf cfg.enable` pattern for service modules.
+- `modules/nixos/wifi.nix`, `modules/nixos/system/secrets.nix`, `secrets/README.md` — the sops-secret plus per-host `.sops.yaml` creation-rule convention this plan's `secrets/tailscale.yaml` follows.
+- nixpkgs (pinned rev `20b1ddd1aa5ace70c9468305030aa4f9ef79671b`, nixos-unstable) `nixos/modules/services/networking/tailscale.nix` — the `services.tailscale` options `openFirewall`, `useRoutingFeatures`, `authKeyFile`, `extraUpFlags`. `openFirewall` only wires `networking.firewall.allowedUDPPorts`, so it plugs directly into the built-in firewall rather than firewalld.
+- [Tailscale — Auth keys](https://tailscale.com/docs/features/access-control/auth-keys) — there is no built-in mechanism that automatically replaces a device under the same hostname; an existing device must be removed via the admin console or the API, which is the basis for R4.
+- Reference external script from `hyperlapse122/dotfiles`, `home/.chezmoiscripts/30-linux/run_onchange_after_install-system-30-network.sh.tmpl` (Fedora/chezmoi, firewalld-based, imperative) — the starting point for the original firewalld framing (trusted-zone binding, opening the WireGuard/STUN ports, exit-node masquerade rationale), but this plan pivoted to the built-in firewall per the Key Decision above, so the firewalld-specific mechanics no longer apply. Only the rationale for which ports Tailscale needs carries over into R1.
 
 ---
 
@@ -121,172 +121,172 @@ execution: code
 
 ### Key Technical Decisions
 
-- KTD1. **전용 firewall 모듈을 만들지 않는다.** NixOS의 `networking.firewall`은 이미 기본 활성화 상태이며, 이 작업에 필요한 유일한 방화벽 변경은 `services.tailscale.openFirewall = true`(UDP 41641 개방)뿐이다. 별도 `modules/nixos/system/firewall.nix`는 빈 껍데기가 된다. Governs R1.
-- KTD2. **시크릿은 `sops.secrets`/`sops.templates`로만 유닛에 전달하고, `extraSetFlags` 등 Nix 문자열에는 절대 넣지 않는다.** 빌드 시점 문자열 보간은 Nix 스토어에 평문으로 남는다 — `tests/wifi-provisioning.nix`가 이미 이 함정을 `nix-store -qR | grep`로 검증하는 패턴을 갖고 있다. authkey는 `services.tailscale.authKeyFile`(네이티브 옵션)로, API 토큰과 라우트 목록은 각각 별도의 `sops.templates`(`tailscale-api.env`, `tailscale-routes.env` — route-advertisement 유닛이 안 쓰는 API 토큰을 받지 않도록 분리)가 렌더링하는 파일을 통해 런타임에만 주입한다. Governs R7.
-- KTD3. **재등록 정리(dedup) 유닛은 `tailscaled-autoconnect` *이전*에 돌며, tailscaled의 상태 파일(`/var/lib/tailscale/tailscaled.state`)이 아직 없을 때만 이 hostname과 일치하는 기기를 전부 삭제한다.** (ce-doc-review로 두 차례 교정됨 — 아래 이력 참고.) 상태 파일이 있으면 일반 rebuild이거나 key-expiry 재인증이며, 두 경우 모두 이 hostname의 기존 등록이 곧 자기 자신이므로 아무것도 건드리지 않는다. 상태 파일이 없으면 디스크가 비워진 진짜 재설치이므로, 이 hostname과 일치하는 모든 기기를 등록 *전에* 지운다 — Tailscale은 hostname이 충돌하면 이미 등록된 기존 기기가 아니라 새로 등록을 시도하는 기기 쪽에 접미사(`-1` 등)를 붙이므로, 정리가 등록보다 먼저 일어나야 깨끗한 이름을 유지한다. `Before=tailscaled-autoconnect.service`만으로 충분하다 — 그 유닛은 이미 nixpkgs 자체의 `wantedBy = [ "multi-user.target" ]`로 끌어당겨지기 때문이다. API 호출은 `GET /api/v2/tailnet/-/devices`(응답의 `hostname` 필드로 대소문자 무시 매칭)와 `DELETE /api/v2/device/{deviceid}`이며, 인증은 `Authorization: Bearer <token>`이다([Tailscale API 문서 미러](https://github.com/gbraad/tailscale/blob/main/api.md)). Governs R4, R8.
+- KTD1. **No dedicated firewall module.** NixOS's `networking.firewall` is already enabled by default, and the only firewall change this work needs is `services.tailscale.openFirewall = true` (opening UDP 41641). A separate `modules/nixos/system/firewall.nix` would be an empty shell. Governs R1.
+- KTD2. **Secrets reach units only through `sops.secrets`/`sops.templates`, never through `extraSetFlags` or any other Nix string.** Build-time string interpolation leaves plaintext in the Nix store — `tests/wifi-provisioning.nix` already has a pattern that checks for exactly this trap via `nix-store -qR | grep`. The auth key uses `services.tailscale.authKeyFile` (the native option); the API token and the route list are each injected at runtime only through their own `sops.templates` file (`tailscale-api.env`, `tailscale-routes.env` — split so the route-advertisement unit never receives the API token it doesn't use). Governs R7.
+- KTD3. **The re-registration cleanup (dedup) unit runs *before* `tailscaled-autoconnect`, and deletes every device matching this hostname only when tailscaled's own state file (`/var/lib/tailscale/tailscaled.state`) does not yet exist.** (Corrected twice via ce-doc-review — see the correction history below.) If the state file exists, this is either an ordinary rebuild or a key-expiry reauthentication, and in both cases the existing registration under this hostname already *is* this instance, so nothing is touched. If the state file is absent, the disk was wiped for a genuine reinstall, so every device matching this hostname is deleted *before* registration — Tailscale appends a suffix (e.g. `-1`) to the newly-registering device, not the pre-existing one, when a hostname collides, so cleanup must happen before registration to keep the clean name. `Before=tailscaled-autoconnect.service` alone is sufficient, since that unit is already pulled in by nixpkgs' own `wantedBy = [ "multi-user.target" ]`. The API calls are `GET /api/v2/tailnet/-/devices` (matched against the response's `hostname` field, case-insensitively) and `DELETE /api/v2/device/{deviceid}`, authenticated with `Authorization: Bearer <token>` ([Tailscale API doc mirror](https://github.com/gbraad/tailscale/blob/main/api.md)). Governs R4, R8.
 
-  **교정 이력**: 최초 설계는 `tailscaled-autoconnect` *이후*에 돌며 자신의 device ID와 다른 기기만 지우는 방식이었다. ce-doc-review adversarial 리뷰가 key-expiry 재인증 시 BackendState만으로는 진짜 재설치와 구분이 안 돼 살아있는 기기를 지울 위험을 지적해, 등록 후 device-ID 비교 방식으로 1차 교정했다. 이어진 `code-review` 패스가 그 1차 교정 자체의 결함을 발견했다: 정리가 등록 *이후*에 일어나면, 재설치 시 새 기기가 등록되는 시점에 이전 기기가 아직 남아 있어 hostname이 충돌하고, Tailscale이 새 기기 쪽에 접미사를 붙여버린 뒤에야 정리가 실행되므로 깨끗한 이름이 영구히 돌아오지 않는다. 상태 파일 존재 여부를 신호로 쓰는 현재 설계는 두 문제를 동시에 해결한다: key-expiry 재인증은 상태 파일이 남아 있어 처음부터 아무것도 건드리지 않고, 진짜 재설치는 상태 파일이 없어 등록 *전에* 안전하게 정리된다.
-- KTD4. **`useRoutingFeatures = "server"`는 `advertiseRoutes = true`인 호스트(`MS-7D91`)에만 설정한다.** nixpkgs 모듈이 IP forwarding sysctl을 자동으로 켜므로 수동 sysctl이 필요 없고, `client`/`both`에서만 켜지는 `checkReversePath = "loose"`는 이 경우 해당하지 않는다. Governs R5, R6.
-- KTD5. **dedup 조회의 호스트명 비교는 대소문자를 무시한다.** Tailscale은 등록 시 호스트명을 소문자로 정규화할 수 있어, API가 돌려주는 `hostname` 필드를 `networking.hostName`(예: `MS-7D91`)과 대소문자 구분 없이 비교해야 오탐 없이 이전 기기만 정확히 삭제한다. Governs R4.
-- KTD6. **두 호스트 모두 `extraUpFlags`에 `--accept-routes`를 켠다.** (ce-doc-review adversarial 지적.) Tailscale의 Linux 클라이언트는 광고된 서브넷 라우트를 기본적으로 수신하지 않는다 — 이 플래그 없이는 `MS-7D91`이 세 경로를 광고해도 `ThinkPad-X1-Carbon-Gen-11`이 실제로 그 경로에 도달할 수 없어, R9와 Goal Capsule의 라우트 도달 목표가 깨진다. `MS-7D91`에도 동일하게 켜 두어도 무해하다(스스로 광고하는 경로를 스스로 수신하는 것은 아무 효과가 없음). Governs R9.
+  **Correction history:** the original design ran *after* `tailscaled-autoconnect` succeeded and deleted only devices whose device ID differed from this instance's own. A ce-doc-review adversarial pass pointed out that BackendState alone cannot distinguish a key-expiry reauthentication from a genuine reinstall, risking deletion of a still-live device, which produced the first correction: compare device IDs after registration. A subsequent `code-review` pass then found a defect in that first correction itself: if cleanup happens *after* registration, the prior device is still present at the moment the new device registers on reinstall, so the hostname collides, Tailscale appends a suffix to the new device, and only afterward does cleanup run — the clean hostname never comes back. The current design, gated on state-file existence, solves both problems at once: a key-expiry reauthentication leaves the state file in place, so nothing is touched from the start, and a genuine reinstall has no state file, so cleanup runs safely *before* registration.
+- KTD4. **`useRoutingFeatures = "server"` is set only on the host with `advertiseRoutes = true` (`MS-7D91`).** The nixpkgs module automatically enables IP forwarding sysctls, so no manual sysctl is needed, and `checkReversePath = "loose"` (which only applies to `client`/`both`) is not relevant here. Governs R5, R6.
+- KTD5. **The dedup query's hostname comparison is case-insensitive.** Tailscale may normalize the hostname to lowercase at registration, so the API's returned `hostname` field must be compared against `networking.hostName` (e.g. `MS-7D91`) case-insensitively, or the prior device would not be matched and deleted correctly. Governs R4.
+- KTD6. **Both hosts turn on `--accept-routes` in `extraUpFlags`.** (ce-doc-review adversarial finding.) Tailscale's Linux client does not accept advertised subnet routes by default — without this flag, `MS-7D91` could advertise its three routes and `ThinkPad-X1-Carbon-Gen-11` still could not actually reach them, breaking R9 and the Goal Capsule's reachability objective. Turning it on for `MS-7D91` too is harmless (a host accepting the routes it advertises to itself has no effect). Governs R9.
 
 ### High-Level Technical Design
 
-dedup 유닛은 `tailscaled-autoconnect.service` *이전*에 순서화되고(KTD3), route-advertisement 유닛은 그 *이후*에 순서화된다(KTD4, KTD6).
+The dedup unit is ordered *before* `tailscaled-autoconnect.service` (KTD3); the route-advertisement unit is ordered *after* it (KTD4, KTD6).
 
 ```mermaid
 flowchart TB
-  A[activation] --> B{"/var/lib/tailscale/tailscaled.state\n존재?"}
-  B -->|있음: reboot/key-expiry| D
-  B -->|없음: 진짜 재설치| C["dedup 유닛: GET tailnet/-/devices로\n이 hostname과 일치하는 기기 전부 DELETE"]
-  C --> D["tailscaled-autoconnect:\n이미 Running이면 즉시 종료,\n아니면 tailscale up --auth-key ... --ssh --accept-routes"]
-  D --> E[route-advertisement 유닛]
+  A[activation] --> B{"/var/lib/tailscale/tailscaled.state\nexists?"}
+  B -->|yes: reboot/key-expiry| D
+  B -->|no: genuine reinstall| C["dedup unit: GET tailnet/-/devices,\nDELETE every device matching this hostname"]
+  C --> D["tailscaled-autoconnect:\nexits immediately if already Running,\nelse tailscale up --auth-key ... --ssh --accept-routes"]
+  D --> E[route-advertisement unit]
   E --> F{advertiseRoutes?}
   F -->|true, MS-7D91| G["tailscale set --advertise-routes=$TAILSCALE_ROUTES"]
-  F -->|false, ThinkPad| H[유닛 자체가 존재하지 않음]
+  F -->|false, ThinkPad| H[unit does not exist]
 ```
 
 ### Risks & Dependencies
 
-- Tailscale의 공개 API가 호출 대상이다 — 스키마나 인증 방식이 바뀌면 dedup 유닛이 조용히 실패할 수 있다. `curl`의 HTTP 상태 코드를 확인하고 실패 시 activation을 막지 않고 경고만 남기는 방향을 권장한다(재시도는 다음 activation에서 자연스럽게 이뤄짐).
-- API 토큰을 `curl -H "Authorization: Bearer $TOKEN"`처럼 리터럴 인자로 넘기면 `/proc/<pid>/cmdline`을 통해 같은 호스트의 다른 로컬 사용자에게 노출된다(ce-doc-review security-lens 지적) — `curl -K -`로 헤더를 stdin에서 읽어 파일도 argv도 거치지 않게 한다.
-- dedup 유닛은 이제 `tailscaled-autoconnect` *이전*에 돌아 네트워크가 아직 준비되지 않았을 수 있다(code-review 지적으로 순서가 뒤바뀌면서 생긴 대가). API 호출이 실패하면 정리를 건너뛰고 조용히 종료하므로, 진짜 재설치의 바로 그 첫 부팅에서만, 그리고 네트워크가 특히 늦게 올라올 때만 접미사 문제가 재발할 수 있다 — 재시도 루프는 추가하지 않는다(이 좁은 경우를 위한 폴링 로직은 지금 얻는 이득에 비해 과하다). 실제 하드웨어 재설치 시 이 경계 상황이 발생하는지는 수동 검증 대상이다.
-- API 토큰(`op://H82/Tailscale/API Key`)은 2026-12-22 만료 — Product Contract Dependencies에 이미 기록됨; 만료 후에는 dedup 유닛이 인증 실패로 no-op한다.
-- Tailnet ACL의 route auto-approver 설정 여부는 이 리포의 Nix 코드로 확인·자동화할 수 없는 외부 상태다 — Product Contract Dependencies에 기록된 대로 운영자가 admin console에서 1회 확인해야 한다.
+- Tailscale's public API is the call target — if its schema or auth method changes, the dedup unit can fail silently. Checking `curl`'s HTTP status and, on failure, skipping cleanup with only a warning (never blocking activation) is the recommended approach; the next activation retries naturally.
+- Passing the API token as a literal `curl -H "Authorization: Bearer $TOKEN"` argument would expose it to any other local user on the host via `/proc/<pid>/cmdline` (ce-doc-review security-lens finding) — `curl -K -` reads the header from stdin instead, so it touches neither a file nor argv.
+- The dedup unit now runs *before* `tailscaled-autoconnect`, so the network may not be ready yet (the cost of the ordering flip that code-review's finding required). Since an API failure skips cleanup and exits quietly, the hostname-suffix problem can only recur on the very first boot of a genuine reinstall, and only when the network happens to come up unusually late — no retry loop is added for this (polling logic for this narrow case would cost more than it buys). Whether this edge case actually occurs on a real hardware reinstall is a manual-verification item.
+- The API token (`op://H82/Tailscale/API Key`) expires 2026-12-22 — already recorded under Product Contract Dependencies; after expiry, the dedup unit no-ops on auth failure.
+- Whether the tailnet ACL's route auto-approver is configured is external state this repo's Nix code cannot check or automate — as recorded under Product Contract Dependencies, the operator must confirm it once in the admin console.
 
 ---
 
 ## Implementation Units
 
-### U1. Tailscale 모듈 골격 + secrets 배선
+### U1. Tailscale module skeleton + secrets wiring
 
-- **Goal:** `modules/nixos/services/tailscale.nix`를 신설하고 `options.my.tailscale`(`enable`, `advertiseRoutes`, `apiBase`)을 정의하며, `sops.secrets`와 `sops.templates`(`tailscale-api.env`, `tailscale-routes.env`)를 배선한다.
+- **Goal:** create `modules/nixos/services/tailscale.nix`, define `options.my.tailscale` (`enable`, `advertiseRoutes`, `apiBase`), and wire `sops.secrets` and `sops.templates` (`tailscale-api.env`, `tailscale-routes.env`).
 - **Requirements:** R2, R7.
 - **Dependencies:** none.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (create)
 - **Approach:**
-  1. `modules/nixos/wifi.nix`의 `sopsFile`/`available` 패턴을 그대로 따른다 — `secrets/tailscale.yaml` 존재 여부로 `available`을 판정한다.
-  2. `sops.secrets`를 `tailscale/auth_key`, `tailscale/api_token`, `tailscale/routes/lan_10`, `tailscale/routes/lan_1`, `tailscale/routes/wp_jpi_co_kr`로 선언한다(owner=root, mode=0400).
-  3. `sops.templates."tailscale-api.env"`가 `TAILSCALE_API_TOKEN=...`과 `TAILSCALE_API_BASE=...`를 렌더링하고(KTD2), `advertiseRoutes`일 때만 별도의 `sops.templates."tailscale-routes.env"`가 콤마 join된 `TAILSCALE_ROUTES=...`를 렌더링한다. `apiBase`는 기본값 `https://api.tailscale.com`을 갖는 일반 옵션이며, U6의 VM 테스트는 이를 override해 실제 Tailscale API 대신 mock 서버를 가리킨다(feasibility 지적).
-- **Patterns to follow:** `modules/nixos/wifi.nix`(sops 시크릿 + 템플릿), `modules/nixos/services/podman.nix`(`options.my.<name>` + `mkIf cfg.enable` 형태).
+  1. Follow `modules/nixos/wifi.nix`'s `sopsFile`/`available` pattern exactly — `available` is decided by whether `secrets/tailscale.yaml` exists.
+  2. Declare `sops.secrets` for `tailscale/auth_key`, `tailscale/api_token`, `tailscale/routes/lan_10`, `tailscale/routes/lan_1`, `tailscale/routes/wp_jpi_co_kr` (owner=root, mode=0400).
+  3. `sops.templates."tailscale-api.env"` renders `TAILSCALE_API_TOKEN=...` and `TAILSCALE_API_BASE=...` (KTD2); a separate `sops.templates."tailscale-routes.env"`, only when `advertiseRoutes`, renders a comma-joined `TAILSCALE_ROUTES=...`. `apiBase` is an ordinary option defaulting to `https://api.tailscale.com`; U6's VM test overrides it to point at a mock server instead of the real Tailscale API (feasibility finding).
+- **Patterns to follow:** `modules/nixos/wifi.nix` (sops secrets + templates), `modules/nixos/services/podman.nix` (`options.my.<name>` + `mkIf cfg.enable` shape).
 - **Test scenarios:**
-  - `available = false`(secrets 파일 없음)일 때 `my.tailscale.enable = true`가 평가 오류 없이 빌드되고 tailscaled는 인증 없이 대기한다.
-  - `available = true`일 때 `sops.secrets`에 다섯 개 키가 정확한 owner/mode로 선언된다.
-- **Verification:** `nix eval`로 옵션 구조 확인, `nix flake check`.
+  - With `available = false` (no secrets file), `my.tailscale.enable = true` builds cleanly with no evaluation error and tailscaled sits unauthenticated.
+  - With `available = true`, `sops.secrets` declares the five keys with the correct owner/mode.
+- **Verification:** confirm the option structure with `nix eval`; `nix flake check`.
 
-### U2. 핵심 Tailscale 서비스 배선
+### U2. Core Tailscale service wiring
 
-- **Goal:** `services.tailscale`를 `openFirewall`, `authKeyFile`, `extraUpFlags = ["--ssh" "--accept-routes"]`, `useRoutingFeatures`로 배선한다.
+- **Goal:** wire `services.tailscale` with `openFirewall`, `authKeyFile`, `extraUpFlags = ["--ssh" "--accept-routes"]`, and `useRoutingFeatures`.
 - **Requirements:** R1, R2, R3, R7, R9.
 - **Dependencies:** U1.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (extend)
-- **Approach:** `authKeyFile = config.sops.secrets."tailscale/auth_key".path`, `useRoutingFeatures = if cfg.advertiseRoutes then "server" else "none"` (KTD1, KTD4). `extraUpFlags`는 두 호스트 동일하게 `["--ssh" "--accept-routes"]`(KTD6) — `--accept-routes`는 `advertiseRoutes` 여부와 무관하게 항상 켠다.
-- **Patterns to follow:** nixpkgs `services.tailscale` 모듈(`openFirewall` → `networking.firewall.allowedUDPPorts`).
+- **Approach:** `authKeyFile = config.sops.secrets."tailscale/auth_key".path`, `useRoutingFeatures = if cfg.advertiseRoutes then "server" else "none"` (KTD1, KTD4). `extraUpFlags` is the same `["--ssh" "--accept-routes"]` on both hosts (KTD6) — `--accept-routes` is always on regardless of `advertiseRoutes`.
+- **Patterns to follow:** the nixpkgs `services.tailscale` module (`openFirewall` → `networking.firewall.allowedUDPPorts`).
 - **Test scenarios:**
-  - `advertiseRoutes = false`(ThinkPad)일 때 `useRoutingFeatures = "none"`이고 forwarding sysctl이 설정되지 않는다.
-  - `advertiseRoutes = true`(MS-7D91)일 때 `useRoutingFeatures = "server"`이고 forwarding sysctl이 켜진다.
-  - 두 경우 모두 `networking.firewall.allowedUDPPorts`에 41641이 포함된다.
-  - Covers AE3, R9. 두 호스트 모두 `extraUpFlags`에 `--ssh`와 `--accept-routes`가 포함되고, 이 모듈은 `services.openssh`를 건드리지 않는다(R3).
-- **Verification:** `nix eval .#nixosConfigurations.<host>.config.services.tailscale`로 위 필드를 확인한다.
+  - With `advertiseRoutes = false` (ThinkPad), `useRoutingFeatures = "none"` and the forwarding sysctl is not set.
+  - With `advertiseRoutes = true` (MS-7D91), `useRoutingFeatures = "server"` and the forwarding sysctl is on.
+  - In both cases, `networking.firewall.allowedUDPPorts` includes 41641.
+  - Covers AE3, R9. Both hosts have `--ssh` and `--accept-routes` in `extraUpFlags`, and this module never touches `services.openssh` (R3).
+- **Verification:** confirm these fields via `nix eval .#nixosConfigurations.<host>.config.services.tailscale`.
 
-### U3. 재등록 정리(dedup) systemd 유닛
+### U3. Re-registration cleanup (dedup) systemd unit
 
-- **Goal:** 재설치 시 동일 호스트명의 이전 기기를 등록 *전에* 자동 제거하는 oneshot 유닛을 추가한다(KTD3 — ce-doc-review와 code-review로 두 차례 교정됨).
+- **Goal:** add a oneshot unit that automatically removes a prior device under the same hostname *before* registration on reinstall (KTD3 — corrected twice via ce-doc-review and code-review).
 - **Requirements:** R4, R8.
 - **Dependencies:** U1, U2.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (extend)
   - `scripts/tailscale-dedup-device` (create)
 - **Approach:**
-  1. `before = ["tailscaled-autoconnect.service"]`, `wantedBy = ["multi-user.target"]`로 유닛을 정의한다 — `tailscaled-autoconnect`는 nixpkgs 자체가 이미 `wantedBy = [ "multi-user.target" ]`로 끌어당기므로, `before` 하나로 순서가 보장된다.
-  2. 스크립트는 `/var/lib/tailscale/tailscaled.state`(tailscaled 패키지가 실제로 쓰는 상태 파일 경로) 존재 여부만 확인한다 — 있으면 즉시 종료(HTD 참조).
-  3. 없으면 `$TAILSCALE_API_BASE/api/v2/tailnet/-/devices`(`GET`)를 `tailscale-api.env`의 `TAILSCALE_API_TOKEN`으로 인증 호출하고, KTD5의 대소문자 무시 비교로 이 호스트명과 일치하는 기기를 전부 `$TAILSCALE_API_BASE/api/v2/device/{id}`(`DELETE`)한다(아직 등록 전이므로 자신을 구분할 필요가 없다). `TAILSCALE_API_BASE`는 U1의 `tailscale-api.env`가 기본값 `https://api.tailscale.com`으로 제공하며, U6의 VM 테스트에서만 mock 서버 주소로 override된다.
-  4. bearer 토큰은 `curl` 인자로 직접 넘기지 않는다 — `/proc/*/cmdline` 노출을 피하기 위해 `curl -K`/`--config`로 stdin에서 읽는다(Risks 참조).
-  5. `scripts/tailscale-dedup-device`는 이 리포의 `scripts/` + 직접 호출 테스트 관례를 따르는 독립 실행 파일로 작성하고, 모듈에서는 `pkgs.writeShellScript`로 감싼다 — 테스트 전용 내부 옵션을 두지 않는다.
-- **Execution note:** 이 유닛은 실패해도 activation을 막지 않아야 한다 — API 실패 시 경고만 남기고 종료한다(Risks 참조).
+  1. Define the unit with `before = ["tailscaled-autoconnect.service"]` and `wantedBy = ["multi-user.target"]` — since nixpkgs itself already pulls `tailscaled-autoconnect` in via `wantedBy = [ "multi-user.target" ]`, `before` alone is enough to guarantee the order.
+  2. The script checks only whether `/var/lib/tailscale/tailscaled.state` (the state-file path tailscaled actually uses) exists — if so, exit immediately (see HTD).
+  3. If not, authenticate a `GET` to `$TAILSCALE_API_BASE/api/v2/tailnet/-/devices` with `tailscale-api.env`'s `TAILSCALE_API_TOKEN`, and `DELETE $TAILSCALE_API_BASE/api/v2/device/{id}` for every device matching this hostname under KTD5's case-insensitive comparison (no self-identity check is needed, since registration has not happened yet). `TAILSCALE_API_BASE` defaults to `https://api.tailscale.com` from U1's `tailscale-api.env`, and is overridden to the mock server address only in U6's VM test.
+  4. The bearer token is never passed as a `curl` argument directly — read it from stdin via `curl -K`/`--config` to avoid `/proc/*/cmdline` exposure (see Risks).
+  5. Write `scripts/tailscale-dedup-device` as a standalone file following this repo's `scripts/` + direct-invocation test convention, and wrap it with `pkgs.writeShellScript` in the module — no test-only internal option.
+- **Execution note:** this unit must not block activation on failure — on an API failure, log a warning and exit (see Risks).
 - **Test scenarios:**
-  - 유닛이 `wantedBy`로 실제 boot transaction에 포함되며, `tailscaled-autoconnect.service` 앞에 순서화된다. 이 확인은 nix 평가값이 아니라 부팅된 VM에서 `systemctl`로 실제 설치된 유닛을 대상으로 한다(선언값만 읽는 체크는 `systemd.services.<name>.enable`이 꺼져도 통과하므로 — [관련 학습](.compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md) 참고).
-  - `advertiseRoutes` 값과 무관하게 두 호스트 모두에 이 유닛이 존재한다(R4는 두 호스트 공통).
-  - `EnvironmentFile`이 `sops.templates."tailscale-api.env".path`를 가리킨다.
-  - Covers AE1. (U6의 VM 테스트에서, mock API 서버를 대상으로) `tailscaled.state`가 없고 동일 hostname 기기가 있으면 그 기기가 삭제된다; `tailscaled.state`가 있으면(또는 동일 hostname 기기가 없으면) 아무것도 삭제하지 않는다(일반 rebuild·key-expiry 재인증 시나리오).
-- **Verification:** 부팅된 VM에서 `systemctl cat`/`systemctl show`로 실제 설치된 유닛의 순서·`EnvironmentFile`을 확인하고, U6의 mock-API VM 테스트가 실제 삭제 로직을 통과한다.
+  - The unit is pulled into the real boot transaction via `wantedBy` and is ordered ahead of `tailscaled-autoconnect.service`. This check targets the actually-installed unit on a booted VM via `systemctl`, not the Nix-evaluated value — a check that reads only the declared value would still pass even if `systemd.services.<name>.enable` were off (see the [related learning](.compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md)).
+  - The unit exists on both hosts regardless of `advertiseRoutes` (R4 applies to both hosts).
+  - `EnvironmentFile` points at `sops.templates."tailscale-api.env".path`.
+  - Covers AE1. (In U6's VM test, against the mock API server.) When `tailscaled.state` is absent and a device with the same hostname exists, that device is deleted; when `tailscaled.state` exists (or no such device exists), nothing is deleted (the ordinary-rebuild / key-expiry-reauth scenarios).
+- **Verification:** confirm the installed unit's ordering and `EnvironmentFile` on a booted VM via `systemctl cat`/`systemctl show`, and pass U6's mock-API VM test of the actual deletion logic.
 
-### U4. 경로 광고(route-advertisement) systemd 유닛
+### U4. Route-advertisement systemd unit
 
-- **Goal:** `advertiseRoutes = true`인 호스트에서만 세 경로를 광고하는 유닛을 추가한다.
+- **Goal:** add a unit, present only on the host with `advertiseRoutes = true`, that advertises the three routes.
 - **Requirements:** R5, R6.
 - **Dependencies:** U2.
 - **Files:**
   - `modules/nixos/services/tailscale.nix` (extend)
-- **Approach:** `mkIf cfg.advertiseRoutes`로 유닛 전체를 가드한다. `after`만으로는 시작이 보장되지 않으므로(`modules/nixos/wifi.nix:78-81` 패턴), `After = ["tailscaled-autoconnect.service"]`와 함께 `wantedBy = ["multi-user.target"]`를 반드시 선언한다 — U3(재설치 전에 정리)와 달리 이 유닛은 등록 이후 라우트를 광고해야 하므로 반대 방향으로 순서화된다. `TAILSCALE_ROUTES` 환경변수를 `tailscale set --advertise-routes=$TAILSCALE_ROUTES`에 그대로 전달한다(KTD2, KTD3 — `extraSetFlags`는 쓰지 않고, 게이트 없이 매번 실행).
+- **Approach:** guard the whole unit with `mkIf cfg.advertiseRoutes`. Since `after` alone does not guarantee a start (the `modules/nixos/wifi.nix:78-81` pattern), declare `After = ["tailscaled-autoconnect.service"]` together with `wantedBy = ["multi-user.target"]` — unlike U3 (cleanup before registration), this unit must advertise routes after registration, so it is ordered in the opposite direction. Pass the `TAILSCALE_ROUTES` environment variable straight through to `tailscale set --advertise-routes=$TAILSCALE_ROUTES` (KTD2, KTD3 — `extraSetFlags` is not used, and no gate is needed since it runs every time).
 - **Test scenarios:**
-  - `advertiseRoutes = false`인 ThinkPad에는 이 유닛이 아예 존재하지 않는다(R6).
-  - `advertiseRoutes = true`인 MS-7D91에는 존재하고, `wantedBy`(또는 짝이 되는 `wants`)로 실제 boot transaction에 포함되며 `After=tailscaled-autoconnect.service`이다.
-  - Covers AE3. `TAILSCALE_ROUTES` 값이 정확히 `192.168.10.0/24,192.168.1.0/24,<wp_jpi_co_kr 시크릿 값>` 형태(콤마 join, 공백 없음)로 렌더링된다.
-- **Verification:** 유닛 존재 여부가 호스트별로 다름을 `nix eval`로 확인한다.
+  - On ThinkPad (`advertiseRoutes = false`), this unit does not exist at all (R6).
+  - On MS-7D91 (`advertiseRoutes = true`), it exists, is pulled into the real boot transaction via `wantedBy` (or its paired `wants`), and is `After=tailscaled-autoconnect.service`.
+  - Covers AE3. `TAILSCALE_ROUTES` renders exactly as `192.168.10.0/24,192.168.1.0/24,<wp_jpi_co_kr secret value>` (comma-joined, no spaces).
+- **Verification:** confirm via `nix eval` that the unit's existence differs per host.
 
-### U5. `.sops.yaml` 생성 규칙 추가
+### U5. Add a `.sops.yaml` creation rule
 
-- **Goal:** `secrets/tailscale.yaml`을 위한 창조 규칙을 등록한다.
+- **Goal:** register a creation rule for `secrets/tailscale.yaml`.
 - **Requirements:** R7.
 - **Dependencies:** none.
 - **Files:**
   - `.sops.yaml` (modify)
-- **Approach:** 기존 `tokens.yaml`/`wifi.yaml` 규칙과 동일한 두 호스트 recipient로 `path_regex: secrets/tailscale\.yaml$` 한 줄을 추가한다.
-- **Test expectation:** none -- 순수 설정 한 줄 추가이며, U6의 fixture가 `sops --encrypt --age <recipients>`로 동일 recipient를 직접 사용해 우회 검증한다.
-- **Verification:** `.sops.yaml`의 새 규칙이 기존 두 규칙과 동일한 recipient 목록을 갖는다.
+- **Approach:** add one line, `path_regex: secrets/tailscale\.yaml$`, with the same two-host recipient list already used by the `tokens.yaml`/`wifi.yaml` rules.
+- **Test expectation:** none -- a pure one-line config addition; U6's fixture indirectly exercises the same recipients via `sops --encrypt --age <recipients>`.
+- **Verification:** `.sops.yaml`'s new rule has the same recipient list as the existing two rules.
 
-### U6. 호스트 배선 + 회귀 테스트
+### U6. Host wiring + regression tests
 
-- **Goal:** 두 호스트에 모듈을 연결하고, `wifi-provisioning.nix`를 본뜬 VM 테스트로 전체를 회귀 검증하며, `advertiseRoutes`가 두 호스트에 동시에 켜지는 것을 막는 정적 가드를 추가한다.
-- **Requirements:** R1–R9 전체.
+- **Goal:** wire the module into both hosts, regression-test the whole thing with a VM test modeled on `wifi-provisioning.nix`, and add a static guard preventing `advertiseRoutes` from being on for both hosts at once.
+- **Requirements:** all of R1–R9.
 - **Dependencies:** U1, U2, U3, U4, U5.
 - **Files:**
   - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix` (modify)
   - `hosts/MS-7D91/default.nix` (modify)
   - `tests/tailscale-provisioning.nix` (create)
   - `tests/tailscale-mock-api.py` (create)
-  - `flake.nix` (modify — `checks.tailscale-provisioning`와 `checks.tailscale-single-router` 등록)
+  - `flake.nix` (modify — register `checks.tailscale-provisioning` and `checks.tailscale-single-router`)
 - **Approach:**
-  1. 두 `hosts/*/default.nix`의 `imports`에 `../../modules/nixos/services/tailscale.nix`를 추가하고 `config.my.tailscale.enable = true;`를 설정한다.
-  2. `hosts/MS-7D91/default.nix`에만 `config.my.tailscale.advertiseRoutes = true;`를 추가한다.
-  3. `tests/wifi-provisioning.nix`을 본떠 `pkgs.testers.nixosTest`로 fake age 키 + `FAKE_` 접두사 시크릿을 만들고, 부팅된 VM에서 `systemctl`로 실제 설치된 유닛을 검증하며(U3 참고 — 선언값만 읽는 체크는 `enable=false` 같은 곁가지 옵션에 속을 수 있다), `nix-store -qR | xargs grep -rlE 'FAKE_...'`로 시크릿이 빌드된 클로저에 새지 않는지 확인한다.
-  4. dedup 유닛의 실제 삭제 로직(AE1)을 검증하기 위해, VM 테스트에 세 번째 노드로 작은 mock HTTP 서버(`tests/tailscale-mock-api.py`, 표준 라이브러리 `http.server`로 미리 정한 device 목록에 `GET /api/v2/tailnet/-/devices`로 응답하고 `DELETE /api/v2/device/{id}` 호출을 기록)를 추가하고, 피검사 호스트의 `apiBase`를 이 mock 노드로 override한다. `tailscaled.state`가 없고 동일 hostname 기기가 있는 케이스와, 있거나(또는 그런 기기가 없는) 케이스 둘 다 확인한다(feasibility 지적 — mock 없이는 AE1이 실제로 검증되지 않음). mock 노드는 다른 실제 노드들과 마찬가지로 `boot.loader.grub.enable = lib.mkForce false;`로 GRUB 이미지 빌드를 생략한다(code-review 지적).
-  5. `flake.nix`에 순수 평가 체크(`pkgs.runCommand`, VM 아님)를 하나 추가해 `self.nixosConfigurations.{ThinkPad-X1-Carbon-Gen-11,MS-7D91}.config.my.tailscale.advertiseRoutes`를 둘 다 읽고 동시에 `true`이면 실패시킨다 — "라우터는 한 호스트만" 불변식이 미래의 복붙 실수로 조용히 깨지지 않도록 한다(code-review 지적, R5/R6 근거).
-- **Patterns to follow:** `tests/wifi-provisioning.nix`(fixture + `nixosTest` + 스토어 누출 검사), `flake.nix`의 기존 `checks` 등록 스타일과 `self.nixosConfigurations`를 여러 호스트에서 읽어 비교하는 기존 체크들(예: `claude-desktop`, `orca-desktop`).
+  1. Add `../../modules/nixos/services/tailscale.nix` to both `hosts/*/default.nix` imports and set `config.my.tailscale.enable = true;`.
+  2. Add `config.my.tailscale.advertiseRoutes = true;` only to `hosts/MS-7D91/default.nix`.
+  3. Modeled on `tests/wifi-provisioning.nix`, build a `pkgs.testers.nixosTest` with a fake age key and `FAKE_`-prefixed secrets, verify the actually-installed units on a booted VM via `systemctl` (see U3 — a check that reads only the declared value can be fooled by a side option like `enable=false`), and confirm with `nix-store -qR | xargs grep -rlE 'FAKE_...'` that the secret never leaks into the built closure.
+  4. To verify the dedup unit's actual deletion logic (AE1), add a third VM node running a small mock HTTP server (`tests/tailscale-mock-api.py`, using the standard-library `http.server` to respond to `GET /api/v2/tailnet/-/devices` with a predetermined device list and log each `DELETE /api/v2/device/{id}` call), and override the host under test's `apiBase` to point at that mock node. Cover both the case where `tailscaled.state` is absent and a same-hostname device exists, and the case where it exists (or no such device exists) (feasibility finding — without the mock, AE1 is never actually verified). Like every other real node, the mock node skips building a GRUB image via `boot.loader.grub.enable = lib.mkForce false;` (code-review finding).
+  5. Add one pure-evaluation check to `flake.nix` (`pkgs.runCommand`, not a VM) that reads `self.nixosConfigurations.{ThinkPad-X1-Carbon-Gen-11,MS-7D91}.config.my.tailscale.advertiseRoutes` for both hosts and fails if both are `true` at once — so the "only one host routes" invariant cannot silently break from a future copy-paste mistake (code-review finding, grounded in R5/R6).
+- **Patterns to follow:** `tests/wifi-provisioning.nix` (fixture + `nixosTest` + store-leak check), `flake.nix`'s existing `checks` registration style, and the existing checks that read and compare `self.nixosConfigurations` across multiple hosts (e.g. `claude-desktop`, `orca-desktop`).
 - **Test scenarios:**
-  - Covers AE3, R9. 두 호스트 빌드에서 `advertiseRoutes`에 따라 라우트 유닛 존재 여부가 갈리고, 두 호스트 모두 `--accept-routes`가 켜져 있다.
-  - Covers AE1, U3. mock API 서버를 대상으로: (a) `tailscaled.state`가 없고 동일 hostname 기기가 있으면 그것만 삭제되고 mock 서버가 그 `DELETE` 호출을 기록한다, (b) `tailscaled.state`가 있으면(또는 그런 기기가 없으면) 아무 `DELETE`도 발생하지 않는다.
-  - Covers AE2. `authKeyFile`/`EnvironmentFile` 경로가 실제 sops secret 경로를 가리켜, 대화형 로그인 없이 도달 가능함을 정적으로 증명한다.
-  - 빌드된 시스템 클로저(`nix-store -qR`)에 fake `auth_key`/`api_token`/라우트 값이 전혀 나타나지 않는다.
-  - `checks.tailscale-single-router`: 두 호스트 모두 `advertiseRoutes = true`로 바꾼 임시 평가는 실패해야 하고, 현재 상태(`MS-7D91`만 `true`)는 통과해야 한다.
-- **Verification:** `nix flake check`와 4개 호스트 빌드(AGENTS.md) 통과, 새 `checks.tailscale-provisioning`과 `checks.tailscale-single-router` 통과.
+  - Covers AE3, R9. In both host builds, whether the route unit exists tracks `advertiseRoutes`, and both hosts have `--accept-routes` on.
+  - Covers AE1, U3. Against the mock API server: (a) when `tailscaled.state` is absent and a same-hostname device exists, only that device is deleted and the mock server records the `DELETE` call; (b) when `tailscaled.state` exists (or no such device exists), no `DELETE` occurs.
+  - Covers AE2. `authKeyFile`/`EnvironmentFile` paths point at the real sops secret paths, statically proving reachability with no interactive login.
+  - No fake `auth_key`/`api_token`/route value appears anywhere in the built system closure (`nix-store -qR`).
+  - `checks.tailscale-single-router`: a temporary evaluation with `advertiseRoutes = true` on both hosts must fail, and the current state (only `MS-7D91` true) must pass.
+- **Verification:** `nix flake check` and all four host builds (AGENTS.md) pass, including the new `checks.tailscale-provisioning` and `checks.tailscale-single-router`.
 
 ---
 
 ## Verification Contract
 
-| 명령 | 적용 대상 |
+| Command | Applies to |
 | --- | --- |
-| `nix fmt -- --ci` | 전체 diff |
-| `nix flake check` | 전체 (신규 `checks.tailscale-provisioning`, `checks.tailscale-single-router` 포함) |
+| `nix fmt -- --ci` | whole diff |
+| `nix flake check` | everything (includes the new `checks.tailscale-provisioning`, `checks.tailscale-single-router`) |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | U6 |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel` | U6 |
 | `nix build --no-link .#nixosConfigurations.MS-7D91.config.system.build.toplevel` | U6 |
 | `nix build --no-link .#nixosConfigurations.MS-7D91-bootstrap.config.system.build.toplevel` | U6 |
 
-실제 하드웨어에서의 `tailscale status`/SSH 접속/라우트 도달성/재설치 시 중복 정리 확인은 이 리포의 자동화 체크로 검증할 수 없다 — AGENTS.md의 지침대로 하드웨어 검증은 VM/빌드 증거와 별도로 보고한다.
+Confirming `tailscale status`, SSH login, route reachability, and reinstall dedup on real hardware cannot be verified by this repo's automated checks — per AGENTS.md, hardware verification is reported separately from VM/build evidence.
 
 ---
 
 ## Definition of Done
 
-- U1–U6 전부 구현되고 커밋된다.
-- `nix fmt -- --ci`가 통과한다.
-- `nix flake check`와 4개 호스트 빌드가 모두 통과한다.
-- `checks.tailscale-provisioning`을 포함해, 빌드된 어떤 시스템 클로저에도 실제 또는 fake 시크릿 값이 나타나지 않는다.
-- `.sops.yaml`에 새 규칙이 있고, 기존 `secrets/tailscale.yaml`이 그 규칙 아래에서 정상 복호화된다.
-- 시도했다가 폐기한 접근의 코드가 diff에 남아 있지 않다.
-- 실제 하드웨어 검증(tailscale status, SSH, 라우트 도달성, 재설치 시 dedup)은 수동 후속 작업으로 문서화되며, 이 리포의 자동 체크 범위 밖임을 명시한다.
+- U1–U6 are all implemented and committed.
+- `nix fmt -- --ci` passes.
+- `nix flake check` and all four host builds pass.
+- No real or fake secret value appears in any built system closure, including under `checks.tailscale-provisioning`.
+- `.sops.yaml` has the new rule, and the existing `secrets/tailscale.yaml` decrypts correctly under it.
+- No code from an attempted-then-abandoned approach remains in the diff.
+- Real-hardware verification (tailscale status, SSH, route reachability, dedup on reinstall) is documented as a manual follow-up, explicitly out of scope for this repo's automated checks.
