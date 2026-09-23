@@ -98,19 +98,20 @@ in
 
         services.tailscale.authKeyFile = config.sops.secrets."tailscale/auth_key".path;
 
-        # Runs after tailscaled-autoconnect settles (that unit is Type=notify
-        # and only starts once BackendState reaches Running), so this unit
-        # never races tailscaled's control socket and never needs its own
-        # BackendState poll. It compares this host's *current* device ID
-        # against every other device sharing its hostname and deletes only
-        # the mismatches -- safe on an ordinary rebuild (nothing else shares
-        # the hostname), safe across key-expiry reauth (the same device ID
-        # reauthenticates, so nothing matches), and correct on a genuine
-        # reinstall (a stale device with a different ID is the only match).
+        # Runs before tailscaled-autoconnect, gated on tailscaled's own state
+        # file rather than BackendState: an ordinary reboot or a key-expiry
+        # reauthentication both leave that file in place (this instance IS
+        # the existing registration, so never delete it), while a genuine
+        # fresh install has no state file yet, which is exactly when a
+        # same-hostname device must be cleared -- and it must be cleared
+        # *before* the new instance registers, since Tailscale suffixes a
+        # colliding hostname on the newly-registering device, not the old
+        # one. `before` alone is enough to order ahead of
+        # tailscaled-autoconnect.service: nixpkgs already pulls that unit in
+        # via its own `wantedBy = [ "multi-user.target" ]`.
         systemd.services.tailscale-dedup-device = {
-          description = "Remove stale tailnet devices sharing this host's name";
-          after = [ "tailscaled-autoconnect.service" ];
-          wants = [ "tailscaled-autoconnect.service" ];
+          description = "On a fresh install, remove any pre-existing tailnet device with this host's name";
+          before = [ "tailscaled-autoconnect.service" ];
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
             Type = "oneshot";
@@ -119,7 +120,6 @@ in
             ExecStart = dedupScript;
           };
           path = [
-            tailscalePkg
             pkgs.jq
             pkgs.curl
           ];

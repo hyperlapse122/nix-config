@@ -24,15 +24,6 @@ let
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tailscale.yaml
       '';
 
-  fakeTailscale = pkgs.writeShellScriptBin "tailscale" ''
-    if [ "$1" = "status" ]; then
-      echo '{"Self":{"ID":"self-device-id"}}'
-      exit 0
-    fi
-    echo "fake-tailscale: unsupported invocation: $*" >&2
-    exit 1
-  '';
-
   dedupScriptSrc = ../scripts/tailscale-dedup-device;
 
   mkTestHost =
@@ -76,6 +67,7 @@ pkgs.testers.nixosTest {
   nodes.mockapi =
     { ... }:
     {
+      boot.loader.grub.enable = pkgs.lib.mkForce false;
       environment.systemPackages = [ pkgs.python3 ];
       systemd.services.tailscale-mock-api = {
         description = "Mock Tailscale API for tests/tailscale-provisioning.nix";
@@ -100,8 +92,14 @@ pkgs.testers.nixosTest {
       thinkpad.wait_for_unit("multi-user.target")
       msdesktop.wait_for_unit("multi-user.target")
 
-      # --- Structural checks, asserted directly from evaluated Nix config
-      # (U2, U3, U4 test scenarios) ---
+      # --- Structural checks on the *materialized* units, not just the
+      # declared config -- a systemd.services.<name>.enable = false sibling
+      # would leave the declared After/Wants/WantedBy values unchanged while
+      # installing no unit at all (see AGENTS.md's linked solution:
+      # nix-check-reads-option-value-not-materialized-output.md). `systemctl
+      # cat` fails outright if the unit was never installed, so this is a
+      # check on what actually landed on the running system.
+      # (U2, U3, U4 test scenarios)
 
       assert ${builtins.toJSON nodes.thinkpad.services.tailscale.useRoutingFeatures} == "none", \
           "ThinkPad must not enable routing features"
@@ -116,13 +114,16 @@ pkgs.testers.nixosTest {
       assert 41641 in ${builtins.toJSON nodes.thinkpad.networking.firewall.allowedUDPPorts}
       assert 41641 in ${builtins.toJSON nodes.msdesktop.networking.firewall.allowedUDPPorts}
 
-      thinkpad_units = set(${builtins.toJSON (builtins.attrNames nodes.thinkpad.systemd.services)})
-      msdesktop_units = set(${builtins.toJSON (builtins.attrNames nodes.msdesktop.systemd.services)})
-      assert "tailscale-dedup-device" in thinkpad_units
-      assert "tailscale-dedup-device" in msdesktop_units
-      assert "tailscale-advertise-routes" not in thinkpad_units, \
-          "ThinkPad (advertiseRoutes=false) must not have a route-advertisement unit"
-      assert "tailscale-advertise-routes" in msdesktop_units
+      dedup_unit = thinkpad.succeed("systemctl cat tailscale-dedup-device.service")
+      assert "Before=tailscaled-autoconnect.service" in dedup_unit, dedup_unit
+      assert "WantedBy=multi-user.target" in dedup_unit, dedup_unit
+      assert thinkpad.succeed("systemctl is-enabled tailscale-dedup-device.service").strip() == "enabled"
+      assert msdesktop.succeed("systemctl is-enabled tailscale-dedup-device.service").strip() == "enabled"
+
+      thinkpad.fail("systemctl cat tailscale-advertise-routes.service")
+      route_unit = msdesktop.succeed("systemctl cat tailscale-advertise-routes.service")
+      assert "After=tailscaled-autoconnect.service" in route_unit, route_unit
+      assert msdesktop.succeed("systemctl is-enabled tailscale-advertise-routes.service").strip() == "enabled"
 
       # ThinkPad (advertiseRoutes=false) must not even render a routes secret
       # template -- not just an empty one.
@@ -131,29 +132,10 @@ pkgs.testers.nixosTest {
       assert ${if nodes.msdesktop.sops.templates ? "tailscale-routes.env" then "True" else "False"}, \
           "MS-7D91 must have a tailscale-routes.env template"
 
-      dedup_after = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.after})
-      dedup_wants = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.wants})
-      dedup_wanted_by = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.wantedBy})
-      assert "tailscaled-autoconnect.service" in dedup_after
-      assert "tailscaled-autoconnect.service" in dedup_wants
-      assert "multi-user.target" in dedup_wanted_by, \
-          "dedup unit needs wantedBy/wants pull-in, not just after-ordering"
-
-      route_after = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-advertise-routes.after})
-      route_wanted_by = set(${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-advertise-routes.wantedBy})
-      assert "tailscaled-autoconnect.service" in route_after
-      assert "multi-user.target" in route_wanted_by
-
-      dedup_env_file = ${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-dedup-device.serviceConfig.EnvironmentFile}
-      assert dedup_env_file == ${builtins.toJSON nodes.msdesktop.sops.templates."tailscale-api.env".path}
-
-      # Route-advertisement never touches the API, so it must not receive
-      # the API bearer token's env file.
-      route_env_file = ${builtins.toJSON nodes.msdesktop.systemd.services.tailscale-advertise-routes.serviceConfig.EnvironmentFile}
-      assert route_env_file == ${
-        builtins.toJSON nodes.msdesktop.sops.templates."tailscale-routes.env".path
-      }
-      assert route_env_file != dedup_env_file
+      # Route-advertisement never touches the API, so its materialized unit
+      # must not reference the API token's env file.
+      assert ${builtins.toJSON nodes.msdesktop.sops.templates."tailscale-api.env".path} not in route_unit
+      assert ${builtins.toJSON nodes.msdesktop.sops.templates."tailscale-routes.env".path} in route_unit
 
       # --- Runtime: TAILSCALE_ROUTES rendering (U4 test scenario) ---
 
@@ -165,21 +147,23 @@ pkgs.testers.nixosTest {
       # --- Runtime: dedup script against the mock API (U3 test scenario, AE1) ---
       #
       # Invokes the real scripts/tailscale-dedup-device directly -- the same
-      # file the systemd unit's ExecStart wraps -- with a stubbed `tailscale`
-      # on PATH standing in for a real authenticated tailnet connection.
+      # file the systemd unit's ExecStart wraps -- against the real
+      # /var/lib/tailscale state-file path and the mock API.
+
+      state_file = "/var/lib/tailscale/tailscaled.state"
 
       run_dedup = (
           "set -a; . ${nodes.msdesktop.sops.templates."tailscale-api.env".path}; set +a; "
           + "SELF_HOSTNAME=${nodes.msdesktop.networking.hostName} "
-          + "PATH=${fakeTailscale}/bin:$PATH "
           + "bash ${dedupScriptSrc}"
       )
 
-      # Scenario A: a stale device shares this hostname under a different ID.
+      # Scenario A: no tailscaled state yet (fresh install) and a device
+      # already registered under this hostname -- it must be deleted.
+      msdesktop.succeed(f"rm -f {state_file}")
       mockapi.succeed(
           "mkdir -p /var/lib/tailscale-mock-api && "
           + "printf '%s' '{\"devices\":["
-          + "{\"id\":\"self-device-id\",\"hostname\":\"test-msdesktop\"},"
           + "{\"id\":\"stale-device-id\",\"hostname\":\"test-msdesktop\"},"
           + "{\"id\":\"other-host-id\",\"hostname\":\"other-host\"}"
           + "]}' > /var/lib/tailscale-mock-api/devices.json"
@@ -189,16 +173,15 @@ pkgs.testers.nixosTest {
       deletes = mockapi.succeed("cat /var/lib/tailscale-mock-api/deletes.log").split()
       assert deletes == ["stale-device-id"], deletes
 
-      # Scenario B: no other device shares this hostname (ordinary rebuild /
-      # key-expiry reauth) -- nothing should be deleted.
-      mockapi.succeed(
-          "printf '%s' '{\"devices\":[{\"id\":\"self-device-id\",\"hostname\":\"test-msdesktop\"}]}' "
-          + "> /var/lib/tailscale-mock-api/devices.json"
-      )
+      # Scenario B: tailscaled state already exists (ordinary reboot, or a
+      # key-expiry reauth of this same instance) -- must not query the API
+      # or delete anything, even though a same-hostname device is listed.
+      msdesktop.succeed(f"mkdir -p $(dirname {state_file}) && touch {state_file}")
       mockapi.succeed("rm -f /var/lib/tailscale-mock-api/deletes.log && touch /var/lib/tailscale-mock-api/deletes.log")
       msdesktop.succeed(run_dedup)
       deletes = mockapi.succeed("cat /var/lib/tailscale-mock-api/deletes.log").split()
       assert deletes == [], deletes
+      msdesktop.succeed(f"rm -f {state_file}")
 
       # --- Store-leak check (U6 test scenario) ---
 

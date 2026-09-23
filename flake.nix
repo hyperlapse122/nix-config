@@ -285,6 +285,27 @@
         wifi-provisioning = import ./tests/wifi-provisioning.nix { inherit pkgs inputs; };
         wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
         tailscale-provisioning = import ./tests/tailscale-provisioning.nix { inherit pkgs inputs; };
+        tailscale-single-router =
+          let
+            advertisers =
+              pkgs.lib.filter (h: self.nixosConfigurations.${h}.config.my.tailscale.advertiseRoutes or false)
+                [
+                  "ThinkPad-X1-Carbon-Gen-11"
+                  "MS-7D91"
+                ];
+          in
+          pkgs.runCommand "tailscale-single-router-tests" { } ''
+            ${
+              if pkgs.lib.length advertisers > 1 then
+                ''
+                  echo "more than one host advertises Tailscale subnet routes: ${pkgs.lib.concatStringsSep ", " advertisers}" >&2
+                  exit 1
+                ''
+              else
+                ""
+            }
+            touch $out
+          '';
         publish-cli-auth =
           pkgs.runCommand "publish-cli-auth-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
