@@ -109,8 +109,6 @@ jobs:
         if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'success'
         run: |
           set -euo pipefail
-          git fetch origin main
-          git rebase origin/main || { git rebase --abort; echo "Rebase failed, proceeding with current head"; }
 
           if [ -n "$(git status --porcelain packages/claude-desktop-version.json)" ]; then
             NEW_VER=$(jq -r .version packages/claude-desktop-version.json)
@@ -133,6 +131,13 @@ jobs:
             git add -A
             git commit -m "chore(deps): update dependencies"
           fi
+
+          # Rebase only after every change is committed: `git rebase` requires
+          # a clean working tree even when origin/main has not moved at all,
+          # so rebasing before committing fails unconditionally whenever this
+          # step has anything to push.
+          git fetch origin main
+          git rebase origin/main || { git rebase --abort; echo "Rebase failed, proceeding with current head"; }
 
           git push origin main
           echo "Successfully pushed verified updates directly to main."

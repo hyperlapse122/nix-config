@@ -599,6 +599,15 @@
                 ${./.github/workflows/claude.yml}
               touch $out
             '';
+        update-dependencies-push-order =
+          pkgs.runCommand "update-dependencies-push-order-tests" { nativeBuildInputs = [ pkgs.git ]; }
+            ''
+              export HOME=$TMPDIR
+              bash ${./tests/update-dependencies-push-order.sh} \
+                ${./.github/workflows/update-dependencies.yml} \
+                ${./.gitignore}
+              touch $out
+            '';
         ci-workflow-docs-skip =
           pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
             ''
