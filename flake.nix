@@ -283,6 +283,7 @@
             '';
         auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
         wifi-provisioning = import ./tests/wifi-provisioning.nix { inherit pkgs inputs; };
+        wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
         publish-cli-auth =
           pkgs.runCommand "publish-cli-auth-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''

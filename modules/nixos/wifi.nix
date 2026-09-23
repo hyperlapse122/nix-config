@@ -25,6 +25,12 @@ in
         Arbitrary local labels (never the literal SSID) for the networks
         declared in `secrets/wifi.yaml`. Each label needs matching
         `wifi.<label>.ssid` / `wifi.<label>.psk` entries in that file.
+
+        Removing a label here does not revoke its NetworkManager profile
+        immediately: nixpkgs' `ensureProfiles` only adds or overwrites
+        declared profiles and never deletes one for a label no longer
+        declared, so the old profile (and the credentials rendered into it)
+        stays connectable until the next reboot.
       '';
     };
   };
@@ -34,6 +40,10 @@ in
         {
           assertion = lib.length (lib.unique upperLabels) == lib.length upperLabels;
           message = "my.wifi.networks labels must be unique case-insensitively (each becomes an uppercased environment variable prefix)";
+        }
+        {
+          assertion = lib.all (label: builtins.match "[A-Za-z_][A-Za-z0-9_]*" label != null) cfg.networks;
+          message = "my.wifi.networks labels must match [A-Za-z_][A-Za-z0-9_]* (each becomes an environment variable name and a NetworkManager connection id; other characters would silently corrupt the substitution)";
         }
       ];
     }
