@@ -29,7 +29,7 @@ pkgs.testers.nixosTest {
   nodes.missing = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
-      ../modules/nixos/secrets.nix
+      ../modules/nixos/system/secrets.nix
       ../modules/nixos/wifi.nix
     ];
     system.switch.enable = true;
@@ -46,7 +46,7 @@ pkgs.testers.nixosTest {
   nodes.machine = { ... }: {
     imports = [
       inputs.sops-nix.nixosModules.sops
-      ../modules/nixos/secrets.nix
+      ../modules/nixos/system/secrets.nix
       ../modules/nixos/wifi.nix
     ];
     system.switch.enable = true;

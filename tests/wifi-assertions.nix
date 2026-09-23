@@ -21,7 +21,7 @@ let
           system = pkgs.system;
           modules = [
             inputs.sops-nix.nixosModules.sops
-            ../modules/nixos/secrets.nix
+            ../modules/nixos/system/secrets.nix
             ../modules/nixos/wifi.nix
             {
               boot.loader.grub.enable = false;
