@@ -248,7 +248,7 @@ One further surface moves: `programs._1password-gui.polkitPolicyOwners = [ "h82"
   5. Add one sentence per registered check to `docs/verification.md` — `pam-fingerprint` and the helper's test — each naming what it asserts and what it deliberately does not reach, including that no build-time check can see who is enrolled.
   6. Add hardware checklist entries, each with its "no repository check can reach this" sentence: each surface behaves as R1 through R3 describe; the greeter still demands the password; enrollment succeeds and demands the password; `fprintd-list h82` reports exactly the intended fingers; the boot-menu rollback works after this change; the known post-resume limitation; and that the KDE fingerprint settings page no longer enrolls, by design.
   7. Mark three entries as performed **at the first production switch, before any finger is enrolled**, not afterwards: the R6 fallback at the lock screen and at `sudo` with nothing enrolled; the same with the reader unresponsive; and the LUKS recovery passphrase verified to unlock this disk since the last TPM enrollment. R6 rests on an upstream behavioural claim no repository check holds, so the first test of it must not be an ordinary day on the only machine — read the boot-menu rollback path beforehand.
-  7. Note that fingerprint templates and receipts are runtime state and must not enter `secrets/`.
+  8. Note that fingerprint templates and receipts are runtime state and must not enter `secrets/`.
 - **Patterns to follow:** the two-section split in `docs/verification.md`; the phase-heading-plus-command-block shape in `docs/provisioning.md`.
 - **Test scenarios:** `Test expectation: none -- documentation only.`
 - **Verification:** every registered check has a sentence; every claim R1 through R6 makes has either a repository check or a hardware checklist entry.
@@ -258,7 +258,7 @@ One further surface moves: `programs._1password-gui.polkitPolicyOwners = [ "h82"
 ## Verification Contract
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | all units |
 | Checks | `nix flake check` | U1, U5 |
 | Production build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | U1, U5 |

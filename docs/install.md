@@ -1,6 +1,7 @@
 # Fresh installation
 
 The supported host configurations are:
+
 - `ThinkPad-X1-Carbon-Gen-11`: Lenovo ThinkPad X1 Carbon Gen 11 laptop (internal Samsung 980 PRO 1TB NVMe).
 - `MS-7D91`: MSI MS-7D91 desktop workstation with Intel i7-13700F, NVIDIA GeForce RTX 3060, Samsung 980 PRO 1TB NVMe, and preserved secondary 2TB HDD at `/mnt/data`.
 
@@ -29,6 +30,7 @@ sudo dmidecode -s system-product-name
 ```
 
 Confirm that the by-id path declared in the host's `disko.nix` matches the target NVMe drive:
+
 - For ThinkPad: `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X`.
 - For MS-7D91: `hosts/MS-7D91/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNF0WB26038A`. (Note: The secondary HDD `/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1` is not touched by disko and will be mounted read-write at `/mnt/data`).
 
@@ -38,7 +40,8 @@ Do not select the target solely by its enumeration as `/dev/nvme0n1`.
 
 The disko command below **erases the entire target disk**. Run it only when the target path in the file matches the `lsblk` output. Use the disko version pinned in the lock file.
 
-### For ThinkPad X1 Carbon Gen 11:
+### For ThinkPad X1 Carbon Gen 11
+
 ```sh
 sudo nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
   --mode disko hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix
@@ -46,7 +49,8 @@ sudo nixos-install --flake .#ThinkPad-X1-Carbon-Gen-11-bootstrap --no-root-passw
 sudo nixos-enter --root /mnt -c 'passwd h82'
 ```
 
-### For MS-7D91 Desktop:
+### For MS-7D91 Desktop
+
 ```sh
 sudo nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
   --mode disko hosts/MS-7D91/disko.nix

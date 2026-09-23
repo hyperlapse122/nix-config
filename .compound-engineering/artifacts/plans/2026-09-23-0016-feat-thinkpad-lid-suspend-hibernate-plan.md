@@ -97,9 +97,11 @@ Nothing in this repository currently declares `services.logind` or Powerdevil's 
 **Dependencies:** none
 
 **Files:**
+
 - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix` (modify)
 
 **Approach:**
+
 - Add `config.services.logind.settings.Login = { HandleLidSwitch = "suspend-then-hibernate"; HandleLidSwitchExternalPower = "ignore"; HandleLidSwitchDocked = "ignore"; };` alongside the file's existing `config.my.*` assignments (KTD1).
 - Use `services.logind.settings.Login.Handle*`, not the `lidSwitch`/`lidSwitchExternalPower`/`lidSwitchDocked` convenience names the issue's snippet shows (Key Decision, Sources & Research).
 - Do not modify `hosts/MS-7D91/default.nix` or any shared `modules/nixos/*.nix` file.
@@ -119,10 +121,12 @@ Nothing in this repository currently declares `services.logind` or Powerdevil's 
 **Dependencies:** none
 
 **Files:**
+
 - `home/h82/kde/power-lid.nix` (new)
 - `home/h82/kde/default.nix` (modify — register the import)
 
 **Approach:**
+
 1. Create `home/h82/kde/power-lid.nix` with signature `{ pkgs, lib, osConfig, ... }:`, matching `home/h82/kde/autostart.nix`.
 2. Wrap the whole returned attrset in `lib.mkIf (osConfig.networking.hostName == "ThinkPad-X1-Carbon-Gen-11")` (KTD4).
 3. Inside, declare one `home.activation.kdePowerLid = lib.hm.dag.entryAfter [ "writeBoundary" ] '' ... '';` entry that, when `${kwrite}` (`${pkgs.kdePackages.kconfig}/bin/kwriteconfig6`, the constant `home/h82/kde/session.nix` already defines) is executable, writes to `powerdevilrc`:
@@ -146,11 +150,13 @@ Nothing in this repository currently declares `services.logind` or Powerdevil's 
 **Dependencies:** U1, U2
 
 **Files:**
+
 - `tests/logind-lid-switch.nix` (new)
 - `flake.nix` (modify — register the check)
 - `docs/verification.md` (modify — describe the check and add hardware checklist items)
 
 **Approach:**
+
 1. Follow the `tests/plasma-taskbar.nix` pattern: for each of `ThinkPad-X1-Carbon-Gen-11`, `ThinkPad-X1-Carbon-Gen-11-bootstrap`, and `MS-7D91`, resolve the host from `self.nixosConfigurations`.
 2. Logind surface: read `host.config.environment.etc."systemd/logind.conf".text`, materialize it with `pkgs.writeText`, and assert with explicit `if ... ; then echo ... >&2; exit 1; fi` branches (never `! grep`, per the decorative-assertion learning) that both ThinkPad configurations render `HandleLidSwitch=suspend-then-hibernate`, `HandleLidSwitchExternalPower=ignore`, and `HandleLidSwitchDocked=ignore`, and that `MS-7D91` renders none of the three keys.
 3. Powerdevil surface: read `host.config.home-manager.users.h82.home.activation.kdePowerLid.data or null`, matching `tests/plasma-taskbar.nix`'s `.data or null` pattern for the absent case. Materialize the non-null value with `pkgs.writeText` and assert both ThinkPad configurations set `LidAction` `1`/`1`/`0` for `Battery`/`LowBattery`/`AC` respectively, `SleepMode` `3` for `Battery`/`LowBattery`, and `InhibitLidActionWhenExternalMonitorPresent` `true` for all three profiles; assert `MS-7D91`'s value is `null` (the activation entry must not exist there at all, not merely be empty).
@@ -161,6 +167,7 @@ Nothing in this repository currently declares `services.logind` or Powerdevil's 
 **Patterns to follow:** `tests/plasma-taskbar.nix` (materialize-then-grep shape, including the `.data or null` absent-case pattern for `MS-7D91`); the mutation-testing learnings under `.compound-engineering/artifacts/solutions/best-practices/` for how each assertion must be written and verified.
 
 **Test scenarios:**
+
 - Covers R1/R2/R3. Baseline: both ThinkPad configurations render the three logind `Handle*` keys and the Powerdevil `LidAction`/`SleepMode`/`InhibitLidActionWhenExternalMonitorPresent` keys with the values above.
 - Covers R4. Negative: `MS-7D91`'s materialized `logind.conf` contains none of the three logind keys, and its `kdePowerLid` activation entry is absent (`null`), not merely empty.
 - Mutation coverage (exercised once during implementation, not shipped as an automated suite): flipping any one logind or Powerdevil value on the ThinkPad turns the check red; moving the Powerdevil unit's `lib.mkIf` condition to always-true (simulating a scoping regression that reaches `MS-7D91`) turns the check red; removing the logind settings block turns the check red without an evaluator abort (the `environment.etc` entry stays present with `KillUserProcesses=false` and no `Handle*` keys, so the failure surfaces inside the builder, not at evaluation).
@@ -172,7 +179,7 @@ Nothing in this repository currently declares `services.logind` or Powerdevil's 
 ## Verification Contract
 
 | Command | Applies to |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Whole repo |
 | `nix flake check` | All declared checks, including the new `logind-lid-switch` |
 | `nix build --no-link .#checks.x86_64-linux.logind-lid-switch` | U1, U2, U3, plus the mutation-testing pass |

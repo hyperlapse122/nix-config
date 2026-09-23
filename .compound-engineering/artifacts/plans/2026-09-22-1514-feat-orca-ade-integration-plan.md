@@ -30,6 +30,7 @@ Integrate the Orca Agent Development Environment (ADE) into this NixOS repositor
 The operator relies on Orca as their primary application for orchestrating parallel AI coding agents across git worktrees on non-Nix systems. On this ThinkPad X1 Carbon Gen 11 running NixOS, coding agents (`claude-code`, `antigravity-cli`, `omp`) are currently launched manually from the terminal.
 
 Bringing Orca into NixOS presents two distinct challenges:
+
 1. Orca is an Electron desktop application that expects a standard FHS desktop environment and needs access to developer toolchains (`git`, `claude`, `node`, `bun`, `python3`) across parallel worktrees.
 2. Orca maintains its active configuration in `~/.config/orca/profiles/<profile>/orca-data.json`, which mingles user settings with dynamic session state, worktree metadata, and telemetry. While running, Orca holds this document in memory and flushes it to disk roughly every 9 seconds, never re-reading from disk during runtime. Placing a read-only Nix store symlink causes the application to crash or fail to persist worktrees, while writing to the file while Orca is active results in silent data overwrites.
 
@@ -131,6 +132,7 @@ A prior implementation on Fedora solved this with a leaf-level reconciler that i
 ### Scope Boundaries
 
 **In scope:**
+
 - Orca ADE desktop package derivation for NixOS (`x86_64-linux`).
 - Home Manager module `home/h82/orca.nix` imported in `home/h82/default.nix`.
 - Desktop entry and PATH binding to developer toolchains (`claude-code`, `antigravity-cli`, `git`, `node`, etc.).
@@ -138,11 +140,13 @@ A prior implementation on Fedora solved this with a leaf-level reconciler that i
 - Flake check validating evaluation and settings assertions.
 
 **Deferred for later:**
+
 - Custom auxiliary extension packages (`omp-orca`, `orchestration-hook`).
 - Headless remote server runtime (`orca serve` systemd service).
 - Multi-profile management or switching logic.
 
 **Non-goals:**
+
 - Declaratively managing Orca's dynamic runtime session state, project history, or worktree metadata.
 - Modifying upstream Orca source code or replacing its internal Electron auto-updater mechanisms.
 
@@ -225,6 +229,7 @@ nix-config/
 ## Implementation Units
 
 ### U1. Implement `scripts/orca-settings-reconcile` and Reconciler Tests
+
 - **Goal:** Create the standalone Python 3 reconciler script that reads Orca profile index, checks `SingletonLock`, and updates declared JSON leaves safely without racing live sessions.
 - **Requirements:** R4, R5, R6, R7.
 - **Dependencies:** None.
@@ -243,6 +248,7 @@ nix-config/
   - Stale lock: A dead PID or mismatched hostname is treated as stopped and allows assertion.
 
 ### U2. Package Orca Desktop Application in `packages/orca.nix` and `packages/orca-tools.nix`
+
 - **Goal:** Provide Nix derivations for the Orca ADE desktop application (wrapped AppImage with desktop entry and icons) and the reconciler script.
 - **Requirements:** R1, R3.
 - **Dependencies:** U1.
@@ -259,6 +265,7 @@ nix-config/
   - Derivation outputs `$out/bin/orca`, `$out/bin/orca-ide`, `$out/share/applications/orca.desktop`, and icon assets.
 
 ### U3. Create Home Manager Module `home/h82/orca.nix` and Wire into User Configuration
+
 - **Goal:** Create the Home Manager module managing the Orca package, declared settings specification, systemd user service, and activation hook.
 - **Requirements:** R2, R3, R4, R5, R6, R7, R8.
 - **Dependencies:** U1, U2.
@@ -287,6 +294,7 @@ nix-config/
   - Activation script includes `orca-settings-reconcile` execution with the rendered declaration.
 
 ### U4. Add Flake Check `tests/orca.nix` and Register in `flake.nix`
+
 - **Goal:** Add automated flake checks verifying reconciler script tests and Nix evaluation of the Orca module.
 - **Requirements:** R9.
 - **Dependencies:** U1, U2, U3.
@@ -310,7 +318,7 @@ nix-config/
 ### Automated Verification Commands
 
 | Command | Environment | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `python3 tests/test_orca_settings.py` | Local / Host | Verify Python reconciler logic, lock handling, and leaf assertion |
 | `nix build --no-link .#checks.x86_64-linux.orca` | Sandbox | Run automated repository check for Orca packaging and reconciler unit tests |
 | `nix flake check` | Sandbox | Verify all repository checks pass without regressions |

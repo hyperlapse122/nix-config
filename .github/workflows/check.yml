@@ -18,7 +18,51 @@ jobs:
       - name: Check formatting
         run: nix fmt -- --ci
 
+  markdown-lint:
+    needs: changes
+    # flake-check's `nix flake check` already builds this same check, so
+    # this job only needs to run standalone in exactly the case flake-check
+    # is skipped in (a genuine docs-only PR) -- the complement of
+    # flake-check/build's condition below, so markdown-lint is exercised
+    # exactly once on every event instead of twice on ordinary PRs and push.
+    if: "!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+      - name: Lint markdown
+        run: nix build --no-link .#checks.x86_64-linux.markdown-lint
+
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: classify
+        run: |
+          # base.sha is the base branch tip as of the last PR sync event, not
+          # necessarily its current tip -- a two-dot diff against it would
+          # include every unrelated commit main has gained since, so diff
+          # from the merge-base instead.
+          merge_base=$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")
+          docs_only=$(git diff --name-only "$merge_base" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-docs-only-paths)
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   flake-check:
+    needs: changes
+    # A skipped or failed classifier must not silently skip real Nix
+    # validation, so this condition (not the implicit needs-succeeded
+    # default) decides whether the job runs: any event other than
+    # pull_request, or a classifier that did not complete successfully,
+    # always runs; only a definitive docs_only:true skips.
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -35,6 +79,8 @@ jobs:
         run: nix flake check --print-build-logs
 
   build:
+    needs: changes
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:

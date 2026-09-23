@@ -333,7 +333,7 @@ U1 and U2 are independent. U3 depends on nothing but is most useful landed with 
 ## Verification Contract
 
 | Command | Purpose | Expected outcome |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | formatting unchanged | no diff |
 | `nix flake check` | all registered checks including U4's | passes |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | production host still evaluates | builds |

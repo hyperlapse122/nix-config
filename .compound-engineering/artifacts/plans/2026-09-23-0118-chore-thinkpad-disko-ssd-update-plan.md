@@ -54,7 +54,7 @@ None — every fact this plan relies on (drive model, serial, by-id path, capaci
 
 Captured directly on the running ThinkPad-X1-Carbon-Gen-11 (this planning session executed on that host):
 
-```
+```sh
 $ lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINT
 NAME            SIZE MODEL                   SERIAL          FSTYPE      MOUNTPOINT
 nvme0n1       931.5G Samsung SSD 980 PRO 1TB S5GXNL0W417359X
@@ -119,7 +119,7 @@ Three independent sources (`lsblk`, the `/dev/disk/by-id/` symlink, and `/sys/cl
 ## Verification Contract
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Confirm `disko.nix` still matches the repo's `nixfmt-tree` formatting after the device-string edit. |
 | `nix flake check` | Run declared checks, including the `boot-layout` VM check that imports `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` (disko's test helper substitutes a disposable QEMU disk for the by-id path, so this proves the file still evaluates and boots, not that the specific by-id path is reachable). |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Confirm the production ThinkPad configuration still evaluates and builds. |

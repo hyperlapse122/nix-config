@@ -25,7 +25,8 @@ When enrolling custom Secure Boot keys using `sudo sbctl enroll-keys --microsoft
 - Firmware is properly switched to Setup Mode in UEFI BIOS.
 - `sbctl status` reports Setup Mode enabled.
 - Running `sudo sbctl enroll-keys --microsoft` fails when writing `KEK` or `db` variables with:
-  ```
+
+  ```text
   Failed to enroll keys: ...: File is immutable
   ```
 
@@ -36,11 +37,13 @@ The Linux `efivarfs` kernel filesystem sets the immutable ext2/ext4 attribute bi
 ## Solution
 
 1. Install `e2fsprogs` in system packages (`modules/nixos/base.nix`) so `chattr` and `lsattr` are available on the installed system:
+
    ```nix
    environment.systemPackages = [ pkgs.e2fsprogs ... ];
    ```
 
 2. Clear the immutable attribute on the EFI variable files prior to running `sbctl enroll-keys`:
+
    ```sh
    sudo chattr -i /sys/firmware/efi/efivars/{PK,KEK,db}* 2>/dev/null || true
    ```

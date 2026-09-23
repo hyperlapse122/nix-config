@@ -27,7 +27,7 @@ Introduce declarative NixOS support for the `MS-7D91` desktop workstation alongs
 
 ### Problem Frame
 
-The repository currently defines and manages a single host, `ThinkPad-X1-Carbon-Gen-11`. Host configuration is tightly coupled in `modules/nixos/base.nix` (hardcoded `networking.hostName`) and `flake.nix` (single-host `mkHost` abstraction). 
+The repository currently defines and manages a single host, `ThinkPad-X1-Carbon-Gen-11`. Host configuration is tightly coupled in `modules/nixos/base.nix` (hardcoded `networking.hostName`) and `flake.nix` (single-host `mkHost` abstraction).
 
 The developer's primary desktop workstation (`MS-7D91`) is currently running Fedora 44 with an Intel Core i7-13700F (which has no integrated GPU), an NVIDIA GeForce RTX 3060, a 1TB Samsung 980 PRO NVMe SSD, and a secondary 2TB Seagate HDD formatted as exFAT. To maintain a unified declarative environment, this desktop must be migrated to NixOS under the same repository with identical security guarantees (Secure Boot and TPM2 disk encryption). Because erasing the operating system discards the existing environment, the host's bootstrap age identity and re-encrypted secret tokens must be prepared from the running system prior to disk repartitioning.
 
@@ -184,7 +184,7 @@ The developer's primary desktop workstation (`MS-7D91`) is currently running Fed
 
 ### Technical Architecture
 
-```
+```text
 flake.nix
 ├── outputs.nixosConfigurations
 │   ├── ThinkPad-X1-Carbon-Gen-11          (hosts/ThinkPad-X1-Carbon-Gen-11, bootstrap=false)

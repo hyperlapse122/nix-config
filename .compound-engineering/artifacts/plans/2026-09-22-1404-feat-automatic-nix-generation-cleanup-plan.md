@@ -157,10 +157,12 @@ Key Flows are omitted: the work is a scheduled policy with no multi-step user pa
 **Dependencies:** none.
 
 **Files:**
+
 - `modules/nixos/nix-cleanup.nix` (new)
 - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix` (add the import)
 
 **Approach:**
+
 1. Create the module with the same `bootstrap = config.my.bootstrap or false` binding `modules/nixos/boot.nix` opens with.
 2. Set `programs.nh.enable` and `programs.nh.clean.enable` through `lib.mkIf (!bootstrap)`, `programs.nh.clean.dates` to the weekly schedule, and `programs.nh.clean.extraArgs` to the retention arguments R2 and R3 fix.
 3. Leave `programs.nh.flake` unset, and leave `nix.gc.automatic` at its default so the nh module's own conflict warning stays silent.
@@ -182,10 +184,12 @@ Key Flows are omitted: the work is a scheduled policy with no multi-step user pa
 **Dependencies:** U1.
 
 **Files:**
+
 - `tests/nix-cleanup.nix` (new)
 - `flake.nix` (register the check)
 
 **Approach:**
+
 1. Open the file with the header comment block every sibling check carries, stating what is asserted and why each assertion reads materialized output.
 2. Resolve the production host's `systemd.units."nh-clean.service".unit or null` and `systemd.units."nh-clean.timer".unit or null`, and the same two on bootstrap.
 3. Assert the timer's schedule and `Persistent`, then resolve the service unit's `ExecStart` target and assert the retention arguments on it (KTD2).
@@ -198,6 +202,7 @@ Key Flows are omitted: the work is a scheduled policy with no multi-step user pa
 **Patterns to follow:** `tests/yubikey-fido.nix` for the failure-collecting builder, the `esc` escaping helper, and reading rendered units; `tests/desktop-autostart.nix` for resolving an entry by what it produces and for the `lib.optionalString` guards.
 
 **Test scenarios:**
+
 - Covers AE4. The bootstrap configuration renders no `nh-clean.service` and no `nh-clean.timer`, and its system path has no `bin/nh`.
 - Covers AE2. The production `nh-clean.service` runs `clean all` with the retention count and window R2 and R3 fix.
 - Covers AE3. The retention count is at or above the production host's boot loader configuration limit, and a lower count fails with both numbers named.
@@ -218,10 +223,12 @@ Key Flows are omitted: the work is a scheduled policy with no multi-step user pa
 **Dependencies:** U2.
 
 **Files:**
+
 - `docs/verification.md` (the repository-check description and the post-rebuild hardware check)
 - `docs/recovery.md` (the retention floor beside the existing boot generation limit in the rollback section)
 
 **Approach:**
+
 1. Add a `nix-cleanup` sentence to the repository-check paragraph in the same voice as its neighbours, naming what the check reads rather than what the module declares.
 2. Add a hardware check line: after a rebuild, confirm the timer is loaded and scheduled, and confirm a dry run reports what it would remove without removing it.
 3. Extend the rollback section so the existing instruction to confirm Secure Boot before removing generations sits next to the fact that the retention floor is what keeps the menu's entries resolvable.
@@ -239,7 +246,7 @@ Key Flows are omitted: the work is a scheduled policy with no multi-step user pa
 Run from the repository root:
 
 | Command | What it proves |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Formatting matches `nixfmt-tree` without edits. |
 | `nix build --no-link .#checks.x86_64-linux.nix-cleanup` | The new check passes on the unmutated tree. |
 | `nix flake check` | Every declared check still passes, including the new one. |
@@ -249,7 +256,7 @@ Run from the repository root:
 **Mutation rounds for the new check.** Each round is one edit plus `nix build --no-link .#checks.x86_64-linux.nix-cleanup`, then `git checkout --` to restore. A round counts only when the failure comes out of the builder carrying the check's own message — read `nix log`, never the exit code alone.
 
 | Round | Mutation | Must fail on |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Drop `programs.nh.clean.enable` from `modules/nixos/nix-cleanup.nix` | the absent service unit |
 | 2 | Change the retention count in `extraArgs` to a lower number | the retention floor comparison, naming both numbers |
 | 3 | Raise `boot.lanzaboote.configurationLimit` above the retention count | the same comparison, from the other side |

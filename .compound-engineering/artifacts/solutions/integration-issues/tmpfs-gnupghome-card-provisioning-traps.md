@@ -29,7 +29,7 @@ The tmpfs `GNUPGHOME` is the point of the exercise: it keeps secret key material
 
 Provisioning the second of three cards during the ed25519 rotation:
 
-```
+```console
 $ ykman info
 Device type: YubiKey 5C NFC
 Serial number: 37522734
@@ -42,7 +42,7 @@ gpg: OpenPGP card not available: No such device
 
 Then, after `keytocard` and `save` on the first card, re-importing the backup to provision the next one:
 
-```
+```console
 $ gpg --import key-b-backup.asc
 gpg: key 4945855D4F283F05: "Joosung Park <iam@h82.dev>" not changed
 gpg: key 4945855D4F283F05: secret key imported

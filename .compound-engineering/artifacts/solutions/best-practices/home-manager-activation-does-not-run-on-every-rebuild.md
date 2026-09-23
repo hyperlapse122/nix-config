@@ -40,7 +40,7 @@ Do not phrase an activation-time guarantee as "on every rebuild", "on every swit
 
 Home Manager's NixOS module renders one systemd unit per user. On this host:
 
-```
+```ini
 X-StopIfChanged=false
 ExecStart=/nix/store/…-hm-setup-env /nix/store/…-home-manager-generation
 RemainAfterExit=yes

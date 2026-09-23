@@ -86,7 +86,7 @@ Scope Boundaries below, not this list, is the authority for what this plan exclu
 - R12. The declared set is exactly the table below, and nothing outside it is declared. The tier column shows where R2 places each entry.
 
   | Setting | Tier | Category |
-  |---|---|---|
+  | --- | --- | --- |
   | Auto-updater disabled | Environment variable | Reproducibility |
   | Auto memory disabled | Environment variable | Reproducibility |
   | Subagent concurrency cap | Environment variable | Reproducibility |
@@ -261,7 +261,7 @@ U1 builds the merger and its test. U2 wires it in and moves the environment-tier
   2. Add `home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ]` invoking the packaged merger with `--settings` pointing at `${config.home.homeDirectory}/.claude/settings.json`, guarded by `[ -x … ]` as the KDE blocks are. Let the merger's non-zero exit propagate and fail activation — do not append `|| true` as `home/h82/kde/input.nix:97` does — so a symlinked or malformed settings file stops the rebuild loudly instead of leaving the declared values silently unapplied.
   3. Add the two subagent caps to `home.sessionVariables` beside the existing `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, and leave `autoMemoryEnabled` out of the settings file so R15 holds.
   4. Move `home.sessionVariables.DISABLE_AUTOUPDATER = "1"` out of `home/h82/default.nix:19-20` into this module, so the whole declared set lives in one place and the Definition of Done's single-module claim holds.
-  4. Replace the module comment: it currently points at `modules/nixos/claude.nix` as the home of the declarative settings, a tier that no longer exists. State the tier rule and its reason instead, in the `CONCEPTS.md` vocabulary.
+  5. Replace the module comment: it currently points at `modules/nixos/claude.nix` as the home of the declarative settings, a tier that no longer exists. State the tier rule and its reason instead, in the `CONCEPTS.md` vocabulary.
 - **Patterns to follow:** `home/h82/kde/session.nix:1-28` for the activation block and the `[ -x ]` guard; `home/h82/kde/input.nix:95-97` for invoking a packaged helper from an activation block; `home/h82/kde/apps.nix:1-9` for taking `config` as a module argument.
 - **Test scenarios:** `Test expectation: none -- declaration only; U4 asserts every declared value on both hosts.`
 - **Verification:** both host configurations build, and the rendered activation script names the merger's store path.

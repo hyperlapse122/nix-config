@@ -114,7 +114,7 @@ U1 (configuration and tests) then U2 (documentation and fixture updates).
 ## Verification Contract
 
 | Command | Applies to | Proves |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | U1, U2 | Nix formatting compliance |
 | `python3 -m unittest discover -s tests -p "test_*.py"` | U2 | Python test suite passes |
 | `nix build --no-link .#checks.x86_64-linux.claude` | U1 | Claude test check passes |

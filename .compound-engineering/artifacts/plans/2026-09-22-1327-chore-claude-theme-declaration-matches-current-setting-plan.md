@@ -106,7 +106,7 @@ U1 then U2. U2 is a fixture alignment that is safe either way but reads as stale
 ## Verification Contract
 
 | Command | Applies to | Proves |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | U1 | Nix layout unchanged by hand-editing |
 | `python tests/test_agent_settings.py` | U2 | Merger behavior under the updated fixture |
 | `nix flake check` | U1, U2 | Every declared check, including `claude` and `agent-settings` |

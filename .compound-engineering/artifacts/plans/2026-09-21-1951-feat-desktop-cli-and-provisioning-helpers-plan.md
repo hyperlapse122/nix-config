@@ -355,7 +355,7 @@ flowchart TB
 ## Verification Contract
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | all units |
 | Evaluation and checks | `nix flake check` | all units |
 | Production build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | all units |

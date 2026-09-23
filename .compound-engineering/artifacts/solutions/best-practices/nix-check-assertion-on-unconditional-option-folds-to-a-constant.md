@@ -75,7 +75,7 @@ Reading the rendered unit means a change that sets the option true while a `mkIf
 Each round is `nix build --no-link .#checks.x86_64-linux.yubikey-fido`, with the failure's origin read from `nix log` rather than inferred from the exit code.
 
 | Round | Mutation | Before the guard | After the guard |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | remove the module import from the host | green on the pcscd assertion (it is not the module's to set) | same, and correctly so — recorded as expected rather than as a miss |
 | 2 | `services.pcscd.enable = false` in `base.nix`, module removed | green — the emitted shell was `[ "true" != "true" ]` regardless | red, in the builder: `the built system declares no pcscd.socket unit at all` |
 | 3 | same as 2, with the fix applied but unguarded | — | red **in the evaluator**: `attribute '"pcscd.socket"' missing`, which proves nothing |

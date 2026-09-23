@@ -47,7 +47,7 @@ nix build --no-link .#checks.x86_64-linux.kleopatra-gui
 
 With the store path interpolated **unguarded**, that command fails with
 
-```
+```text
 error: cannot coerce null to a string: null
 ```
 
@@ -85,7 +85,7 @@ Copying that shape for a check that resolves a derivation is exactly what invite
 Four rounds, each one `nix build --no-link .#checks.x86_64-linux.kleopatra-gui`:
 
 | Round | Tree | Result |
-|---|---|---|
+| --- | --- | --- |
 | Baseline | guarded, package present | green |
 | Removal mutation | guarded, package removed from `home/h82/default.nix` | red **inside the builder**; log shows `missing kleopatra in user packages` then `exit 1` |
 | Content mutation | guarded, desktop-entry assertion pointed at a filename the package does not ship | red inside the builder with `kleopatra package ships no ... entry` |
