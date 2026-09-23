@@ -71,6 +71,13 @@ let
 
       registry = userConfig.my.agentPlugins.${pluginName} or null;
 
+      # Compared against below so the --claude flag can never silently drift
+      # onto a different build than the one actually installed for the user.
+      claudeCodePkg = lib.lists.findFirst (p: (p.pname or "") == "claude-code") null (
+        userConfig.home.packages
+      );
+      expectedClaudePath = if claudeCodePkg == null then "" else "${claudeCodePkg}/bin/claude";
+
       activation = userConfig.home.activation.agentPlugins or null;
       script = if activation == null then "" else (activation.data or "");
       runsAfterPackages = lib.elem "installPackages" (
@@ -179,6 +186,14 @@ let
             failed=1
             ;;
         esac
+
+        if [ -z ${esc expectedClaudePath} ]; then
+          echo 'missing claude-code in user packages on ${hostName}' >&2
+          failed=1
+        elif [ "$claudeArg" != ${esc expectedClaudePath} ]; then
+          echo "the agent CLI's store path must match the claude-code package in home.packages on ${hostName}, got: '$claudeArg'" >&2
+          failed=1
+        fi
       '';
 
       symlinkPresent = lib.optionalString destinationTargeted ''

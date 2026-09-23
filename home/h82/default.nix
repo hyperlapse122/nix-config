@@ -16,7 +16,6 @@
     (with pkgs; [
       antigravity-cli
       bun
-      claude-code
       discord
       gh
       glab
@@ -31,6 +30,7 @@
     ])
     ++ [
       (import ../../packages/claude-desktop.nix { inherit pkgs; })
+      (import ../../packages/claude-code.nix { inherit pkgs; })
       (import ../../packages/nix-tools.nix { inherit pkgs; }).nr
       (import ../../packages/orca.nix { inherit pkgs; })
     ];

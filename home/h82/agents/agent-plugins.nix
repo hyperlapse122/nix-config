@@ -10,6 +10,10 @@ let
     (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentPluginSync
   }/bin/agent-plugin-sync";
 
+  # Single source of truth with home/h82/default.nix's package list, so this
+  # command's --claude flag can never drift onto a different claude-code build.
+  claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
+
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
   # revision that tag is expected to name, because a git tag is mutable and a
@@ -106,7 +110,7 @@ let
     in
     ''
       env ${claudeEnv} ${syncTool} \
-        --claude ${pkgs.claude-code}/bin/claude \
+        --claude ${claudeCode}/bin/claude \
         --source ${treeFor row.name spec row.harness} \
         --base ${lib.escapeShellArg "${baseDir}/${row.name}"} \
         --segment ${lib.escapeShellArg (segmentOf spec)} \
