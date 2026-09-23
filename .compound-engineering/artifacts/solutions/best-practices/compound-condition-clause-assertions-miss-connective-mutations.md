@@ -54,7 +54,7 @@ One fixed-string match spanning both `||` operators fails the instant either one
 Each round is `bash tests/check-workflow-docs-skip.sh .github/workflows/check.yml` against a temporary edit to `check.yml`, restored afterward.
 
 | Round | Mutation | Three independent substring checks | One whole-expression match |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Baseline | none | ok | ok |
 | Swap `\|\|` for `&&` in `flake-check`'s `if:` | inverts the fail-open condition to practically-always-false | **ok — false pass** | fails: "does not match the expected fail-open condition exactly" |
 | Restore | — | ok | ok |

@@ -98,7 +98,7 @@ The user's pre-NixOS dotfiles already solved this with an explicit udev rule (`s
 ## Verification Contract
 
 | Command | Purpose |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | Formatting check, no diffs |
 | `nix flake check` | Runs all declared checks, including `logitech-wakeup` |
 | `nix build --no-link .#checks.x86_64-linux.logitech-wakeup` | The new regression check in isolation |
