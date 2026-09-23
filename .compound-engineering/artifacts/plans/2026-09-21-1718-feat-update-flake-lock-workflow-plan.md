@@ -40,17 +40,20 @@ The repository manages a NixOS configuration tracking `nixos-unstable` along wit
 ### Requirements
 
 **Workflow Structure and Execution**
+
 - R1. `.github/workflows/update-flake-lock.yml` is created with explicit runner specifications on `ubuntu-24.04` and `timeout-minutes: 30`.
 - R2. The workflow triggers on a weekly schedule (`cron: '0 6 * * 1'`) and on manual invocation via `workflow_dispatch`.
 - R3. The manual trigger accepts an optional `target_inputs` string input to allow selective input updates (e.g. `nixpkgs`), defaulting to updating all flake inputs when omitted.
 - R4. Concurrency is configured (`group: update-flake-lock`, `cancel-in-progress: true`) to prevent concurrent workflow executions from creating race conditions or duplicate branches.
 
 **Pull Request and Commit Conventions**
+
 - R5. When `flake.lock` has updates, the workflow commits changes using the commit message `chore(flake): update flake.lock` on branch `update-flake-lock`.
 - R6. The created pull request is titled `chore(flake): update flake.lock` and tagged with `dependencies` and `automated` labels.
 - R7. The workflow requests `contents: write` and `pull-requests: write` permissions, and passes `secrets.GH_TOKEN_FOR_UPDATES || secrets.GITHUB_TOKEN`.
 
 **Documentation**
+
 - R8. `docs/recovery.md` notes the automated workflow alongside manual `nix flake update` instructions.
 
 ### Acceptance Examples

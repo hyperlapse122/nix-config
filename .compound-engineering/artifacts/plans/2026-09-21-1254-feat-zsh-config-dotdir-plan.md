@@ -162,7 +162,7 @@ flowchart TD
 ## Verification Contract
 
 | Test / Gate | Command | Applicability | Done Signal |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Nix format check | `nix fmt -- --ci` | Tree formatting | Exit code 0 |
 | Flake checks | `nix flake check` | Regression & syntax checks | Exit code 0 |
 | Production toplevel build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | System build | Exit code 0 |

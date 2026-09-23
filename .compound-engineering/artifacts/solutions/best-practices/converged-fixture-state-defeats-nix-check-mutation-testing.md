@@ -107,7 +107,7 @@ With `current=genA` and `profile=genB` as the starting state, and the stub movin
 Five rounds, each `bash tests/nr.sh scripts/nr`:
 
 | Round | Fixture | Tree | Result |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1. Baseline | same-generation (`genA`/`genA`) | fix in place | green |
 | 2. Mutation | same-generation | `before=$(readlink -f "$CURRENT")` reintroduced | **green** — the false pass |
 | 3. Fixture corrected | diverged (`genA`/`genB`, stub moves profile to `genC`) | fix in place | green |

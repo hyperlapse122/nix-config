@@ -75,7 +75,7 @@ The `or` fallbacks keep the earlier learning's rule intact: a removed entry stil
 Each round is `nix build --no-link .#checks.x86_64-linux.claude`.
 
 | Round | Mutation | Before the guard | After the guard |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | `enable = false` beside `text` in `modules/nixos/claude.nix` | green — the host writes no file | red, in the builder: `Expected /etc/claude-code/managed-settings.json to be enabled` |
 | 2 | `home.file.claudeSettings` with `target = ".claude/settings.json"` | green — the file is managed anyway | red, in the builder: `Home Manager must not target ~/.claude/settings.json` |
 | 3 | value and key mutations on `model`, `effortLevel`, `autoMemoryEnabled` | red | red |

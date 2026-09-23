@@ -271,7 +271,7 @@ U1 and U2 are independent of each other. U3 depends on both, because it asserts 
 Run from the repository root, in this order. What AGENTS.md requires before shipping is `nix flake check` plus both host builds — the third, fifth, and sixth rows. The formatting gate, the evaluation-only pass, and the single-check build are this plan's own additions, the last of them to isolate the new check while iterating on it.
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | U1–U4 |
 | Evaluation | `nix flake check --no-build` | U1–U3 |
 | All checks | `nix flake check` | U1–U3 |

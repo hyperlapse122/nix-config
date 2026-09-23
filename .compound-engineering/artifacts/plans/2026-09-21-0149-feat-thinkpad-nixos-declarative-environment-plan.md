@@ -130,7 +130,7 @@ The following relationships represent current divisions of future work and are n
 On 2026-09-21, the current machine was surveyed via read-only inspection, with additional administrative command outputs provided by the user.
 
 | Item | Observed value | Basis for scope |
-|---|---|---|
+| --- | --- | --- |
 | Model | Lenovo 21HMCTO1WW, ThinkPad X1 Carbon Gen 11 | Target of R1, R3 |
 | CPU / RAM | i7-1370P, ~62 GiB indicated available | x86_64, 64 GB installed RAM |
 | Storage | 1x KIOXIA 512 GB NVMe, ~476.9 GiB | Fresh installation targets the internal disk |
@@ -168,7 +168,6 @@ The file paths below are relative to the repository indicated in each entry.
 - [systemd-cryptenroll](https://github.com/systemd/systemd/blob/main/man/systemd-cryptenroll.xml): basis for TPM, recovery key, and PCR policies.
 - [1Password SSH configuration](https://www.1password.dev/ssh/agent/config): key selection file is independent of app sign-in or agent enablement settings.
 - [nixos-hardware X1 Carbon Gen 11 module](https://raw.githubusercontent.com/NixOS/nixos-hardware/master/lenovo/thinkpad/x1/11th-gen/default.nix): the module's `i915.force_probe=a7a1` differs from observed GPU `a7a0` and is not copied directly.
-
 
 ## Planning Contract
 

@@ -75,7 +75,7 @@ The `codex` CLI package is unusable in practice on this machine. Retaining it ad
 
 - KTD1. **Remove `codex` from `home.packages`**: Edit `home/h82/default.nix` to drop `codex`. Governs R1.
 - KTD2. **Update `agents.toml`**: Edit `agents.toml` to remove `"codex"`. Governs R2.
-- KTD3. **Update `README.md`**: Edit `README.md` to remove `Codex, ` from the tool enumeration. Governs R3.
+- KTD3. **Update `README.md`**: Edit `README.md` to remove `Codex,` from the tool enumeration. Governs R3.
 - KTD4. **Verification via standard checks**: Run `nix fmt -- --ci`, `nix flake check`, and both host toplevel builds. Governs R4.
 
 ### High-Level Technical Design

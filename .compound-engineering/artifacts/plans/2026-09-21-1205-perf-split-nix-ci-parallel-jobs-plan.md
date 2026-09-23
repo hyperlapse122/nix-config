@@ -132,7 +132,7 @@ flowchart TD
 ## Verification Contract
 
 | Command | Purpose | Expected Outcome |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | Local formatting check | Exits 0 with no formatting diffs |
 | `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/check.yml'))"` | YAML syntax validation | Exits 0, valid YAML structure |
 | `nix flake check` | Local checks and VM tests | Passes all declared checks |

@@ -44,7 +44,7 @@ This repository already carries six learnings about checks that pass without pro
 Two rounds, each `nix build --no-link .#checks.x86_64-linux.logind-lid-switch`:
 
 | Round | Mutation | Result |
-|---|---|---|
+| --- | --- | --- |
 | 1 (before the fix) | `--file powerdevilrc` -> `--file WRONGFILE.rc` on the Battery `LidAction` write only | green — the fragment still matched somewhere in the script |
 | 2 (after the fix, same mutation) | identical mutation, expected fragments now include `--file powerdevilrc` | red: `ThinkPad-X1-Carbon-Gen-11: kdePowerLid activation script is missing: --file powerdevilrc --group Battery --group SuspendAndShutdown --key LidAction -- 1` |
 

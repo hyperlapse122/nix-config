@@ -35,14 +35,17 @@ Add Kleopatra, the KDE graphical front end for GnuPG, to the Home Manager packag
 ### Requirements
 
 **Availability**
+
 - R1. User `h82` has Kleopatra installed through `home.packages`, providing the `kleopatra` executable on PATH.
 - R2. Kleopatra appears as a launchable application in the Plasma desktop's application menu and KRunner for user `h82`.
 
 **Interoperability with existing GnuPG configuration**
+
 - R3. Kleopatra reads the same `~/.gnupg` keyring that the existing `programs.gpg` configuration manages, so the signing certificate imported in `home/h82/gpg.nix` is visible in its certificate list.
 - R4. Passphrase and card-PIN prompts raised through Kleopatra are served by the `gpg-agent` pinentry already configured in `home/h82/gpg.nix`, with no second pinentry declaration.
 
 **Regression guard**
+
 - R5. A flake check fails if Kleopatra is removed from the user package set.
 
 ### Acceptance Examples
@@ -151,7 +154,7 @@ Add Kleopatra, the KDE graphical front end for GnuPG, to the Home Manager packag
 ## Verification Contract
 
 | Verification Command | Purpose | Expected Outcome |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | Formatting compliance | Clean exit 0 |
 | `nix flake check` | All declared checks including `kleopatra-gui` | Clean exit 0 |
 | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Production host build | Builds successfully |

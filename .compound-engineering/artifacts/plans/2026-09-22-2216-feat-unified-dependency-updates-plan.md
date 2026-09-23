@@ -93,18 +93,22 @@ flowchart TB
 ### Requirements
 
 **Schedule and Concurrency**
+
 - R1. The workflow runs on an hourly schedule (`cron: '0 * * * *'`) and supports manual trigger via `workflow_dispatch`.
 - R2. The workflow declares a concurrency group for dependency updates with `cancel-in-progress: false` to ensure in-flight check and push operations complete sequentially without race conditions.
 
 **Target Dependency Updates**
+
 - R3. The workflow updates all declared `flake.lock` inputs via Nix flake update primitives and advances `compound-engineering-plugin` to its newest tagged release matching `compound-engineering-v*`.
 - R4. The workflow queries Anthropic's official Debian APT repository package index (`https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages`), parses the newest `claude-desktop` version, deb filename, and SHA256, and updates a dedicated metadata file read by `packages/claude-desktop.nix`.
 
 **Verification and Fast-Path Push**
+
 - R5. Before proposing or pushing any changes, the workflow executes `nix fmt -- --ci` and `nix flake check` inside the runner environment.
 - R6. When all verification commands exit with status 0, the workflow creates conventional commit(s) and pushes directly to `main` using repository secret `GH_TOKEN_FOR_UPDATES` (falling back to `GITHUB_TOKEN`).
 
 **Failure Reconciliation and Auto-Merge**
+
 - R7. When any verification command fails, the workflow does not push to `main`; instead, it pushes the updated state to a tracking branch and opens a pull request with labels `dependencies` and `automated`.
 - R8. The workflow invokes `anthropics/claude-code-action` on the pull request with the captured failure log, granting permissions to inspect code and commit fixes to the branch.
 - R9. The workflow configures GitHub auto-merge on the generated pull request so that it automatically merges into `main` as soon as status checks pass.
@@ -177,6 +181,7 @@ Holds `version`, `sha256`, and `hash` (SRI format `sha256-...`). `packages/claud
 
 2. `scripts/claude-desktop-release`:
 A clean Python 3 executable following the structure of `scripts/agent-plugin-release`:
+
 - CLI arguments: `--source-url <url>`, `--output <path>`, `--dry-run`.
 - Reads `CLAUDE_DESKTOP_RELEASE_FETCH` environment variable (defaults to `curl -s`).
 - Splits Debian `Packages` text into stanzas separated by blank lines.
@@ -186,8 +191,9 @@ A clean Python 3 executable following the structure of `scripts/agent-plugin-rel
 - Converts SHA256 hex string to base64 SRI string (`sha256-<base64>=`).
 - Atomically writes JSON to `--output` if version or hash changed.
 
-3. `.github/workflows/update-dependencies.yml`:
+1. `.github/workflows/update-dependencies.yml`:
 Consolidated workflow running every hour (`cron: '0 * * * *'`) and on `workflow_dispatch`:
+
 - Concurrency: `group: update-dependencies, cancel-in-progress: false`.
 - Updates `flake.lock` (`nix flake update`), agent plugins (`scripts/agent-plugin-release`), and Claude Desktop (`scripts/claude-desktop-release`).
 - If no diffs: exit 0 cleanly.
@@ -270,4 +276,3 @@ Consolidated workflow running every hour (`cron: '0 * * * *'`) and on `workflow_
 3. `.github/workflows/update-dependencies.yml` is created with hourly cron, `concurrency: group: update-dependencies, cancel-in-progress: false`, verification gates, direct push to `main`, and Claude Action failure recovery with auto-merge.
 4. Superseded `.github/workflows/update-flake-lock.yml` and `.github/workflows/update-agent-plugins.yml` are removed.
 5. All repository checks pass (`nix fmt -- --ci`, `nix flake check`, and host builds).
-

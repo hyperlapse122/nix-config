@@ -39,17 +39,20 @@ NixOS does not follow the Filesystem Hierarchy Standard (FHS) and lacks `/lib64/
 ### Requirements
 
 **System Module & Host Configuration**
+
 - R1. `programs.nix-ld.enable` evaluates to `true` on both `ThinkPad-X1-Carbon-Gen-11` and `ThinkPad-X1-Carbon-Gen-11-bootstrap`.
 - R2. `programs.nix-ld.libraries` on the host contains `stdenv.cc.cc.lib`, `zlib`, and `openssl`.
 - R3. Module `modules/nixos/nix-ld.nix` contains only `programs.nix-ld` configuration, maintaining single-concern separation.
 
 **Automated Regression Testing**
+
 - R4. Flake check `checks.${system}.nix-ld` asserts:
   - `programs.nix-ld.enable` is `true` for production and bootstrap configurations.
   - Required libraries (`stdenv.cc.cc.lib`, `zlib`, `openssl`) are present in `programs.nix-ld.libraries`.
   - Assertions are non-decorative, use `set -x` for debug tracing, avoid negated commands under `set -e`, and exit 1 on violation.
 
 **Documentation**
+
 - R5. `docs/verification.md` lists the `nix-ld` check under repository checks and adds a post-installation hardware checklist item for `bunx tokscale@latest`.
 
 ### Acceptance Examples
@@ -98,6 +101,7 @@ NixOS does not follow the Filesystem Hierarchy Standard (FHS) and lacks `/lib64/
 ### Technical Design
 
 The implementation adds a standalone NixOS module `modules/nixos/nix-ld.nix` that sets:
+
 ```nix
 { pkgs, ... }:
 {
@@ -111,6 +115,7 @@ The implementation adds a standalone NixOS module `modules/nixos/nix-ld.nix` tha
   };
 }
 ```
+
 This is imported in `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`.
 A new check `tests/nix-ld.nix` evaluates both `self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11` and `self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap`, asserting `enable == true` and checking that library packages contain the expected names. It runs in a sandbox derivation with `set -x` and explicit `if` branches for failure reporting.
 
@@ -187,7 +192,7 @@ A new check `tests/nix-ld.nix` evaluates both `self.nixosConfigurations.ThinkPad
 ## Verification Contract
 
 | Verification Command | Purpose | Expected Outcome |
-|---|---|---|
+| --- | --- | --- |
 | `nix fmt -- --ci` | Formatting compliance | Clean exit 0 |
 | `nix flake check` | All flake checks including `nix-ld` | Clean exit 0 |
 | `nix build --no-link .#checks.x86_64-linux.nix-ld` | Direct check build | Builds successfully |
