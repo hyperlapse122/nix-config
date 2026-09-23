@@ -89,12 +89,34 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("already up to date", result.stdout)
 
+    def test_manifest_fetch_is_actually_skipped_when_not_newer(self):
+        # Proves the skip is real, not incidental: point the manifest
+        # endpoint at a failure and confirm the resolver never calls it
+        # because the version check alone already settles "nothing to do".
+        output_file = Path(self.tmp.name) / "manifest.json"
+        output_file.write_text(json.dumps(SAMPLE_MANIFEST))
+        result = self.run_release(
+            manifest_status=2, extra_args=["-o", str(output_file)]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already up to date", result.stdout)
+
     def test_malformed_existing_pin_is_treated_as_absent(self):
         # A pin file that parses as JSON but isn't an object (e.g. from a bad
         # manual edit or an unresolved merge) must not crash the resolver;
         # it should be treated the same as no pin existing yet.
         output_file = Path(self.tmp.name) / "manifest.json"
         output_file.write_text(json.dumps([1, 2, 3]))
+        result = self.run_release(extra_args=["-o", str(output_file)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("updated", result.stdout)
+
+    def test_non_string_existing_version_is_treated_as_unreadable(self):
+        # A "version" field that parses as JSON but isn't a string (e.g. an
+        # unquoted number from a bad manual edit) must not crash the version
+        # comparison; treat it the same as no readable pin.
+        output_file = Path(self.tmp.name) / "manifest.json"
+        output_file.write_text(json.dumps({"version": 2.1}))
         result = self.run_release(extra_args=["-o", str(output_file)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)

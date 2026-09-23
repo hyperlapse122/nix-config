@@ -90,6 +90,8 @@ def require_target_platform(manifest, version):
 
 
 def version_tuple(version):
+    if not isinstance(version, str):
+        raise ValueError(f"not a version string: {version!r}")
     return tuple(int(part) for part in version.split("."))
 
 

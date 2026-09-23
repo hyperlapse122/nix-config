@@ -627,7 +627,7 @@
                 versionMismatch =
                   pkgs.lib.optionalString (claudePkg != null && claudePkg.version != pinnedVersion)
                     ''
-                      echo "claude-code on ${hostName} is built from version '${claudePkg.version or "unknown"}', expected pin ${pinnedVersion}" >&2
+                      echo "claude-code on ${hostName} is built from version '${claudePkg.version}', expected pin ${pinnedVersion}" >&2
                       exit 1
                     '';
               in
