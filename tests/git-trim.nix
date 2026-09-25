@@ -3,19 +3,23 @@
 
     import ./tests/git-trim.nix { inherit pkgs self; }
 
-  Asserts that `git trim` only deletes local branches for user `h82` on the
-  ThinkPad and MS-7D91 production configurations. Bootstrap variants import the
-  same Home Manager profile, so they add no coverage.
+  Asserts that `git trim` only deletes local branches, and never rewrites a
+  checkout's HEAD, for user `h82` on the ThinkPad and MS-7D91 production
+  configurations. Bootstrap variants import the same Home Manager profile, so
+  they add no coverage.
 
   Upstream git-trim defaults to `--delete merged:origin`, which also deletes
-  merged branches on origin. The profile narrows that to `merged-local`, and
-  this check proves it by running the packaged binary against a fixture rather
-  than matching config text. Per host:
+  merged branches on origin, and to detaching a checkout whose merged branch it
+  deletes. The profile sets `merged-local` and `detach = false`, and this check
+  proves both by running the packaged binary against a fixture rather than
+  matching config text. Per host:
 
   - home.path carries bin/git-trim.
-  - with the rendered git/config installed at $XDG_CONFIG_HOME/git/config, a
-    merged tracking branch is deleted locally but survives on the bare origin,
-    and an unmerged tracking branch survives in both places.
+  - the rendered git/config does not turn off git-trim's deletion prompt.
+  - with that config installed at $XDG_CONFIG_HOME/git/config and git trim run
+    from a linked worktree whose branch is merged, a merged tracking branch is
+    deleted locally but survives on the bare origin, an unmerged tracking branch
+    survives in both places, and the worktree keeps its branch checked out.
 
   git-trim reads trim.* through a vendored libgit2 that only finds global
   config at ~/.gitconfig and $XDG_CONFIG_HOME/git/config; it ignores
@@ -29,7 +33,8 @@
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
   Each host runs in a subshell and records failures in a file, so one red build
-  names every broken assertion across both hosts.
+  names every broken assertion across both hosts. A failed fixture step aborts
+  the build under errexit instead.
 */
 { pkgs, self }:
 let
@@ -45,8 +50,7 @@ let
       gitConfig = userConfig.xdg.configFile."git/config".source or "";
     in
     ''
-      checkHost ${esc hostName} ${esc homePath} ${esc gitConfig} \
-        || echo ${esc hostName}": fixture setup failed" >> "$failures"
+      checkHost ${esc hostName} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
@@ -75,6 +79,9 @@ pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     # The rendered config signs every commit; the sandbox has no key.
     export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=false
 
+    confirm=$(git config --file "$XDG_CONFIG_HOME/git/config" --type=bool --get trim.confirm || true)
+    [ "$confirm" = false ] && fail "trim.confirm turns off the deletion prompt"
+
     git init -q --bare "$work/origin.git"
     git clone -q "$work/origin.git" "$work/clone" 2>/dev/null
     cd "$work/clone"
@@ -89,14 +96,25 @@ pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     git merge -q --no-ff -m "merge feature" feature
     git push -q origin main
 
+    git switch -q -c current
+    git commit -q --allow-empty -m current
+    git push -q -u origin current
+    git switch -q main
+    git merge -q --no-ff -m "merge current" current
+    git push -q origin main
+
     git switch -q -c wip
     git commit -q --allow-empty -m wip
     git push -q -u origin wip
     git switch -q main
 
-    if ! "$trim" --no-confirm; then
+    git worktree add -q "$work/linked" current
+    if ! (cd "$work/linked" && "$trim" --no-confirm); then
       fail "git trim exited non-zero"
     fi
+
+    head=$(git -C "$work/linked" symbolic-ref -q HEAD || true)
+    [ "$head" = refs/heads/current ] || fail "linked worktree HEAD was rewritten to '$head'"
 
     local_has() { git show-ref --verify --quiet "refs/heads/$1"; }
     origin_has() { git --git-dir="$work/origin.git" show-ref --verify --quiet "refs/heads/$1"; }
@@ -105,6 +123,7 @@ pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     origin_has feature || fail "merged branch 'feature' was deleted on origin"
     local_has wip || fail "unmerged local branch 'wip' was deleted"
     origin_has wip || fail "unmerged branch 'wip' was deleted on origin"
+    local_has current || fail "worktree branch 'current' was deleted"
     origin_has main || fail "'main' was deleted on origin"
   )
 

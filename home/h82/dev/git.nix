@@ -18,8 +18,10 @@
       push.recurseSubmodules = "check";
       tag.gpgSign = true;
       # Upstream defaults to merged:origin, which also deletes merged branches
-      # on the remote.
+      # on the remote, and to detaching a checkout whose merged branch it
+      # deletes, which rewrites HEAD in linked worktrees.
       trim.delete = "merged-local";
+      trim.detach = false;
       gpg.program = "${pkgs.gnupg}/bin/gpg";
 
       "credential.https://gist.github.com" = {
