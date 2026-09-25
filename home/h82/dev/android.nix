@@ -19,10 +19,11 @@ in
 
   systemd.user.sessionVariables = androidSessionVariables;
 
-  home.sessionPath = [
-    "${sdkRoot}/cmdline-tools/latest/bin"
-    "${sdkRoot}/platform-tools"
-  ];
+  # Appended rather than prepended through home.sessionPath: platform-tools
+  # also ships prebuilt sqlite3 and mke2fs, which must not shadow the system's.
+  home.sessionVariablesExtra = ''
+    export PATH="''${PATH:+$PATH:}${sdkRoot}/cmdline-tools/latest/bin:${sdkRoot}/platform-tools"
+  '';
 
   # The Android CLI reads its default flags from this file.
   home.file.".androidrc".text = ''

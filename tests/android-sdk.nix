@@ -10,7 +10,9 @@
   Verifies, on ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap,
   MS-7D91, and MS-7D91-bootstrap:
   - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the mutable
-    SDK root, puts cmdline-tools/latest/bin and platform-tools on PATH, and
+    SDK root, appends cmdline-tools/latest/bin and platform-tools to PATH on
+    the only line that names platform-tools (its prebuilt sqlite3 and mke2fs
+    must not shadow the system's), and
     exports a JAVA_HOME that holds a java executable.
   - environment.d/10-home-manager.conf carries both SDK variables, so apps the
     systemd user manager starts see them too.
@@ -35,7 +37,7 @@ let
   shellLines = [
     ''export ANDROID_HOME="${sdkRoot}"''
     ''export ANDROID_SDK_ROOT="${sdkRoot}"''
-    ''export PATH="${sdkRoot}/cmdline-tools/latest/bin:${sdkRoot}/platform-tools''${PATH:+:}$PATH"''
+    ''export PATH="''${PATH:+$PATH:}${sdkRoot}/cmdline-tools/latest/bin:${sdkRoot}/platform-tools"''
   ];
 
   environmentLines = [
@@ -92,6 +94,10 @@ let
         fail ${host'}": ExecStart does not run one command against ${sdkRoot}: $exec_start"
       elif [ ! -x "$provision" ] || ! grep -q 'sdk install' "$provision"; then
         fail ${host'}": ExecStart does not name the provisioning script: $provision"
+      fi
+
+      if [ "$(grep -c platform-tools ${escapeShellArg shellFile})" != 1 ]; then
+        fail ${host'}": hm-session-vars.sh names platform-tools on more than the appending PATH line"
       fi
 
       java_home=$(sed -n 's/^export JAVA_HOME="\(.*\)"$/\1/p' ${escapeShellArg shellFile})
