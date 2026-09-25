@@ -1,5 +1,7 @@
 { pkgs, ... }:
 {
+  home.packages = [ pkgs.git-trim ];
+
   programs.git = {
     enable = true;
     signing = {
@@ -15,6 +17,9 @@
       push.autoSetupRemote = true;
       push.recurseSubmodules = "check";
       tag.gpgSign = true;
+      # Upstream defaults to merged:origin, which also deletes merged branches
+      # on the remote.
+      trim.delete = "merged-local";
       gpg.program = "${pkgs.gnupg}/bin/gpg";
 
       "credential.https://gist.github.com" = {
