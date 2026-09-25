@@ -53,7 +53,7 @@ The legacy dotfiles installed `git-trim` through mise (`cargo:git-trim`) and als
 
 ### Sources
 
-- Issue: https://github.com/hyperlapse122/nix-config/issues/70
+- Issue: [hyperlapse122/nix-config#70](https://github.com/hyperlapse122/nix-config/issues/70)
 - Legacy script: `hyperlapse122/dotfiles` `home/dot_local/share/chezmoi-command-sources/executable_git-prune-local-branches` (header: "Never `-D`, `update-ref`, remote mutation, worktree mutation, or stash change").
 - `git-trim --help` for 0.4.4: `--delete` default `merged:origin`; `merged` implies `merged-local,merged-remote`; config key `trim.delete`.
 
