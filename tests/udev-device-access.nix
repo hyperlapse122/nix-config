@@ -9,13 +9,10 @@
   directory (`environment.etc."udev/rules.d"`), never the option lists it is
   derived from. `services.udev.extraRules` lands in 99-local.rules while
   `services.udev.packages` files keep their own names, so the option value
-  cannot say which file a rule ends up in, and that is the fact that decides
-  whether a `uaccess` tag does anything.
-
-  A `TAG+="uaccess"` line only takes effect when udev has already seen it by the
-  time the uaccess builtin runs, which systemd's 73-seat-late.rules queues for
-  devices tagged at that point. A tag added later, such as from 99-local.rules,
-  passes every check that reads an option and grants no access on real hardware.
+  cannot say which file a rule ends up in. That decides whether a `uaccess` tag
+  does anything: systemd's 73-seat-late.rules queues the uaccess builtin only
+  for devices already tagged when it is evaluated, so a tag added later passes
+  every check that reads an option and grants no access on real hardware.
 
   Verifies:
   - all four host configurations carry each Sennheiser BTD rule line verbatim,
@@ -35,7 +32,7 @@
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) concatStringsSep escapeShellArg;
+  inherit (pkgs.lib) boolToString escapeShellArg escapeShellArgs;
 
   # Every rule below is text spliced into a shell script, so it is escaped
   # rather than trusted to be quote-free.
@@ -107,25 +104,26 @@ let
       fi
     }
 
-    # $1 host, $2 rules directory, $3 whether the NuPhy rules belong (1 or 0).
+    # $1 host, $2 rules directory, $3 true when the NuPhy rules belong there.
     check_host() {
       host=$1
       dir=$2
+      nuphy_belongs=$3
       bound=$(lowest_builtin_prefix "$dir")
       if [ -z "$bound" ]; then
         fail "$host: no numbered rules file carries the uaccess builtin"
       fi
-      for line in ${concatStringsSep " " (map esc btdRules)}; do
+      for line in ${escapeShellArgs btdRules}; do
         if [ -z "$(files_with_line "$dir" "$line")" ]; then
           fail "$host: no udev rules file carries: $line"
         fi
       done
-      if [ "$3" = 1 ]; then
-        for line in ${concatStringsSep " " (map esc nuphyRules)}; do
+      if [ "$nuphy_belongs" = true ]; then
+        for line in ${escapeShellArgs nuphyRules}; do
           check_uaccess_rule "$host" "$dir" "$bound" "$line"
         done
       else
-        for line in ${concatStringsSep " " (map esc nuphyRules)}; do
+        for line in ${escapeShellArgs nuphyRules}; do
           if [ -n "$(files_with_line "$dir" "$line")" ]; then
             fail "$host: a NuPhy rule reaches a configuration it does not belong to: $line"
           fi
@@ -135,9 +133,9 @@ let
   '';
 
   hostAssertion = hostName: host: nuphyBelongs: ''
-    check_host ${esc hostName} ${esc host.config.environment.etc."udev/rules.d".source} ${
-      if nuphyBelongs then "1" else "0"
-    }
+    check_host ${esc hostName} ${
+      esc host.config.environment.etc."udev/rules.d".source
+    } ${boolToString nuphyBelongs}
   '';
 in
 pkgs.runCommand "udev-device-access-tests" { } ''
