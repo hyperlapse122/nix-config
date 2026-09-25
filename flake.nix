@@ -342,6 +342,7 @@
             '';
         podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
         podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
+        session-variables = import ./tests/session-variables.nix { inherit pkgs self; };
         zsh-prezto =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
