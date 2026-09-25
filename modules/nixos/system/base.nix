@@ -37,6 +37,14 @@
     shell = pkgs.zsh;
   };
   boot.kernelModules = [ "vhost_vsock" ];
+  boot.kernel.sysctl = {
+    "fs.inotify.max_user_watches" = 524288;
+    # Matches the nixpkgs default; the legacy dotfiles' 8192 targeted a stock
+    # kernel's 128 and would lower the limit here.
+    "fs.inotify.max_user_instances" = 524288;
+    "net.ipv4.ip_forward" = 1;
+    "net.ipv6.conf.all.forwarding" = 1;
+  };
   programs.zsh.enable = true;
   services.pcscd.enable = true;
   services.udev.extraRules = ''

@@ -7,6 +7,7 @@
     ../../modules/nixos/system/base.nix
     ../../modules/nixos/system/boot.nix
     ../../modules/nixos/desktop/desktop.nix
+    ../../modules/nixos/desktop/user-avatar.nix
     ../../modules/nixos/hardware/fingerprint.nix
     ../../modules/nixos/desktop/fonts.nix
     ../../modules/nixos/hardware/keyd.nix
