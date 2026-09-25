@@ -48,7 +48,7 @@ The rule text is settled; the delivery mechanism is the risk. NixOS writes `serv
 **Verification**
 
 - R6. `nix fmt -- --ci`, `nix flake check`, and all four host builds pass.
-- R7. A repository check reads the built udev rules directory and fails when a rule line is missing or altered, when a `uaccess` rule sits in a file applied at or after the uaccess builtin, or when a NuPhy rule appears on a ThinkPad configuration.
+- R7. A repository check reads the built udev rules directory and fails when a rule line is missing or altered, when a `uaccess` rule sits in a file applied at or after the uaccess builtin, when a Sennheiser `MODE` rule sits in a file applied before the one that sets systemd's default `MODE` for USB device nodes, or when a NuPhy rule appears on a ThinkPad configuration.
 
 ### Scope Boundaries
 
@@ -68,13 +68,14 @@ The rule text is settled; the delivery mechanism is the risk. NixOS writes `serv
 ### Key Technical Decisions
 
 - KTD1. **Ship the `uaccess` rules (R1, R2) as one numbered rule file in `services.udev.packages`, `60-nuphy-gem80.rules`, not in `services.udev.extraRules`.** The prefix must sort before `73-seat-late.rules`; the legacy dotfiles named these rules `59-` and `60-`. nixpkgs' `nixos/modules/services/hardware/udev.nix` copies every package's `etc/udev/rules.d/*.rules` and `lib/udev/rules.d/*.rules` into the one `/etc/udev/rules.d` directory by basename, so a `pkgs.writeTextFile` package with a `/etc/udev/rules.d/60-...` destination reaches it. systemd 261.2's `73-seat-late.rules` carries `TAG=="uaccess|xaccess-*", ENV{MAJOR}!="", RUN{builtin}+="uaccess"`, and `tests/yubikey-fido.nix` already asserts the `60-` and `70-` files that hand a YubiKey to the seat user. `hardware.keyboard.qmk.enable` was rejected: it installs the whole `qmk-udev-rules` package where the issues ask for two device IDs.
-- KTD2. **Ship the `MODE="0666"` rules (R4) in `services.udev.extraRules`, verbatim from issue #54.** `MODE` resolves to the last assignment across all rule files, and systemd's `50-udev-default.rules` sets `MODE="0664"` on every `usb_device` node, so these lines must sort after it. `99-local.rules`, where `extraRules` lands, does. `modules/nixos/system/base.nix` already uses `extraRules` for the Logitech rule.
+- KTD2. **Ship the `MODE="0666"` rules (R4) in `services.udev.extraRules`, verbatim from issue #54.** `MODE` resolves to the last assignment across all rule files, and systemd's `50-udev-default.rules` sets `MODE="0664"` on every `usb_device` node, so these lines must sort after it, and the check asserts that (KTD5). `99-local.rules`, where `extraRules` lands, does. `modules/nixos/system/base.nix` already uses `extraRules` for the Logitech rule.
 - KTD3. **Add two modules under `modules/nixos/hardware/`, imported from the host files rather than from `base.nix`.** `nuphy-gem80.nix` holds both KTD1 rules and is imported by `hosts/MS-7D91/default.nix` only. `sennheiser-btd.nix` holds the KTD2 rules and is imported by both host files. `AGENTS.md` keeps one concern per module and has each host file cherry-pick its modules, and `base.nix` is the host-agnostic module that already carries one device rule. The DFU rule sits in the Gem80 module because `0483:df11` is how the Gem80 presents in bootloader mode.
 - KTD4. **Keep `MODE="0666"` for the BTD rules after one challenge.** The rule text is the issue's, copied from the rule the user already runs, and it was not weighed against `uaccess`. `uaccess` would hand the nodes only to the active seat user, while `0666` lets any local account or sandboxed process write to the dongle. It stays because the issue specifies it, the rules match only the two dongle IDs, and it is unverified that `btd700ctl` works under a seat ACL, for instance when run over SSH. Narrowing is deferred (Scope Boundaries).
 - KTD5. **Guard the rules with one check, `udev-device-access`, that reads the built rules directory, `host.config.environment.etc."udev/rules.d".source`, on all four hosts.** It follows `tests/yubikey-fido.nix`. The design, in order of what each part catches:
   - Every rule is matched as a whole line (`grep -Fx`), so a partial edit fails.
-  - Each `uaccess` rule must sit in a file whose numeric prefix is strictly below the lowest prefix among files that carry `RUN{builtin}+="uaccess"`. The bound comes from the built directory, so a systemd renumbering fails the check instead of silently invalidating a hard-coded 73. The comparison is written so it passes only on two numeric operands: a rule file with no numeric prefix, or a directory with no uaccess-builtin file, fails instead of skipping the comparison. This is the assertion that would have caught the issues' `extraRules` placement.
-  - Every host must carry a file with the uaccess builtin. That is the positive control that stops the ThinkPad negative assertion passing against an empty directory.
+  - Each `uaccess` rule must sit in a file whose name sorts before the first file that carries `RUN{builtin}+="uaccess"`. Names are compared in byte order (`LC_ALL=C`), which is the order udev applies rule files in, and never by a parsed numeric prefix: `9-` sorts after `73-`, and `060-` sorts before it. The anchor comes from the built directory, so a systemd renaming fails the check instead of silently invalidating a hard-coded `73-`. An absent anchor fails the ordering assertion instead of skipping it. This is the assertion that would have caught the issues' `extraRules` placement.
+  - Each Sennheiser `MODE` line must sit in a file whose name sorts after the last file that carries systemd's default `SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0664"`. `MODE` is decided by the last assignment, so a file placed before that default silently loses (KTD2). The anchor is derived from the built directory the same way.
+  - Every host must carry a file with the uaccess builtin and a file with the USB default. They supply the two anchors and are the positive controls that stop the assertions, including the ThinkPad negative one, passing against an empty directory.
   - The ThinkPad hosts must carry neither NuPhy rule line. The assertion is an explicit `if grep ...; then fail; fi`, because a bare `! grep` is exempt from `set -e`.
   - The builder collects every failure before exiting, so one red build names every broken assertion.
 
@@ -129,13 +130,13 @@ flowchart TB
 
 ### U3. Add and register the `udev-device-access` check
 
-- **Goal:** Fail the build when a rule is missing, altered, misplaced after the uaccess builtin, or present on the wrong host.
+- **Goal:** Fail the build when a rule is missing, altered, ordered wrongly against the uaccess builtin or the USB default `MODE`, or present on the wrong host.
 - **Requirements:** R3, R5, R7 (KTD5)
 - **Dependencies:** U1, U2
 - **Files:** `tests/udev-device-access.nix` (new), `flake.nix` (register beside `logitech-wakeup`)
 - **Approach:**
   1. Use the `{ pkgs, self }:` interface and a header comment in the style of `tests/yubikey-fido.nix`, naming what the check reads and what it cannot see.
-  2. Resolve the rules directory per host from `environment.etc."udev/rules.d".source`. Derive the ordering bound from the built directory as KTD5 describes.
+  2. Resolve the rules directory per host from `environment.etc."udev/rules.d".source`. Derive both ordering anchors from the built directory and compare file names in byte order, as KTD5 describes.
   3. Emit the assertions KTD5 lists, escaping every spliced value the way `tests/yubikey-fido.nix` does, and collect failures into one `failed` flag.
   4. Register `udev-device-access` in the `checks` attribute set of `flake.nix`.
 - **Execution note:** Write the assertions with the mutation rounds below in mind, and run every round before trusting the check. Read the generated `buildCommand` of the built derivation once, to confirm no assertion interpolates a constant.
@@ -144,9 +145,14 @@ flowchart TB
   - Baseline: on the unmutated tree the check passes on all four hosts.
   - Move the two NuPhy lines from the rule file into `services.udev.extraRules` in `nuphy-gem80.nix` (the issues' original proposal). The check fails in the builder on the ordering assertion for `MS-7D91` and `MS-7D91-bootstrap`.
   - Rename the rule file to `80-nuphy-gem80.rules`. The check fails on the ordering assertion although both lines are present.
-  - Rename the rule file to `nuphy-gem80.rules`, with no numeric prefix. The check fails on the ordering assertion instead of skipping the comparison on an empty prefix.
-  - Add a test-only package file `50-test.rules` carrying `RUN{builtin}+="uaccess"` to the `MS-7D91` configuration. The bound drops to 50 and the check fails on the `60-` file, which proves the bound comes from the built directory and is not fixed at 73.
-  - Remove the uaccess-builtin file from a ThinkPad configuration's rules directory, for example by emptying `services.udev.packages` in its host file. The check fails on the missing-builtin positive control, and the ThinkPad negative assertion does not pass silently against an empty directory.
+  - Rename the rule file to `nuphy-gem80.rules`, with no numeric prefix. The check fails on the ordering assertion because the name sorts after the anchor.
+  - Rename the rule file to `9-nuphy-gem80.rules`. The check fails on the ordering assertion, because `9-` sorts after `73-` although the number 9 is below 73.
+  - Rename the rule file to `060-nuphy-gem80.rules`. The check passes, because `060-` sorts before `73-` in byte order and udev applies it first. This control shows the comparison is not stricter than udev.
+  - Rename the rule file to `73-zzz-nuphy-gem80.rules`, and then to `73-nuphy-gem80.rules`. The first fails and the second passes, which pins the boundary inside a shared prefix.
+  - Add a test-only package file `50-test.rules` carrying `RUN{builtin}+="uaccess"` to the `MS-7D91` configuration. The anchor becomes `50-test.rules` and the check fails on the `60-` file, which proves the anchor is the first such file and is not fixed at `73-seat-late.rules`.
+  - Move the four Sennheiser lines into a package file `40-sennheiser-btd.rules`. The check fails on all four hosts because the file sorts before `50-udev-default.rules`. Moving them to `55-sennheiser-btd.rules` passes.
+  - Add a test-only package file `99-zzz-usb-default.rules` carrying the USB default `MODE` line. The check fails on the Sennheiser lines in `99-local.rules`, which proves the anchor is the last such file.
+  - Remove every package file from a ThinkPad configuration's rules directory, by forcing `services.udev.packages` empty with `lib.mkForce` in its host file. The check fails on both missing-anchor messages, and the ThinkPad negative assertion does not pass silently against an empty directory. The forced list also drops `99-local.rules`, so the Sennheiser lines are reported missing in the same round.
   - Change `3275` to `3276` in the Gem80 rule. The check fails naming the missing line.
   - Import `nuphy-gem80.nix` from the ThinkPad host file. The check fails on the ThinkPad negative assertion for both ThinkPad configurations.
   - Drop `sennheiser-btd.nix` from one host file. The check fails naming only that host's two configurations.

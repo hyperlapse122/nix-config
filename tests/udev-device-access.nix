@@ -9,23 +9,32 @@
   directory (`environment.etc."udev/rules.d"`), never the option lists it is
   derived from. `services.udev.extraRules` lands in 99-local.rules while
   `services.udev.packages` files keep their own names, so the option value
-  cannot say which file a rule ends up in. That decides whether a `uaccess` tag
-  does anything: systemd's 73-seat-late.rules queues the uaccess builtin only
-  for devices already tagged when it is evaluated, so a tag added later passes
-  every check that reads an option and grants no access on real hardware.
+  cannot say which file a rule ends up in. That decides whether the rule does
+  anything, because udev applies the files in byte order of their names:
+  - systemd's 73-seat-late.rules queues the uaccess builtin only for devices
+    already tagged when it is evaluated, so a `uaccess` tag added by a later
+    file passes every check that reads an option and grants no access on real
+    hardware.
+  - `MODE` is decided by the last assignment, and systemd's 50-udev-default.rules
+    sets 0664 on every USB device node, so a `MODE` rule in an earlier file
+    loses to it.
+
+  Files are compared by name in byte order (LC_ALL=C sort), the order udev uses,
+  never by a parsed numeric prefix: a 9- prefix sorts after 73-, and 060- sorts
+  before it.
 
   Verifies:
   - all four host configurations carry each Sennheiser BTD rule line verbatim,
-    and carry a file with the uaccess builtin, which supplies the ordering bound
-    below.
+    each in a file that sorts after the last file carrying the USB default.
+  - all four carry a file with the uaccess builtin and a file with the USB
+    default. They supply the two anchors above and are the positive controls
+    that stop an empty directory passing.
   - MS-7D91 and MS-7D91-bootstrap carry both NuPhy rule lines verbatim, each in
-    a file whose numeric prefix is strictly below that bound. The comparison
-    passes only on two numeric operands, so a file with no numeric prefix, or a
-    directory with no uaccess-builtin file, fails instead of skipping it.
+    a file that sorts before the first file carrying the uaccess builtin. An
+    absent anchor fails the ordering assertion instead of skipping it.
   - neither ThinkPad configuration carries either NuPhy rule line. The
     assertion is an explicit `if`, because a bare `! grep` is exempt from
-    `set -e`, and the uaccess-builtin requirement above is its positive control
-    against passing on an empty directory.
+    `set -e`.
 
   The builder collects every failure instead of exiting at the first, so one red
   build names every broken assertion across the four hosts.
@@ -51,6 +60,7 @@ let
   ];
 
   builtinLine = ''RUN{builtin}+="uaccess"'';
+  usbDefaultLine = ''SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0664"'';
 
   helpers = ''
     failed=0
@@ -64,43 +74,48 @@ let
       grep -lFx -- "$2" "$1"/*.rules
     }
 
-    # The numeric prefix of a rules file name, or a failure when it has none.
-    numeric_prefix() {
-      prefix=$(basename "$1" | cut -d- -f1)
-      case "$prefix" in
-        "" | *[!0-9]*) return 1 ;;
-      esac
-      echo "$((10#$prefix))"
+    # Whether rules file name $1 sorts strictly before $2 in byte order.
+    sorts_before() {
+      [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | LC_ALL=C sort | head -n 1)" = "$1" ]
     }
 
-    # The lowest numeric prefix among the files in $1 that run the uaccess
-    # builtin, or nothing when no numbered file does.
-    lowest_builtin_prefix() {
-      lowest=""
-      for file in $(grep -lF -- ${esc builtinLine} "$1"/*.rules); do
-        if number=$(numeric_prefix "$file"); then
-          if [ -z "$lowest" ] || [ "$number" -lt "$lowest" ]; then
-            lowest=$number
-          fi
+    # The name of the first or last (by $3) rules file in $1 that carries the
+    # fixed string $2, or nothing when no file does.
+    edge_file_with() {
+      edge=""
+      for file in $(grep -lF -- "$2" "$1"/*.rules); do
+        name=$(basename "$file")
+        if [ -z "$edge" ]; then
+          edge=$name
+        elif [ "$3" = first ] && sorts_before "$name" "$edge"; then
+          edge=$name
+        elif [ "$3" = last ] && sorts_before "$edge" "$name"; then
+          edge=$name
         fi
       done
-      echo "$lowest"
+      echo "$edge"
     }
 
-    # $1 host, $2 rules directory, $3 ordering bound, $4 rule line.
-    check_uaccess_rule() {
+    # $1 host, $2 rules directory, $3 the rules file the rule is ordered
+    # against, $4 rule line, $5 before or after. The rule passes only when some
+    # file carrying it sorts on that side of a present anchor.
+    check_rule_order() {
       found=0
       ordered=0
       for file in $(files_with_line "$2" "$4"); do
         found=1
-        if number=$(numeric_prefix "$file") && [ -n "$3" ] && [ "$number" -lt "$3" ]; then
+        name=$(basename "$file")
+        if [ -n "$3" ] && [ "$5" = before ] && sorts_before "$name" "$3"; then
+          ordered=1
+        fi
+        if [ -n "$3" ] && [ "$5" = after ] && sorts_before "$3" "$name"; then
           ordered=1
         fi
       done
       if [ "$found" = 0 ]; then
         fail "$1: no udev rules file carries: $4"
       elif [ "$ordered" = 0 ]; then
-        fail "$1: the rule sits in no file applied before the uaccess builtin (prefix $3), so its tag grants nothing: $4"
+        fail "$1: the rule sits in no file applied $5 $3, so it does not take effect: $4"
       fi
     }
 
@@ -109,18 +124,20 @@ let
       host=$1
       dir=$2
       nuphy_belongs=$3
-      bound=$(lowest_builtin_prefix "$dir")
-      if [ -z "$bound" ]; then
-        fail "$host: no numbered rules file carries the uaccess builtin"
+      builtin_file=$(edge_file_with "$dir" ${esc builtinLine} first)
+      usb_default_file=$(edge_file_with "$dir" ${esc usbDefaultLine} last)
+      if [ -z "$builtin_file" ]; then
+        fail "$host: no rules file carries the uaccess builtin"
+      fi
+      if [ -z "$usb_default_file" ]; then
+        fail "$host: no rules file carries systemd's default MODE for USB device nodes"
       fi
       for line in ${escapeShellArgs btdRules}; do
-        if [ -z "$(files_with_line "$dir" "$line")" ]; then
-          fail "$host: no udev rules file carries: $line"
-        fi
+        check_rule_order "$host" "$dir" "$usb_default_file" "$line" after
       done
       if [ "$nuphy_belongs" = true ]; then
         for line in ${escapeShellArgs nuphyRules}; do
-          check_uaccess_rule "$host" "$dir" "$bound" "$line"
+          check_rule_order "$host" "$dir" "$builtin_file" "$line" before
         done
       else
         for line in ${escapeShellArgs nuphyRules}; do

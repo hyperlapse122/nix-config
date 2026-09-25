@@ -7,6 +7,11 @@
   # to 99-local.rules, applied after every other file, so a `uaccess` tag placed
   # there builds cleanly and grants nothing. `tests/udev-device-access.nix`
   # reads the built rules directory to keep it that way.
+  #
+  # The Gem80 rule matches the vendor and product IDs on the parent chain, so it
+  # tags every hidraw node of the keyboard, not only the VIA interface.
+  # `docs/verification.md` has the hardware check that decides whether to pin it
+  # to one interface.
   services.udev.packages = [
     (pkgs.writeTextDir "etc/udev/rules.d/60-nuphy-gem80.rules" ''
       # NuPhy Gem80 hidraw access for the VIA/WebHID configurator.
