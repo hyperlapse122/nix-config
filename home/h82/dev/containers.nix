@@ -14,6 +14,9 @@ let
   containerSessionVariables = {
     REGISTRY_AUTH_FILE = "/home/h82/.config/containers/auth.json";
     DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock";
+    # Ryuk needs a privileged container to manage the rootless Podman socket.
+    TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED = "true";
+    TESTCONTAINERS_RYUK_PRIVILEGED = "true";
   };
 in
 {
