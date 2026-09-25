@@ -1,6 +1,9 @@
 { pkgs, ... }:
 {
-  home.packages = [ pkgs.git-trim ];
+  home.packages = [
+    pkgs.git-trim
+    pkgs.ghq
+  ];
 
   programs.git = {
     enable = true;
@@ -23,6 +26,9 @@
       trim.delete = "merged-local";
       trim.detach = false;
       gpg.program = "${pkgs.gnupg}/bin/gpg";
+      # Where repo-clones puts the declared repositories, so a hand-run
+      # `ghq get` lands in the same tree.
+      ghq.root = "~/src";
 
       "credential.https://gist.github.com" = {
         helper = [
