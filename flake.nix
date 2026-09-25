@@ -701,6 +701,7 @@
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
         logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
         logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
+        kernel-sysctl = import ./tests/kernel-sysctl.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
         nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
           export HOME=$TMPDIR
