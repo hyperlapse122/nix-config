@@ -4,13 +4,15 @@
 # that calls this on every switch would otherwise fail the rebuild. The Nix
 # package replaces the @...@ constants with absolute store paths.
 set -uo pipefail
+shopt -s extglob
 
 GIT="@GIT@"
 GHQ="@GHQ@"
+FLOCK="@FLOCK@"
 
 DEFAULT_LIST=/run/secrets/repo-clones/list
 # Overridable so the sandboxed test can exercise the root guard.
-EUID_VALUE=${REPO_CLONES_EUID:-$(id -u)}
+EUID_VALUE=${REPO_CLONES_EUID:-$EUID}
 
 usage() {
   printf 'usage: %s [LIST_FILE]\n' "${0##*/}" >&2
@@ -57,34 +59,31 @@ if [[ ! -r $list ]]; then
   exit 0
 fi
 
+# Two overlapping runs, the unit and a manual retry, would both see a target
+# as missing, and the loser's cleanup would delete the winner's clone.
+mkdir -p -- "$GHQ_ROOT"
+exec 9>"$GHQ_ROOT/.repo-clones.lock"
+"$FLOCK" 9
+
 cloned=0
 existing=0
 skipped=0
 failed=0
 failed_paths=()
 
-# Print an entry without any userinfo, which may carry a credential.
-redact() {
-  local entry=$1
-  if [[ $entry =~ ^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@(.*)$ ]]; then
-    printf '%s<redacted>@%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-  elif [[ $entry =~ ^[^/:@]+@(.*)$ ]]; then
-    printf '<redacted>@%s' "${BASH_REMATCH[1]}"
-  else
-    printf '%s' "$entry"
-  fi
-}
-
-# Print host/path for an HTTPS URL the way ghq lays it out, or fail.
+# Print host/path for an HTTPS URL the way ghq lays it out, or fail. ghq
+# drops the port from the host directory.
 target_of() {
-  local url=$1 rest
+  local url=$1 rest host
   [[ $url == https://* ]] || return 1
   rest=${url#https://}
-  [[ $rest == *@* ]] && return 1
-  [[ $rest =~ [?#[:space:]\\] ]] && return 1
+  [[ $rest =~ [@?#%[:space:]\\] ]] && return 1
   rest=${rest%/}
   rest=${rest%.git}
   [[ $rest == */* ]] || return 1
+  host=${rest%%/*}
+  host=${host%:*([0-9])}
+  rest=$host/${rest#*/}
   local IFS=/ segment
   local -a segments
   read -r -a segments <<<"$rest"
@@ -95,19 +94,22 @@ target_of() {
   printf '%s' "$rest"
 }
 
+lineno=0
 while IFS= read -r line || [[ -n $line ]]; do
+  lineno=$((lineno + 1))
   entry=${line#"${line%%[![:space:]]*}"}
   entry=${entry%"${entry##*[![:space:]]}"}
   [[ -z $entry || $entry == \#* ]] && continue
 
-  if [[ $entry == *://*@* || $entry =~ ^[^/:@]+@ ]]; then
-    printf 'repo-clones: skipping %s: embedded credentials are not allowed\n' "$(redact "$entry")" >&2
+  # A rejected entry is named by its line number only: whatever shape it
+  # takes, it may carry a credential that must not reach the journal.
+  if [[ $entry == *@* ]]; then
+    printf 'repo-clones: skipping line %d: embedded credentials are not allowed\n' "$lineno" >&2
     skipped=$((skipped + 1))
     continue
   fi
-
   if ! rel=$(target_of "$entry"); then
-    printf 'repo-clones: skipping %s: only https://host/path URLs are supported\n' "$entry" >&2
+    printf 'repo-clones: skipping line %d: only https://host/path URLs are supported\n' "$lineno" >&2
     skipped=$((skipped + 1))
     continue
   fi
@@ -122,8 +124,8 @@ while IFS= read -r line || [[ -n $line ]]; do
     cloned=$((cloned + 1))
     printf 'repo-clones: cloned %s\n' "$rel"
   else
-    # The target was absent before this attempt, so anything there now is
-    # what the failed clone left behind.
+    # The target was absent before this attempt and the lock excludes other
+    # runs, so anything there now is what the failed clone left behind.
     if [[ -e $target || -L $target ]]; then
       rm -rf -- "$target"
     fi

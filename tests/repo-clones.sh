@@ -31,7 +31,7 @@ git_bin=$(command -v git) || {
 # this directory proves the helper supplies git itself.
 tools=$scratch/tools
 mkdir -p "$tools"
-for tool in bash dirname rm mkdir id cat env; do
+for tool in bash dirname rm mkdir sleep; do
   ln -s "$(command -v "$tool")" "$tools/$tool"
 done
 
@@ -56,19 +56,25 @@ make_origin() {
 make_origin owner/alpha
 make_origin owner/beta
 make_origin group/sub/gamma
+make_origin owner/porty
+make_origin owner/slow
 
 fake_ghq=$scratch/ghq
 cat >"$fake_ghq" <<EOF
 #!$(command -v bash)
 # Records every call, then clones https://example.test/<path> from the local
 # fixtures. A URL whose path contains "broken" leaves a partial directory and
-# fails, as an interrupted clone would.
+# fails, as an interrupted clone would. One whose path contains "slow" waits
+# before cloning, which opens the window a concurrent run could race into.
+# Like ghq, the host directory drops any port.
 set -u
 printf 'args=%s allow=%s\n' "\$*" "\${GIT_ALLOW_PROTOCOL-unset}" >>"$ghq_log"
 command -v git >/dev/null || { printf 'fake ghq: git not on PATH\n' >&2; exit 3; }
 url=\${@: -1}
 rel=\${url#https://}
 rel=\${rel%.git}
+host=\${rel%%/*}
+rel=\${host%:*}/\${rel#*/}
 target=\$GHQ_ROOT/\$rel
 case \$rel in
   *broken*)
@@ -78,13 +84,20 @@ case \$rel in
 esac
 repo=\${rel#example.test/}
 mkdir -p "\$(dirname -- "\$target")"
+case \$rel in
+  *slow*) sleep 1 ;;
+esac
 # The fixture is a local path, which the helper's https-only policy forbids.
 GIT_ALLOW_PROTOCOL=file git clone -q "$fixtures/\$repo.git" "\$target"
 EOF
 chmod +x "$fake_ghq"
 
 rendered=$scratch/repo-clones
-sed -e "s|@GIT@|$git_bin|" -e "s|@GHQ@|$fake_ghq|" "$script" >"$rendered"
+flock_bin=$(command -v flock) || {
+  printf 'flock is required\n' >&2
+  exit 1
+}
+sed -e "s|@GIT@|$git_bin|" -e "s|@GHQ@|$fake_ghq|" -e "s|@FLOCK@|$flock_bin|" "$script" >"$rendered"
 chmod +x "$rendered"
 
 new_home() {
@@ -124,6 +137,13 @@ http://user:FAKE_TOKEN@example.test/owner/plain.git
 https://example.test/owner/beta
 https://example.test/owner/linked
   https://example.test/group/sub/gamma/
+user:FAKE_TOKEN@example.test/owner/schemeless
+https://example.test/owner/query.git?private_token=FAKE_TOKEN
+https:/me:FAKE_TOKEN@example.test/owner/oneslash
+https//FAKE_TOKEN@example.test/owner/nocolon
+https://user:p@FAKE_TOKEN@example.test/owner/rawat
+https://example.test/%2e%2e/escape
+https://example.test:8443/owner/porty.git
 EOF
 run "$list"
 
@@ -167,17 +187,28 @@ else
   pass 'never calls ghq for an existing target'
 fi
 
-if grep -q 'ssh\|noscheme' "$ghq_log"; then
+if grep -q 'ssh\|noscheme\|%2e' "$ghq_log"; then
   fail 'ghq was called for a non-https entry'
 else
   pass 'never calls ghq for ssh entries'
 fi
-# The scp form's user is redacted like any other userinfo.
-if grep -q 'skipping <redacted>@example.test:owner/ssh.git' "$scratch/stderr" &&
-  grep -q 'skipping ssh://example.test/owner/ssh2.git' "$scratch/stderr"; then
-  pass 'warns about each non-https entry'
+# A skipped entry is reported by its line number and never echoed.
+if grep -q 'skipping line 4: embedded credentials' "$scratch/stderr" &&
+  grep -q 'skipping line 6: only https' "$scratch/stderr" &&
+  grep -q 'skipping line 18: only https' "$scratch/stderr"; then
+  pass 'warns about each non-https entry by line number'
 else
-  fail 'non-https entries were not reported'
+  fail "non-https entries were not reported: $(cat "$scratch/stderr")"
+fi
+if grep -q 'example.test:owner\|ssh2\|noscheme\|escape' "$scratch/stdout" "$scratch/stderr"; then
+  fail 'a skipped entry was echoed'
+else
+  pass 'never echoes a skipped entry'
+fi
+if [[ -f $home/src/example.test/owner/porty/README ]]; then
+  pass 'clones a port-bearing URL under the host without its port'
+else
+  fail 'owner/porty was not cloned at example.test/owner/porty'
 fi
 
 if grep -q FAKE_TOKEN "$scratch/stdout" "$scratch/stderr"; then
@@ -202,7 +233,7 @@ else
   pass 'puts git on the PATH ghq sees'
 fi
 
-if grep -q '2 cloned, 2 already present, 5 skipped, 1 failed' "$scratch/stdout"; then
+if grep -q '3 cloned, 2 already present, 11 skipped, 1 failed' "$scratch/stdout"; then
   pass 'prints the summary counts'
 else
   fail "unexpected summary: $(cat "$scratch/stdout")"
@@ -211,10 +242,27 @@ fi
 # --- idempotence ---------------------------------------------------------------
 : >"$ghq_log"
 run "$list"
-if grep -q 'alpha\|gamma' "$ghq_log"; then
+if grep -q 'alpha\|gamma\|porty' "$ghq_log"; then
   fail 'second run cloned again'
 else
   pass 'a second run clones nothing already present'
+fi
+
+# --- overlapping runs -----------------------------------------------------------
+# Both runs see owner/slow missing. Without the lock, the one whose clone
+# fails on the existing directory deletes the other's fresh clone.
+new_home overlap
+overlap_list=$scratch/list-overlap
+printf 'https://example.test/owner/slow.git\n' >"$overlap_list"
+env -i HOME="$home" PATH="$tools" REPO_CLONES_EUID=1000 "$rendered" "$overlap_list" >/dev/null 2>&1 &
+first=$!
+env -i HOME="$home" PATH="$tools" REPO_CLONES_EUID=1000 "$rendered" "$overlap_list" >/dev/null 2>&1 &
+second=$!
+wait "$first" "$second"
+if [[ -f $home/src/example.test/owner/slow/README ]]; then
+  pass 'overlapping runs keep the clone'
+else
+  fail "an overlapping run deleted the other run's clone"
 fi
 
 # --- missing list ---------------------------------------------------------------

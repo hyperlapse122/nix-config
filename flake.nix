@@ -300,7 +300,7 @@
         wifi-provisioning = import ./tests/wifi-provisioning.nix { inherit pkgs inputs; };
         wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
         tailscale-provisioning = import ./tests/tailscale-provisioning.nix { inherit pkgs inputs; };
-        repo-clones-provisioning = import ./tests/repo-clones.nix { inherit pkgs inputs; };
+        repo-clones-provisioning = import ./tests/repo-clones-provisioning.nix { inherit pkgs inputs; };
         tailscale-single-router =
           let
             advertisers =
@@ -718,16 +718,24 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
-        repo-clones = pkgs.runCommand "repo-clones-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-          export HOME=$TMPDIR
-          mkdir -p scripts tests
-          cp ${./scripts/repo-clones} scripts/repo-clones
-          cp ${./tests/repo-clones.sh} tests/repo-clones.sh
-          chmod +x scripts/repo-clones
-          patchShebangs scripts/repo-clones
-          bash tests/repo-clones.sh scripts/repo-clones
-          touch $out
-        '';
+        repo-clones =
+          pkgs.runCommand "repo-clones-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.git
+                pkgs.util-linux
+              ];
+            }
+            ''
+              export HOME=$TMPDIR
+              mkdir -p scripts tests
+              cp ${./scripts/repo-clones} scripts/repo-clones
+              cp ${./tests/repo-clones.sh} tests/repo-clones.sh
+              chmod +x scripts/repo-clones
+              patchShebangs scripts/repo-clones
+              bash tests/repo-clones.sh scripts/repo-clones
+              touch $out
+            '';
         ci-docs-only-paths =
           pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
             ''

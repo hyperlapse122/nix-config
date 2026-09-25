@@ -1,7 +1,7 @@
 /*
   Check interface:
 
-    import ./tests/repo-clones.nix { pkgs, inputs }
+    import ./tests/repo-clones-provisioning.nix { pkgs, inputs }
 
   Boots a client with modules/nixos/services/repo-clones.nix and a fake
   sops-encrypted repository list, next to an HTTPS git server serving bare
