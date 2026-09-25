@@ -26,11 +26,11 @@ let
   # next rebuild; a key absent from here stays the user's permanently.  Note
   # that a project-level .claude/settings.json still outranks this tier.
   settingsTier = {
-    model = "sonnet";
+    model = "opus[1m]";
     # Top-level effortLevel applies to whichever model serves the session.  The
     # published settings schema carries no modelSettings property, so there is
     # no per-model form to use instead.
-    effortLevel = "xhigh";
+    effortLevel = "medium";
     language = "korean";
     # `auto` follows the background the terminal reports, so the palette
     # tracks whichever theme Ghostty is running rather than pinning one here.
