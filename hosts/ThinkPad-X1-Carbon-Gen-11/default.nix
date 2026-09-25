@@ -18,6 +18,7 @@
     ../../modules/nixos/system/secrets.nix
     ../../modules/nixos/wifi.nix
     ../../modules/nixos/hardware/yubikey.nix
+    ../../modules/nixos/hardware/sennheiser-btd.nix
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
