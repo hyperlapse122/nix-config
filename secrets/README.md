@@ -22,12 +22,16 @@ creation_rules:
     age: <comma-separated recipients of every host that shares this file>
   - path_regex: secrets/wifi\.yaml$
     age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/tailscale\.yaml$
+    age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/repos\.yaml$
+    age: <comma-separated recipients of every host that shares this file>
 ```
 
 Only a host whose recipient appears in a file's rule can decrypt it.
-`secrets/tokens.yaml` and `secrets/wifi.yaml` currently list both
-`ThinkPad-X1-Carbon-Gen-11`'s and `MS-7D91`'s recipients, so either host can
-decrypt either file. Adding a new host's bootstrap material does not by
+`secrets/tokens.yaml`, `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and
+`secrets/repos.yaml` currently list both `ThinkPad-X1-Carbon-Gen-11`'s and
+`MS-7D91`'s recipients, so either host can decrypt any of them. Adding a new host's bootstrap material does not by
 itself give it access to an existing file: re-encrypt that file to the new
 recipient first, or split the rule per host.
 
@@ -56,9 +60,25 @@ wifi:
     psk: <network passphrase>
 ```
 
+The encrypted repository list (`secrets/repos.yaml`) holds one `repos` key
+whose value is a block string with one HTTPS clone URL per line. Blank lines
+and `#` comments are ignored. The whole list is encrypted because this
+repository is public and the list names private repositories
+(`modules/nixos/services/repo-clones.nix` decrypts it for `h82` only):
+
+```yaml
+repos: |
+  https://github.com/<owner>/<repo>.git
+  https://gitlab.com/<group>/<subgroup>/<repo>.git
+```
+
+Only `https://host/path` entries are cloned. Do not embed credentials in a
+URL; `repo-clones` skips such an entry and authenticates through the
+published gh/glab tokens instead.
+
 Keep each encrypted document at its path above; do not pass SSID, PSK, or
 token values as command arguments or print decrypted output when populating
-either file. Each host's bootstrap age identity is encrypted with the
+any of them. Each host's bootstrap age identity is encrypted with the
 public OpenPGP encryption subkey from `keys/signing.asc`.  Verify that it
 decrypts with the real card before installing NixOS;
 `scripts/prepare-age-identity` enforces that round trip as it writes the file

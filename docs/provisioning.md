@@ -68,6 +68,29 @@ sudo nixos-rebuild switch --flake .#MS-7D91
 
 Use the same command for later applies. It works with the YubiKey disconnected or Secret Service and 1Password locked. The gh/glab authentication files are user-owned regular files with mode 0600. The next apply restores their declared contents. Do not repeat manual `gh auth login` or `glab auth login` as follow-up steps.
 
+## Working repositories
+
+Every apply and every boot clones each repository listed in `secrets/repos.yaml` that is missing under `~/src/<host>/<path>`, for example `~/src/github.com/hyperlapse122/nix-config`. Create or edit the list in a private temporary directory using the schema in `secrets/README.md`, then encrypt it the same way as the token file:
+
+```sh
+umask 077
+secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
+# Write "$secret_tmp/repos.yaml", then:
+sops --encrypt \
+  --input-type yaml --output-type yaml \
+  "$secret_tmp/repos.yaml" > secrets/repos.yaml
+```
+
+To change an existing list, run `sops secrets/repos.yaml` and edit it in place. Hosts build without the file, but nothing is cloned until it exists.
+
+Cloning uses HTTPS and the published gh/glab credentials, so it needs no YubiKey or 1Password. A path that already exists is never touched: no fetch, no remote change. Removing an entry never deletes its clone. Submodules are not initialized. A clone that fails, for example while offline, does not fail the apply; the journal of `repo-clones.service` names the failed entries. Retry them as h82 at any time:
+
+```sh
+repo-clones
+```
+
+A hand-run `ghq get` uses the same `~/src` root.
+
 ## Git signing and SSH
 
 Signing commits and tags requires a YubiKey carrying the signing subkey. Three cards carry it, and each card has its own User PIN, so a PIN disclosed from one card does not unlock the others. Automatic PIN entry therefore uses one Secret Service entry per card, with `service=gnupg-card-pin` and `username=<normalized card serial>`: three cards mean three entries. If no entry exists for that serial or the keyring is locked, normal pinentry prompts for the PIN. Automatic submission never repeats after a PIN error or a retry-limit warning, and a prompt whose serial cannot be read unambiguously is never answered, because offering one card's PIN to another would burn that card's retry counter.

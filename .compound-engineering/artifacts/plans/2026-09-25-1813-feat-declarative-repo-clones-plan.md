@@ -212,12 +212,14 @@ flowchart TB
 **Dependencies:** None.
 
 **Files:**
+
 - `scripts/repo-clones` (new)
 - `packages/repo-clones.nix` (new)
 - `tests/repo-clones.sh` (new)
 - `flake.nix` (register the `repo-clones` shell check)
 
 **Approach:**
+
 1. A bash script with `@GIT@` and `@GHQ@` placeholders, following `scripts/nr`.
 2. Read the list path from its first argument, defaulting to `/run/secrets/repo-clones/list`.
 3. Refuse root. Set the environment named in KTD3.
@@ -228,6 +230,7 @@ flowchart TB
 **Patterns to follow:** `scripts/nr` and `packages/nix-tools.nix` for substitution, `tests/nr.sh` for rendering placeholders in a shell test, and `flake.nix` `nr` check registration.
 
 **Test scenarios** (the shell test renders `@GHQ@` to a fake `ghq` that clones from local fixtures or fails on demand):
+
 - Covers AE1. A missing HTTPS entry is cloned at `$HOME/src/<host>/<path>` with `.git` stripped.
 - Covers AE2. An existing target with an uncommitted file, a different remote, and another branch is unchanged byte-for-byte, and the fake `ghq` is never called for it.
 - Covers AE5. An `git@host:owner/repo.git` entry and an `ssh://` entry are skipped with a warning, and the HTTPS entries around them are cloned.
@@ -252,12 +255,14 @@ flowchart TB
 **Dependencies:** U1.
 
 **Files:**
+
 - `modules/nixos/services/repo-clones.nix` (new)
 - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`
 - `hosts/MS-7D91/default.nix`
 - `.sops.yaml` (add the `secrets/repos\.yaml$` rule with both host recipients)
 
 **Approach:**
+
 1. Add options `my.repoClones.enable` and a nullable `my.repoClones.sopsFile` defaulting to `secrets/repos.yaml` when it exists.
 2. When enabled, add the `repo-clones` package to `environment.systemPackages` whether or not the list exists, so the manual command is always present.
 3. When enabled and the file exists, declare sops secret `repo-clones/list` (`key = "repos"`, `owner = "h82"`, `mode = "0400"`) with the module's own age key source, as in `modules/nixos/services/tailscale.nix`.
@@ -279,16 +284,19 @@ flowchart TB
 **Dependencies:** U1, U2.
 
 **Files:**
+
 - `tests/repo-clones.nix` (new)
 - `flake.nix` (register the VM test and a host-assertion check)
 
 **Approach:**
+
 1. Follow `tests/auth-provisioning.nix` and `tests/tailscale-provisioning.nix`. Generate a fake age key and encrypt fixture lists in a `runCommand`.
 2. Add a server node that serves bare repositories over HTTPS through `git http-backend` with a test certificate the client trusts. Pin each bare repo's `HEAD` to `refs/heads/main` per `.compound-engineering/artifacts/solutions/best-practices/unset-defaultbranch-leaves-bare-repo-head-dangling-for-second-clone.md`.
 3. The client node imports sops-nix and the module and switches between specialisations or rebuilt configurations whose only difference is the encrypted list contents.
 4. The host assertion reads the built system path, not option values: production hosts contain `bin/repo-clones`, and bootstrap hosts contain no `repo-clones` unit or package.
 
 **Test scenarios:**
+
 - Covers AE1. After the first switch, `/home/h82/src/<server-host>/<path>` exists and is owned by `h82`.
 - Covers AE4. A switch whose only change is a new list entry clones the new repository.
 - Covers AE2. A pre-existing target that differs from the remote is unchanged after a switch.
@@ -310,12 +318,14 @@ flowchart TB
 **Dependencies:** None.
 
 **Files:**
+
 - `home/h82/dev/git.nix`
 - `tests/git-trim.nix` or a new small check registered in `flake.nix`, asserting the rendered git config
 
 **Approach:** Add `pkgs.ghq` to `home.packages` and `ghq.root = "~/src"` to `programs.git.settings`.
 
 **Test scenarios:**
+
 - The rendered `git/config` for `h82` on both production hosts sets `ghq.root` to `~/src`, read from the materialized file.
 
 **Verification:** The assertion fails when the setting is removed.
@@ -329,6 +339,7 @@ flowchart TB
 **Dependencies:** U2.
 
 **Files:**
+
 - `secrets/README.md`: `repos.yaml` rule and schema, and the missing `tailscale.yaml` mention next to it.
 - `docs/provisioning.md`: create `secrets/repos.yaml` from a private temporary directory, what the rebuild does, the `repo-clones` retry command, and that removal never deletes.
 - `docs/verification.md`: the new repository checks, plus a hardware item for the first real private clone on each host, kept separate from VM evidence.
@@ -345,7 +356,7 @@ flowchart TB
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | Nix formatting |
 | Checks | `nix flake check` | U1 shell test, U3 VM and host checks, U4 config assertion, and existing checks |
 | ThinkPad build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Production host evaluates with the module |
