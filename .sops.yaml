@@ -5,3 +5,5 @@ creation_rules:
     age: age12wg7w2uex5nc8tdrgynv3an9ywkmd937fmqunk9jldvtd65l9y8s87hmnv,age15lrv7hh8pkc9j30ca636n75h7da4dhpyjqlchcdkrp2fay45zaqstwxa9r
   - path_regex: secrets/tailscale\.yaml$
     age: age12wg7w2uex5nc8tdrgynv3an9ywkmd937fmqunk9jldvtd65l9y8s87hmnv,age15lrv7hh8pkc9j30ca636n75h7da4dhpyjqlchcdkrp2fay45zaqstwxa9r
+  - path_regex: secrets/repos\.yaml$
+    age: age12wg7w2uex5nc8tdrgynv3an9ywkmd937fmqunk9jldvtd65l9y8s87hmnv,age15lrv7hh8pkc9j30ca636n75h7da4dhpyjqlchcdkrp2fay45zaqstwxa9r
