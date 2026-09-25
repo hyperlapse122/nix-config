@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""Pin the Android SDK packages the flake builds from Google's repository XML.
+
+Writes or checks packages/android-sdk-repo.json, a trimmed repo.json in the
+format nixpkgs' androidenv consumes through `composeAndroidPackages
+{ repoJson = ...; }`. The file carries only the packages the flake installs,
+so every version and archive checksum the SDK is built from is locked in the
+repository rather than in whichever nixpkgs revision flake.lock names.
+
+cmdline-tools and platform-tools track the newest stable release. build-tools
+and platforms are the versions a project compiles against, so they stay at the
+versions already pinned (or the ones passed on the command line) and only
+their archive data is refreshed. The helper refuses to write a pin that would
+downgrade a tracked package or drop a declared version upstream no longer
+lists.
+
+The conversion mirrors nixpkgs' pkgs/development/mobile/androidenv/update.rb
+for the package types pinned here, so androidenv renders the same package.xml
+it would from its own repo.json.
+"""
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+DEFAULT_URL = "https://dl.google.com/android/repository/repository2-3.xml"
+DEFAULT_FETCH = "curl -sfL"
+REPO_BASE = "https://dl.google.com/android/repository/"
+
+TRACKED = ("cmdline-tools", "platform-tools")
+DECLARED = ("build-tools", "platforms")
+
+STABLE_CHANNEL = "channel-0"
+XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+# update.rb rewrites the repository XML's type prefixes to the namespace
+# aliases androidenv's package.xml template declares.
+TYPE_PREFIXES = {
+    "generic:genericDetailsType": "ns5",
+    "sdk:platformDetailsType": "ns11",
+}
+
+
+class Failure(Exception):
+    """A refusal that should stop the caller with a readable message."""
+
+
+def fetch(url):
+    """Run the overridable fetch command against one URL and return the body.
+
+    The command is overridable so offline tests and sandboxed Nix checks can
+    serve fixtures instead of calling the network.
+    """
+    command = shlex.split(os.environ.get("ANDROID_SDK_RELEASE_FETCH", DEFAULT_FETCH))
+    if not command:
+        raise Failure("ANDROID_SDK_RELEASE_FETCH is empty")
+    proc = subprocess.run(
+        command + [url],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise Failure(f"fetching {url} failed with status {proc.returncode}")
+    return proc.stdout
+
+
+def local_name(tag):
+    return tag.rsplit("}", 1)[-1]
+
+
+def child(node, name):
+    for element in node:
+        if local_name(element.tag) == name:
+            return element
+    return None
+
+
+def child_text(node, *names):
+    for name in names:
+        if node is None:
+            return None
+        node = child(node, name)
+    return None if node is None else node.text
+
+
+def to_json_collector(node):
+    """update.rb's to_json_collector: children keyed "name:index", leaves as text."""
+    result = {}
+    for index, element in enumerate(node):
+        key = f"{local_name(element.tag)}:{index}"
+        if len(element) == 0 and element.text:
+            result.setdefault(key, element.text)
+        else:
+            result.setdefault(key, to_json_collector(element))
+    attributes = {}
+    for name, value in node.attrib.items():
+        if name == XSI_TYPE:
+            prefix = TYPE_PREFIXES.get(value)
+            if prefix:
+                attributes.setdefault("xsi:type", f"{prefix}:{value.split(':', 1)[-1]}")
+        else:
+            attributes.setdefault(local_name(name), value)
+    if attributes:
+        result["element-attributes"] = attributes
+    return result
+
+
+def normalize_license(text):
+    text = re.sub(r"([^\n])\n([^\n])", r"\1 \2", text)
+    text = re.sub(r" +", " ", text)
+    return text.strip()
+
+
+def package_revision(package):
+    type_details = child(package, "type-details")
+    kind = type_details.get(XSI_TYPE) if type_details is not None else None
+    if kind == "generic:genericDetailsType":
+        revision = child(package, "revision")
+        parts = [child_text(revision, part) for part in ("major", "minor", "micro")]
+        version = ".".join(part for part in parts if part)
+        preview = child_text(revision, "preview")
+        if preview:
+            version += f"-rc{preview}"
+        return version or None
+    if kind == "sdk:platformDetailsType":
+        return child_text(type_details, "codename") or child_text(type_details, "api-level")
+    return None
+
+
+def archive_url(value):
+    return value if value.startswith("http") else REPO_BASE + value
+
+
+def package_archives(package):
+    archives = {}
+    node = child(package, "archives")
+    for archive in [] if node is None else node:
+        host_os = child_text(archive, "host-os") or "all"
+        host_arch = child_text(archive, "host-arch") or "all"
+        archives[host_os + host_arch] = {
+            "arch": host_arch,
+            "os": host_os,
+            "sha1": child_text(archive, "complete", "checksum"),
+            "size": int(child_text(archive, "complete", "size")),
+            "url": archive_url(child_text(archive, "complete", "url")),
+        }
+    return archives
+
+
+def parse_repository(xml_text):
+    """Return (licenses, packages, stable) for the package types pinned here.
+
+    packages maps name -> revision -> androidenv entry. stable maps name -> the
+    revisions on the stable channel.
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise Failure(f"repository XML did not parse: {exc}")
+
+    licenses = {}
+    for node in root.iter():
+        if local_name(node.tag) == "license" and node.get("type") == "text" and node.get("id"):
+            texts = licenses.setdefault(node.get("id"), [])
+            text = normalize_license(node.text or "")
+            if text not in texts:
+                texts.append(text)
+
+    packages = {}
+    stable = {}
+    for package in root:
+        if local_name(package.tag) != "remotePackage":
+            continue
+        path = package.get("path", "")
+        name, _, version = path.partition(";")
+        if name not in TRACKED + DECLARED or version == "latest":
+            continue
+        revision = package_revision(package)
+        if not revision:
+            continue
+        channel = child(package, "channelRef")
+        if channel is not None and channel.get("ref") == STABLE_CHANNEL:
+            stable.setdefault(name, set()).add(revision)
+        # A later remotePackage with the same revision only fills fields the
+        # first left unset and adds archives, as update.rb's ||= and merge do.
+        entry = packages.setdefault(name, {}).setdefault(revision, {})
+        entry.setdefault("name", name)
+        entry.setdefault("path", path.replace(";", "/"))
+        entry.setdefault("revision", revision)
+        entry.setdefault("displayName", child_text(package, "display-name"))
+        uses_license = child(package, "uses-license")
+        if uses_license is not None:
+            entry.setdefault("license", uses_license.get("ref"))
+        if package.get("obsolete") == "true":
+            entry.setdefault("obsolete", "true")
+        entry.setdefault("type-details", to_json_collector(child(package, "type-details")))
+        entry.setdefault("revision-details", to_json_collector(child(package, "revision")))
+        dependencies = child(package, "dependencies")
+        if dependencies is not None:
+            entry.setdefault("dependencies", to_json_collector(dependencies))
+        entry.setdefault("archives", {}).update(package_archives(package))
+    return licenses, packages, stable
+
+
+def version_key(version):
+    """Numeric sort key; a string with no leading number sorts lowest."""
+    parts = []
+    for part in re.split(r"[.-]", version):
+        match = re.match(r"\d+", part)
+        parts.append(int(match.group()) if match else -1)
+    return tuple(parts)
+
+
+def newest_stable(name, packages, stable):
+    candidates = [
+        version
+        for version in stable.get(name, ())
+        if packages[name][version].get("license") == "android-sdk-license"
+    ]
+    if not candidates:
+        raise Failure(f"upstream lists no stable {name} release")
+    return max(candidates, key=version_key)
+
+
+def load_current(path):
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def select(packages, stable, current, requested):
+    """Return name -> [versions] to pin."""
+    selection = {}
+    for name in TRACKED:
+        version = newest_stable(name, packages, stable)
+        pinned = (current or {}).get("latest", {}).get(name)
+        if pinned and version_key(version) < version_key(pinned):
+            raise Failure(
+                f"newest stable {name} {version} is older than the pinned {pinned}; "
+                "refusing to downgrade"
+            )
+        selection[name] = [version]
+    for name in DECLARED:
+        versions = requested.get(name) or sorted(
+            (current or {}).get("packages", {}).get(name, {}), key=version_key
+        )
+        if not versions:
+            raise Failure(f"no {name} version is pinned; pass --{name} to choose one")
+        for version in versions:
+            if version not in packages.get(name, {}):
+                raise Failure(
+                    f"{name} {version} is not in the upstream repository; "
+                    "refusing to drop a pinned version"
+                )
+        selection[name] = versions
+    return selection
+
+
+def render(licenses, packages, selection):
+    pinned = {}
+    used_licenses = set()
+    for name, versions in selection.items():
+        for version in versions:
+            entry = dict(packages[name][version])
+            entry["archives"] = list(entry["archives"].values())
+            pinned.setdefault(name, {})[version] = entry
+            if "license" in entry:
+                used_licenses.add(entry["license"])
+    missing = sorted(used_licenses - licenses.keys())
+    if missing:
+        raise Failure(f"repository XML carries no text for license {', '.join(missing)}")
+    repo = {
+        "addons": {},
+        "extras": {},
+        "images": {},
+        "latest": {
+            name: max(versions, key=version_key) for name, versions in selection.items()
+        },
+        "licenses": {license: licenses[license] for license in sorted(used_licenses)},
+        "packages": pinned,
+    }
+    return json.dumps(repo, indent=2, sort_keys=True) + "\n"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--url", default=DEFAULT_URL, help="Repository XML URL")
+    parser.add_argument("--output", "-o", help="Pin file to write or update")
+    parser.add_argument(
+        "--build-tools",
+        action="append",
+        help="build-tools version to pin (repeatable; default: the pinned ones)",
+    )
+    parser.add_argument(
+        "--platforms",
+        action="append",
+        help="platform API level to pin (repeatable; default: the pinned ones)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the resolved pin file to stdout without modifying files",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        current = load_current(args.output)
+        licenses, packages, stable = parse_repository(fetch(args.url))
+        selection = select(
+            packages,
+            stable,
+            current,
+            {"build-tools": args.build_tools, "platforms": args.platforms},
+        )
+        out_json = render(licenses, packages, selection)
+
+        if args.dry_run or not args.output:
+            sys.stdout.write(out_json)
+            return 0
+
+        if os.path.exists(args.output):
+            with open(args.output, "r", encoding="utf-8") as f:
+                if f.read() == out_json:
+                    print(f"{args.output} is already up to date")
+                    return 0
+
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(out_json)
+        summary = ", ".join(f"{name} {' '.join(v)}" for name, v in selection.items())
+        print(f"updated {args.output} to {summary}")
+        return 0
+
+    except (Failure, OSError, ValueError) as exc:
+        print(f"android-sdk-release: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

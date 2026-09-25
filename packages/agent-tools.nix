@@ -39,6 +39,10 @@ let
   # release endpoints. Its network calls go through an overridable command so
   # the sandboxed repository check can drive it with fixtures.
   claudeCodeRelease = pythonHelper "claude-code-release" ../scripts/claude-code-release;
+
+  # Pins the Android SDK packages from Google's repository XML. Its network
+  # call goes through an overridable command for the same reason.
+  androidSdkRelease = pythonHelper "android-sdk-release" ../scripts/android-sdk-release;
 in
 {
   inherit
@@ -47,5 +51,6 @@ in
     agentPluginRelease
     claudeDesktopRelease
     claudeCodeRelease
+    androidSdkRelease
     ;
 }

@@ -93,6 +93,7 @@
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
+        android-sdk-release = agentTools.androidSdkRelease;
       };
       checks.${system} = {
         pinentry-card =
@@ -203,6 +204,16 @@
               cp ${./scripts/claude-code-release} scripts/claude-code-release
               cp ${./tests/test_claude_code_release.py} tests/test_claude_code_release.py
               python tests/test_claude_code_release.py
+              touch $out
+            '';
+        android-sdk-release =
+          pkgs.runCommand "android-sdk-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${./scripts/android-sdk-release} scripts/android-sdk-release
+              cp ${./tests/test_android_sdk_release.py} tests/test_android_sdk_release.py
+              python tests/test_android_sdk_release.py
               touch $out
             '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
@@ -343,6 +354,7 @@
             '';
         podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
         podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
+        android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
         session-variables = import ./tests/session-variables.nix { inherit pkgs self; };
         zsh-prezto =
           let
