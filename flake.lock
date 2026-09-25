@@ -3,16 +3,16 @@
     "compound-engineering-plugin": {
       "flake": false,
       "locked": {
-        "lastModified": 1790105063,
-        "narHash": "sha256-nz/juFZs8rXlFuXtOSJ6/XTVo+/L7Akf9R9DMznxOBk=",
+        "lastModified": 1790356407,
+        "narHash": "sha256-y9Z7TPJz9n85QhzdYoVsHOGV2+CuWwn7UmWfjqoOWhI=",
         "owner": "EveryInc",
         "repo": "compound-engineering-plugin",
-        "rev": "020c5e10d49aed19ee9354917780e94e665f5977",
+        "rev": "4043703d32c5df9e35f22757dee22f3a72a99c66",
         "type": "github"
       },
       "original": {
         "owner": "EveryInc",
-        "ref": "compound-engineering-v3.28.2",
+        "ref": "compound-engineering-v3.29.0",
         "repo": "compound-engineering-plugin",
         "type": "github"
       }
@@ -97,11 +97,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790292277,
-        "narHash": "sha256-z+knvdMItRrMonmG4RIsqKYIa/hwYUzKjotDTfC5DDc=",
+        "lastModified": 1790359331,
+        "narHash": "sha256-Obs1m3Rs5rTEWjZlOLSJYYAv7nEqQgogSMgWtOv8JBI=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "4b9add8645d5e2b0f7de18f7a442d08fe2bdcc91",
+        "rev": "6fa0edfe6a025d4d98f44a6c0d704d690dce3378",
         "type": "github"
       },
       "original": {
