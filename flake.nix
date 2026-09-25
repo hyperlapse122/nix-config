@@ -342,6 +342,7 @@
             '';
         podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
         podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
+        android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
         session-variables = import ./tests/session-variables.nix { inherit pkgs self; };
         zsh-prezto =
           let
