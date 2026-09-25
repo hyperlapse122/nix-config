@@ -40,7 +40,7 @@ The pre-NixOS dotfiles installed `~/.face` and a `~/.face.icon` symlink. This fl
 
 ### Scope Boundaries
 
-- **Out of scope:** changing the avatar from the System Settings GUI and keeping that change. The avatar is declarative, and a GUI change is reset on the next rebuild or boot.
+- **Out of scope:** changing the avatar from the System Settings GUI and keeping that change. A GUI change is not reverted automatically: AccountsService keeps it under `/var/lib/AccountsService`, where it outranks `~/.face` in System Settings and the Plasma session, while the SDDM greeter keeps showing the declared `FacesDir` file. Clearing the AccountsService entry restores the declared avatar everywhere.
 - **Out of scope:** avatars for any account other than `h82`.
 
 ### Key Decisions
