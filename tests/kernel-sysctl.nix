@@ -26,16 +26,17 @@ let
   assertHost =
     hostName: host:
     let
-      sysctlEntry = host.config.environment.etc."sysctl.d/60-nixos.conf";
+      sysctlEntry = host.config.environment.etc."sysctl.d/60-nixos.conf" or { };
+      sysctlFile = sysctlEntry.source or "/dev/null";
     in
     ''
-      if [ "${builtins.toJSON sysctlEntry.enable}" != "true" ]; then
+      if [ "${pkgs.lib.boolToString (sysctlEntry.enable or false)}" != "true" ]; then
         echo "sysctl.d/60-nixos.conf is not enabled on ${hostName}" >&2
         exit 1
       fi
     ''
     + pkgs.lib.concatMapStrings (line: ''
-      if ! grep -Fxq -- '${line}' "${sysctlEntry.source}"; then
+      if ! grep -Fxq -- '${line}' "${sysctlFile}"; then
         echo "${hostName}: sysctl.d/60-nixos.conf is missing the line '${line}'" >&2
         exit 1
       fi
