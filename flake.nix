@@ -699,6 +699,7 @@
             '';
         desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
         plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
+        user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
         logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
         logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };

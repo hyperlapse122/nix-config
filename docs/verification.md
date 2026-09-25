@@ -65,6 +65,8 @@ A successful VM test or build does not replace these checks. The person who perf
 - [ ] Confirm enrollment and deletion succeed via KDE Plasma System Settings (Users → Fingerprint Settings) as well as the packaged `enroll-fingerprint` helper for users in the `wheel` group.
 - [ ] Unlock the screen with an enrolled finger, and authorize a polkit prompt with it. The KDE polkit agent renders only a password field, so the swipe is accepted with no visible prompt — confirm it works rather than looking for one.
 - [ ] Confirm the SDDM greeter still demands the password and offers no fingerprint.
+- [ ] Confirm the SDDM greeter shows the `h82` avatar rather than the generic icon, and that `/run/current-system/sw/share/sddm/faces/h82.face.icon` exists. The greeter cannot read `~/.face.icon` through the mode-700 home directory, so this file is its only source.
+- [ ] Confirm System Settings (Users) and the Plasma launcher show the same avatar. Both read `~/.face` or `~/.face.icon`; `user-avatar` checks only that the files are deployed, not that Plasma picks them up.
 - [ ] Confirm `fprintd-list h82` reports exactly the fingers that were meant to be enrolled. No build-time check can see this, and a stale enrollment from before a reinstall is a live credential.
 - [ ] After a suspend/resume cycle, record whether fingerprint unlock works at the lock screen. It is known to fail until the screen locker is recycled, because fprintd restarts on resume while the preserved locker keeps a stale PAM connection (nixpkgs#432276). Record the behaviour rather than chasing it; this configuration did not cause it.
 - [ ] Swipe an unenrolled finger repeatedly at the lock screen and confirm the password still works afterwards.
