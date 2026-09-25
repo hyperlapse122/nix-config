@@ -3,54 +3,56 @@
 
     import ./tests/android-sdk.nix { inherit pkgs self; }
 
-  Asserts that every host configuration gives h82 a usable Android SDK, reading
-  the files the Home Manager generation materializes rather than the options
-  they come from.
+  Asserts that every host configuration gives h82 the Android SDK the pin file
+  packages/android-sdk-repo.json names, reading the files the Home Manager
+  generation materializes rather than the options they come from. The expected
+  versions are read from the pin file here, independently of the module, so a
+  module that stops deriving its versions from the pin fails.
 
   Verifies, on ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap,
   MS-7D91, and MS-7D91-bootstrap:
-  - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the mutable
-    SDK root, appends cmdline-tools/latest/bin and platform-tools to PATH on
-    the only line that names platform-tools (its prebuilt sqlite3 and mke2fs
-    must not shadow the system's), and
-    exports a JAVA_HOME that holds a java executable.
+  - ~/.local/share/android-sdk is a link into a store SDK that carries every
+    pinned package's package.xml at its repository path, and the accepted
+    android-sdk-license.
+  - the SDK's adb runs in the sandbox and reports the pinned platform-tools
+    version, and aapt2 from each pinned build-tools runs. Both prove
+    androidenv patched them for NixOS rather than leaving them to nix-ld.
+  - the pinned cmdline-tools directory ships an executable sdkmanager.
+  - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the link,
+    appends the cmdline-tools bin and platform-tools directories to PATH on
+    the only line that names platform-tools (its sqlite3 and mke2fs must not
+    shadow the system's), and exports a JAVA_HOME that holds a java
+    executable.
   - environment.d/10-home-manager.conf carries both SDK variables, so apps the
     systemd user manager starts see them too.
-  - ~/.androidrc holds exactly the --sdk flag for that root.
-  - android-sdk-provision.service is linked into default.target.wants, runs
-    the provisioning script against that root, and hands it the nix-ld loader.
-
-  Then runs the provisioning script against a fake Android CLI:
-  - an empty SDK root gets one install call naming every declared package.
-  - a complete SDK root gets no call at all.
-  - a partial SDK root gets a call naming only the missing packages; a run
-    that installed everything again would pass the empty-root case alone.
-  - a CLI that exits 0 without installing fails the script, so the unit
-    retries instead of recording success.
+  - ~/.androidrc holds exactly the --sdk flag for the link.
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) escapeShellArg concatMapStrings;
+  inherit (pkgs.lib)
+    attrNames
+    attrValues
+    concatMap
+    concatMapStrings
+    escapeShellArg
+    ;
+
+  repo = builtins.fromJSON (builtins.readFile ../packages/android-sdk-repo.json);
+  pinned = concatMap attrValues (attrValues repo.packages);
+  platformTools = repo.latest.platform-tools;
+  cmdlineTools = repo.latest.cmdline-tools;
 
   sdkRoot = "/home/h82/.local/share/android-sdk";
 
   shellLines = [
     ''export ANDROID_HOME="${sdkRoot}"''
     ''export ANDROID_SDK_ROOT="${sdkRoot}"''
-    ''export PATH="''${PATH:+$PATH:}${sdkRoot}/cmdline-tools/latest/bin:${sdkRoot}/platform-tools"''
+    ''export PATH="''${PATH:+$PATH:}${sdkRoot}/cmdline-tools/${cmdlineTools}/bin:${sdkRoot}/platform-tools"''
   ];
 
   environmentLines = [
     "ANDROID_HOME=${sdkRoot}"
     "ANDROID_SDK_ROOT=${sdkRoot}"
-  ];
-
-  unitLines = [
-    "Type=oneshot"
-    "Restart=on-failure"
-    "WantedBy=default.target"
-    "Environment=NIX_LD=/run/current-system/sw/share/nix-ld/lib/ld.so"
-    "Environment=NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib"
   ];
 
   assertHost =
@@ -59,15 +61,43 @@ let
       hm = host.config.home-manager.users.h82;
       files = "${hm.home-files}";
       shellFile = "${hm.home.sessionVariablesPackage}/etc/profile.d/hm-session-vars.sh";
-      unit = "${files}/.config/systemd/user/android-sdk-provision.service";
-      wanted = "${files}/.config/systemd/user/default.target.wants/android-sdk-provision.service";
       host' = escapeShellArg hostName;
     in
     ''
       check_file ${host'} ${escapeShellArg shellFile}
       check_file ${host'} ${files}/.config/environment.d/10-home-manager.conf
       check_file ${host'} ${files}/.androidrc
-      check_file ${host'} ${unit}
+
+      sdk=${files}/.local/share/android-sdk
+      if [ ! -L "$sdk" ] || [ ! -d "$sdk" ]; then
+        fail ${host'}": .local/share/android-sdk is not a link to a directory"
+      else
+        sdk=$(readlink -f "$sdk")
+        case "$sdk" in
+          /nix/store/*) ;;
+          *) fail ${host'}": .local/share/android-sdk resolves outside the store: $sdk" ;;
+        esac
+        check_file ${host'} "$sdk/licenses/android-sdk-license"
+    ''
+    + concatMapStrings (package: ''
+      check_line_in ${host'} "$sdk/${package.path}/package.xml" ${escapeShellArg ''path="${builtins.replaceStrings [ "/" ] [ ";" ] package.path}"''}
+    '') pinned
+    + ''
+      adb_version=$("$sdk/platform-tools/adb" version 2>&1 | sed -n 's/^Version \([^-]*\)-.*/\1/p' || true)
+      if [ "$adb_version" != ${escapeShellArg platformTools} ]; then
+        fail ${host'}": adb reports platform-tools '$adb_version', expected the pinned ${platformTools}"
+      fi
+    ''
+    + concatMapStrings (version: ''
+      if ! "$sdk/build-tools/${version}/aapt2" version >/dev/null 2>&1; then
+        fail ${host'}": aapt2 from build-tools ${version} does not run"
+      fi
+    '') (attrNames repo.packages.build-tools)
+    + ''
+        if [ ! -x "$sdk/cmdline-tools/${cmdlineTools}/bin/sdkmanager" ]; then
+          fail ${host'}": cmdline-tools/${cmdlineTools} ships no executable sdkmanager"
+        fi
+      fi
     ''
     + concatMapStrings (line: ''
       check_line ${host'} ${escapeShellArg shellFile} ${escapeShellArg line}
@@ -75,25 +105,9 @@ let
     + concatMapStrings (line: ''
       check_line ${host'} ${files}/.config/environment.d/10-home-manager.conf ${escapeShellArg line}
     '') environmentLines
-    + concatMapStrings (line: ''
-      check_line ${host'} ${unit} ${escapeShellArg line}
-    '') unitLines
     + ''
       if [ -f ${files}/.androidrc ] && [ "$(cat ${files}/.androidrc)" != ${escapeShellArg "--sdk=${sdkRoot}"} ]; then
         fail ${host'}": .androidrc does not hold exactly --sdk=${sdkRoot}"
-      fi
-
-      if [ ! -e ${wanted} ]; then
-        fail ${host'}": android-sdk-provision.service is not in default.target.wants"
-      fi
-
-      exec_start=$(grep '^ExecStart=' ${unit} || true)
-      provision=''${exec_start#ExecStart=}
-      provision=''${provision%% *}
-      if [ "$exec_start" != "ExecStart=$provision ${sdkRoot}" ]; then
-        fail ${host'}": ExecStart does not run one command against ${sdkRoot}: $exec_start"
-      elif [ ! -x "$provision" ] || ! grep -q 'sdk install' "$provision"; then
-        fail ${host'}": ExecStart does not name the provisioning script: $provision"
       fi
 
       if [ "$(grep -c platform-tools ${escapeShellArg shellFile})" != 1 ]; then
@@ -105,31 +119,13 @@ let
         fail ${host'}": hm-session-vars.sh exports no JAVA_HOME with bin/java"
       fi
     '';
-
-  # Records each call, then unpacks the requested packages unless told not to.
-  fakeCli = pkgs.writeShellScript "fake-android" ''
-    printf '%s\n' "$*" >> "$FAKE_LOG"
-    if [ "''${FAKE_INSTALL:-1}" = 1 ]; then
-      sdk=""
-      packages=0
-      for arg in "$@"; do
-        case "$arg" in
-          --sdk=*) sdk=''${arg#--sdk=} ;;
-          --*|sdk|install) ;;
-          *) mkdir -p "$sdk/$arg" && touch "$sdk/$arg/package.xml" ;;
-        esac
-      done
-    fi
-  '';
-
-  androidSdk = import ../packages/android-sdk.nix {
-    inherit pkgs;
-    androidCli = fakeCli;
-  };
-  provision = "${androidSdk.provision}/bin/android-sdk-provision";
-  allPackages = toString androidSdk.packages;
 in
 pkgs.runCommand "android-sdk-tests" { } ''
+  # adb aborts when it cannot create ~/.android, and the sandbox HOME does
+  # not exist.
+  export HOME=$TMPDIR/home
+  mkdir -p "$HOME"
+
   failed=0
   fail() {
     echo "$1" >&2
@@ -145,45 +141,20 @@ pkgs.runCommand "android-sdk-tests" { } ''
       fail "$1: $2 is missing the line: $3"
     fi
   }
+  # package.xml is one generated document, so its path attribute is matched
+  # as a fixed string rather than as a whole line.
+  check_line_in() {
+    if [ ! -f "$2" ]; then
+      fail "$1: missing $2"
+    elif ! grep -Fq -- "$3" "$2"; then
+      fail "$1: $2 does not declare $3"
+    fi
+  }
 
   ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
   ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
   ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
   ${assertHost "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap}
-
-  export FAKE_LOG=$TMPDIR/calls
-  sdk=$TMPDIR/sdk
-
-  : > "$FAKE_LOG"
-  if ! ${provision} "$sdk"; then
-    fail "provisioning an empty SDK root failed"
-  fi
-  if [ "$(cat "$FAKE_LOG")" != "--no-metrics --sdk=$sdk sdk install ${allPackages}" ]; then
-    fail "an empty SDK root did not get one install call for every package: $(cat "$FAKE_LOG")"
-  fi
-
-  : > "$FAKE_LOG"
-  if ! ${provision} "$sdk"; then
-    fail "provisioning a complete SDK root failed"
-  fi
-  if [ -s "$FAKE_LOG" ]; then
-    fail "a complete SDK root still called the CLI: $(cat "$FAKE_LOG")"
-  fi
-
-  rm -r "$sdk/platform-tools" "$sdk/build-tools"
-  : > "$FAKE_LOG"
-  if ! ${provision} "$sdk"; then
-    fail "provisioning a partial SDK root failed"
-  fi
-  if [ "$(cat "$FAKE_LOG")" != "--no-metrics --sdk=$sdk sdk install platform-tools build-tools/36.0.0" ]; then
-    fail "a partial SDK root did not get a call for only the missing packages: $(cat "$FAKE_LOG")"
-  fi
-
-  rm -r "$sdk"
-  : > "$FAKE_LOG"
-  if FAKE_INSTALL=0 ${provision} "$sdk"; then
-    fail "provisioning succeeded although the CLI installed nothing"
-  fi
 
   if [ "$failed" != 0 ]; then
     exit 1

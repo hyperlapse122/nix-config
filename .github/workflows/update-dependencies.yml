@@ -75,6 +75,9 @@ jobs:
           # 4. Update Claude Code
           nix run .#claude-code-release -- --output packages/claude-code-manifest.json
 
+          # 5. Update the Android SDK pin
+          nix run .#android-sdk-release -- --output packages/android-sdk-repo.json
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -123,6 +126,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/claude-code-manifest.json)
             git add packages/claude-code-manifest.json
             git commit -m "chore(packages): bump claude-code to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/android-sdk-repo.json)" ]; then
+            PINNED=$(jq -r '.latest | to_entries | map("\(.key) \(.value)") | join(", ")' packages/android-sdk-repo.json)
+            git add packages/android-sdk-repo.json
+            git commit -m "chore(packages): bump android sdk pin" -m "Pinned: $PINNED"
           fi
 
           if [ -n "$(git status --porcelain home/h82/agents/agent-plugins.nix)" ]; then
