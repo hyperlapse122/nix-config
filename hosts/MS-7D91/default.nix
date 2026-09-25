@@ -17,6 +17,7 @@
     ../../modules/nixos/hardware/yubikey.nix
     ../../modules/nixos/hardware/nuphy-gem80.nix
     ../../modules/nixos/hardware/sennheiser-btd.nix
+    ../../modules/nixos/hardware/dualsense.nix
     ../../modules/nixos/hardware/bluetooth-audio.nix
   ];
   config.my.podman.enable = true;

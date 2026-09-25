@@ -5,7 +5,8 @@
 
   Asserts that the udev rules each host actually builds carry the device-access
   rules for the NuPhy Gem80 keyboard, the STM32 ROM DFU bootloader, and the
-  Sennheiser BTD 600/700 dongles. Every assertion reads the materialised rules
+  Sennheiser BTD 600/700 dongles, and the rules that hide the DualSense
+  controller touchpad from libinput. Every assertion reads the materialised rules
   directory (`environment.etc."udev/rules.d"`), never the option lists it is
   derived from. `services.udev.extraRules` lands in 99-local.rules while
   `services.udev.packages` files keep their own names, so the option value
@@ -26,6 +27,9 @@
   Verifies:
   - all four host configurations carry each Sennheiser BTD rule line verbatim,
     each in a file that sorts after the last file carrying the USB default.
+  - all four host configurations carry both DualSense touchpad rule lines
+    verbatim. libinput reads LIBINPUT_IGNORE_DEVICE from the udev database, so
+    no file order constrains them.
   - all four carry a file with the uaccess builtin and a file with the USB
     default. They supply the two anchors above and are the positive controls
     that stop an empty directory passing.
@@ -57,6 +61,11 @@ let
     ''SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3542", ATTRS{idProduct}=="3000", MODE="0666"''
     ''SUBSYSTEM=="usb", ATTR{idVendor}=="3542", ATTR{idProduct}=="3001", MODE="0666"''
     ''SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3542", ATTRS{idProduct}=="3001", MODE="0666"''
+  ];
+
+  dualsenseRules = [
+    ''ACTION=="add|change", ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
+    ''ACTION=="add|change", ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
   ];
 
   builtinLine = ''RUN{builtin}+="uaccess"'';
@@ -134,6 +143,11 @@ let
       fi
       for line in ${escapeShellArgs btdRules}; do
         check_rule_order "$host" "$dir" "$usb_default_file" "$line" after
+      done
+      for line in ${escapeShellArgs dualsenseRules}; do
+        if [ -z "$(files_with_line "$dir" "$line")" ]; then
+          fail "$host: no udev rules file carries: $line"
+        fi
       done
       if [ "$nuphy_belongs" = true ]; then
         for line in ${escapeShellArgs nuphyRules}; do
