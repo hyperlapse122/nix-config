@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Clone every declared repository that is missing under ~/src. Existing paths
+# are never touched, and a failed entry never fails the run: the systemd unit
+# that calls this on every switch would otherwise fail the rebuild. The Nix
+# package replaces the @...@ constants with absolute store paths.
+set -uo pipefail
+
+GIT="@GIT@"
+GHQ="@GHQ@"
+
+DEFAULT_LIST=/run/secrets/repo-clones/list
+# Overridable so the sandboxed test can exercise the root guard.
+EUID_VALUE=${REPO_CLONES_EUID:-$(id -u)}
+
+usage() {
+  printf 'usage: %s [LIST_FILE]\n' "${0##*/}" >&2
+}
+
+if [[ $# -gt 1 ]]; then
+  usage
+  exit 2
+fi
+case ${1:-} in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+if [[ $EUID_VALUE == 0 ]]; then
+  printf 'repo-clones: refusing to run as root; clones must belong to the user\n' >&2
+  exit 1
+fi
+if [[ -z ${HOME:-} ]]; then
+  printf 'repo-clones: HOME is not set\n' >&2
+  exit 1
+fi
+
+list=${1:-$DEFAULT_LIST}
+
+export GHQ_ROOT="$HOME/src"
+# ghq starts git from PATH, and a systemd service's default PATH has none.
+PATH="$(dirname -- "$GIT"):$PATH"
+export PATH
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=
+export SSH_ASKPASS=
+# Refuse every non-HTTPS transport, submodule URLs included, so nothing ever
+# reaches ssh and the 1Password agent.
+export GIT_ALLOW_PROTOCOL=https
+# Fail a stalled transfer instead of blocking the switch that runs this unit.
+export GIT_HTTP_LOW_SPEED_LIMIT=1000
+export GIT_HTTP_LOW_SPEED_TIME=60
+
+if [[ ! -r $list ]]; then
+  printf 'repo-clones: repository list %s is missing or unreadable; nothing to clone\n' "$list" >&2
+  exit 0
+fi
+
+cloned=0
+existing=0
+skipped=0
+failed=0
+failed_paths=()
+
+# Print an entry without any userinfo, which may carry a credential.
+redact() {
+  local entry=$1
+  if [[ $entry =~ ^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@(.*)$ ]]; then
+    printf '%s<redacted>@%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  elif [[ $entry =~ ^[^/:@]+@(.*)$ ]]; then
+    printf '<redacted>@%s' "${BASH_REMATCH[1]}"
+  else
+    printf '%s' "$entry"
+  fi
+}
+
+# Print host/path for an HTTPS URL the way ghq lays it out, or fail.
+target_of() {
+  local url=$1 rest
+  [[ $url == https://* ]] || return 1
+  rest=${url#https://}
+  [[ $rest == *@* ]] && return 1
+  [[ $rest =~ [?#[:space:]\\] ]] && return 1
+  rest=${rest%/}
+  rest=${rest%.git}
+  [[ $rest == */* ]] || return 1
+  local IFS=/ segment
+  local -a segments
+  read -r -a segments <<<"$rest"
+  [[ ${#segments[@]} -ge 2 ]] || return 1
+  for segment in "${segments[@]}"; do
+    [[ -n $segment && $segment != . && $segment != .. ]] || return 1
+  done
+  printf '%s' "$rest"
+}
+
+while IFS= read -r line || [[ -n $line ]]; do
+  entry=${line#"${line%%[![:space:]]*}"}
+  entry=${entry%"${entry##*[![:space:]]}"}
+  [[ -z $entry || $entry == \#* ]] && continue
+
+  if [[ $entry == *://*@* || $entry =~ ^[^/:@]+@ ]]; then
+    printf 'repo-clones: skipping %s: embedded credentials are not allowed\n' "$(redact "$entry")" >&2
+    skipped=$((skipped + 1))
+    continue
+  fi
+
+  if ! rel=$(target_of "$entry"); then
+    printf 'repo-clones: skipping %s: only https://host/path URLs are supported\n' "$entry" >&2
+    skipped=$((skipped + 1))
+    continue
+  fi
+
+  target=$GHQ_ROOT/$rel
+  if [[ -e $target || -L $target ]]; then
+    existing=$((existing + 1))
+    continue
+  fi
+
+  if "$GHQ" get --no-recursive "${entry%/}" </dev/null >/dev/null 2>&1; then
+    cloned=$((cloned + 1))
+    printf 'repo-clones: cloned %s\n' "$rel"
+  else
+    # The target was absent before this attempt, so anything there now is
+    # what the failed clone left behind.
+    if [[ -e $target || -L $target ]]; then
+      rm -rf -- "$target"
+    fi
+    failed=$((failed + 1))
+    failed_paths+=("$rel")
+    printf 'repo-clones: failed to clone %s\n' "$rel" >&2
+  fi
+done <"$list"
+
+printf 'repo-clones: %d cloned, %d already present, %d skipped, %d failed\n' \
+  "$cloned" "$existing" "$skipped" "$failed"
+if [[ $failed -gt 0 ]]; then
+  printf 'repo-clones: failed: %s\n' "${failed_paths[*]}" >&2
+  printf 'repo-clones: run repo-clones again once the network or credentials are available\n' >&2
+fi
+exit 0

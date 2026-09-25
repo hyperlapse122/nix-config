@@ -716,6 +716,16 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
+        repo-clones = pkgs.runCommand "repo-clones-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
+          export HOME=$TMPDIR
+          mkdir -p scripts tests
+          cp ${./scripts/repo-clones} scripts/repo-clones
+          cp ${./tests/repo-clones.sh} tests/repo-clones.sh
+          chmod +x scripts/repo-clones
+          patchShebangs scripts/repo-clones
+          bash tests/repo-clones.sh scripts/repo-clones
+          touch $out
+        '';
         ci-docs-only-paths =
           pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
             ''
