@@ -57,8 +57,8 @@ let
   };
 
   settingsTier = {
-    model = "sonnet";
-    effortLevel = "xhigh";
+    model = "opus[1m]";
+    effortLevel = "medium";
     language = "korean";
     theme = "auto";
     preferredNotifChannel = "ghostty";
