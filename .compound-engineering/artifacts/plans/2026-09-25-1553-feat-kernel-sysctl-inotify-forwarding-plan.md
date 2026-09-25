@@ -58,7 +58,7 @@ The legacy dotfiles shipped `99-inotify.conf` and `99-tailscale.conf`. This flak
 
 ### Sources
 
-- Issue: https://github.com/hyperlapse122/nix-config/issues/56
+- Issue: <https://github.com/hyperlapse122/nix-config/issues/56>
 - nixpkgs defaults: `nixos/modules/config/sysctl.nix` (inotify `mkDefault 524288`) and `nixos/modules/services/networking/tailscale.nix` (forwarding at `mkOverride 97`).
 - Current evaluated state: MS-7D91 has both inotify keys at 524288 plus `net.ipv4.conf.all.forwarding` and `net.ipv6.conf.all.forwarding` true. The ThinkPad has only the inotify keys.
 
@@ -121,7 +121,7 @@ The legacy dotfiles shipped `99-inotify.conf` and `99-tailscale.conf`. This flak
 ## Verification Contract
 
 | Gate | Command |
-|---|---|
+| --- | --- |
 | Formatting | `nix fmt -- --ci` |
 | New check | `nix build --no-link .#checks.x86_64-linux.kernel-sysctl` |
 | All checks | `nix flake check` |
