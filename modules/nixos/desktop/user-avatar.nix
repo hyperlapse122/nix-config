@@ -4,9 +4,9 @@ let
   # directory, so ~/.face.icon never reaches it. SDDM checks
   # <FacesDir>/<user>.face.icon first, and FacesDir is the system profile's
   # share/sddm/faces on NixOS.
-  sddmFace = pkgs.runCommand "h82-sddm-face" { } ''
-    install -Dm444 ${../../../home/h82/assets/face.png} $out/share/sddm/faces/h82.face.icon
-  '';
+  sddmFace = pkgs.linkFarm "h82-sddm-face" {
+    "share/sddm/faces/h82.face.icon" = ../../../home/h82/assets/face.png;
+  };
 in
 {
   environment.systemPackages = [ sddmFace ];
