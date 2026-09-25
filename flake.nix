@@ -162,6 +162,7 @@
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
         git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
+        repo-clones-hosts = import ./tests/repo-clones-hosts.nix { inherit pkgs self; };
         nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
         agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
         agent-plugin-sync =
@@ -299,6 +300,7 @@
         wifi-provisioning = import ./tests/wifi-provisioning.nix { inherit pkgs inputs; };
         wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
         tailscale-provisioning = import ./tests/tailscale-provisioning.nix { inherit pkgs inputs; };
+        repo-clones-provisioning = import ./tests/repo-clones.nix { inherit pkgs inputs; };
         tailscale-single-router =
           let
             advertisers =
