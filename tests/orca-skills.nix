@@ -21,7 +21,8 @@
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
   - A fixture seeded with the state the previous design left behind: a
     store-linked skill, a stale copy carrying an extra file, a skill an older
-    run installed that the source no longer ships, and a user's own skill. A
+    run installed that the source no longer ships, a staging copy a killed run
+    left behind, and a user's own skill. A
     converged fixture would pass whether or not the installer replaces, prunes,
     or spares anything. See
     .compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md
@@ -54,6 +55,9 @@ let
     ".gemini/config/skills"
     ".agents/skills"
   ];
+
+  storeLinkRoot = ".claude/skills";
+  staleCopyRoot = ".gemini/config/skills";
 
   minimumSkills = [
     "orca-cli"
@@ -175,9 +179,11 @@ let
       # The previous design's link into the store, and a stale copy that must
       # be replaced rather than merged into.
       seedStale = lib.optionalString (skillsSrc != null) ''
-        ln -s ${esc "${skillsSrc}/skills/orca-cli"} "$HOME"/${esc (lib.elemAt roots 0)}/orca-cli
-        mkdir -p "$HOME"/${esc (lib.elemAt roots 1)}/orca-cli
-        echo stale >"$HOME"/${esc (lib.elemAt roots 1)}/orca-cli/stale.md
+        ln -s ${esc "${skillsSrc}/skills/orca-cli"} "$HOME"/${esc storeLinkRoot}/orca-cli
+        mkdir -p "$HOME"/${esc staleCopyRoot}/orca-cli
+        echo stale >"$HOME"/${esc staleCopyRoot}/orca-cli/stale.md
+        mkdir -p "$HOME"/${esc staleCopyRoot}/.orca-cli.Abc123
+        echo stale >"$HOME"/${esc staleCopyRoot}/.orca-cli.Abc123/SKILL.md
       '';
 
       assertRoot = root: ''
