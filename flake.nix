@@ -167,6 +167,7 @@
         mise-settings = import ./tests/mise-settings.nix { inherit pkgs self; };
         nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
         agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+        orca-skills = import ./tests/orca-skills.nix { inherit pkgs self; };
         agent-plugin-sync =
           pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
