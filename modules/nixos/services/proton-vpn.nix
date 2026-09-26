@@ -24,5 +24,8 @@ in
     # NetworkManager to its systemd-resolved backend. It lives here rather than
     # in base.nix so bootstrap configurations keep their current DNS.
     services.resolved.enable = true;
+    # resolved answers and sends LLMNR by default, which these hosts never did
+    # under resolvconf; keep single-label lookups off untrusted local networks.
+    services.resolved.settings.Resolve.LLMNR = "false";
   };
 }

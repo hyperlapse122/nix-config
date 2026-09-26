@@ -15,6 +15,8 @@
   - NetworkManager.conf renders dns=systemd-resolved, and /etc/resolv.conf is
     the link to resolved's stub file.
   - systemd-resolved.service is wanted by sysinit.target, not merely rendered.
+  - resolved.conf renders LLMNR=false, since resolved otherwise sends LLMNR
+    queries that these hosts never sent under resolvconf.
   - /etc/NetworkManager/VPN carries the OpenVPN plugin's service file.
 
   Verifies, on both bootstrap configurations:
@@ -86,6 +88,9 @@ let
       (expect production
         "[ -e ${esc "${etc}/systemd/system/sysinit.target.wants/systemd-resolved.service"} ]"
         "${hostName}: sysinit.target ${state} a want on systemd-resolved.service"
+      )
+      (expect production "grep -Fxqs LLMNR=false ${esc "${etc}/systemd/resolved.conf"}"
+        "${hostName}: resolved.conf ${state} LLMNR=false"
       )
       (expect production "[ -e ${esc "${etc}/NetworkManager/VPN/nm-openvpn-service.name"} ]"
         "${hostName}: /etc/NetworkManager/VPN ${state} the OpenVPN plugin"
