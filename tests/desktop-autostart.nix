@@ -4,8 +4,8 @@
     import ./tests/desktop-autostart.nix { inherit pkgs self; }
 
   Asserts that the 1Password CLI module is enabled on both ThinkPad
-  configurations and that the login autostart entries are declared on the
-  production configuration only.
+  configurations and that the login autostart entries, and the restart drop-ins
+  for the chat clients, are declared on the production configuration only.
 
   Verifies:
   - programs._1password.enable is true on ThinkPad-X1-Carbon-Gen-11.
@@ -13,9 +13,19 @@
   - The production Home Manager configuration declares an enabled, forced
     autostart entry targeting autostart/1password.desktop, whose Exec line runs
     the configured programs._1password-gui.package with --silent.
-  - The same for autostart/kleopatra.desktop with --daemon.
-  - Both entries declare Type=Application and X-KDE-autostart-phase=2.
-  - The bootstrap configuration declares neither entry.
+  - The same for autostart/kleopatra.desktop with --daemon,
+    autostart/discord.desktop with --start-minimized, and
+    autostart/telegram.desktop with -startintray, each running the package
+    found in the user package list.
+  - Every entry declares Type=Application and X-KDE-autostart-phase=2.
+  - systemd/user/app-discord@autostart.service.d/restart.conf and the
+    app-telegram equivalent are enabled and set Restart=on-failure and
+    RestartSec=5s under [Service]. Those unit names are what
+    systemd-xdg-autostart-generator derives from the two desktop file ids.
+  - No full user unit named app-discord@autostart.service or
+    app-telegram@autostart.service is declared, because it would shadow the
+    generated unit, ExecStart included.
+  - The bootstrap configuration declares none of these files.
 
   The entries are located by their resolved target rather than by attribute
   name, and their enable and force flags are read beside their text, because an
@@ -34,9 +44,15 @@ let
   bootstrapCli = bootstrapHost.config.programs._1password.enable;
 
   onePasswordPackage = host.config.programs._1password-gui.package;
-  kleopatraPackage = lib.lists.findFirst (p: (p.pname or "") == "kleopatra") null (
-    host.config.home-manager.users.h82.home.packages
-  );
+  userPackage =
+    pname:
+    lib.lists.findFirst (
+      p: (p.pname or "") == pname
+    ) null host.config.home-manager.users.h82.home.packages;
+
+  kleopatraPackage = userPackage "kleopatra";
+  discordPackage = userPackage "discord";
+  telegramPackage = userPackage "telegram-desktop";
 
   # Resolve by target, not by attribute name: target merely defaults to the name.
   # Home Manager's target apply expands a relative path against xdg.configHome
@@ -59,6 +75,48 @@ let
   kleopatraEntry = entryFor host.config "autostart/kleopatra.desktop";
   bootstrapOnePassword = entryFor bootstrapHost.config "autostart/1password.desktop";
   bootstrapKleopatra = entryFor bootstrapHost.config "autostart/kleopatra.desktop";
+  discordEntry = entryFor host.config "autostart/discord.desktop";
+  telegramEntry = entryFor host.config "autostart/telegram.desktop";
+
+  apps = [
+    "discord"
+    "telegram"
+  ];
+  dropInName = app: "systemd/user/app-${app}@autostart.service.d/restart.conf";
+  unitName = app: "systemd/user/app-${app}@autostart.service";
+
+  bootstrapLeaks = lib.filter (name: entryFor bootstrapHost.config name != null) (
+    [
+      "autostart/discord.desktop"
+      "autostart/telegram.desktop"
+    ]
+    ++ map dropInName apps
+  );
+
+  dropInChecks = lib.concatMapStrings (
+    app:
+    let
+      entry = entryFor host.config (dropInName app);
+      unit = entryFor host.config (unitName app);
+    in
+    if entry == null then
+      missing (dropInName app)
+    else
+      ''
+        if [ "${builtins.toJSON (entry.enable or false)}" != "true" ]; then
+          echo 'the restart drop-in for ${app} is declared but not enabled' >&2
+          exit 1
+        fi
+        if [ "$(grep -v '^$' ${entry.source})" != "$(printf '[Service]\nRestart=on-failure\nRestartSec=5s')" ]; then
+          echo 'the restart drop-in for ${app} does not set exactly Restart=on-failure and RestartSec=5s under [Service]' >&2
+          exit 1
+        fi
+        ${lib.optionalString (unit != null) ''
+          echo 'a full ${unitName app} unit is declared, which would shadow the generated autostart unit' >&2
+          exit 1
+        ''}
+      ''
+  ) apps;
 
   missing = name: ''
     echo 'no Home Manager autostart entry targets ${name} on the production host' >&2
@@ -106,10 +164,20 @@ let
     "Exec=${kleopatraPackage}/bin/kleopatra --daemon"
   );
 
-  kleopatraAbsent = lib.optionalString (kleopatraPackage == null) ''
-    echo 'kleopatra is missing from the user package list, so its autostart command cannot be checked' >&2
-    exit 1
-  '';
+  discordExec = lib.optionalString (discordEntry != null && discordPackage != null) (
+    "Exec=${discordPackage}/bin/discord --start-minimized"
+  );
+
+  telegramExec = lib.optionalString (telegramEntry != null && telegramPackage != null) (
+    "Exec=${telegramPackage}/bin/Telegram -startintray"
+  );
+
+  packageAbsent =
+    pname: package:
+    lib.optionalString (package == null) ''
+      echo '${pname} is missing from the user package list, so its autostart command cannot be checked' >&2
+      exit 1
+    '';
 in
 pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
@@ -128,11 +196,23 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
   ${lib.optionalString (onePasswordEntry == null) (missing "autostart/1password.desktop")}
   ${present "1Password" onePasswordEntry onePasswordExec}
 
-  ${kleopatraAbsent}
+  ${packageAbsent "kleopatra" kleopatraPackage}
   ${lib.optionalString (kleopatraEntry == null) (missing "autostart/kleopatra.desktop")}
   ${present "Kleopatra" kleopatraEntry kleopatraExec}
 
-  # 3. The bootstrap host declares neither, so first-boot key recovery is not
+  ${packageAbsent "discord" discordPackage}
+  ${lib.optionalString (discordEntry == null) (missing "autostart/discord.desktop")}
+  ${present "Discord" discordEntry discordExec}
+
+  ${packageAbsent "telegram-desktop" telegramPackage}
+  ${lib.optionalString (telegramEntry == null) (missing "autostart/telegram.desktop")}
+  ${present "Telegram" telegramEntry telegramExec}
+
+  # 3. The chat clients restart after a crash through drop-ins on the units
+  #    systemd-xdg-autostart-generator creates, never through a full unit.
+  ${dropInChecks}
+
+  # 4. The bootstrap host declares none of them, so first-boot key recovery is not
   #    competing with a card-touching UI server.
   ${lib.optionalString (bootstrapOnePassword != null) ''
     echo 'the 1Password autostart entry leaked onto the bootstrap configuration' >&2
@@ -142,6 +222,10 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
     echo 'the Kleopatra autostart entry leaked onto the bootstrap configuration' >&2
     exit 1
   ''}
+  ${lib.concatMapStrings (name: ''
+    echo '${name} leaked onto the bootstrap configuration' >&2
+    exit 1
+  '') bootstrapLeaks}
 
   touch $out
 ''
