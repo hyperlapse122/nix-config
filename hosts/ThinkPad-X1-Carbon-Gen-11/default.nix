@@ -16,6 +16,7 @@
     ../../modules/nixos/system/agent-browser-deps.nix
     ../../modules/nixos/services/podman.nix
     ../../modules/nixos/services/tailscale.nix
+    ../../modules/nixos/services/proton-vpn.nix
     ../../modules/nixos/system/secrets.nix
     ../../modules/nixos/wifi.nix
     ../../modules/nixos/hardware/yubikey.nix
@@ -27,6 +28,7 @@
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
   config.my.tailscale.enable = !config.my.bootstrap;
+  config.my.protonVpn.enable = !config.my.bootstrap;
   config.my.fingerprint.enable = !config.my.bootstrap;
   # The Gen 11 predates the Copilot key, so the chord binding stays out of the
   # generated keyd configuration on this host.
