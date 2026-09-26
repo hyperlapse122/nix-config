@@ -51,5 +51,10 @@
   programs.mise = {
     enable = true;
     enableZshIntegration = true;
+    # Render settings to conf.d and keep config.toml writable for `mise use --global`.
+    enableMutableConfig = true;
+    # mise compiles runtimes from source by default on NixOS; nix-ld runs the
+    # precompiled binaries instead.
+    globalConfig.settings.all_compile = false;
   };
 }
