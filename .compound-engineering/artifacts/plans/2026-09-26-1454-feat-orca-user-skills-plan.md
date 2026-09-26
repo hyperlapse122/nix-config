@@ -137,7 +137,7 @@ Orca's own installer (`orca skills install`) shells out to `npx skills add https
 ## Verification Contract
 
 | Gate | Command |
-|---|---|
+| --- | --- |
 | Formatting | `nix fmt -- --ci` |
 | Checks | `nix flake check` |
 | New check | `nix build --no-link .#checks.x86_64-linux.orca-skills` |

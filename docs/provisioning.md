@@ -134,7 +134,15 @@ The `opus[1m]` value starts every session on the 1M-context variant of the `opus
 
 ### Surfaces that stay unmanaged
 
-Only the scalar settings above are declared. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
+Only the scalar settings above are declared, plus the Orca skills below. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, other skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
+
+### Orca agent skills
+
+`home/h82/agents/orca-skills.nix` links every skill under `skills/` in the `stablyai/orca` source into three user-level roots: `~/.claude/skills` (Claude Code), `~/.gemini/config/skills` (the Antigravity CLI's global discovery root), and `~/.agents/skills` (the shared root Codex, the Gemini CLI, and Orca's own installer read). Each skill is a discovery stub that loads the version-matched guide from the Orca CLI, so the source is fetched at the `v<version>` tag of the Orca package in `packages/orca.nix`. Only the per-skill directories are declared; everything else in each root stays the agent's or yours.
+
+Bumping Orca therefore means updating two hashes in `packages/orca.nix`: the AppImage's and the skills source's. The skills fetch is named after the version, so a forgotten skills hash fails the build with a hash mismatch rather than reusing the previous release. The `orca-skills` check reads the built Home Manager files and fails when a root or skill is missing, a `SKILL.md` is empty or names a different skill, or the linked source's `package.json` version differs from the installed Orca.
+
+Do not also run `orca skills install`: it installs from the upstream default branch into the same roots, and Home Manager refuses to replace a skill directory it did not create, which fails activation. Remove such a directory before rebuilding.
 
 ### Memory
 
