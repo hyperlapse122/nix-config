@@ -1,4 +1,4 @@
-"""Drive android-sdk-release against a fake repository2-3.xml.
+"""Drive the Ruby android-sdk-release against a fake repository2-3.xml.
 
 The helper's network call goes through an overridable command, so these tests
 serve a fixture repository instead. The fixture holds a stable and a preview
@@ -14,7 +14,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+# The flake check points ANDROID_SDK_RELEASE at the packaged helper; run
+# directly, the tests drive the script with whatever ruby is on PATH.
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/android-sdk-release"
+COMMAND = (
+    [os.environ["ANDROID_SDK_RELEASE"]]
+    if os.environ.get("ANDROID_SDK_RELEASE")
+    else ["ruby", str(SCRIPT)]
+)
 
 
 def generic(path, major, minor, micro, url, sha1, channel="channel-0", license_ref="android-sdk-license", host_os="linux"):
@@ -110,7 +117,7 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         env["FAKE_BODY"] = repository(*BASE) if body is None else body
         env["FAKE_STATUS"] = str(status)
         return subprocess.run(
-            [sys.executable, str(SCRIPT), *args], capture_output=True, text=True, env=env
+            [*COMMAND, *args], capture_output=True, text=True, env=env
         )
 
     def write_pin(self, *extra):

@@ -1,346 +1,540 @@
-#!/usr/bin/env python3
-"""Pin the Android SDK packages the flake builds from Google's repository XML.
+#!/usr/bin/env ruby
+# update.rb appends to string literals, so they must stay mutable.
+# frozen_string_literal: false
 
-Writes or checks packages/android-sdk-repo.json, a trimmed repo.json in the
-format nixpkgs' androidenv consumes through `composeAndroidPackages
-{ repoJson = ...; }`. The file carries only the packages the flake installs,
-so every version and archive checksum the SDK is built from is locked in the
-repository rather than in whichever nixpkgs revision flake.lock names.
+# Pin the Android SDK packages the flake builds from Google's repository XML.
+#
+# Writes or checks packages/android-sdk-repo.json, a trimmed repo.json in the
+# format nixpkgs' androidenv consumes through `composeAndroidPackages
+# { repoJson = ...; }`. The file carries only the packages the flake installs,
+# so every version and archive checksum the SDK is built from is locked in the
+# repository rather than in whichever nixpkgs revision flake.lock names.
+#
+# cmdline-tools and platform-tools track the newest stable release. build-tools
+# and platforms are the versions a project compiles against, so they stay at the
+# versions already pinned (or the ones passed on the command line) and only
+# their archive data is refreshed. The helper refuses to write a pin that would
+# downgrade a tracked package or drop a declared version upstream no longer
+# lists.
+#
+# The XML-to-repo.json conversion is vendored from nixpkgs'
+# pkgs/development/mobile/androidenv/update.rb rather than loaded from
+# pkgs.path at run time. update.rb is a script, not a library: loading it runs
+# its top-level Slop option parsing, fetches every repository, system image,
+# and addon XML over the network with curb, and writes repo.json next to
+# itself. It also needs slop and curb, which nothing else here uses. Vendoring
+# keeps the functions below verbatim, so a change upstream carries over by
+# diffing this section against the new update.rb.
 
-cmdline-tools and platform-tools track the newest stable release. build-tools
-and platforms are the versions a project compiles against, so they stay at the
-versions already pinned (or the ones passed on the command line) and only
-their archive data is refreshed. The helper refuses to write a pin that would
-downgrade a tracked package or drop a declared version upstream no longer
-lists.
+require 'json'
+require 'nokogiri'
+require 'open3'
+require 'optparse'
+require 'shellwords'
 
-The conversion mirrors nixpkgs' pkgs/development/mobile/androidenv/update.rb
-for the package types pinned here, so androidenv renders the same package.xml
-it would from its own repo.json.
-"""
+DEFAULT_URL = 'https://dl.google.com/android/repository/repository2-3.xml'
+DEFAULT_FETCH = 'curl -sfL'
 
-import argparse
-import json
-import os
-import re
-import shlex
-import subprocess
-import sys
-import xml.etree.ElementTree as ET
+TRACKED = %w[cmdline-tools platform-tools].freeze
+DECLARED = %w[build-tools platforms].freeze
 
-DEFAULT_URL = "https://dl.google.com/android/repository/repository2-3.xml"
-DEFAULT_FETCH = "curl -sfL"
-REPO_BASE = "https://dl.google.com/android/repository/"
+STABLE_CHANNEL = 'channel-0'
 
-TRACKED = ("cmdline-tools", "platform-tools")
-DECLARED = ("build-tools", "platforms")
+# A refusal that should stop the caller with a readable message.
+class Failure < StandardError; end
 
-STABLE_CHANNEL = "channel-0"
-XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+# --- Vendored from nixpkgs pkgs/development/mobile/androidenv/update.rb at
+# --- revision 4975466d324710c576dc11ad614684e6bd8cad8e. Keep verbatim.
 
-# update.rb rewrites the repository XML's type prefixes to the namespace
-# aliases androidenv's package.xml template declares.
-TYPE_PREFIXES = {
-    "generic:genericDetailsType": "ns5",
-    "sdk:platformDetailsType": "ns11",
-}
+# Returns a repo URL for a given package name.
+def repo_url value
+  if value && value.start_with?('http')
+    value
+  elsif value
+    "https://dl.google.com/android/repository/#{value}"
+  else
+    nil
+  end
+end
 
+# Returns a JSON with the data and structure of the input XML
+def to_json_collector doc
+  json = {}
+  index = 0
+  doc.element_children.each { |node|
+    if node.children.length == 1 and node.children.first.text?
+      json["#{node.name}:#{index}"] ||= node.content
+      index += 1
+      next
+    end
+    json["#{node.name}:#{index}"] ||= to_json_collector node
+    index += 1
+  }
+  element_attributes = {}
+  doc.attribute_nodes.each do |attr|
+    if attr.name == "type"
+      type = attr.value.split(':', 2).last
+      case attr.value
+      when 'generic:genericDetailsType'
+        element_attributes["xsi:type"] ||= "ns5:#{type}"
+      when 'addon:extraDetailsType'
+        element_attributes["xsi:type"] ||= "ns8:#{type}"
+      when 'addon:mavenType'
+        element_attributes["xsi:type"] ||= "ns8:#{type}"
+      when 'sdk:platformDetailsType'
+        element_attributes["xsi:type"] ||= "ns11:#{type}"
+      when 'sdk:sourceDetailsType'
+        element_attributes["xsi:type"] ||= "ns11:#{type}"
+      when 'sys-img:sysImgDetailsType'
+        element_attributes["xsi:type"] ||= "ns12:#{type}"
+      when 'addon:addonDetailsType' then
+        element_attributes["xsi:type"] ||= "ns8:#{type}"
+      end
+    else
+      element_attributes[attr.name] ||= attr.value
+    end
+  end
+  if !element_attributes.empty?
+    json['element-attributes'] ||= element_attributes
+  end
+  json
+end
 
-class Failure(Exception):
-    """A refusal that should stop the caller with a readable message."""
+# Returns a tuple of [type, revision, revision components] for a package node.
+def package_revision package
+  type_details = package.at_css('> type-details')
+  type = type_details.attributes['type']
+  type &&= type.value
 
+  revision = nil
+  components = nil
 
-def fetch(url):
-    """Run the overridable fetch command against one URL and return the body.
+  case type
+  when 'generic:genericDetailsType', 'addon:extraDetailsType', 'addon:mavenType'
+    major = text package.at_css('> revision > major')
+    minor = text package.at_css('> revision > minor')
+    micro = text package.at_css('> revision > micro')
+    preview = text package.at_css('> revision > preview')
 
-    The command is overridable so offline tests and sandboxed Nix checks can
-    serve fixtures instead of calling the network.
-    """
-    command = shlex.split(os.environ.get("ANDROID_SDK_RELEASE_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("ANDROID_SDK_RELEASE_FETCH is empty")
-    proc = subprocess.run(
-        command + [url],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        raise Failure(f"fetching {url} failed with status {proc.returncode}")
-    return proc.stdout
+    revision = ''
+    components = []
+    unless empty?(major)
+      revision << major
+      components << major
+    end
 
+    unless empty?(minor)
+      revision << ".#{minor}"
+      components << minor
+    end
 
-def local_name(tag):
-    return tag.rsplit("}", 1)[-1]
+    unless empty?(micro)
+      revision << ".#{micro}"
+      components << micro
+    end
 
+    unless empty?(preview)
+      revision << "-rc#{preview}"
+      components << preview
+    end
+  when 'sdk:platformDetailsType'
+    codename = text type_details.at_css('> codename')
+    api_level = text type_details.at_css('> api-level')
+    revision = empty?(codename) ? api_level : codename
+    components = [revision]
+  when 'sdk:sourceDetailsType'
+    api_level = text type_details.at_css('> api-level')
+    revision, components = api_level, [api_level]
+  when 'sys-img:sysImgDetailsType'
+    codename = text type_details.at_css('> codename')
+    api_level = text type_details.at_css('> api-level')
+    _, _, id, _ = package['path'].split(';')
+    abi = text type_details.at_css('> abi')
 
-def child(node, name):
-    for element in node:
-        if local_name(element.tag) == name:
-            return element
-    return None
+    revision = ''
+    components = []
+    if empty?(codename)
+      revision << api_level
+      components << api_level
+    else
+      revision << codename
+      components << codename
+    end
 
+    unless empty?(id)
+      revision << "-#{id}"
+      components << id
+    end
 
-def child_text(node, *names):
-    for name in names:
-        if node is None:
-            return None
-        node = child(node, name)
-    return None if node is None else node.text
+    unless empty?(abi)
+      revision << "-#{abi}"
+      components << abi
+    end
+  when 'addon:addonDetailsType' then
+    api_level = text type_details.at_css('> api-level')
+    id = text type_details.at_css('> tag > id')
+    revision = api_level
+    components = [api_level, id]
+  end
 
+  [type, revision, components]
+end
 
-def to_json_collector(node):
-    """update.rb's to_json_collector: children keyed "name:index", leaves as text."""
-    result = {}
-    for index, element in enumerate(node):
-        key = f"{local_name(element.tag)}:{index}"
-        if len(element) == 0 and element.text:
-            result.setdefault(key, element.text)
-        else:
-            result.setdefault(key, to_json_collector(element))
-    attributes = {}
-    for name, value in node.attrib.items():
-        if name == XSI_TYPE:
-            prefix = TYPE_PREFIXES.get(value)
-            if prefix:
-                attributes.setdefault("xsi:type", f"{prefix}:{value.split(':', 1)[-1]}")
-        else:
-            attributes.setdefault(local_name(name), value)
-    if attributes:
-        result["element-attributes"] = attributes
-    return result
-
-
-def normalize_license(text):
-    text = re.sub(r"([^\n])\n([^\n])", r"\1 \2", text)
-    text = re.sub(r" +", " ", text)
-    return text.strip()
-
-
-def package_revision(package):
-    type_details = child(package, "type-details")
-    kind = type_details.get(XSI_TYPE) if type_details is not None else None
-    if kind == "generic:genericDetailsType":
-        revision = child(package, "revision")
-        parts = [child_text(revision, part) for part in ("major", "minor", "micro")]
-        version = ".".join(part for part in parts if part)
-        preview = child_text(revision, "preview")
-        if preview:
-            version += f"-rc{preview}"
-        return version or None
-    if kind == "sdk:platformDetailsType":
-        return child_text(type_details, "codename") or child_text(type_details, "api-level")
-    return None
-
-
-def archive_url(value):
-    return value if value.startswith("http") else REPO_BASE + value
-
-
-def package_archives(package):
-    archives = {}
-    node = child(package, "archives")
-    for archive in [] if node is None else node:
-        host_os = child_text(archive, "host-os") or "all"
-        host_arch = child_text(archive, "host-arch") or "all"
-        archives[host_os + host_arch] = {
-            "arch": host_arch,
-            "os": host_os,
-            "sha1": child_text(archive, "complete", "checksum"),
-            "size": int(child_text(archive, "complete", "size")),
-            "url": archive_url(child_text(archive, "complete", "url")),
-        }
-    return archives
-
-
-def parse_repository(xml_text):
-    """Return (licenses, packages, stable) for the package types pinned here.
-
-    packages maps name -> revision -> androidenv entry. stable maps name -> the
-    revisions on the stable channel.
-    """
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError as exc:
-        raise Failure(f"repository XML did not parse: {exc}")
-
-    licenses = {}
-    for node in root.iter():
-        if local_name(node.tag) == "license" and node.get("type") == "text" and node.get("id"):
-            texts = licenses.setdefault(node.get("id"), [])
-            text = normalize_license(node.text or "")
-            if text not in texts:
-                texts.append(text)
-
-    packages = {}
-    stable = {}
-    for package in root:
-        if local_name(package.tag) != "remotePackage":
-            continue
-        path = package.get("path", "")
-        name, _, version = path.partition(";")
-        if name not in TRACKED + DECLARED or version == "latest":
-            continue
-        revision = package_revision(package)
-        if not revision:
-            continue
-        channel = child(package, "channelRef")
-        if channel is not None and channel.get("ref") == STABLE_CHANNEL:
-            stable.setdefault(name, set()).add(revision)
-        # A later remotePackage with the same revision only fills fields the
-        # first left unset and adds archives, as update.rb's ||= and merge do.
-        entry = packages.setdefault(name, {}).setdefault(revision, {})
-        entry.setdefault("name", name)
-        entry.setdefault("path", path.replace(";", "/"))
-        entry.setdefault("revision", revision)
-        entry.setdefault("displayName", child_text(package, "display-name"))
-        uses_license = child(package, "uses-license")
-        if uses_license is not None:
-            entry.setdefault("license", uses_license.get("ref"))
-        if package.get("obsolete") == "true":
-            entry.setdefault("obsolete", "true")
-        entry.setdefault("type-details", to_json_collector(child(package, "type-details")))
-        entry.setdefault("revision-details", to_json_collector(child(package, "revision")))
-        dependencies = child(package, "dependencies")
-        if dependencies is not None:
-            entry.setdefault("dependencies", to_json_collector(dependencies))
-        entry.setdefault("archives", {}).update(package_archives(package))
-    return licenses, packages, stable
-
-
-def version_key(version):
-    """Numeric sort key; a string with no leading number sorts lowest."""
-    parts = []
-    for part in re.split(r"[.-]", version):
-        match = re.match(r"\d+", part)
-        parts.append(int(match.group()) if match else -1)
-    return tuple(parts)
-
-
-def newest_stable(name, packages, stable):
-    candidates = [
-        version
-        for version in stable.get(name, ())
-        if packages[name][version].get("license") == "android-sdk-license"
-    ]
-    if not candidates:
-        raise Failure(f"upstream lists no stable {name} release")
-    return max(candidates, key=version_key)
-
-
-def load_current(path):
-    if not path or not os.path.exists(path):
-        return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def select(packages, stable, current, requested):
-    """Return name -> [versions] to pin."""
-    selection = {}
-    for name in TRACKED:
-        version = newest_stable(name, packages, stable)
-        pinned = (current or {}).get("latest", {}).get(name)
-        if pinned and version_key(version) < version_key(pinned):
-            raise Failure(
-                f"newest stable {name} {version} is older than the pinned {pinned}; "
-                "refusing to downgrade"
-            )
-        selection[name] = [version]
-    for name in DECLARED:
-        versions = requested.get(name) or sorted(
-            (current or {}).get("packages", {}).get(name, {}), key=version_key
-        )
-        if not versions:
-            raise Failure(f"no {name} version is pinned; pass --{name} to choose one")
-        for version in versions:
-            if version not in packages.get(name, {}):
-                raise Failure(
-                    f"{name} {version} is not in the upstream repository; "
-                    "refusing to drop a pinned version"
-                )
-        selection[name] = versions
-    return selection
-
-
-def render(licenses, packages, selection):
-    pinned = {}
-    used_licenses = set()
-    for name, versions in selection.items():
-        for version in versions:
-            entry = dict(packages[name][version])
-            entry["archives"] = list(entry["archives"].values())
-            pinned.setdefault(name, {})[version] = entry
-            if "license" in entry:
-                used_licenses.add(entry["license"])
-    missing = sorted(used_licenses - licenses.keys())
-    if missing:
-        raise Failure(f"repository XML carries no text for license {', '.join(missing)}")
-    repo = {
-        "addons": {},
-        "extras": {},
-        "images": {},
-        "latest": {
-            name: max(versions, key=version_key) for name, versions in selection.items()
-        },
-        "licenses": {license: licenses[license] for license in sorted(used_licenses)},
-        "packages": pinned,
+# Returns a hash of archives for the specified package node.
+def package_archives package
+  archives = {}
+  package.css('> archives > archive').each do |archive|
+    host_os = text archive.at_css('> host-os')
+    host_arch = text archive.at_css('> host-arch')
+    host_os = 'all' if empty?(host_os)
+    host_arch = 'all' if empty?(host_arch)
+    archives[host_os + host_arch] = {
+      'os' => host_os,
+      'arch' => host_arch,
+      'size' => Integer(text(archive.at_css('> complete > size'))),
+      'sha1' => text(archive.at_css('> complete > checksum')),
+      'url' => yield(text(archive.at_css('> complete > url')))
     }
-    return json.dumps(repo, indent=2, sort_keys=True) + "\n"
+  end
+  archives
+end
 
+# Returns the text from a node, or nil.
+def text node
+  node ? node.text : nil
+end
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=DEFAULT_URL, help="Repository XML URL")
-    parser.add_argument("--output", "-o", help="Pin file to write or update")
-    parser.add_argument(
-        "--build-tools",
-        action="append",
-        help="build-tools version to pin (repeatable; default: the pinned ones)",
+# Nil or empty helper.
+def empty? value
+  !value || value.empty?
+end
+
+# Fixes up returned hashes by converting archives like
+#  (e.g. {'linux' => {'sha1' => ...}, 'macosx' => ...} to
+# [{'os' => 'linux', 'sha1' => ...}, {'os' => 'macosx', ...}, ...].
+def fixup value
+  Hash[value.map do |k, v|
+    if k == 'archives' && v.is_a?(Hash)
+      [k, v.map do |os, archive|
+        fixup(archive)
+      end]
+    elsif v.is_a?(Hash)
+      [k, fixup(v)]
+    else
+      [k, v]
+    end
+  end]
+end
+
+# Today since Unix Epoch, January 1, 1970.
+def today
+  Time.now.utc.to_i / 24 / 60 / 60
+end
+
+# Normalize the specified license text.
+# See: https://brash-snapper.glitch.me/ for how the munging works.
+def normalize_license license
+  license = license.dup
+  license.gsub!(/([^\n])\n([^\n])/m, '\1 \2')
+  license.gsub!(/ +/, ' ')
+  license.strip!
+  license
+end
+
+# Gets all license texts, deduplicating them.
+def get_licenses doc
+  licenses = {}
+  doc.css('license[type="text"]').each do |license_node|
+    license_id = license_node['id']
+    if license_id
+      licenses[license_id] ||= []
+      licenses[license_id] |= [normalize_license(text(license_node))]
+    end
+  end
+  licenses
+end
+
+def parse_package_xml doc
+  licenses = get_licenses doc
+  packages = {}
+  # check https://github.com/NixOS/nixpkgs/issues/373785
+  extras = {}
+
+  doc.css('remotePackage').each do |package|
+    name, _, version = package['path'].partition(';')
+    next if version == 'latest'
+
+    is_extras = name == 'extras'
+    if is_extras
+      name = package['path'].tr(';', '-')
+    end
+
+    type, revision, _ = package_revision(package)
+    next unless revision
+
+    path = package['path'].tr(';', '/')
+    display_name = text package.at_css('> display-name')
+    uses_license = package.at_css('> uses-license')
+    uses_license &&= uses_license['ref']
+    obsolete ||= package['obsolete']
+    type_details = to_json_collector package.at_css('> type-details')
+    revision_details = to_json_collector package.at_css('> revision')
+    archives = package_archives(package) {|url| repo_url url}
+    dependencies_xml = package.at_css('> dependencies')
+    dependencies = to_json_collector dependencies_xml if dependencies_xml
+
+    if is_extras
+      target = extras
+      component = package['path']
+      target = (target[component] ||= {})
+    else
+      target = (packages[name] ||= {})
+      target = (target[revision] ||= {})
+    end
+
+    target['name'] ||= name
+    target['path'] ||= path
+    target['revision'] ||= revision
+    target['displayName'] ||= display_name
+    target['license'] ||= uses_license if uses_license
+    target['obsolete'] ||= obsolete if obsolete == 'true'
+    target['type-details'] ||= type_details
+    target['revision-details'] ||= revision_details
+    target['dependencies'] ||= dependencies if dependencies
+    target['archives'] ||= {}
+    merge target['archives'], archives
+    target['last-available-day'] = today
+  end
+
+  [licenses, packages, extras]
+end
+
+# Make the clean diff by always sorting the result before putting it in the stdout.
+def sort_recursively value
+  if value.is_a?(Hash)
+    Hash[
+      value.map do |k, v|
+        [k, sort_recursively(v)]
+      end.sort_by {|(k, v)| k }
+    ]
+  elsif value.is_a?(Array)
+    value.map do |v| sort_recursively(v) end
+  else
+    value
+  end
+end
+
+def merge_recursively a, b
+  a.merge!(b) {|key, a_item, b_item|
+    if a_item.is_a?(Hash) && b_item.is_a?(Hash)
+      merge_recursively(a_item, b_item)
+    elsif b_item != nil
+      b_item
+    end
+  }
+  a
+end
+
+def merge dest, src
+  merge_recursively dest, src
+end
+
+# --- End of vendored update.rb.
+
+# Runs the overridable fetch command against one URL and returns the body.
+#
+# The command is overridable so offline tests and sandboxed Nix checks can
+# serve fixtures instead of calling the network.
+def fetch url
+  command = Shellwords.split(ENV.fetch('ANDROID_SDK_RELEASE_FETCH', DEFAULT_FETCH))
+  raise Failure, 'ANDROID_SDK_RELEASE_FETCH is empty' if command.empty?
+
+  body, status = Open3.capture2(*command, url, stdin_data: '', binmode: true)
+  raise Failure, "fetching #{url} failed with status #{status.exitstatus}" unless status.success?
+
+  body
+end
+
+# Returns [licenses, packages, stable] for the package types pinned here.
+#
+# packages is parse_package_xml's name -> revision -> androidenv entry, minus
+# the last-available-day stamp: the pin keeps only what upstream lists now, so
+# it has nothing to expire. stable maps name -> the revisions on the stable
+# channel, which update.rb does not record.
+def parse_repository xml
+  # update.rb parses with noblanks alone, which recovers from malformed XML;
+  # strict makes a truncated download a refusal instead of an empty pin.
+  doc = begin
+    Nokogiri::XML(xml) { |conf| conf.strict.noblanks }
+  rescue Nokogiri::XML::SyntaxError => e
+    raise Failure, "repository XML did not parse: #{e.message.strip}"
+  end
+
+  licenses, packages, _ = parse_package_xml(doc)
+  packages = packages.slice(*TRACKED, *DECLARED)
+  packages.each_value do |versions|
+    versions.each_value { |entry| entry.delete('last-available-day') }
+  end
+
+  stable = Hash.new { |hash, name| hash[name] = [] }
+  doc.css('remotePackage').each do |package|
+    name, _, version = package['path'].partition(';')
+    next if version == 'latest' || !packages.key?(name)
+
+    _, revision, _ = package_revision(package)
+    next unless revision
+
+    channel = package.at_css('> channelRef')
+    stable[name] |= [revision] if channel && channel['ref'] == STABLE_CHANNEL
+  end
+
+  [licenses, packages, stable]
+end
+
+# Numeric sort key; a part with no leading number sorts lowest.
+def version_key version
+  version.split(/[.-]/).map { |part| part[/\A\d+/]&.to_i || -1 }
+end
+
+def compare_versions a, b
+  version_key(a) <=> version_key(b)
+end
+
+def newest_stable name, packages, stable
+  candidates = stable[name].select do |version|
+    packages[name][version]['license'] == 'android-sdk-license'
+  end
+  raise Failure, "upstream lists no stable #{name} release" if candidates.empty?
+
+  candidates.max { |a, b| compare_versions(a, b) }
+end
+
+def load_current path
+  return nil unless path && File.exist?(path)
+
+  JSON.parse(File.read(path, encoding: 'UTF-8'))
+end
+
+# Returns name -> [versions] to pin.
+def select_versions packages, stable, current, requested
+  current ||= {}
+  selection = {}
+  TRACKED.each do |name|
+    version = newest_stable(name, packages, stable)
+    pinned = current.fetch('latest', {})[name]
+    if pinned && compare_versions(version, pinned).negative?
+      raise Failure, "newest stable #{name} #{version} is older than the pinned #{pinned}; " \
+                     'refusing to downgrade'
+    end
+    selection[name] = [version]
+  end
+  DECLARED.each do |name|
+    versions = requested[name]
+    if versions.nil? || versions.empty?
+      versions = current.fetch('packages', {}).fetch(name, {}).keys.sort { |a, b| compare_versions(a, b) }
+    end
+    raise Failure, "no #{name} version is pinned; pass --#{name} to choose one" if versions.empty?
+
+    versions.each do |version|
+      next if packages.fetch(name, {}).key?(version)
+
+      raise Failure, "#{name} #{version} is not in the upstream repository; " \
+                     'refusing to drop a pinned version'
+    end
+    selection[name] = versions
+  end
+  selection
+end
+
+def render licenses, packages, selection
+  pinned = {}
+  used_licenses = []
+  selection.each do |name, versions|
+    versions.each do |version|
+      entry = packages[name][version]
+      (pinned[name] ||= {})[version] = entry
+      used_licenses |= [entry['license']] if entry.key?('license')
+    end
+  end
+  missing = (used_licenses - licenses.keys).sort
+  raise Failure, "repository XML carries no text for license #{missing.join(', ')}" unless missing.empty?
+
+  repo = {
+    'addons' => {},
+    'extras' => {},
+    'images' => {},
+    'latest' => selection.transform_values { |versions| versions.max { |a, b| compare_versions(a, b) } },
+    'licenses' => licenses.slice(*used_licenses),
+    'packages' => pinned
+  }
+  # ascii_only matches the escaping the committed pin was first written with.
+  # Older json gems render an empty object across two lines; a raw newline can
+  # only be layout, since generated strings escape theirs, so collapse it to
+  # keep the output identical whichever json version Ruby ships.
+  json = JSON.pretty_generate(sort_recursively(fixup(repo)), ascii_only: true)
+  json.gsub(/\{\n *\}/, '{}').gsub(/\[\n *\]/, '[]') + "\n"
+end
+
+def parse_options argv
+  options = { url: DEFAULT_URL, 'build-tools' => nil, 'platforms' => nil, dry_run: false }
+  parser = OptionParser.new do |o|
+    o.banner = 'Usage: android-sdk-release [options]'
+    o.separator 'Pin the Android SDK packages the flake builds from Google\'s repository XML.'
+    o.on('--url URL', "Repository XML URL (default: #{DEFAULT_URL})") { |v| options[:url] = v }
+    o.on('-o', '--output PATH', 'Pin file to write or update') { |v| options[:output] = v }
+    o.on('--build-tools VERSION',
+         'build-tools version to pin (repeatable; default: the pinned ones)') do |v|
+      (options['build-tools'] ||= []) << v
+    end
+    o.on('--platforms VERSION',
+         'platform API level to pin (repeatable; default: the pinned ones)') do |v|
+      (options['platforms'] ||= []) << v
+    end
+    o.on('--dry-run', 'Print the resolved pin file to stdout without modifying files') do
+      options[:dry_run] = true
+    end
+  end
+  parser.parse!(argv)
+  raise OptionParser::InvalidArgument, argv.join(' ') unless argv.empty?
+
+  options
+rescue OptionParser::ParseError => e
+  warn "android-sdk-release: #{e.message}"
+  warn parser
+  exit 2
+end
+
+def main argv
+  options = parse_options(argv)
+  output = options[:output]
+
+  begin
+    current = load_current(output)
+    licenses, packages, stable = parse_repository(fetch(options[:url]))
+    selection = select_versions(
+      packages, stable, current,
+      { 'build-tools' => options['build-tools'], 'platforms' => options['platforms'] }
     )
-    parser.add_argument(
-        "--platforms",
-        action="append",
-        help="platform API level to pin (repeatable; default: the pinned ones)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the resolved pin file to stdout without modifying files",
-    )
-    args = parser.parse_args(argv)
+    out_json = render(licenses, packages, selection)
 
-    try:
-        current = load_current(args.output)
-        licenses, packages, stable = parse_repository(fetch(args.url))
-        selection = select(
-            packages,
-            stable,
-            current,
-            {"build-tools": args.build_tools, "platforms": args.platforms},
-        )
-        out_json = render(licenses, packages, selection)
+    if options[:dry_run] || !output
+      $stdout.write(out_json)
+      return 0
+    end
 
-        if args.dry_run or not args.output:
-            sys.stdout.write(out_json)
-            return 0
+    if File.exist?(output) && File.binread(output) == out_json.b
+      puts "#{output} is already up to date"
+      return 0
+    end
 
-        if os.path.exists(args.output):
-            with open(args.output, "r", encoding="utf-8") as f:
-                if f.read() == out_json:
-                    print(f"{args.output} is already up to date")
-                    return 0
+    File.binwrite(output, out_json)
+    summary = selection.map { |name, versions| "#{name} #{versions.join(' ')}" }.join(', ')
+    puts "updated #{output} to #{summary}"
+    0
+  rescue Failure, SystemCallError, IOError, JSON::ParserError, ArgumentError, TypeError => e
+    warn "android-sdk-release: #{e.message}"
+    1
+  end
+end
 
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(out_json)
-        summary = ", ".join(f"{name} {' '.join(v)}" for name, v in selection.items())
-        print(f"updated {args.output} to {summary}")
-        return 0
-
-    except (Failure, OSError, ValueError) as exc:
-        print(f"android-sdk-release: {exc}", file=sys.stderr)
-        return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+exit main(ARGV) if $PROGRAM_NAME == __FILE__
