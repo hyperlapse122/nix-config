@@ -4,5 +4,6 @@
     ./agent-plugins.nix
     ./claude.nix
     ./gemini.nix
+    ./orca-skills.nix
   ];
 }
