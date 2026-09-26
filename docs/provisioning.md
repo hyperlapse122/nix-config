@@ -142,7 +142,7 @@ Only the scalar settings above are declared, plus the Orca skills below. Permiss
 
 Bumping Orca therefore means updating two hashes in `packages/orca.nix`: the AppImage's and the skills source's. The skills fetch is named after the version, so a forgotten skills hash fails the build with a hash mismatch rather than reusing the previous release. The `orca-skills` check reads the built Home Manager files and fails when a root or skill is missing, a `SKILL.md` is empty or names a different skill, or the linked source's `package.json` version differs from the installed Orca.
 
-Do not also run `orca skills install`: it installs from the upstream default branch into the same roots, and Home Manager refuses to replace a skill directory it did not create, which fails activation. Remove such a directory before rebuilding.
+Do not also run `orca skills install`, or the `npx skills add https://github.com/stablyai/orca ... --global` command Orca's Settings suggests: both install from the upstream default branch into the same roots, and Home Manager refuses to replace a skill directory it did not create, which fails activation. Remove such a directory before rebuilding.
 
 ### Memory
 
