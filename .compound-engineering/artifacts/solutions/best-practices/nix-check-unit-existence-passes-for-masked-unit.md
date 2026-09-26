@@ -33,7 +33,7 @@ Code review then tried `systemd.services.bolt.enable = false`, and the check sta
 
 ## Why an existence test cannot see it
 
-NixOS does not drop a disabled unit from the tree. It renders it as a symlink to `/dev/null`, which is how systemd masks a unit. The locked nixpkgs (rev `4975466d`, a path outside this repository) does this in `nixos/lib/systemd-lib.nix` (lines 90-98): the `unit-<name>-disabled` derivation runs `ln -s /dev/null "$out/$name"`, and the unit-tree builder preserves those links (lines 470-471).
+NixOS does not drop a disabled unit from the tree. It renders it as a symlink to `/dev/null`, which is how systemd masks a unit. The locked nixpkgs (revs `4975466d` and `e94cb152` alike; a path outside this repository) does this in `nixos/lib/systemd-lib.nix` (lines 90-98): the `unit-<name>-disabled` derivation runs `ln -s /dev/null "$out/$name"`, and the unit-tree builder preserves those links (lines 470-471).
 
 `/dev/null` exists, so `[ -e ]` is true for a masked unit. The existence test only answers whether something stands at that name, and a masked unit always has something there. `[ -f ]` happens to catch this particular case, because it follows the symlink and `/dev/null` is a character device, not a regular file. It still says nothing about what the unit runs, so a unit that was overridden rather than masked would pass it.
 
