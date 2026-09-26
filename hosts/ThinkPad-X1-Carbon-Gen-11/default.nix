@@ -21,6 +21,7 @@
     ../../modules/nixos/hardware/sennheiser-btd.nix
     ../../modules/nixos/hardware/dualsense.nix
     ../../modules/nixos/hardware/bluetooth-audio.nix
+    ../../modules/nixos/hardware/thunderbolt.nix
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
