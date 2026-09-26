@@ -14,7 +14,7 @@ After initial installation and key recovery, this command applies the system, Ho
 
 ## Included tools
 
-zsh, Git, Ghostty, Claude Code, gh, glab, 1Password GUI and CLI, Kleopatra, and Google Chrome. Claude Code's scalar settings — model, effort level, language, theme, notifications, and transcript retention — are managed declaratively and reapplied on each rebuild, while anything the repository does not declare stays yours to change. Its logins, permissions, hooks, MCP servers, and plugins are not migrated. Orca's agent skills are the one declared skill set: every coding agent finds them user-wide, at the release matching the installed Orca; other skills stay yours. macOS and Linux distributions other than NixOS are future work.
+zsh, Git, Ghostty, Claude Code, gh, glab, 1Password GUI and CLI, Proton Pass, Kleopatra, and Google Chrome. Claude Code's scalar settings — model, effort level, language, theme, notifications, and transcript retention — are managed declaratively and reapplied on each rebuild, while anything the repository does not declare stays yours to change. Its logins, permissions, hooks, MCP servers, and plugins are not migrated. Orca's agent skills are the one declared skill set: every coding agent finds them user-wide, at the release matching the installed Orca; other skills stay yours. macOS and Linux distributions other than NixOS are future work.
 
 ## Installation and operation
 

@@ -23,6 +23,7 @@
       kdePackages.kleopatra
       kdePackages.ksshaskpass
       nodejs
+      proton-pass
       python3
       telegram-desktop
       uv

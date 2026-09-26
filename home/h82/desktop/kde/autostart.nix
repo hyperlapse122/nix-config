@@ -76,6 +76,19 @@ lib.mkIf (!osConfig.my.bootstrap) {
     '';
   };
 
+  xdg.configFile."autostart/proton-pass.desktop" = {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Proton Pass
+      Exec=${pkgs.proton-pass}/bin/proton-pass
+      Hidden=false
+      NoDisplay=true
+      X-KDE-autostart-phase=2
+    '';
+  };
+
   xdg.configFile."systemd/user/app-discord@autostart.service.d/restart.conf".text = restartOnFailure;
   xdg.configFile."systemd/user/app-telegram@autostart.service.d/restart.conf".text = restartOnFailure;
 }

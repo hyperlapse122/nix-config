@@ -15,7 +15,8 @@
     the configured programs._1password-gui.package with --silent.
   - The same for autostart/kleopatra.desktop with --daemon,
     autostart/discord.desktop with --start-minimized, and
-    autostart/telegram.desktop with -startintray, each running the package
+    autostart/telegram.desktop with -startintray, and
+    autostart/proton-pass.desktop with no arguments, each running the package
     found in the user package list.
   - Every entry declares Type=Application and X-KDE-autostart-phase=2.
   - systemd/user/app-discord@autostart.service.d/restart.conf and the
@@ -53,6 +54,7 @@ let
   kleopatraPackage = userPackage "kleopatra";
   discordPackage = userPackage "discord";
   telegramPackage = userPackage "telegram-desktop";
+  protonPassPackage = userPackage "proton-pass";
 
   # Resolve by target, not by attribute name: target merely defaults to the name.
   # Home Manager's target apply expands a relative path against xdg.configHome
@@ -77,6 +79,7 @@ let
   bootstrapKleopatra = entryFor bootstrapHost.config "autostart/kleopatra.desktop";
   discordEntry = entryFor host.config "autostart/discord.desktop";
   telegramEntry = entryFor host.config "autostart/telegram.desktop";
+  protonPassEntry = entryFor host.config "autostart/proton-pass.desktop";
 
   apps = [
     "discord"
@@ -89,6 +92,7 @@ let
     [
       "autostart/discord.desktop"
       "autostart/telegram.desktop"
+      "autostart/proton-pass.desktop"
     ]
     ++ map dropInName apps
   );
@@ -172,6 +176,10 @@ let
     "Exec=${telegramPackage}/bin/Telegram -startintray"
   );
 
+  protonPassExec = lib.optionalString (protonPassEntry != null && protonPassPackage != null) (
+    "Exec=${protonPassPackage}/bin/proton-pass"
+  );
+
   packageAbsent =
     pname: package:
     lib.optionalString (package == null) ''
@@ -207,6 +215,10 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
   ${packageAbsent "telegram-desktop" telegramPackage}
   ${lib.optionalString (telegramEntry == null) (missing "autostart/telegram.desktop")}
   ${present "Telegram" telegramEntry telegramExec}
+
+  ${packageAbsent "proton-pass" protonPassPackage}
+  ${lib.optionalString (protonPassEntry == null) (missing "autostart/proton-pass.desktop")}
+  ${present "Proton Pass" protonPassEntry protonPassExec}
 
   # 3. The chat clients restart after a crash through drop-ins on the units
   #    systemd-xdg-autostart-generator creates, never through a full unit.
