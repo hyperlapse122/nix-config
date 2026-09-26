@@ -13,7 +13,8 @@
   would stay green if an overlay swapped the package out.
 
   Verifies, on ThinkPad-X1-Carbon-Gen-11 and ThinkPad-X1-Carbon-Gen-11-bootstrap:
-  - the materialised systemd unit tree carries bolt.service.
+  - the materialised systemd unit tree carries a bolt.service that runs boltd,
+    so a unit masked to /dev/null fails.
   - some file in the materialised udev rules directory carries bolt's rule that
     starts bolt.service when a Thunderbolt device appears, verbatim. Without it
     nothing starts the daemon, since bolt.service has no [Install] section.
@@ -68,13 +69,18 @@ let
       systemPath = host.config.system.path;
     in
     concatStringsSep "\n" [
-      (assertPath {
-        flag = "-e";
-        root = units;
-        path = "bolt.service";
-        message = "${hostName}: the materialised systemd units carry no bolt.service";
-        absentMessage = "${hostName}: the built system declares no /etc/systemd/system tree";
-      })
+      # Read the unit's content, not its existence: a disabled unit is still
+      # present in the tree as a symlink to /dev/null.
+      (
+        if units == null then
+          fail "${hostName}: the built system declares no /etc/systemd/system tree"
+        else
+          ''
+            if ! grep -q '^ExecStart=.*/libexec/boltd$' ${esc "${units}/bolt.service"}; then
+              ${fail "${hostName}: the materialised bolt.service is missing, masked, or does not run boltd"}
+            fi
+          ''
+      )
       (
         if udevRules == null then
           fail "${hostName}: the built system declares no /etc/udev/rules.d directory"
