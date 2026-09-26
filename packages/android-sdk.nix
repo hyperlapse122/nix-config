@@ -21,9 +21,15 @@ let
     platformToolsVersion = repo.latest.platform-tools;
     buildToolsVersions = builtins.attrNames repo.packages.build-tools;
     platformVersions = builtins.attrNames repo.packages.platforms;
-    includeEmulator = false;
+    # Orca accepts an SDK root only when it holds emulator/emulator, and an
+    # AVD needs a system image the read-only SDK cannot download later.
+    # platformVersions selects the images' API levels.
+    includeEmulator = true;
+    emulatorVersion = repo.latest.emulator;
+    includeSystemImages = true;
+    systemImageTypes = [ "google_apis" ];
+    abiVersions = [ "x86_64" ];
     includeSources = false;
-    includeSystemImages = false;
     includeNDK = false;
     cmakeVersions = [ ];
     ndkVersions = [ ];

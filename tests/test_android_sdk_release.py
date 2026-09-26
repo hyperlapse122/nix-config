@@ -4,6 +4,8 @@ The helper's network call goes through an overridable command, so these tests
 serve a fixture repository instead. The fixture holds a stable and a preview
 release of each tracked package, an obsolete duplicate revision, and a
 `;latest` alias, which are the cases the selection rules have to tell apart.
+A second fixture stands in for the Google APIs system image XML, served for
+any URL under sys-img/.
 """
 
 import json
@@ -62,6 +64,45 @@ def platform(api, major, url, sha1, obsolete=False):
   </remotePackage>"""
 
 
+def image(api, abi, major, url, sha1, license_ref="android-sdk-license", emulator_min=35):
+    return f"""
+  <remotePackage path="system-images;android-{api};google_apis;{abi}">
+    <type-details xsi:type="sys-img:sysImgDetailsType">
+      <api-level>{api}</api-level>
+      <tag><id>google_apis</id><display>Google APIs</display></tag>
+      <vendor><id>google</id><display>Google Inc.</display></vendor>
+      <abi>{abi}</abi>
+    </type-details>
+    <revision><major>{major}</major></revision>
+    <display-name>Google APIs {abi} System Image</display-name>
+    <uses-license ref="{license_ref}"/>
+    <dependencies>
+      <dependency path="emulator"><min-revision><major>{emulator_min}</major></min-revision></dependency>
+    </dependencies>
+    <channelRef ref="channel-0"/>
+    <archives>
+      <archive>
+        <complete><size>30</size><checksum type="sha1">{sha1}</checksum><url>{url}</url></complete>
+      </archive>
+    </archives>
+  </remotePackage>"""
+
+
+def images(*packages):
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<sys-img:sdk-sys-img xmlns:sys-img="http://schemas.android.com/sdk/android/repo/sys-img2/03"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <license id="android-sdk-license" type="text">Terms
+and Conditions
+
+Second  paragraph.</license>
+  <license id="android-sdk-arm-dbt-license" type="text">ARM terms</license>
+  <channel id="channel-0">stable</channel>
+{''.join(packages)}
+</sys-img:sdk-sys-img>
+"""
+
+
 def repository(*packages):
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <sdk:sdk-repository xmlns:sdk="http://schemas.android.com/sdk/android/repo/repository2/03"
@@ -85,6 +126,8 @@ BASE = [
     generic("cmdline-tools;24.0", 24, 0, "", "cmdline-24.zip", "c24", channel="channel-1"),
     generic("cmdline-tools;latest", 99, 0, "", "cmdline-latest.zip", "cl"),
     generic("platform-tools", 37, 0, 1, "platform-tools_r37.0.1-linux.zip", "p3701"),
+    generic("emulator", 37, 1, 11, "emulator-linux_x64-37.1.11.zip", "e37111"),
+    generic("emulator", 37, 2, 4, "emulator-linux_x64-37.2.4.zip", "e3724", channel="channel-1"),
     generic("build-tools;36.0.0", 36, 0, 0, "build-tools_r36_linux.zip", "b36"),
     generic("build-tools;37.0.0", 37, 0, 0, "build-tools_r37_linux.zip", "b37"),
     platform(36, 2, "platform-36_r02.zip", "a36"),
@@ -92,12 +135,24 @@ BASE = [
     platform(34, 3, "platform-34_r03.zip", "a34r3", obsolete=True),
 ]
 
+IMAGES = [
+    image(36, "x86_64", 7, "x86_64-36_r07.zip", "i36x"),
+    image(36, "arm64-v8a", 7, "arm64-v8a-36_r07.zip", "i36a", license_ref="android-sdk-arm-dbt-license"),
+    image(34, "x86_64", 14, "x86_64-34_r14.zip", "i34x"),
+]
+
+IMAGE_URL = "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
+
 FAKE_FETCH = """#!/usr/bin/env python3
 import os, sys
-status = int(os.environ.get('FAKE_STATUS', '0'))
+url = sys.argv[-1]
+with open(os.environ['FAKE_LOG'], 'a') as log:
+    log.write(url + '\\n')
+kind = 'IMAGE' if '/sys-img/' in url else 'REPO'
+status = int(os.environ.get('FAKE_' + kind + '_STATUS', '0'))
 if status:
     sys.exit(status)
-sys.stdout.write(os.environ['FAKE_BODY'])
+sys.stdout.write(os.environ['FAKE_' + kind + '_BODY'])
 """
 
 
@@ -110,12 +165,16 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.fetch.write_text(FAKE_FETCH)
         self.fetch.chmod(0o755)
         self.output = root / "android-sdk-repo.json"
+        self.log = root / "fetched"
 
-    def run_release(self, args, body=None, status=0):
+    def run_release(self, args, body=None, status=0, image_body=None, image_status=0):
         env = dict(os.environ)
         env["ANDROID_SDK_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
-        env["FAKE_BODY"] = repository(*BASE) if body is None else body
-        env["FAKE_STATUS"] = str(status)
+        env["FAKE_LOG"] = str(self.log)
+        env["FAKE_REPO_BODY"] = repository(*BASE) if body is None else body
+        env["FAKE_REPO_STATUS"] = str(status)
+        env["FAKE_IMAGE_BODY"] = images(*IMAGES) if image_body is None else image_body
+        env["FAKE_IMAGE_STATUS"] = str(image_status)
         return subprocess.run(
             [*COMMAND, *args], capture_output=True, text=True, env=env
         )
@@ -133,12 +192,14 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
             pin["latest"],
             {
                 "cmdline-tools": "23.0",
+                "emulator": "37.1.11",
                 "platform-tools": "37.0.1",
                 "build-tools": "36.0.0",
                 "platforms": "36",
             },
         )
         self.assertEqual(sorted(pin["packages"]["cmdline-tools"]), ["23.0"])
+        self.assertEqual(sorted(pin["packages"]["emulator"]), ["37.1.11"])
         self.assertEqual(sorted(pin["packages"]["build-tools"]), ["36.0.0"])
         self.assertEqual(sorted(pin["packages"]["platforms"]), ["36"])
 
@@ -175,6 +236,120 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(platform36["archives"][0]["os"], "all")
+
+    def test_pins_the_x86_64_google_apis_image_of_each_declared_platform(self):
+        pin = self.write_pin()
+        self.assertEqual(list(pin["images"]), ["36"])
+        self.assertEqual(list(pin["images"]["36"]), ["google_apis"])
+        self.assertEqual(list(pin["images"]["36"]["google_apis"]), ["x86_64"])
+        entry = pin["images"]["36"]["google_apis"]["x86_64"]
+        self.assertEqual(entry["name"], "system-image-36-google_apis-x86_64")
+        self.assertEqual(entry["path"], "system-images/android-36/google_apis/x86_64")
+        self.assertEqual(entry["revision"], "36-google_apis-x86_64")
+        self.assertEqual(entry["license"], "android-sdk-license")
+        self.assertEqual(entry["revision-details"], {"major:0": "7"})
+        self.assertEqual(entry["type-details"]["abi:3"], "x86_64")
+        self.assertEqual(
+            entry["dependencies"]["dependency:0"]["element-attributes"], {"path": "emulator"}
+        )
+        self.assertNotIn("last-available-day", entry)
+        self.assertEqual(
+            entry["archives"],
+            [
+                {
+                    "arch": "all",
+                    "os": "all",
+                    "sha1": "i36x",
+                    "size": 30,
+                    "url": "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-36_r07.zip",
+                }
+            ],
+        )
+        self.assertIn(IMAGE_URL, self.log.read_text().split())
+
+    def test_image_follows_a_second_declared_platform(self):
+        pin = self.write_pin("--platforms", "34")
+        self.assertEqual(sorted(pin["images"]), ["34", "36"])
+        self.assertEqual(pin["images"]["34"]["google_apis"]["x86_64"]["archives"][0]["sha1"], "i34x")
+
+    def test_image_url_follows_the_repository_url(self):
+        result = self.run_release(
+            ["--dry-run", "--url", "https://mirror.test/repo/repository2-3.xml",
+             "--build-tools", "36.0.0", "--platforms", "36"]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "https://mirror.test/repo/sys-img/google_apis/sys-img2-3.xml", self.log.read_text().split()
+        )
+
+    def test_refuses_a_declared_platform_without_an_image(self):
+        without = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p]
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"],
+            image_body=images(*without),
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no google_apis x86_64 system image for platform 36", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_refuses_to_downgrade_the_emulator(self):
+        self.write_pin()
+        before = self.output.read_text()
+        older = [p for p in BASE if '"emulator"' not in p] + [
+            generic("emulator", 36, 0, 0, "emulator-36.zip", "e36")
+        ]
+        result = self.run_release(["-o", str(self.output)], body=repository(*older))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("newest stable emulator 36.0.0 is older", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+
+    def test_refuses_an_image_that_needs_a_newer_emulator(self):
+        needy = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8", emulator_min=38)
+        ]
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"],
+            image_body=images(*needy),
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("needs emulator 38 or newer, but the pinned emulator is 37.1.11", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_bumps_an_image_when_upstream_moves(self):
+        self.write_pin()
+        newer = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8")
+        ]
+        result = self.run_release(["-o", str(self.output)], image_body=images(*newer))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entry = json.loads(self.output.read_text())["images"]["36"]["google_apis"]["x86_64"]
+        self.assertEqual(entry["archives"][0]["sha1"], "i36x8")
+
+    def test_refuses_to_downgrade_an_image(self):
+        self.write_pin()
+        before = self.output.read_text()
+        older = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 6, "x86_64-36_r06.zip", "i36x6")
+        ]
+        result = self.run_release(["-o", str(self.output)], image_body=images(*older))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("system image 36 google_apis x86_64 revision 6 is older than the pinned 7", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+
+    def test_image_fetch_failure_writes_nothing(self):
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"], image_status=22
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("sys-img2-3.xml failed with status 22", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_malformed_image_xml_is_refused(self):
+        result = self.run_release(
+            ["--dry-run", "--build-tools", "36.0.0", "--platforms", "36"], image_body="<not-xml"
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("system image XML did not parse", result.stderr)
 
     def test_keeps_only_referenced_licenses_normalized(self):
         pin = self.write_pin()

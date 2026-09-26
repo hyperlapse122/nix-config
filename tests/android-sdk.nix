@@ -12,12 +12,15 @@
   Verifies, on ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap,
   MS-7D91, and MS-7D91-bootstrap:
   - ~/.local/share/android-sdk is a link into a store SDK that carries every
-    pinned package's package.xml at its repository path, and the accepted
-    android-sdk-license.
+    pinned package's and system image's package.xml at its repository path,
+    and the accepted android-sdk-license.
   - the SDK's adb runs in the sandbox and reports the pinned platform-tools
     version, and aapt2 from each pinned build-tools runs. Both prove
     androidenv patched them for NixOS rather than leaving them to nix-ld.
   - the pinned cmdline-tools directory ships an executable sdkmanager.
+  - emulator/emulator runs and reports the pinned emulator version. Orca
+    accepts an SDK root only when platform-tools/adb and emulator/emulator
+    both exist under it, so this and the adb check together are its test.
   - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the link,
     appends the cmdline-tools bin and platform-tools directories to PATH on
     the only line that names platform-tools (its sqlite3 and mke2fs must not
@@ -38,8 +41,12 @@ let
     ;
 
   repo = builtins.fromJSON (builtins.readFile ../packages/android-sdk-repo.json);
-  pinned = concatMap attrValues (attrValues repo.packages);
+  # images nest api -> tag -> abi -> entry, one level deeper than packages.
+  pinned =
+    concatMap attrValues (attrValues repo.packages)
+    ++ concatMap attrValues (concatMap attrValues (attrValues repo.images));
   platformTools = repo.latest.platform-tools;
+  emulator = repo.latest.emulator;
   cmdlineTools = repo.latest.cmdline-tools;
 
   sdkRoot = "/home/h82/.local/share/android-sdk";
@@ -86,6 +93,12 @@ let
       adb_version=$("$sdk/platform-tools/adb" version 2>&1 | sed -n 's/^Version \([^-]*\)-.*/\1/p' || true)
       if [ "$adb_version" != ${escapeShellArg platformTools} ]; then
         fail ${host'}": adb reports platform-tools '$adb_version', expected the pinned ${platformTools}"
+      fi
+
+      # The emulator reports major.minor.micro.build; the pin names the first three.
+      emulator_version=$("$sdk/emulator/emulator" -version 2>&1 | sed -n 's/^Android emulator version \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' || true)
+      if [ "$emulator_version" != ${escapeShellArg emulator} ]; then
+        fail ${host'}": emulator reports '$emulator_version', expected the pinned ${emulator}"
       fi
     ''
     + concatMapStrings (version: ''
