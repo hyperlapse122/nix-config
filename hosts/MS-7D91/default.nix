@@ -13,6 +13,7 @@
     ../../modules/nixos/system/agent-browser-deps.nix
     ../../modules/nixos/services/podman.nix
     ../../modules/nixos/services/tailscale.nix
+    ../../modules/nixos/services/proton-vpn.nix
     ../../modules/nixos/system/secrets.nix
     ../../modules/nixos/wifi.nix
     ../../modules/nixos/hardware/yubikey.nix
@@ -25,6 +26,7 @@
   config.my.cliAuth.enable = !config.my.bootstrap;
   config.my.tailscale.enable = !config.my.bootstrap;
   config.my.tailscale.advertiseRoutes = !config.my.bootstrap;
+  config.my.protonVpn.enable = !config.my.bootstrap;
   config.fileSystems."/mnt/data" = {
     device = "/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1";
     fsType = "exfat";
