@@ -730,6 +730,7 @@
         logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
         udev-device-access = import ./tests/udev-device-access.nix { inherit pkgs self; };
         kernel-sysctl = import ./tests/kernel-sysctl.nix { inherit pkgs self; };
+        proton-vpn = import ./tests/proton-vpn.nix { inherit pkgs self; };
         wireplumber-bluetooth = import ./tests/wireplumber-bluetooth.nix { inherit pkgs self; };
         thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
         nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
