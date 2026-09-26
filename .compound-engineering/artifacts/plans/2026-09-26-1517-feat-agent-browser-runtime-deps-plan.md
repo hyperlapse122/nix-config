@@ -95,11 +95,13 @@ Add one NixOS module that carries everything `agent-browser install --with-deps`
 **Dependencies:** None
 
 **Files:**
+
 - `modules/nixos/system/agent-browser-deps.nix` (new)
 - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`
 - `hosts/MS-7D91/default.nix`
 
 **Approach:**
+
 1. Append the Chrome runtime providers to `programs.nix-ld.libraries` per KTD1. The providers are `glib`, `nss`, `nspr`, `at-spi2-core`, `dbus`, `cups`, `expat`, `libxcb`, `libxkbcommon`, `alsa-lib`, `libgbm`, the six X11 libraries, `cairo`, `pango`, `gtk3`, and `libxcursor`. Use `.lib` outputs where a package splits them, such as `cups`.
 2. Add `nssTools` to `environment.systemPackages` and the four font packages to `fonts.packages` per KTD2.
 3. Import the module beside `nix-ld.nix` in both hosts' import lists, unconditionally, so bootstrap variants carry it too.
@@ -120,10 +122,12 @@ Add one NixOS module that carries everything `agent-browser install --with-deps`
 **Dependencies:** U1
 
 **Files:**
+
 - `tests/agent-browser-deps.nix` (new)
 - `flake.nix` (register as `agent-browser-deps`)
 
 **Approach:**
+
 1. For each of the four `nixosConfigurations`, read `config.system.path` and the built `/etc` tree per KTD3.
 2. Test for existence of every `NEEDED` soname from Sources, plus `libgtk-3.so.0`, `libXcursor.so.1`, and `libX11-xcb.so.1`, under `share/nix-ld/lib`.
 3. Assert that `bin/certutil` exists and is executable.
@@ -133,6 +137,7 @@ Add one NixOS module that carries everything `agent-browser install --with-deps`
 **Execution note:** Mutation-test before trusting the check, per `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md`. Guard interpolations so a mutation fails inside the builder rather than at evaluation, per `.compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md`.
 
 **Test scenarios:**
+
 - Unmutated tree: the check passes on all four configurations.
 - Remove `nss` from the module: the check fails and names `libnss3.so`, `libnssutil3.so`, and `libsmime3.so` for every configuration.
 - Remove `gtk3`: the check fails on `libgtk-3.so.0`.
@@ -151,10 +156,12 @@ Add one NixOS module that carries everything `agent-browser install --with-deps`
 **Dependencies:** U1, U2
 
 **Files:**
+
 - `docs/verification.md`
 - `AGENTS.md`
 
 **Approach:**
+
 1. Add an `agent-browser-deps` sentence to the check catalogue paragraph in `docs/verification.md`. State what it reads and that it cannot see whether Chrome launches.
 2. Add a hardware checklist item. After a rebuild, run `agent-browser install` without `--with-deps`, then open a page and take a screenshot. Record any `cannot open shared object file` output.
 3. Add the new module to the `modules/nixos/` `system/` list in `AGENTS.md`.
