@@ -2,7 +2,7 @@
 let
   # The same import home/h82/default.nix installs, so the skills always come
   # from the release matching the installed Orca CLI.
-  inherit ((import ../../../packages/orca.nix { inherit pkgs; })) skills;
+  inherit (import ../../../packages/orca.nix { inherit pkgs; }) skills;
 
   # Read from the pinned tree rather than listed here, so a skill added or
   # removed upstream follows the next Orca bump without an edit.
