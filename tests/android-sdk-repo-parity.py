@@ -9,14 +9,35 @@ from the last-available-day stamp update.rb adds to expire old records. A
 difference means the vendored conversion drifted from upstream, or one of the
 two files was written from a different upstream archive.
 
-A package the pin carries but nixpkgs does not yet list is skipped, since the
-pin can track a release before nixpkgs picks it up. The declared build-tools
+The same holds for the pinned system images, which both files key
+api -> tag -> abi. A package or image the pin carries but nixpkgs does not
+yet list is skipped, since the pin can track a release before nixpkgs picks
+it up. The declared build-tools
 and platforms stay in nixpkgs' repo.json for years, so at least one package
 must be comparable; none would leave the check asserting nothing.
 """
 
 import json
 import sys
+
+
+def entries(repo):
+    """Yield (label, key path, entry) for every package and system image."""
+    for name, versions in sorted(repo.get("packages", {}).items()):
+        for version, entry in sorted(versions.items()):
+            yield f"{name} {version}", ("packages", name, version), entry
+    for api, tags in sorted(repo.get("images", {}).items()):
+        for tag, abis in sorted(tags.items()):
+            for abi, entry in sorted(abis.items()):
+                yield f"system-image {api} {tag} {abi}", ("images", api, tag, abi), entry
+
+
+def lookup(repo, path):
+    for key in path:
+        repo = repo.get(key) if isinstance(repo, dict) else None
+        if repo is None:
+            return None
+    return repo
 
 
 def main(pin_path, upstream_path):
@@ -27,21 +48,20 @@ def main(pin_path, upstream_path):
 
     compared = []
     failures = []
-    for name, versions in sorted(pin["packages"].items()):
-        for version, entry in sorted(versions.items()):
-            theirs = upstream["packages"].get(name, {}).get(version)
-            if theirs is None:
-                print(f"skip {name} {version}: not in nixpkgs repo.json")
-                continue
-            theirs = {k: v for k, v in theirs.items() if k != "last-available-day"}
-            compared.append(f"{name} {version}")
-            if entry != theirs:
-                keys = sorted(
-                    k
-                    for k in entry.keys() | theirs.keys()
-                    if entry.get(k) != theirs.get(k)
-                )
-                failures.append(f"{name} {version} differs in {', '.join(keys)}")
+    for label, path, entry in entries(pin):
+        theirs = lookup(upstream, path)
+        if theirs is None:
+            print(f"skip {label}: not in nixpkgs repo.json")
+            continue
+        theirs = {k: v for k, v in theirs.items() if k != "last-available-day"}
+        compared.append(label)
+        if entry != theirs:
+            keys = sorted(
+                k
+                for k in entry.keys() | theirs.keys()
+                if entry.get(k) != theirs.get(k)
+            )
+            failures.append(f"{label} differs in {', '.join(keys)}")
 
     if not compared:
         failures.append("no pinned package is in nixpkgs repo.json to compare")
