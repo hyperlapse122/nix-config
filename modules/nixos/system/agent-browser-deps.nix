@@ -3,9 +3,10 @@
   # NixOS equivalent of `agent-browser install --with-deps`, whose apt/dnf
   # lists live in agent-browser's cli/src/install.rs. The downloaded Chrome for
   # Testing is an FHS binary, so its libraries must be on the nix-ld path;
-  # Home Manager packages never reach it. Only direct NEEDED sonames and the
-  # libraries Chrome dlopens are listed: Nix-built libraries resolve their own
-  # dependencies through RUNPATH.
+  # Home Manager packages never reach it. Only direct NEEDED sonames, plus the
+  # dlopened GTK 3 and Xcursor libraries that upstream's apt list also names,
+  # are listed: Nix-built libraries resolve their own dependencies through
+  # RUNPATH. Optional dlopens such as libpci, libpulse, and libva are left out.
   programs.nix-ld.libraries = with pkgs; [
     glib
     nss
