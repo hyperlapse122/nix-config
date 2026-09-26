@@ -20,6 +20,22 @@ let
       meta.mainProgram = name;
     };
 
+  # The same shape for a Ruby helper: patchShebangs resolves `ruby` to the
+  # interpreter wrapped with the helper's gems.
+  rubyHelper =
+    name: src: ruby:
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = name;
+      version = "1";
+      dontUnpack = true;
+      nativeBuildInputs = [ ruby ];
+      installPhase = ''
+        install -Dm755 ${src} $out/bin/${name}
+        patchShebangs $out/bin/${name}
+      '';
+      meta.mainProgram = name;
+    };
+
   agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
 
   # Runs from home activation, where PATH carries neither home.packages nor
@@ -41,8 +57,12 @@ let
   claudeCodeRelease = pythonHelper "claude-code-release" ../scripts/claude-code-release;
 
   # Pins the Android SDK packages from Google's repository XML. Its network
-  # call goes through an overridable command for the same reason.
-  androidSdkRelease = pythonHelper "android-sdk-release" ../scripts/android-sdk-release;
+  # call goes through an overridable command for the same reason. It is Ruby
+  # because it vendors nixpkgs' androidenv update.rb, which parses with
+  # nokogiri.
+  androidSdkRelease = rubyHelper "android-sdk-release" ../scripts/android-sdk-release (
+    pkgs.ruby.withPackages (ps: [ ps.nokogiri ])
+  );
 in
 {
   inherit

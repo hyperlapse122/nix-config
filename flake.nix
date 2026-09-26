@@ -206,14 +206,22 @@
               python tests/test_claude_code_release.py
               touch $out
             '';
+        # Drives the packaged helper, so a package that lost nokogiri from its
+        # interpreter fails here rather than in the update workflow.
         android-sdk-release =
           pkgs.runCommand "android-sdk-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
               export PYTHONDONTWRITEBYTECODE=1
-              mkdir -p scripts tests
-              cp ${./scripts/android-sdk-release} scripts/android-sdk-release
-              cp ${./tests/test_android_sdk_release.py} tests/test_android_sdk_release.py
-              python tests/test_android_sdk_release.py
+              export ANDROID_SDK_RELEASE=${pkgs.lib.getExe agentTools.androidSdkRelease}
+              python ${./tests/test_android_sdk_release.py}
+              touch $out
+            '';
+        android-sdk-repo-parity =
+          pkgs.runCommand "android-sdk-repo-parity" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              python ${./tests/android-sdk-repo-parity.py} \
+                ${./packages/android-sdk-repo.json} \
+                ${pkgs.path}/pkgs/development/mobile/androidenv/repo.json
               touch $out
             '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
