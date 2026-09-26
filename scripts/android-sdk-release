@@ -419,12 +419,6 @@ def fetch url
   body
 end
 
-# Returns [licenses, packages, stable] for the package types pinned here.
-#
-# packages is parse_package_xml's name -> revision -> androidenv entry, minus
-# the last-available-day stamp: the pin keeps only what upstream lists now, so
-# it has nothing to expire. stable maps name -> the revisions on the stable
-# channel, which update.rb does not record.
 # update.rb parses with noblanks alone, which recovers from malformed XML;
 # strict makes a truncated download a refusal instead of an empty pin.
 def parse_xml xml, what
@@ -433,6 +427,12 @@ rescue Nokogiri::XML::SyntaxError => e
   raise Failure, "#{what} XML did not parse: #{e.message.strip}"
 end
 
+# Returns [licenses, packages, stable] for the package types pinned here.
+#
+# packages is parse_package_xml's name -> revision -> androidenv entry, minus
+# the last-available-day stamp: the pin keeps only what upstream lists now, so
+# it has nothing to expire. stable maps name -> the revisions on the stable
+# channel, which update.rb does not record.
 def parse_repository xml
   doc = parse_xml(xml, 'repository')
 
@@ -457,24 +457,60 @@ def parse_repository xml
   [licenses, packages, stable]
 end
 
-# Returns [licenses, images] for the IMAGE_TAG system image XML, with images
-# keyed api -> tag -> abi as androidenv reads them, minus last-available-day.
-def parse_images xml
-  licenses, images = parse_image_xml(IMAGE_TAG, parse_xml(xml, 'system image'))
+# Yields every entry of images, which androidenv keys api -> tag -> abi.
+def each_image_entry images
   images.each_value do |tags|
     tags.each_value do |abis|
-      abis.each_value { |entry| entry.delete('last-available-day') }
+      abis.each_value { |entry| yield entry }
     end
   end
+end
+
+# Returns [licenses, images] for the IMAGE_TAG system image XML, with images
+# keyed as androidenv reads them, minus last-available-day.
+def parse_images xml
+  licenses, images = parse_image_xml(IMAGE_TAG, parse_xml(xml, 'system image'))
+  each_image_entry(images) { |entry| entry.delete('last-available-day') }
   [licenses, images]
 end
 
+# Joins a to_json_collector revision ({"major:0" => "35", "minor:1" => "4"})
+# into a dotted version.
+def revision_version revision
+  revision.sort_by { |key, _| key.split(':').last.to_i }.map { |_, part| part }.join('.')
+end
+
+# Returns the minimum emulator revision an image declares, or nil.
+def emulator_min_revision entry
+  entry.fetch('dependencies', {}).each_value do |dependency|
+    next unless dependency.is_a?(Hash) && dependency.dig('element-attributes', 'path') == 'emulator'
+
+    minimum = dependency.find { |key, _| key.start_with?('min-revision:') }
+    return revision_version(minimum.last) if minimum
+  end
+  nil
+end
+
 # Returns the pinned images: the IMAGE_TAG IMAGE_ABI image of every selected
-# platform, keyed as parse_images keys them.
-def select_images images, platforms
+# platform, keyed as parse_images keys them. An image must not be older than
+# the one already pinned, and must boot on the pinned emulator.
+def select_images images, platforms, emulator, current
   platforms.to_h do |api|
     entry = images.dig(api, IMAGE_TAG, IMAGE_ABI)
+    label = "system image #{api} #{IMAGE_TAG} #{IMAGE_ABI}"
     raise Failure, "upstream lists no #{IMAGE_TAG} #{IMAGE_ABI} system image for platform #{api}" unless entry
+
+    version = revision_version(entry['revision-details'])
+    pinned = current&.dig('images', api, IMAGE_TAG, IMAGE_ABI, 'revision-details')
+    pinned &&= revision_version(pinned)
+    if pinned && compare_versions(version, pinned).negative?
+      raise Failure, "#{label} revision #{version} is older than the pinned #{pinned}; refusing to downgrade"
+    end
+
+    minimum = emulator_min_revision(entry)
+    if minimum && compare_versions(emulator, minimum).negative?
+      raise Failure, "#{label} needs emulator #{minimum} or newer, but the pinned emulator is #{emulator}"
+    end
 
     [api, { IMAGE_TAG => { IMAGE_ABI => entry } }]
   end
@@ -545,11 +581,7 @@ def render licenses, packages, selection, images
       used_licenses |= [entry['license']] if entry.key?('license')
     end
   end
-  images.each_value do |tags|
-    tags.each_value do |abis|
-      abis.each_value { |entry| used_licenses |= [entry['license']] if entry.key?('license') }
-    end
-  end
+  each_image_entry(images) { |entry| used_licenses |= [entry['license']] if entry.key?('license') }
   missing = (used_licenses - licenses.keys).sort
   raise Failure, "repository XML carries no text for license #{missing.join(', ')}" unless missing.empty?
 
@@ -610,7 +642,7 @@ def main argv
       packages, stable, current,
       { 'build-tools' => options['build-tools'], 'platforms' => options['platforms'] }
     )
-    pinned_images = select_images(images, selection['platforms'])
+    pinned_images = select_images(images, selection['platforms'], selection['emulator'].first, current)
     out_json = render(merge(licenses, image_licenses), packages, selection, pinned_images)
 
     if options[:dry_run] || !output

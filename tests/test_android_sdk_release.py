@@ -64,7 +64,7 @@ def platform(api, major, url, sha1, obsolete=False):
   </remotePackage>"""
 
 
-def image(api, abi, major, url, sha1, license_ref="android-sdk-license"):
+def image(api, abi, major, url, sha1, license_ref="android-sdk-license", emulator_min=35):
     return f"""
   <remotePackage path="system-images;android-{api};google_apis;{abi}">
     <type-details xsi:type="sys-img:sysImgDetailsType">
@@ -77,7 +77,7 @@ def image(api, abi, major, url, sha1, license_ref="android-sdk-license"):
     <display-name>Google APIs {abi} System Image</display-name>
     <uses-license ref="{license_ref}"/>
     <dependencies>
-      <dependency path="emulator"><min-revision><major>35</major></min-revision></dependency>
+      <dependency path="emulator"><min-revision><major>{emulator_min}</major></min-revision></dependency>
     </dependencies>
     <channelRef ref="channel-0"/>
     <archives>
@@ -301,6 +301,39 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         result = self.run_release(["-o", str(self.output)], body=repository(*older))
         self.assertEqual(result.returncode, 1)
         self.assertIn("newest stable emulator 36.0.0 is older", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+
+    def test_refuses_an_image_that_needs_a_newer_emulator(self):
+        needy = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8", emulator_min=38)
+        ]
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"],
+            image_body=images(*needy),
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("needs emulator 38 or newer, but the pinned emulator is 37.1.11", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_bumps_an_image_when_upstream_moves(self):
+        self.write_pin()
+        newer = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8")
+        ]
+        result = self.run_release(["-o", str(self.output)], image_body=images(*newer))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entry = json.loads(self.output.read_text())["images"]["36"]["google_apis"]["x86_64"]
+        self.assertEqual(entry["archives"][0]["sha1"], "i36x8")
+
+    def test_refuses_to_downgrade_an_image(self):
+        self.write_pin()
+        before = self.output.read_text()
+        older = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
+            image(36, "x86_64", 6, "x86_64-36_r06.zip", "i36x6")
+        ]
+        result = self.run_release(["-o", str(self.output)], image_body=images(*older))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("system image 36 google_apis x86_64 revision 6 is older than the pinned 7", result.stderr)
         self.assertEqual(self.output.read_text(), before)
 
     def test_image_fetch_failure_writes_nothing(self):
