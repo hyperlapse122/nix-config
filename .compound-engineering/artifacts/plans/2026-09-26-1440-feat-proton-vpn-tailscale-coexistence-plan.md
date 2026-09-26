@@ -177,9 +177,11 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 **Dependencies:** None.
 
 **Files:**
+
 - Create `modules/nixos/services/proton-vpn.nix`.
 
 **Approach:**
+
 1. Declare `options.my.protonVpn.enable` with `lib.mkEnableOption`, as `modules/nixos/services/tailscale.nix` does.
 2. Under `lib.mkIf cfg.enable`, add `pkgs.proton-vpn` to `environment.systemPackages`, not the deprecated `protonvpn-gui` alias.
 3. Add `pkgs.networkmanager-openvpn` to `networking.networkmanager.plugins`.
@@ -201,10 +203,12 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 **Dependencies:** U1.
 
 **Files:**
+
 - Modify `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`.
 - Modify `hosts/MS-7D91/default.nix`.
 
 **Approach:**
+
 1. Add `../../modules/nixos/services/proton-vpn.nix` to each host's imports next to the Tailscale module.
 2. Set `config.my.protonVpn.enable = !config.my.bootstrap;` beside the matching `my.tailscale.enable` line.
 
@@ -223,10 +227,12 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 **Dependencies:** U2.
 
 **Files:**
+
 - Create `tests/proton-vpn.nix`.
 - Modify `flake.nix` to register `proton-vpn` beside `kernel-sysctl`.
 
 **Approach:**
+
 1. Follow `tests/kernel-sysctl.nix`'s shape (a `runCommand` over `self.nixosConfigurations`), but collect every failure in one build as `tests/yubikey-fido.nix` and `tests/nix-cleanup.nix` do.
 2. Read built artifacts: the system path's `bin/protonvpn-app` and `share/applications/proton.vpn.app.gtk.desktop`, the materialized NetworkManager configuration's `dns=` line and VPN plugin entries, the `/etc/resolv.conf` entry's target, the `systemd-resolved.service` wiring in the built system, and the firewall start script's reverse-path rule.
 3. Compare against independent literals, never values read from the options under test, so no assertion folds to a constant (`.compound-engineering/artifacts/solutions/best-practices/nix-check-assertion-on-unconditional-option-folds-to-a-constant.md`).
@@ -235,6 +241,7 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 **Execution note:** Mutation-test each assertion before trusting it, per `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md`, and record which mutation each assertion caught.
 
 **Test scenarios:**
+
 - On `ThinkPad-X1-Carbon-Gen-11` and `MS-7D91`, the system path ships `bin/protonvpn-app` and the app's desktop entry.
 - On both production hosts, the rendered NetworkManager configuration names `systemd-resolved` as its DNS backend and `/etc/resolv.conf` points at resolved's stub file.
 - On both production hosts, `systemd-resolved.service` is wanted by the built system, not merely rendered.
@@ -256,9 +263,11 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 **Dependencies:** U3 for the check description.
 
 **Files:**
+
 - Modify `docs/verification.md`.
 
 **Approach:**
+
 1. Add sentences for `proton-vpn` to the "Repository checks" paragraph in the style of the `kernel-sysctl` entry, stating what it reads and that it cannot see runtime DNS or routing.
 2. Add `- [ ]` items under "Hardware checks after installation", naming the host where it matters:
    - The app launches from the Plasma launcher, signs in, and stays signed in after logging out and back in, which confirms the Secret Service provider.
@@ -282,7 +291,7 @@ U1, then U2 (hosts import the module), then U3 (it reads U2's host wiring). U4 c
 ## Verification Contract
 
 | Gate | Command or evidence | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | U1, U2, U3 |
 | Declared checks | `nix flake check`, including `proton-vpn` and `markdown-lint` | U1-U4 |
 | Host builds | The four `nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel` commands in `AGENTS.md` | U1, U2 |
