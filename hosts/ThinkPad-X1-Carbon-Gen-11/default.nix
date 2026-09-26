@@ -13,6 +13,7 @@
     ../../modules/nixos/hardware/keyd.nix
     ../../modules/nixos/system/nix-cleanup.nix
     ../../modules/nixos/system/nix-ld.nix
+    ../../modules/nixos/system/agent-browser-deps.nix
     ../../modules/nixos/services/podman.nix
     ../../modules/nixos/services/tailscale.nix
     ../../modules/nixos/system/secrets.nix

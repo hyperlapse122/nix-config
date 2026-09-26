@@ -10,6 +10,7 @@
     ../../modules/nixos/desktop/user-avatar.nix
     ../../modules/nixos/desktop/fonts.nix
     ../../modules/nixos/system/nix-ld.nix
+    ../../modules/nixos/system/agent-browser-deps.nix
     ../../modules/nixos/services/podman.nix
     ../../modules/nixos/services/tailscale.nix
     ../../modules/nixos/system/secrets.nix

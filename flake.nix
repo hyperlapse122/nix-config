@@ -227,6 +227,7 @@
               touch $out
             '';
         nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
+        agent-browser-deps = import ./tests/agent-browser-deps.nix { inherit pkgs self; };
         pam-fingerprint = import ./tests/pam-fingerprint.nix { inherit pkgs self; };
         enroll-fingerprint =
           let
