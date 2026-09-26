@@ -14,7 +14,9 @@
   - the system path carries bin/protonvpn-app and the app's desktop entry.
   - NetworkManager.conf renders dns=systemd-resolved, and /etc/resolv.conf is
     the link to resolved's stub file.
-  - systemd-resolved.service is wanted by sysinit.target, not merely rendered.
+  - sysinit.target wants a systemd-resolved.service whose ExecStart runs
+    systemd-resolved. An existence test would pass for a unit NixOS masked to
+    /dev/null, so the assertion reads the unit's content.
   - resolved.conf renders LLMNR=false, since resolved otherwise sends LLMNR
     queries that these hosts never sent under resolvconf.
   - /etc/NetworkManager/VPN carries the OpenVPN plugin's service file.
@@ -86,8 +88,8 @@ let
         "${hostName}: /etc/resolv.conf ${state} the link to ${stubResolvConf}"
       )
       (expect production
-        "[ -e ${esc "${etc}/systemd/system/sysinit.target.wants/systemd-resolved.service"} ]"
-        "${hostName}: sysinit.target ${state} a want on systemd-resolved.service"
+        "grep -qs '^ExecStart=.*/lib/systemd/systemd-resolved$' ${esc "${etc}/systemd/system/sysinit.target.wants/systemd-resolved.service"}"
+        "${hostName}: sysinit.target ${state} a want on a systemd-resolved.service that runs systemd-resolved"
       )
       (expect production "grep -Fxqs LLMNR=false ${esc "${etc}/systemd/resolved.conf"}"
         "${hostName}: resolved.conf ${state} LLMNR=false"
