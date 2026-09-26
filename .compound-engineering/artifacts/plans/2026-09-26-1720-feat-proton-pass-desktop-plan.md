@@ -115,7 +115,7 @@ The user wants Proton Pass available alongside 1Password without installing it b
 ## Verification Contract
 
 | Gate | Command |
-|---|---|
+| --- | --- |
 | Formatting | `nix fmt -- --ci` |
 | Flake checks | `nix flake check` |
 | Host builds | the four `nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel` commands in `AGENTS.md` |
