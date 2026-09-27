@@ -1,6 +1,8 @@
 { pkgs }:
 
 let
+  inherit (pkgs) lib;
+
   # patchShebangs resolves the interpreter from the build PATH, so python3
   # has to be here for the `#!/usr/bin/env python3` line to be rewritten
   # into a store path rather than left dangling.
@@ -63,9 +65,27 @@ let
   androidSdkRelease = rubyHelper "android-sdk-release" ../scripts/android-sdk-release (
     pkgs.ruby.withPackages (ps: [ ps.nokogiri ])
   );
+
+  # Runs as a coding agent's session-start hook, whose PATH is whatever the
+  # agent was started with, so every tool it calls is named by store path.
+  orcaOrchestrationContext = pkgs.stdenvNoCC.mkDerivation {
+    pname = "orca-orchestration-context";
+    version = "1";
+    dontUnpack = true;
+    installPhase = ''
+      install -Dm755 ${../scripts/orca-orchestration-context} $out/bin/orca-orchestration-context
+      substituteInPlace $out/bin/orca-orchestration-context \
+        --replace-fail '@ORCA_CLI@' '${(import ./orca.nix { inherit pkgs; }).cli}' \
+        --replace-fail '@JQ@' '${lib.getExe pkgs.jq}' \
+        --replace-fail '@TIMEOUT@' '${pkgs.coreutils}/bin/timeout'
+      patchShebangs $out/bin/orca-orchestration-context
+    '';
+    meta.mainProgram = "orca-orchestration-context";
+  };
 in
 {
   inherit
+    orcaOrchestrationContext
     agentSettings
     agentPluginSync
     agentPluginRelease
