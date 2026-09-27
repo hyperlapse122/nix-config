@@ -18,16 +18,22 @@
     version, and aapt2 from each pinned build-tools runs. Both prove
     androidenv patched them for NixOS rather than leaving them to nix-ld.
   - the pinned cmdline-tools directory ships an executable sdkmanager.
+  - each pinned NDK's source.properties names its version, which is what
+    Gradle matches ndkVersion against, and its clang runs, proving the
+    toolchain was patched for NixOS.
+  - each pinned CMake's cmake and ninja run and cmake reports its version,
+    which Gradle's externalNativeBuild matches its cmake version against.
   - emulator/emulator runs and reports the pinned emulator version. Orca
     accepts an SDK root only when platform-tools/adb and emulator/emulator
     both exist under it, so this and the adb check together are its test.
-  - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the link,
+  - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the link
+    and ANDROID_NDK_HOME as the newest pinned NDK under it,
     appends the cmdline-tools bin and platform-tools directories to PATH on
     the only line that names platform-tools (its sqlite3 and mke2fs must not
     shadow the system's), and exports a JAVA_HOME that holds a java
     executable.
-  - environment.d/10-home-manager.conf carries both SDK variables, so apps the
-    systemd user manager starts see them too.
+  - environment.d/10-home-manager.conf carries the SDK and NDK variables, so
+    apps the systemd user manager starts see them too.
   - ~/.androidrc holds exactly the --sdk flag for the link.
 */
 { pkgs, self }:
@@ -48,17 +54,20 @@ let
   platformTools = repo.latest.platform-tools;
   emulator = repo.latest.emulator;
   cmdlineTools = repo.latest.cmdline-tools;
+  ndk = repo.latest.ndk;
 
   sdkRoot = "/home/h82/.local/share/android-sdk";
 
   shellLines = [
     ''export ANDROID_HOME="${sdkRoot}"''
+    ''export ANDROID_NDK_HOME="${sdkRoot}/ndk/${ndk}"''
     ''export ANDROID_SDK_ROOT="${sdkRoot}"''
     ''export PATH="''${PATH:+$PATH:}${sdkRoot}/cmdline-tools/${cmdlineTools}/bin:${sdkRoot}/platform-tools"''
   ];
 
   environmentLines = [
     "ANDROID_HOME=${sdkRoot}"
+    "ANDROID_NDK_HOME=${sdkRoot}/ndk/${ndk}"
     "ANDROID_SDK_ROOT=${sdkRoot}"
   ];
 
@@ -106,6 +115,21 @@ let
         fail ${host'}": aapt2 from build-tools ${version} does not run"
       fi
     '') (attrNames repo.packages.build-tools)
+    + concatMapStrings (version: ''
+      check_line ${host'} "$sdk/ndk/${version}/source.properties" ${escapeShellArg "Pkg.Revision = ${version}"}
+      if ! "$sdk/ndk/${version}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version >/dev/null 2>&1; then
+        fail ${host'}": clang from NDK ${version} does not run"
+      fi
+    '') (attrNames repo.packages.ndk)
+    + concatMapStrings (version: ''
+      cmake_version=$("$sdk/cmake/${version}/bin/cmake" --version 2>&1 | sed -n 's/^cmake version \([^-]*\).*/\1/p' || true)
+      if [ "$cmake_version" != ${escapeShellArg version} ]; then
+        fail ${host'}": cmake/${version} reports '$cmake_version'"
+      fi
+      if ! "$sdk/cmake/${version}/bin/ninja" --version >/dev/null 2>&1; then
+        fail ${host'}": ninja from CMake ${version} does not run"
+      fi
+    '') (attrNames repo.packages.cmake)
     + ''
         if [ ! -x "$sdk/cmdline-tools/${cmdlineTools}/bin/sdkmanager" ]; then
           fail ${host'}": cmdline-tools/${cmdlineTools} ships no executable sdkmanager"

@@ -130,6 +130,10 @@ BASE = [
     generic("emulator", 37, 2, 4, "emulator-linux_x64-37.2.4.zip", "e3724", channel="channel-1"),
     generic("build-tools;36.0.0", 36, 0, 0, "build-tools_r36_linux.zip", "b36"),
     generic("build-tools;37.0.0", 37, 0, 0, "build-tools_r37_linux.zip", "b37"),
+    generic("cmake;3.22.1", 3, 22, 1, "cmake-3.22.1-linux.zip", "m3221"),
+    generic("cmake;4.1.2", 4, 1, 2, "cmake-4.1.2-linux.zip", "m412"),
+    generic("ndk;29.0.14206865", 29, 0, 14206865, "android-ndk-r29-linux.zip", "n29"),
+    generic("ndk;30.0.15729638", 30, 0, 15729638, "android-ndk-r30-linux.zip", "n30", channel="channel-1"),
     platform(36, 2, "platform-36_r02.zip", "a36"),
     platform(34, 2, "platform-34_r02.zip", "a34r2"),
     platform(34, 3, "platform-34_r03.zip", "a34r3", obsolete=True),
@@ -181,7 +185,8 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
 
     def write_pin(self, *extra):
         result = self.run_release(
-            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36", *extra]
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36", *extra]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(self.output.read_text())
@@ -195,12 +200,16 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
                 "emulator": "37.1.11",
                 "platform-tools": "37.0.1",
                 "build-tools": "36.0.0",
+                "cmake": "3.22.1",
+                "ndk": "29.0.14206865",
                 "platforms": "36",
             },
         )
         self.assertEqual(sorted(pin["packages"]["cmdline-tools"]), ["23.0"])
         self.assertEqual(sorted(pin["packages"]["emulator"]), ["37.1.11"])
         self.assertEqual(sorted(pin["packages"]["build-tools"]), ["36.0.0"])
+        self.assertEqual(sorted(pin["packages"]["cmake"]), ["3.22.1"])
+        self.assertEqual(sorted(pin["packages"]["ndk"]), ["29.0.14206865"])
         self.assertEqual(sorted(pin["packages"]["platforms"]), ["36"])
 
     def test_renders_androidenv_entries(self):
@@ -236,6 +245,49 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(platform36["archives"][0]["os"], "all")
+
+    def test_renders_the_declared_ndk_at_its_side_by_side_path(self):
+        pin = self.write_pin()
+        ndk = pin["packages"]["ndk"]["29.0.14206865"]
+        self.assertEqual(ndk["name"], "ndk")
+        self.assertEqual(ndk["path"], "ndk/29.0.14206865")
+        self.assertEqual(ndk["revision"], "29.0.14206865")
+        self.assertEqual(ndk["archives"][0]["sha1"], "n29")
+
+    def test_later_run_keeps_the_declared_ndk_despite_a_newer_one(self):
+        self.write_pin()
+        newer = BASE + [
+            generic("ndk;31.0.1", 31, 0, 1, "android-ndk-r31-linux.zip", "n31")
+        ]
+        result = self.run_release(["-o", str(self.output)], body=repository(*newer))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pin = json.loads(self.output.read_text())
+        self.assertEqual(sorted(pin["packages"]["ndk"]), ["29.0.14206865"])
+
+    def test_renders_the_declared_cmake_at_its_versioned_path(self):
+        pin = self.write_pin()
+        cmake = pin["packages"]["cmake"]["3.22.1"]
+        self.assertEqual(cmake["path"], "cmake/3.22.1")
+        self.assertEqual(cmake["revision"], "3.22.1")
+        self.assertEqual(cmake["archives"][0]["sha1"], "m3221")
+
+    def test_requires_a_cmake_for_a_new_pin(self):
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--ndk", "29.0.14206865",
+             "--platforms", "36"]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pass --cmake", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_requires_an_ndk_for_a_new_pin(self):
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1",
+             "--platforms", "36"]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pass --ndk", result.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_pins_the_x86_64_google_apis_image_of_each_declared_platform(self):
         pin = self.write_pin()
@@ -275,7 +327,7 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
     def test_image_url_follows_the_repository_url(self):
         result = self.run_release(
             ["--dry-run", "--url", "https://mirror.test/repo/repository2-3.xml",
-             "--build-tools", "36.0.0", "--platforms", "36"]
+             "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865", "--platforms", "36"]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
@@ -285,7 +337,8 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
     def test_refuses_a_declared_platform_without_an_image(self):
         without = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p]
         result = self.run_release(
-            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"],
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36"],
             image_body=images(*without),
         )
         self.assertEqual(result.returncode, 1)
@@ -308,7 +361,8 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
             image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8", emulator_min=38)
         ]
         result = self.run_release(
-            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"],
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36"],
             image_body=images(*needy),
         )
         self.assertEqual(result.returncode, 1)
@@ -338,7 +392,8 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
 
     def test_image_fetch_failure_writes_nothing(self):
         result = self.run_release(
-            ["-o", str(self.output), "--build-tools", "36.0.0", "--platforms", "36"], image_status=22
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36"], image_status=22
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("sys-img2-3.xml failed with status 22", result.stderr)
@@ -346,7 +401,7 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
 
     def test_malformed_image_xml_is_refused(self):
         result = self.run_release(
-            ["--dry-run", "--build-tools", "36.0.0", "--platforms", "36"], image_body="<not-xml"
+            ["--dry-run", "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865", "--platforms", "36"], image_body="<not-xml"
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("system image XML did not parse", result.stderr)
@@ -390,7 +445,7 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
             license_ref="android-sdk-preview-license",
         )
         result = self.run_release(
-            ["--dry-run", "--build-tools", "36.0.0", "--platforms", "36"],
+            ["--dry-run", "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865", "--platforms", "36"],
             body=repository(*BASE, extra),
         )
         self.assertEqual(result.returncode, 0, result.stderr)

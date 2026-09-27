@@ -30,9 +30,12 @@ let
     systemImageTypes = [ "google_apis" ];
     abiVersions = [ "x86_64" ];
     includeSources = false;
-    includeNDK = false;
-    cmakeVersions = [ ];
-    ndkVersions = [ ];
+    includeNDK = true;
+    ndkVersions = builtins.attrNames repo.packages.ndk;
+    # Gradle's externalNativeBuild looks for the CMake it names under cmake/.
+    # Explicit because androidenv only defaults it on for x86_64 and Darwin.
+    includeCmake = true;
+    cmakeVersions = builtins.attrNames repo.packages.cmake;
   };
 in
 {
