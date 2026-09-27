@@ -1,0 +1,157 @@
+/*
+  Check interface:
+
+    import ./tests/agent-instructions.nix { inherit pkgs self; }
+
+  Asserts that the shared agent instructions reach each harness's user-level
+  instruction file for user `h82` on every host this flake declares, rendered
+  by gomplate from the one shared template with that harness's context.
+
+  The host list is taken from `self.nixosConfigurations`, so a host added later
+  is covered the day it is added.
+
+  Verifies, per host and per harness:
+  - exactly one enabled Home Manager file resolves to the harness's target.
+    The lookup compares each entry's resolved `target` rather than its
+    attribute name, and reads `enable`, because either can move the file
+    without changing its text. See
+    .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
+  - the materialized file carries the shared body's opening sentence with this
+    harness's name filled in, so a context carrying the other harness's name
+    fails.
+  - it names every native tool its harness template maps, and none of the
+    other harness's, so a branch keyed on the wrong id, or swapped targets,
+    fail.
+  - no template action (`{{`, `}}`) or `<no value>` survives in it, which is
+    what gomplate prints for a missing key when `--missing-key error` is lost.
+
+  The expected sentence and tool names are literals here, not read from the
+  module, so a mutation of the templates turns this red.
+
+  Every lookup carries an `or` fallback and the store path is interpolated only
+  inside the present branch, so a removed declaration fails inside the builder
+  rather than during evaluation. See
+  .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
+
+  The builder collects every failure instead of exiting at the first, so one
+  red build names every broken assertion across all hosts.
+*/
+{ pkgs, self }:
+let
+  inherit (pkgs) lib;
+
+  esc = value: lib.escapeShellArg (toString value);
+
+  claudeTools = [
+    "`Read`"
+    "`Edit`"
+    "`Write`"
+    "`NotebookEdit`"
+    "`WebFetch`"
+    "`WebSearch`"
+    "`AskUserQuestion`"
+    "`Agent`"
+    "`Bash`"
+  ];
+
+  antigravityTools = [
+    "`view_file`"
+    "`replace_file_content`"
+    "`write_to_file`"
+    "`read_url_content`"
+    "`search_web`"
+    "`ask_question`"
+    "`invoke_subagent`"
+    "`manage_task`"
+    "`schedule`"
+    "`run_command`"
+  ];
+
+  harnesses = [
+    {
+      name = "Claude Code";
+      sharedSentence = "Use the tools Claude Code provides natively before reaching for a shell equivalent.";
+      target = ".claude/CLAUDE.md";
+      present = claudeTools;
+      absent = antigravityTools;
+    }
+    {
+      name = "Antigravity";
+      sharedSentence = "Use the tools Antigravity provides natively before reaching for a shell equivalent.";
+      target = ".gemini/config/AGENTS.md";
+      present = antigravityTools;
+      absent = claudeTools;
+    }
+  ];
+
+  assertHarness =
+    hostName: userConfig: harness:
+    let
+      entries = lib.filter (file: (file.target or "") == harness.target) (
+        lib.attrValues (userConfig.home.file or { })
+      );
+      entry = if lib.length entries == 1 then lib.head entries else null;
+      source = if entry == null then null else (entry.source or null);
+      label = "${harness.name} (${harness.target}) on ${hostName}";
+
+      countWrong = lib.optionalString (lib.length entries != 1) ''
+        echo ${esc "expected exactly one home.file for ${label}, found ${toString (lib.length entries)}"} >&2
+        failed=1
+      '';
+
+      entryPresent = lib.optionalString (entry != null) ''
+        if [ ${esc (lib.boolToString (entry.enable or false))} != "true" ]; then
+          echo ${esc "home.file for ${label} is not enabled"} >&2
+          failed=1
+        fi
+      '';
+
+      sourcePresent = lib.optionalString (source != null) ''
+        file=${source}
+        if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then
+          echo ${esc "${label} lacks the shared instructions"} >&2
+          failed=1
+        fi
+        for tool in ${lib.escapeShellArgs harness.present}; do
+          if ! grep -qF -- "$tool" "$file"; then
+            echo ${esc "${label} does not name"} "$tool" >&2
+            failed=1
+          fi
+        done
+        for tool in ${lib.escapeShellArgs harness.absent}; do
+          if grep -qF -- "$tool" "$file"; then
+            echo ${esc "${label} names another harness's tool"} "$tool" >&2
+            failed=1
+          fi
+        done
+        if grep -qE '\{\{|\}\}|<no value>' "$file"; then
+          echo ${esc "${label} carries an unrendered template action"} >&2
+          failed=1
+        fi
+      '';
+
+      sourceAbsent = lib.optionalString (entry != null && source == null) ''
+        echo ${esc "home.file for ${label} has no source"} >&2
+        failed=1
+      '';
+    in
+    countWrong + entryPresent + sourcePresent + sourceAbsent;
+
+  assertHost =
+    hostName: host:
+    let
+      userConfig = host.config.home-manager.users.h82 or { };
+    in
+    lib.concatMapStrings (assertHarness hostName userConfig) harnesses;
+in
+pkgs.runCommand "agent-instructions-tests" { } ''
+  failed=0
+
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList assertHost self.nixosConfigurations)}
+
+  if [ "$failed" != "0" ]; then
+    exit 1
+  fi
+
+  touch $out
+''
