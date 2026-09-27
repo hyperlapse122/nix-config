@@ -18,14 +18,19 @@
     light scheme cannot pass.
   - the existing TerminalApplication and Locale entries survive.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11 and MS-7D91, in the kdeTheme
-  Home Manager activation script:
-  - kwriteconfig6 writes LookAndFeelPackage and the icon theme.
-  - plasma-apply-colorscheme BreezeDark runs on the offscreen Qt platform,
-    since it aborts with no display, and its failure does not abort
-    activation.
-  - kwriteconfig6 does not write ColorScheme: plasma-apply-colorscheme exits
-    without writing the color groups when the name already matches.
+  Verifies, on ThinkPad-X1-Carbon-Gen-11 and MS-7D91, by running the kdeTheme
+  Home Manager activation against a fixture HOME whose kdeglobals holds the
+  Breeze Light color groups, scheme name, look-and-feel package, and icon
+  theme (the shape of a long-lived user file), with the built /etc/xdg in
+  XDG_CONFIG_DIRS. Seeding light values keeps the system defaults from
+  masking a missing write:
+  - the effective (user, else system) values are ColorScheme BreezeDark, the Breeze Dark
+    look-and-feel package, and the breeze-dark icon theme.
+  - the effective [Colors:Window] and nested [Colors:Header][Inactive] backgrounds equal
+    the Breeze Dark values. The user file's own groups override /etc/xdg, and
+    plasma-apply-colorscheme reads the cascaded ColorScheme=BreezeDark as
+    already applied and writes nothing, so only a direct write turns h82 dark.
+  - an unrelated user key survives.
 
   It cannot see whether a running session repaints; docs/verification.md
   carries the hardware check for that. Every failure is collected in one build.
@@ -73,9 +78,12 @@ let
     let
       data = host.config.home-manager.users.h82.home.activation.kdeTheme.data or "";
       script = pkgs.writeText "${hostName}-kde-theme.sh" data;
-      expectLine = pattern: message: ''
-        if ! grep -Eq -- ${esc pattern} ${esc script}; then
-          ${fail "${hostName}: kdeTheme activation ${message}"}
+      home = "$TMPDIR/${hostName}-home";
+      userGlobals = "${home}/.config/kdeglobals";
+      systemGlobals = "${host.config.system.build.etc}/etc/xdg/kdeglobals";
+      expectUser = group: key: expected: message: ''
+        if [ "$(ini_effective "${userGlobals}" ${esc systemGlobals} ${esc group} ${esc key})" != ${expected} ]; then
+          ${fail "${hostName}: after kdeTheme activation, ${message}"}
         fi
       '';
     in
@@ -83,12 +91,29 @@ let
       if [ ! -s ${esc script} ]; then
         ${fail "${hostName}: kdeTheme activation script is missing or empty"}
       else
-        ${expectLine "--file kdeglobals --group KDE --key LookAndFeelPackage org\\.kde\\.breezedark\\.desktop" "does not write LookAndFeelPackage"}
-        ${expectLine "--file kdeglobals --group Icons --key Theme breeze-dark" "does not write the breeze-dark icon theme"}
-        ${expectLine "QT_QPA_PLATFORM=offscreen [^ ]*/bin/plasma-apply-colorscheme BreezeDark( .*)?\\|\\| true" "does not run plasma-apply-colorscheme BreezeDark offscreen and tolerated"}
-        if grep -Eq -- '--key ColorScheme' ${esc script}; then
-          ${fail "${hostName}: kdeTheme activation writes ColorScheme with kwriteconfig6, which makes plasma-apply-colorscheme a no-op"}
+        mkdir -p "${home}/.config"
+        {
+          printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=BreezeLight\n\n'
+          printf '[Icons]\nTheme=breeze\n\n[KDE]\nLookAndFeelPackage=org.kde.breeze.desktop\n\n'
+          awk '/^\[/ { keep = ($0 ~ /^\[Colors:/) } keep { print }' ${esc "${colorSchemes}/BreezeLight.colors"}
+        } > "${userGlobals}"
+        if ! HOME="${home}" XDG_CONFIG_HOME="${home}/.config" \
+          XDG_CONFIG_DIRS=${esc "${host.config.system.build.etc}/etc/xdg"} \
+          bash ${esc script} >/dev/null 2>&1; then
+          ${fail "${hostName}: kdeTheme activation exited non-zero"}
         fi
+        ${expectUser "General" "ColorScheme" "BreezeDark" "the user ColorScheme is not BreezeDark"}
+        ${expectUser "KDE" "LookAndFeelPackage" "org.kde.breezedark.desktop"
+          "the user LookAndFeelPackage is not Breeze Dark"
+        }
+        ${expectUser "Icons" "Theme" "breeze-dark" "the user icon theme is not breeze-dark"}
+        ${expectUser "Colors:Window" "BackgroundNormal" "\"$dark_window\""
+          "the user [Colors:Window] background is not the Breeze Dark value"
+        }
+        ${expectUser "Colors:Header][Inactive" "BackgroundNormal" "\"$dark_header_inactive\""
+          "the user [Colors:Header][Inactive] background is not the Breeze Dark value"
+        }
+        ${expectUser "General" "BrowserApplication" "fixture.desktop" "an unrelated user key was lost"}
       fi
     '';
 
@@ -123,6 +148,18 @@ pkgs.runCommand "kde-dark-theme-tests"
       ' "$1"
     }
 
+    # Prints what KConfig resolves: the user file's value, else the system one.
+    # KConfig drops a user entry that equals the cascaded default, so a key
+    # absent from the user file is not a missing write.
+    ini_effective() {
+      if grep -qxF "[$3]" "$1" && [ -n "$(ini_get "$1" "$3" "$4")" ]; then
+        ini_get "$1" "$3" "$4"
+      else
+        ini_get "$2" "$3" "$4"
+      fi
+    }
+
+    dark_header_inactive="$(ini_get ${esc "${colorSchemes}/BreezeDark.colors"} "Colors:Header][Inactive" BackgroundNormal)"
     dark_window="$(ini_get ${esc "${colorSchemes}/BreezeDark.colors"} Colors:Window BackgroundNormal)"
     light_window="$(ini_get ${esc "${colorSchemes}/BreezeLight.colors"} Colors:Window BackgroundNormal)"
     if [ -z "$dark_window" ] || [ "$dark_window" = "$light_window" ]; then
