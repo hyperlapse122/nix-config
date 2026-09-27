@@ -11,14 +11,14 @@
 # repository rather than in whichever nixpkgs revision flake.lock names.
 #
 # cmdline-tools, emulator, and platform-tools track the newest stable release.
-# build-tools and platforms are the versions a project compiles against, so they
-# stay at the versions already pinned (or the ones passed on the command line)
-# and only their archive data is refreshed. Each declared platform also pins its
-# Google APIs x86_64 system image, read from the system image XML beside the
-# repository XML, so an emulator AVD can be created from the read-only SDK. The
-# helper refuses to write a pin that would downgrade a tracked package, drop a
-# declared version upstream no longer lists, or leave a declared platform
-# without its system image.
+# build-tools, cmake, ndk, and platforms are the versions a project compiles
+# against, so they stay at the versions already pinned (or the ones passed on
+# the command line) and only their archive data is refreshed. Each declared
+# platform also pins its Google APIs x86_64 system image, read from the system
+# image XML beside the repository XML, so an emulator AVD can be created from
+# the read-only SDK. The helper refuses to write a pin that would downgrade a
+# tracked package, drop a declared version upstream no longer lists, or leave a
+# declared platform without its system image.
 #
 # The XML-to-repo.json conversion is vendored from nixpkgs'
 # pkgs/development/mobile/androidenv/update.rb rather than loaded from
@@ -40,7 +40,7 @@ DEFAULT_URL = 'https://dl.google.com/android/repository/repository2-3.xml'
 DEFAULT_FETCH = 'curl -sfL'
 
 TRACKED = %w[cmdline-tools emulator platform-tools].freeze
-DECLARED = %w[build-tools platforms].freeze
+DECLARED = %w[build-tools cmake ndk platforms].freeze
 
 IMAGE_TAG = 'google_apis'
 IMAGE_ABI = 'x86_64'
@@ -602,7 +602,7 @@ def render licenses, packages, selection, images
 end
 
 def parse_options argv
-  options = { url: DEFAULT_URL, 'build-tools' => nil, 'platforms' => nil, dry_run: false }
+  options = { url: DEFAULT_URL, dry_run: false }
   parser = OptionParser.new do |o|
     o.banner = 'Usage: android-sdk-release [options]'
     o.separator 'Pin the Android SDK packages the flake builds from Google\'s repository XML.'
@@ -611,6 +611,14 @@ def parse_options argv
     o.on('--build-tools VERSION',
          'build-tools version to pin (repeatable; default: the pinned ones)') do |v|
       (options['build-tools'] ||= []) << v
+    end
+    o.on('--cmake VERSION',
+         'CMake version to pin (repeatable; default: the pinned ones)') do |v|
+      (options['cmake'] ||= []) << v
+    end
+    o.on('--ndk VERSION',
+         'NDK version to pin (repeatable; default: the pinned ones)') do |v|
+      (options['ndk'] ||= []) << v
     end
     o.on('--platforms VERSION',
          'platform API level to pin (repeatable; default: the pinned ones)') do |v|
@@ -640,7 +648,7 @@ def main argv
     image_licenses, images = parse_images(fetch(URI.join(options[:url], IMAGE_XML).to_s))
     selection = select_versions(
       packages, stable, current,
-      { 'build-tools' => options['build-tools'], 'platforms' => options['platforms'] }
+      options.slice(*DECLARED)
     )
     pinned_images = select_images(images, selection['platforms'], selection['emulator'].first, current)
     out_json = render(merge(licenses, image_licenses), packages, selection, pinned_images)

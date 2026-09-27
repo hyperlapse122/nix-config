@@ -57,8 +57,10 @@
   },
   "latest": {
     "build-tools": "36.0.0",
+    "cmake": "3.22.1",
     "cmdline-tools": "23.0",
     "emulator": "37.1.11",
+    "ndk": "29.0.14206865",
     "platform-tools": "37.0.1",
     "platforms": "36"
   },
@@ -102,6 +104,48 @@
           "major:0": "36",
           "micro:2": "0",
           "minor:1": "0"
+        },
+        "type-details": {
+          "element-attributes": {
+            "xsi:type": "ns5:genericDetailsType"
+          }
+        }
+      }
+    },
+    "cmake": {
+      "3.22.1": {
+        "archives": [
+          {
+            "arch": "all",
+            "os": "macosx",
+            "sha1": "8604eeef9adadb626dbb70a7ff58a87e6a7b967a",
+            "size": 38223266,
+            "url": "https://dl.google.com/android/repository/cmake-3.22.1-darwin.zip"
+          },
+          {
+            "arch": "all",
+            "os": "linux",
+            "sha1": "fd0a48b4a758310df8c7aa51f59840ed48fe7ed8",
+            "size": 22308647,
+            "url": "https://dl.google.com/android/repository/cmake-3.22.1-linux.zip"
+          },
+          {
+            "arch": "all",
+            "os": "windows",
+            "sha1": "292778f32a7d5183e1c49c7897b870653f2d2c1b",
+            "size": 16116742,
+            "url": "https://dl.google.com/android/repository/cmake-3.22.1-windows.zip"
+          }
+        ],
+        "displayName": "CMake 3.22.1",
+        "license": "android-sdk-license",
+        "name": "cmake",
+        "path": "cmake/3.22.1",
+        "revision": "3.22.1",
+        "revision-details": {
+          "major:0": "3",
+          "micro:2": "1",
+          "minor:1": "22"
         },
         "type-details": {
           "element-attributes": {
@@ -199,6 +243,48 @@
           "major:0": "37",
           "micro:2": "11",
           "minor:1": "1"
+        },
+        "type-details": {
+          "element-attributes": {
+            "xsi:type": "ns5:genericDetailsType"
+          }
+        }
+      }
+    },
+    "ndk": {
+      "29.0.14206865": {
+        "archives": [
+          {
+            "arch": "all",
+            "os": "linux",
+            "sha1": "87e2bb7e9be5d6a1c6cdf5ec40dd4e0c6d07c30b",
+            "size": 783549481,
+            "url": "https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
+          },
+          {
+            "arch": "all",
+            "os": "macosx",
+            "sha1": "03d29fbb57e3c05a7d53597dd011d856c1456a4f",
+            "size": 1049519838,
+            "url": "https://dl.google.com/android/repository/android-ndk-r29-darwin.zip"
+          },
+          {
+            "arch": "all",
+            "os": "windows",
+            "sha1": "ab3bb30fbb9e6903666d60c55d11e78b04e07472",
+            "size": 833850862,
+            "url": "https://dl.google.com/android/repository/android-ndk-r29-windows.zip"
+          }
+        ],
+        "displayName": "NDK (Side by side) 29.0.14206865",
+        "license": "android-sdk-license",
+        "name": "ndk",
+        "path": "ndk/29.0.14206865",
+        "revision": "29.0.14206865",
+        "revision-details": {
+          "major:0": "29",
+          "micro:2": "14206865",
+          "minor:1": "0"
         },
         "type-details": {
           "element-attributes": {
