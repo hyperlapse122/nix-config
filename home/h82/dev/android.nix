@@ -10,6 +10,9 @@ let
   androidSessionVariables = {
     ANDROID_HOME = sdkRoot;
     ANDROID_SDK_ROOT = sdkRoot;
+    # Gradle finds the NDK by the project's ndkVersion under ndk/; cargo-ndk,
+    # gomobile, and CMake toolchain files read this variable instead.
+    ANDROID_NDK_HOME = "${sdkRoot}/ndk/${androidSdk.repo.latest.ndk}";
   };
 in
 {
