@@ -8,12 +8,12 @@
 let
   kwrite = "${pkgs.kdePackages.kconfig}/bin/kwriteconfig6";
 in
-lib.mkIf (osConfig.networking.hostName == "ThinkPad-X1-Carbon-Gen-11") {
+lib.mkIf osConfig.my.laptop.enable {
   # Powerdevil -- not systemd-logind -- decides lid-switch behavior while a
   # Plasma session is running: it takes an unconditional block-mode
   # systemd-logind inhibitor over handle-lid-switch the moment its D-Bus
   # service registers, so logind's own HandleLidSwitch settings
-  # (hosts/ThinkPad-X1-Carbon-Gen-11/default.nix) are consulted only when no
+  # (modules/nixos/hardware/laptop.nix) are consulted only when no
   # Plasma session is active.
   home.activation.kdePowerLid = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if [ -x "${kwrite}" ]; then

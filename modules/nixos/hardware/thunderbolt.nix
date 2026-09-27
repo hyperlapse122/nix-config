@@ -1,5 +1,9 @@
-{ ... }:
+{ config, lib, ... }:
 {
+  options.my.thunderbolt = {
+    enable = lib.mkEnableOption "Thunderbolt device authorization through bolt";
+  };
+
   # The ThinkPad's Thunderbolt domain runs at security level `user`, so the
   # kernel keeps a new device such as the Apple Studio Display unauthorized --
   # its camera, speakers, and microphones stay unusable -- until bolt authorizes
@@ -8,5 +12,7 @@
   #
   # Plasma 6 does not enable bolt itself, and plasma6.nix ships the Thunderbolt
   # settings module (plasma-thunderbolt) only when bolt is enabled.
-  services.hardware.bolt.enable = true;
+  config = lib.mkIf config.my.thunderbolt.enable {
+    services.hardware.bolt.enable = true;
+  };
 }
