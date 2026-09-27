@@ -776,6 +776,7 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
+        tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
         tokscale-wrapper =
           let
             packaged = import ./packages/tokscale.nix {
