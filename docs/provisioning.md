@@ -109,7 +109,7 @@ Check each CLI's authentication status and test Git HTTPS access to the required
 
 ## Coding agent harness configuration
 
-Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `home/h82/agents/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/agents/gemini.nix`.
+Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `home/h82/agents/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/agents/gemini.nix`; their user-level instruction files come from `home/h82/agents/instructions/`.
 
 ### Which tier owns which setting
 
@@ -135,6 +135,12 @@ The `opus[1m]` value starts every session on the 1M-context variant of the `opus
 ### Surfaces that stay unmanaged
 
 Only the scalar settings above are declared, plus the Orca skills below. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, other skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
+
+### Shared agent instructions
+
+`home/h82/agents/instructions/` renders one user-level instruction file per harness from the single template `instructions.md.tmpl`, using [gomplate](https://docs.gomplate.ca/), whose templates are Go `text/template`. The outputs are `~/.claude/CLAUDE.md` for Claude Code and `~/.gemini/config/AGENTS.md` for the Antigravity CLI. Each render passes the harness as the `harness` context (`.harness.id` and `.harness.name`). The template's first part is shared and tells the agent to prefer its harness's native tools over shell equivalents. It then branches with `{{ if eq .harness.id "claude-code" }}` and `{{ else if eq .harness.id "antigravity" }}` into a table that maps each task to that harness's native tool. Rendering runs at build time with `--missing-key error`, and the template's final `else` calls `fail`, so a missing context key or a harness id without a branch fails the build.
+
+The Antigravity CLI also loads `~/.gemini/GEMINI.md` as a global rule, but the Gemini CLI reads the same file, so its Antigravity tool names would reach a different harness. Neither harness rewrites its instruction file, so both are Home Manager store links. To add a harness, add an entry with its `name` and `target` to `harnesses` in `default.nix`, then add a branch for its id to the template. The `agent-instructions` check reads the materialized file on every host and fails when it is missing, disabled, lacks the shared guidance, omits one of its harness's tools, names the other harness's tools, or keeps a template action or `<no value>`.
 
 ### Orca agent skills
 

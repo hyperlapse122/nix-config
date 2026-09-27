@@ -1,0 +1,46 @@
+# Tool use
+
+Use the tools {{ .harness.name }} provides natively before reaching for a shell equivalent. A native tool call is shown to the user as a reviewable action, goes through the harness's permission rules, and returns output the harness can track. A shell command doing the same job hides all of that.
+
+- Read, create, and edit files with the file tools. Do not use `cat`, `head`, `tail`, `sed -n`, `sed -i`, `awk`, `perl -i`, `echo >`, or heredocs for this.
+- Read web pages and documentation, and search the web, with the web tools rather than `curl` or `wget`.
+- When the user's answer changes what you do next, ask with the question tool rather than ending your turn on an open question.
+- Hand independent work that can run in parallel to the subagent tool.
+- Keep the shell for work no native tool covers: builds, tests, formatters, `git`, package managers, and searches of the tree.
+- When a native tool fails or cannot express an operation, say so and use the shell for that one operation only. Go back to the native tool for the next one.
+
+## {{ .harness.name }} tools
+
+| Task | Use | Instead of |
+| --- | --- | --- |
+{{- if eq .harness.id "claude-code" }}
+| Read a file, image, or PDF | `Read` | `cat`, `head`, `tail`, `sed -n` |
+| Change part of an existing file | `Edit` | `sed -i`, `awk`, `perl -i` |
+| Create or fully rewrite a file | `Write` | heredocs, `echo >`, `tee` |
+| Edit a Jupyter notebook cell | `NotebookEdit` | editing the `.ipynb` JSON |
+| Read a web page | `WebFetch` | `curl`, `wget` |
+| Search the web | `WebSearch` | `curl` against a search engine |
+| Ask the user to choose | `AskUserQuestion` | an open question at the end of a turn |
+| Delegate parallel or broad work | `Agent` | nested `claude -p` invocations |
+| Run builds, tests, `git`, and searches | `Bash` | — |
+
+- Search the tree with `Grep` and `Glob` when this session offers them; otherwise use `grep` and `find` through `Bash`.
+- Start long-running commands with `Bash`'s `run_in_background` option, not a trailing `&`, and do not poll them with `sleep`.
+- Read a file with `Read` before changing it with `Edit` or `Write`.
+{{- else if eq .harness.id "antigravity" }}
+| Read a file | `view_file` | `cat`, `head`, `tail`, `sed -n` |
+| Change part of an existing file | `replace_file_content` | `sed -i`, `awk`, `perl -i` |
+| Create or fully rewrite a file | `write_to_file` | heredocs, `echo >`, `tee` |
+| Read a web page | `read_url_content` | `curl`, `wget` |
+| Search the web | `search_web` | `curl` against a search engine |
+| Ask the user to choose | `ask_question` | an open question at the end of a turn |
+| Delegate parallel or broad work | `invoke_subagent` | nested `agy -p` invocations |
+| Inspect or stop background work | `manage_task` | `ps`, `kill` |
+| Wait for a later point in time | `schedule` | `sleep` loops |
+| Run builds, tests, `git`, and searches | `run_command` | — |
+
+- There is no dedicated search tool, so search the tree with `grep` and `find` through `run_command`.
+- Read a file with `view_file` before changing it with `replace_file_content` or `write_to_file`.
+{{- else }}
+{{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
+{{- end }}
