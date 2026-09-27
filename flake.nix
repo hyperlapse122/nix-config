@@ -555,6 +555,66 @@
             ${present}
             touch $out
           '';
+        libreoffice-office =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            libreoffice = pkgs.lib.lists.findFirst (p: (p.pname or "") == "libreoffice") null userPackages;
+            absent = pkgs.lib.optionalString (libreoffice == null) ''
+              echo 'missing libreoffice in user packages' >&2
+              exit 1
+            '';
+            present = pkgs.lib.optionalString (libreoffice != null) ''
+              if [ ! -x ${libreoffice}/bin/libreoffice ]; then
+                echo 'libreoffice package ships no bin/libreoffice executable' >&2
+                exit 1
+              fi
+              for entry in writer calc impress; do
+                if [ ! -f ${libreoffice}/share/applications/$entry.desktop ]; then
+                  echo "libreoffice package ships no $entry.desktop entry" >&2
+                  exit 1
+                fi
+              done
+            '';
+          in
+          pkgs.runCommand "libreoffice-office-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
+        okular-pdf =
+          let
+            host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
+            userPackages = host.config.home-manager.users.h82.home.packages;
+            okular = pkgs.lib.lists.findFirst (p: (p.pname or "") == "okular") null userPackages;
+            absent = pkgs.lib.optionalString (okular == null) ''
+              echo 'missing okular in user packages' >&2
+              exit 1
+            '';
+            # okularApplication_pdf.desktop is NoDisplay and only proves PDF handling;
+            # org.kde.okular.desktop is the entry the application launcher shows.
+            present = pkgs.lib.optionalString (okular != null) ''
+              if [ ! -x ${okular}/bin/okular ]; then
+                echo 'okular package ships no bin/okular executable' >&2
+                exit 1
+              fi
+              if [ ! -f ${okular}/share/applications/org.kde.okular.desktop ]; then
+                echo 'okular package ships no org.kde.okular.desktop entry' >&2
+                exit 1
+              fi
+              if [ ! -f ${okular}/share/applications/okularApplication_pdf.desktop ]; then
+                echo 'okular package ships no okularApplication_pdf.desktop entry' >&2
+                exit 1
+              fi
+            '';
+          in
+          pkgs.runCommand "okular-pdf-tests" { } ''
+            set -x
+            ${absent}
+            ${present}
+            touch $out
+          '';
         discord =
           let
             host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
