@@ -28,6 +28,10 @@
     h82 with mode 0400, its gh/glab publisher does not read that token, and a
     bootstrap host's manifests carry no Tokscale secret at all.
 
+  It also evaluates packages/tokscale.nix directly: a host name or token path
+  that could break out of the single quotes the package substitutes them into
+  must fail evaluation, and the shapes real hosts use must still build.
+
   The wrapper's run-time behaviour (token precedence, Codex directories, exit
   status) is covered by the tokscale-wrapper check. This check never runs bun
   or Tokscale.
@@ -282,6 +286,68 @@ let
     }
   );
 
+  # Each case states whether packages/tokscale.nix must accept the pair.
+  # tryEval catches the package's assertMsg, so a guard that stops rejecting
+  # turns into a named shell failure instead of an evaluation error.
+  guardCases = [
+    {
+      label = "a quote in the host name";
+      hostName = "bad'name";
+      accept = false;
+    }
+    {
+      label = "an empty host name";
+      hostName = "";
+      accept = false;
+    }
+    {
+      label = "a host name with a space";
+      hostName = "bad name";
+      accept = false;
+    }
+    {
+      label = "a host name starting with a hyphen";
+      hostName = "-bad";
+      accept = false;
+    }
+    {
+      label = "a relative token path";
+      tokenFile = "run/secrets/cli-auth/tokscale_token";
+      accept = false;
+    }
+    {
+      label = "a quote in the token path";
+      tokenFile = "/run/secrets/bad'path";
+      accept = false;
+    }
+    {
+      label = "the production host names";
+      hostName = "ThinkPad-X1-Carbon-Gen-11";
+      accept = true;
+    }
+    {
+      label = "an underscore and hyphen in the host name";
+      hostName = "MS-7D91_b";
+      accept = true;
+    }
+  ];
+
+  guardChecks = lib.concatMapStrings (
+    case:
+    let
+      evaluated =
+        builtins.tryEval
+          (import ../packages/tokscale.nix {
+            inherit pkgs;
+            hostName = case.hostName or "test-host";
+            tokenFile = case.tokenFile or "/run/secrets/cli-auth/tokscale_token";
+          }).drvPath;
+    in
+    lib.optionalString (evaluated.success != case.accept) ''
+      fail ${esc "packages/tokscale.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"}
+    ''
+  ) guardCases;
+
   compareJson = pkgs.writeText "compare-json.py" ''
     import json, sys
     sys.exit(0 if json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])) else 1)
@@ -294,6 +360,8 @@ pkgs.runCommand "tokscale-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     failed=1
   }
   compareJson=${compareJson}
+
+  ${guardChecks}
 
   ${assertHost "ThinkPad-X1-Carbon-Gen-11" true self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
   ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" false

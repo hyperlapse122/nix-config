@@ -12,7 +12,9 @@ let
         mkdir -p $out
         age-keygen -o $out/key.txt
         recipient=$(age-keygen -y $out/key.txt)
-        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\n' > plain.yaml
+        # tokscale_token carries a space, which publish-cli-auth rejects, so gh and
+        # glab publication fails here if the publisher ever starts reading it.
+        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\ntokscale_token: FAKE tokscale\n' > plain.yaml
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tokens.yaml
       '';
 in
@@ -45,6 +47,7 @@ pkgs.testers.nixosTest {
     my.cliAuth = {
       enable = true;
       sopsFile = "${fixtures}/tokens.yaml";
+      enableTokscaleToken = true;
     };
     # Deliberately public fake key. Production never embeds a real key in the store.
     system.activationScripts.fixture = ''
@@ -84,6 +87,9 @@ pkgs.testers.nixosTest {
         assert hosts["git.jpi.app"]["token"] == "FAKE_jpi"
         machine.succeed("test $(stat -c '%a:%U' " + gh + ") = 600:h82")
         machine.succeed("test ! -L " + gh)
+        tokscale = "/run/secrets/cli-auth/tokscale_token"
+        machine.succeed("runuser -u h82 -- cat " + tokscale + " | grep -qx 'FAKE tokscale'")
+        machine.succeed("test $(stat -L -c '%a:%U' " + tokscale + ") = 400:h82")
     verify()
     machine.succeed(switch)
     verify()
@@ -114,5 +120,6 @@ pkgs.testers.nixosTest {
     machine.succeed("runuser -u h82 -- glab config get token --host git.jpi.app | grep -qx FAKE_jpi")
     journal_output = machine.succeed("journalctl -u sops-install-secrets --no-pager")
     assert "FAKE_github" not in journal_output and "FAKE_gitlab" not in journal_output and "FAKE_jpi" not in journal_output
+    assert "FAKE tokscale" not in journal_output
   '';
 }

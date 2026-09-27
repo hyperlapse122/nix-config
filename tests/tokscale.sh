@@ -221,6 +221,12 @@ if [[ $mode == source ]]; then
   check_no_token 'oversize token file'
   pass 'a whitespace-bearing or oversize token file behaves like a missing one'
 
+  longest=$(printf 'x%.0s' {1..8192})
+  set_token_file "$longest"
+  run submit
+  [[ $(recorded token) == "$longest" ]] || fail 'an 8192-character token was not accepted'
+  pass 'a token of exactly 8192 characters is accepted'
+
   set_token_file $'fake-token-456\n'
   run submit
   [[ $(recorded token) == fake-token-456 ]] || fail 'a trailing newline was not stripped'
