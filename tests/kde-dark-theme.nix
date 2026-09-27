@@ -6,7 +6,8 @@
   Asserts that Plasma defaults to Breeze Dark, both as the system-wide KDE
   default and for h82's own kdeglobals.
 
-  Verifies, on all four configurations, by reading the materialised
+  Verifies, on every configuration `tests/lib/configurations.nix` yields,
+  production and bootstrap alike, by reading the materialised
   /etc/xdg/kdeglobals rather than the option that renders it:
   - [KDE] LookAndFeelPackage is org.kde.breezedark.desktop.
   - [General] ColorScheme is BreezeDark.
@@ -18,10 +19,11 @@
     light scheme cannot pass.
   - the existing TerminalApplication and Locale entries survive.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11 and MS-7D91, by running the kdeTheme
-  Home Manager activation against a fixture HOME whose kdeglobals holds the
-  Breeze Light color groups, scheme name, look-and-feel package, and icon
-  theme (the shape of a long-lived user file), with the built /etc/xdg in
+  Verifies, on every configuration as well (home/h82/desktop/kde/theme.nix is
+  not gated on my.bootstrap, so the bootstrap desktop is dark too), by running
+  the kdeTheme Home Manager activation against a fixture HOME whose kdeglobals
+  holds the Breeze Light color groups, scheme name, look-and-feel package, and
+  icon theme (the shape of a long-lived user file), with the built /etc/xdg in
   XDG_CONFIG_DIRS. Seeding light values keeps the system defaults from
   masking a missing write:
   - the effective (user, else system) values are ColorScheme BreezeDark, the Breeze Dark
@@ -37,7 +39,9 @@
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) concatStringsSep escapeShellArg;
+  inherit (pkgs.lib) concatMapStringsSep escapeShellArg;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: escapeShellArg (toString value);
 
@@ -49,18 +53,18 @@ let
   '';
 
   etcAssertions =
-    hostName: host:
+    entry:
     let
-      kdeglobals = "${host.config.system.build.etc}/etc/xdg/kdeglobals";
+      kdeglobals = "${entry.config.system.build.etc}/etc/xdg/kdeglobals";
       expectKey = group: key: value: ''
         if [ "$(ini_get ${esc kdeglobals} ${esc group} ${esc key})" != ${esc value} ]; then
-          ${fail "${hostName}: /etc/xdg/kdeglobals [${group}] ${key} is not ${value}"}
+          ${fail "${entry.name}: /etc/xdg/kdeglobals [${group}] ${key} is not ${value}"}
         fi
       '';
     in
     ''
       if [ ! -f ${esc kdeglobals} ]; then
-        ${fail "${hostName}: /etc/xdg/kdeglobals is missing"}
+        ${fail "${entry.name}: /etc/xdg/kdeglobals is missing"}
       else
         ${expectKey "KDE" "LookAndFeelPackage" "org.kde.breezedark.desktop"}
         ${expectKey "General" "ColorScheme" "BreezeDark"}
@@ -68,28 +72,28 @@ let
         ${expectKey "General" "TerminalApplication" "ghostty"}
         ${expectKey "Locale" "Language" "ko:en_US"}
         if [ "$(ini_get ${esc kdeglobals} Colors:Window BackgroundNormal)" != "$dark_window" ]; then
-          ${fail "${hostName}: /etc/xdg/kdeglobals [Colors:Window] BackgroundNormal is not the Breeze Dark value"}
+          ${fail "${entry.name}: /etc/xdg/kdeglobals [Colors:Window] BackgroundNormal is not the Breeze Dark value"}
         fi
       fi
     '';
 
   activationAssertions =
-    hostName: host:
+    entry:
     let
-      data = host.config.home-manager.users.h82.home.activation.kdeTheme.data or "";
-      script = pkgs.writeText "${hostName}-kde-theme.sh" data;
-      home = "$TMPDIR/${hostName}-home";
+      data = entry.user.home.activation.kdeTheme.data or "";
+      script = pkgs.writeText "${entry.name}-kde-theme.sh" data;
+      home = "$TMPDIR/${entry.name}-home";
       userGlobals = "${home}/.config/kdeglobals";
-      systemGlobals = "${host.config.system.build.etc}/etc/xdg/kdeglobals";
+      systemGlobals = "${entry.config.system.build.etc}/etc/xdg/kdeglobals";
       expectUser = group: key: expected: message: ''
         if [ "$(ini_effective "${userGlobals}" ${esc systemGlobals} ${esc group} ${esc key})" != ${expected} ]; then
-          ${fail "${hostName}: after kdeTheme activation, ${message}"}
+          ${fail "${entry.name}: after kdeTheme activation, ${message}"}
         fi
       '';
     in
     ''
       if [ ! -s ${esc script} ]; then
-        ${fail "${hostName}: kdeTheme activation script is missing or empty"}
+        ${fail "${entry.name}: kdeTheme activation script is missing or empty"}
       else
         mkdir -p "${home}/.config"
         {
@@ -98,9 +102,9 @@ let
           awk '/^\[/ { keep = ($0 ~ /^\[Colors:/) } keep { print }' ${esc "${colorSchemes}/BreezeLight.colors"}
         } > "${userGlobals}"
         if ! HOME="${home}" XDG_CONFIG_HOME="${home}/.config" \
-          XDG_CONFIG_DIRS=${esc "${host.config.system.build.etc}/etc/xdg"} \
+          XDG_CONFIG_DIRS=${esc "${entry.config.system.build.etc}/etc/xdg"} \
           bash ${esc script} >/dev/null 2>&1; then
-          ${fail "${hostName}: kdeTheme activation exited non-zero"}
+          ${fail "${entry.name}: kdeTheme activation exited non-zero"}
         fi
         ${expectUser "General" "ColorScheme" "BreezeDark" "the user ColorScheme is not BreezeDark"}
         ${expectUser "KDE" "LookAndFeelPackage" "org.kde.breezedark.desktop"
@@ -116,19 +120,6 @@ let
         ${expectUser "General" "BrowserApplication" "fixture.desktop" "an unrelated user key was lost"}
       fi
     '';
-
-  allHosts = {
-    inherit (self.nixosConfigurations)
-      ThinkPad-X1-Carbon-Gen-11
-      ThinkPad-X1-Carbon-Gen-11-bootstrap
-      MS-7D91
-      MS-7D91-bootstrap
-      ;
-  };
-
-  productionHosts = {
-    inherit (self.nixosConfigurations) ThinkPad-X1-Carbon-Gen-11 MS-7D91;
-  };
 in
 pkgs.runCommand "kde-dark-theme-tests"
   {
@@ -138,6 +129,7 @@ pkgs.runCommand "kde-dark-theme-tests"
     ];
   }
   ''
+    ${configurations.guard}
     failed=0
 
     # Prints the first value of key in [group] of an INI file.
@@ -166,8 +158,8 @@ pkgs.runCommand "kde-dark-theme-tests"
       ${fail "BreezeDark.colors does not carry a Window background distinct from BreezeLight.colors"}
     fi
 
-    ${concatStringsSep "\n" (pkgs.lib.mapAttrsToList etcAssertions allHosts)}
-    ${concatStringsSep "\n" (pkgs.lib.mapAttrsToList activationAssertions productionHosts)}
+    ${concatMapStringsSep "\n" etcAssertions configurations.entries}
+    ${concatMapStringsSep "\n" activationAssertions configurations.entries}
 
     if [ "$failed" -ne 0 ]; then
       exit 1

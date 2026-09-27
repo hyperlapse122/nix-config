@@ -3,19 +3,24 @@
 
     import ./tests/kernel-sysctl.nix { inherit pkgs self; }
 
-  Asserts that every host configuration renders the kernel sysctl values
-  declared in modules/nixos/system/base.nix into /etc/sysctl.d/60-nixos.conf,
-  the file systemd-sysctl applies at boot.
+  Asserts that every configuration renders the kernel sysctl values declared
+  in modules/nixos/system/base.nix into /etc/sysctl.d/60-nixos.conf, the file
+  systemd-sysctl applies at boot.
 
-  Verifies:
-  - ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap, MS-7D91,
-    and MS-7D91-bootstrap all keep the sysctl.d/60-nixos.conf etc entry enabled.
-  - Each rendered file carries the inotify limits and IPv4/IPv6 forwarding
+  Verifies, on every configuration `tests/lib/configurations.nix` yields,
+  production and bootstrap alike:
+  - the sysctl.d/60-nixos.conf etc entry stays enabled.
+  - the rendered file carries the inotify limits and IPv4/IPv6 forwarding
     lines exactly, matched as whole lines so a longer value cannot satisfy
     the assertion.
+
+  The builder collects every failure before it exits, so one red build names
+  every affected configuration.
 */
 { pkgs, self }:
 let
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
   expectedLines = [
     "fs.inotify.max_user_watches=524288"
     "fs.inotify.max_user_instances=524288"
@@ -23,32 +28,34 @@ let
     "net.ipv6.conf.all.forwarding=1"
   ];
 
-  assertHost =
-    hostName: host:
+  assertEntry =
+    entry:
     let
-      sysctlEntry = host.config.environment.etc."sysctl.d/60-nixos.conf" or { };
+      sysctlEntry = entry.config.environment.etc."sysctl.d/60-nixos.conf" or { };
       sysctlFile = sysctlEntry.source or "/dev/null";
     in
     ''
       if [ "${pkgs.lib.boolToString (sysctlEntry.enable or false)}" != "true" ]; then
-        echo "sysctl.d/60-nixos.conf is not enabled on ${hostName}" >&2
-        exit 1
+        echo "sysctl.d/60-nixos.conf is not enabled on ${entry.name}" >&2
+        failed=1
       fi
     ''
     + pkgs.lib.concatMapStrings (line: ''
       if ! grep -Fxq -- '${line}' "${sysctlFile}"; then
-        echo "${hostName}: sysctl.d/60-nixos.conf is missing the line '${line}'" >&2
-        exit 1
+        echo "${entry.name}: sysctl.d/60-nixos.conf is missing the line '${line}'" >&2
+        failed=1
       fi
     '') expectedLines;
 in
 pkgs.runCommand "kernel-sysctl-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
+  ${configurations.guard}
+  failed=0
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
-  ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
-  ${assertHost "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap}
+  ${pkgs.lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
+  if [ "$failed" != 0 ]; then
+    exit 1
+  fi
   touch $out
 ''

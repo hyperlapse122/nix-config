@@ -3,7 +3,8 @@
 
     import ./tests/agent-browser-deps.nix { inherit pkgs self; }
 
-  Asserts that every host configuration carries what
+  Asserts that every configuration `tests/lib/configurations.nix` yields,
+  production and bootstrap alike, carries what
   `agent-browser install --with-deps` installs on apt or dnf systems, so the
   Chrome for Testing build that `agent-browser install` downloads can run
   through nix-ld. Every assertion reads built output rather than the option
@@ -26,7 +27,7 @@
   the build sandbox; the fragment carries every font <dir> itself.
 
   The builder collects every failure instead of exiting at the first, so one
-  red build names every missing item across all four configurations.
+  red build names every missing item across every configuration.
 
   It cannot see whether Chrome actually launches; docs/verification.md carries
   that hardware step.
@@ -37,12 +38,7 @@ let
 
   esc = value: escapeShellArg (toString value);
 
-  hosts = [
-    "ThinkPad-X1-Carbon-Gen-11"
-    "ThinkPad-X1-Carbon-Gen-11-bootstrap"
-    "MS-7D91"
-    "MS-7D91-bootstrap"
-  ];
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   sonames = [
     "libglib-2.0.so.0"
@@ -85,9 +81,9 @@ let
   ];
 
   checkHost =
-    name:
+    entry:
     let
-      config = self.nixosConfigurations.${name}.config;
+      inherit (entry) config name;
       libDir = "${config.system.path}/share/nix-ld/lib";
       certutil = "${config.system.path}/bin/certutil";
       fontsConf = "${config.system.build.etc}/etc/fonts/conf.d/00-nixos-cache.conf";
@@ -128,8 +124,9 @@ pkgs.runCommand "agent-browser-deps-tests"
   ''
     set -x
     export HOME="$TMPDIR" XDG_CACHE_HOME="$TMPDIR/cache"
+    ${configurations.guard}
     failed=0
-    ${concatMapStrings checkHost hosts}
+    ${concatMapStrings checkHost configurations.entries}
     if [ "$failed" != 0 ]; then
       exit 1
     fi

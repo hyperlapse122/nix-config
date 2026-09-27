@@ -25,27 +25,41 @@
   before it.
 
   Verifies:
-  - all four host configurations carry each Sennheiser BTD rule line verbatim,
+  - every configuration carries each Sennheiser BTD rule line verbatim,
     each in a file that sorts after the last file carrying the USB default.
-  - all four host configurations carry both DualSense touchpad rule lines
+  - every configuration carries both DualSense touchpad rule lines
     verbatim. libinput reads LIBINPUT_IGNORE_DEVICE from the udev database, so
     no file order constrains them.
-  - all four carry a file with the uaccess builtin and a file with the USB
+  - every configuration carries a file with the uaccess builtin and a file with the USB
     default. They supply the two anchors above and are the positive controls
     that stop an empty directory passing.
-  - MS-7D91 and MS-7D91-bootstrap carry both NuPhy rule lines verbatim, each in
-    a file that sorts before the first file carrying the uaccess builtin. An
-    absent anchor fails the ordering assertion instead of skipping it.
-  - neither ThinkPad configuration carries either NuPhy rule line. The
-    assertion is an explicit `if`, because a bare `! grep` is exempt from
-    `set -e`.
+  - every configuration that enables the `my.nuphyGem80.enable` trait carries
+    both NuPhy rule lines verbatim, each in a file that sorts before the first
+    file carrying the uaccess builtin. An absent anchor fails the ordering
+    assertion instead of skipping it.
+  - every configuration that leaves the trait off carries neither NuPhy rule
+    line. The assertion is an explicit `if`, because a bare `! grep` is exempt
+    from `set -e`.
 
-  The builder collects every failure instead of exiting at the first, so one red
-  build names every broken assertion across the four hosts.
+  Coverage is every configuration `tests/lib/configurations.nix` yields. The
+  NuPhy expectation is taken from each configuration's `my.nuphyGem80.enable`
+  trait, never from the udev option lists the module under test sets, and at
+  least one production configuration must enable the trait, or the helper fails
+  the check, so the positive branch never covers zero configurations.
+
+  The rules directory is resolved with an `or null` fallback, so a
+  configuration that declares none fails inside the builder rather than during
+  evaluation. The builder collects every failure instead of exiting at the
+  first, so one red build names every broken assertion across every
+  configuration.
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) boolToString escapeShellArg escapeShellArgs;
+  inherit (pkgs) lib;
+  inherit (lib) boolToString escapeShellArg escapeShellArgs;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  nuphy = configurations.withTrait "my.nuphyGem80.enable" (config: config.my.nuphyGem80.enable);
 
   # Every rule below is text spliced into a shell script, so it is escaped
   # rather than trusted to be quote-free.
@@ -163,24 +177,31 @@ let
     }
   '';
 
-  hostAssertion = hostName: host: nuphyBelongs: ''
-    check_host ${esc hostName} ${
-      esc host.config.environment.etc."udev/rules.d".source
-    } ${boolToString nuphyBelongs}
-  '';
+  # The expectation comes from the trait, never from the udev options the
+  # module under test sets. The rules directory stays behind an `or null`
+  # fallback so a configuration without one fails inside the builder.
+  entryAssertion =
+    nuphyBelongs: entry:
+    let
+      rules = entry.config.environment.etc."udev/rules.d".source or null;
+    in
+    if rules == null then
+      ''
+        fail ${esc "${entry.name}: the built system declares no /etc/udev/rules.d directory"}
+      ''
+    else
+      ''
+        check_host ${esc entry.name} ${esc rules} ${boolToString nuphyBelongs}
+      '';
 in
 pkgs.runCommand "udev-device-access-tests" { } ''
+  set -x
+  ${configurations.guard}
+  ${nuphy.guard}
   ${helpers}
 
-  ${hostAssertion "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11
-    false
-  }
-  ${hostAssertion "ThinkPad-X1-Carbon-Gen-11-bootstrap"
-    self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap
-    false
-  }
-  ${hostAssertion "MS-7D91" self.nixosConfigurations.MS-7D91 true}
-  ${hostAssertion "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap true}
+  ${lib.concatMapStringsSep "\n" (entryAssertion true) nuphy.enabled}
+  ${lib.concatMapStringsSep "\n" (entryAssertion false) nuphy.disabled}
 
   if [ "$failed" != 0 ]; then
     exit 1

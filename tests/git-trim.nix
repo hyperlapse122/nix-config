@@ -4,15 +4,17 @@
     import ./tests/git-trim.nix { inherit pkgs self; }
 
   Asserts that `git trim` only deletes local branches, and never rewrites a
-  checkout's HEAD, for user `h82` on the ThinkPad and MS-7D91 production
-  configurations. Bootstrap variants import the same Home Manager profile, so
-  they add no coverage.
+  checkout's HEAD, for user `h82` on every configuration
+  `tests/lib/configurations.nix` yields, bootstrap outputs included. The
+  bootstrap outputs import the same Home Manager profile and git-trim is meant
+  to reach them too, so they are checked rather than assumed identical: a
+  change that gates the profile on `my.bootstrap` fails here.
 
   Upstream git-trim defaults to `--delete merged:origin`, which also deletes
   merged branches on origin, and to detaching a checkout whose merged branch it
   deletes. The profile sets `merged-local` and `detach = false`, and this check
   proves both by running the packaged binary against a fixture rather than
-  matching config text. Per host:
+  matching config text. Per configuration:
 
   - home.path carries bin/git-trim.
   - the rendered git/config does not turn off git-trim's deletion prompt.
@@ -32,28 +34,31 @@
   See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
-  Each host runs in a subshell and records failures in a file, so one red build
-  names every broken assertion across both hosts. A failed fixture step aborts
-  the build under errexit instead.
+  Each configuration runs in a subshell and records failures in a file, so one
+  red build names every broken assertion across every configuration. A failed
+  fixture step aborts the build under errexit instead. The helper's guard runs
+  first, so an empty configuration list fails the build instead of passing it.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
   esc = value: lib.escapeShellArg (toString value);
 
-  assertHost =
-    hostName: host:
+  assertEntry =
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
-      homePath = userConfig.home.path or "";
-      gitConfig = userConfig.xdg.configFile."git/config".source or "";
+      homePath = entry.user.home.path or "";
+      gitConfig = entry.user.xdg.configFile."git/config".source or "";
     in
     ''
-      checkHost ${esc hostName} ${esc homePath} ${esc gitConfig}
+      checkHost ${esc entry.name} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
+  ${configurations.guard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -127,8 +132,7 @@ pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     origin_has main || fail "'main' was deleted on origin"
   )
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

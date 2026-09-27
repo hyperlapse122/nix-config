@@ -3,15 +3,17 @@
 
     import ./tests/tokscale.nix { inherit pkgs self; }
 
-  Asserts that every host configuration gives h82 the Tokscale wrapper, the
-  declared settings merge, and the custom pricing file, and that only the
-  production hosts decrypt the Tokscale token. It reads what the generations
-  materialize -- home-path, home-files, the rendered activation script and the
-  sops manifests -- rather than the options they come from. Expected values
-  are literals stated here, independently of home/h82/agents/tokscale.nix.
+  Asserts that every configuration `tests/lib/configurations.nix` yields gives
+  h82 the Tokscale wrapper, the declared settings merge, and the custom pricing
+  file, and that only the production configurations decrypt the Tokscale
+  token. Which side a configuration is on comes from the helper's `bootstrap`
+  field, never from the sops manifest under test. It reads what the
+  generations materialize -- home-path, home-files, the rendered activation
+  script and the sops manifests -- rather than the options they come from.
+  Expected values are literals stated here, independently of
+  home/h82/agents/tokscale.nix.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap,
-  MS-7D91, and MS-7D91-bootstrap:
+  Verifies, on every configuration:
   - home-path/bin/tokscale is the packaged wrapper, and the host name baked
     into it is that configuration's networking.hostName with the token read
     from /run/secrets/cli-auth/tokscale_token.
@@ -24,13 +26,15 @@
     leaves every other key, nested siblings included, as it was.
   - no Home Manager file targets .config/tokscale/settings.json.
   - .config/tokscale/custom-pricing.json parses to the dotfiles document.
-  - a production host's sops manifest carries cli-auth/tokscale_token owned by
-    h82 with mode 0400, its gh/glab publisher does not read that token, and a
-    bootstrap host's manifests carry no Tokscale secret at all.
+  - a production configuration's sops manifest carries cli-auth/tokscale_token
+    owned by h82 with mode 0400, its gh/glab publisher does not read that
+    token, and a bootstrap configuration's manifests carry no Tokscale secret at
+    all.
 
   It also evaluates packages/tokscale.nix directly: a host name or token path
   that could break out of the single quotes the package substitutes them into
-  must fail evaluation, and the shapes real hosts use must still build.
+  must fail evaluation, and the shapes host names take must still build. Those
+  fixtures use role names, never a real host's name.
 
   The wrapper's run-time behaviour (token precedence, Codex directories, exit
   status) is covered by the tokscale-wrapper check. This check never runs bun
@@ -39,12 +43,16 @@
   Every lookup carries an `or` fallback so a mutation that removes an entry
   reaches the builder as shell rather than failing evaluation. See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
-  The builder collects every failure, so one red build names every broken
-  assertion across all four hosts.
+  The helper's guard runs first, so an empty configuration list, or one with no
+  bootstrap output, fails the build instead of passing it. The builder collects
+  every failure, so one red build names every broken assertion across every
+  configuration.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -96,10 +104,12 @@ let
     }
   '';
 
-  assertHost =
-    hostName: production: host:
+  assertEntry =
+    entry:
     let
-      hm = host.config.home-manager.users.h82;
+      hostName = entry.name;
+      production = !entry.bootstrap;
+      hm = entry.user;
       homePath = hm.home.path or null;
       homeFiles = hm.home-files or null;
 
@@ -116,17 +126,17 @@ let
       # sops-nix installs through a systemd unit when my.cliAuth is enabled
       # and through the setupSecrets activation script otherwise, so both
       # places are searched for the manifests they hand the installer.
-      sopsService = host.config.systemd.services.sops-install-secrets or { };
+      sopsService = entry.config.systemd.services.sops-install-secrets or { };
       installers = lib.concatStringsSep " " (
         lib.toList (sopsService.serviceConfig.ExecStart or [ ])
-        ++ [ (host.config.system.activationScripts.setupSecrets.text or "") ]
+        ++ [ (entry.config.system.activationScripts.setupSecrets.text or "") ]
       );
       publisher = lib.concatStringsSep " " (lib.toList (sopsService.serviceConfig.ExecStartPost or [ ]));
 
       host' = esc hostName;
     in
     ''
-      expectedHost=${esc (host.config.networking.hostName or "")}
+      expectedHost=${esc (entry.config.networking.hostName or "")}
       ${
         if homePath == null then
           ''fail ${host'}": no home-path"''
@@ -321,13 +331,13 @@ let
       accept = false;
     }
     {
-      label = "the production host names";
-      hostName = "ThinkPad-X1-Carbon-Gen-11";
+      label = "a mixed-case host name with hyphens and digits";
+      hostName = "Laptop-Host-11";
       accept = true;
     }
     {
       label = "an underscore and hyphen in the host name";
-      hostName = "MS-7D91_b";
+      hostName = "Desktop-Host_b";
       accept = true;
     }
   ];
@@ -354,6 +364,7 @@ let
   '';
 in
 pkgs.runCommand "tokscale-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+  ${configurations.guard}
   failed=0
   fail() {
     echo "$1" >&2
@@ -363,12 +374,7 @@ pkgs.runCommand "tokscale-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
 
   ${guardChecks}
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" true self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" false
-    self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap
-  }
-  ${assertHost "MS-7D91" true self.nixosConfigurations.MS-7D91}
-  ${assertHost "MS-7D91-bootstrap" false self.nixosConfigurations.MS-7D91-bootstrap}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ "$failed" != 0 ]; then
     exit 1

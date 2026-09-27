@@ -4,8 +4,9 @@
     import ./tests/gemini.nix { inherit pkgs self; }
 
   Asserts that implicit memory is disabled declaratively for the Gemini and
-  Antigravity CLIs for user `h82` on both the production and bootstrap ThinkPad
-  configurations.
+  Antigravity CLIs for user `h82` on every configuration
+  `tests/lib/configurations.nix` yields, production and bootstrap alike, since
+  none of it depends on a host trait or on `my.bootstrap`.
 
   The two files reach the home directory by different mechanisms. The Gemini
   CLI only reads ~/.gemini/settings.json, so a store symlink holds it. The
@@ -14,7 +15,7 @@
   by a regular file and the next activation fails rather than clobber it. That
   file is merged at activation instead, as ~/.claude/settings.json is.
 
-  Verifies, per host:
+  Verifies, per configuration:
   - ~/.gemini/settings.json sets experimental.autoMemory = false.
   - the JSON this repository renders for the Antigravity CLI sets
     disableAutoGenerateMemories = true. Asserting the rendered file rather than
@@ -34,7 +35,7 @@
     the packaged orca-orchestration-context script for Antigravity. Orca writes
     its own `orca-status` entry in that file, so owning any other key -- or the
     whole document -- would erase it. The expected declaration is rendered here
-    from the host's own pkgs, not read back from the module.
+    from the configuration's own pkgs, not read back from the module.
 
   Whether the merge preserves the keys the agent owns is behaviour of the
   packaged script, not of evaluated configuration; the `agent-settings` check in
@@ -46,18 +47,21 @@
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
   The builder collects every failure instead of exiting at the first, so one red
-  build names every broken assertion across both hosts.
+  build names every broken assertion across every configuration.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
   esc = value: lib.escapeShellArg (toString value);
 
   assertHost =
-    hostName: host:
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
+      hostName = entry.name;
+      userConfig = entry.user;
       geminiJson = userConfig.home.file.".gemini/settings.json".text or null;
       gemini = if geminiJson == null then null else builtins.fromJSON geminiJson;
 
@@ -153,7 +157,9 @@ let
               {
                 type = "command";
                 command = "${
-                  lib.getExe (import ../packages/agent-tools.nix { inherit (host) pkgs; }).orcaOrchestrationContext
+                  lib.getExe
+                    (import ../packages/agent-tools.nix { inherit (self.nixosConfigurations.${entry.name}) pkgs; })
+                    .orcaOrchestrationContext
                 } --harness antigravity";
                 timeout = 10;
               }
@@ -221,12 +227,11 @@ let
 in
 pkgs.runCommand "gemini-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x
+  ${configurations.guard}
   failed=0
   declaredExpected=${declaredExpected}
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
 
   if [ "$failed" != "0" ]; then
     exit 1

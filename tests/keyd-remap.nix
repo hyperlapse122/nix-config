@@ -3,31 +3,158 @@
 
     import ./tests/keyd-remap.nix { inherit pkgs self; }
 
-  Asserts what the keyd module generates for both states of the Copilot-key
-  option. `self` supplies the evaluated production host. The Copilot-enabled
-  fixture is that host extended with the option forced on, because the host
-  pins it off; without mkForce the two definitions conflict.
+  Asserts what the keyd module generates on every configuration
+  `tests/lib/configurations.nix` yields, with the expectation taken from each
+  configuration's `my.keyd.enable` trait rather than from `services.keyd.enable`,
+  the option the module under test sets.
+
+  On a configuration that enables the trait:
+  - the materialized keyd.service runs keyd, so a masked or missing unit fails.
+  - the generated /etc/keyd/default.conf is scoped to the internal keyboard,
+    maps Caps Lock alone to Hangul and Ctrl+Caps Lock to the real Caps Lock, and
+    keeps the Copilot binding out.
+  - a fixture that is the production configuration with `my.keyd.copilotKey`
+    forced on carries the Copilot binding and the same invariant bindings.
+  - libinput keeps treating keyd's virtual keyboard as built in.
+  - `keyd check` parses every generated file, so a misspelled key name that
+    still greps clean fails here.
+
+  On a configuration that leaves the trait off: no keyd.service runs keyd, and
+  neither /etc/keyd/default.conf nor the libinput quirk is declared.
+
+  At least one production configuration must enable the trait, or the helper
+  fails the check, so the positive branch never covers zero configurations.
 
   Assertions are scoped to an INI section. A bare whole-line grep matches
   anywhere in the file, so it stays green when a mapping moves to the wrong
   section -- which is the inverse of the intended behaviour, not a near miss.
 
-  `keyd check` runs here as well: it parses the generated file, so it rejects a
-  key name that is spelled wrong but still greps clean. It is parse-only and
-  needs no input device. It cannot see section semantics, which is why the
-  slicing above carries that half.
+  Every /etc lookup carries an `or null` fallback and store paths are
+  interpolated only inside the present branch, so a missing entry fails inside
+  the builder rather than during evaluation. The builder collects every failure
+  before it exits, so one red build names every affected configuration.
 */
 { pkgs, self }:
 let
-  host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
-  copilotHost = host.extendModules {
-    modules = [ { my.keyd.copilotKey = pkgs.lib.mkForce true; } ];
-  };
-  keydConf = machine: machine.config.environment.etc."keyd/default.conf".source;
-  quirks = host.config.environment.etc."libinput/local-overrides.quirks".source;
-  serviceEnabled = host.config.services.keyd.enable;
-  msHost = self.nixosConfigurations.MS-7D91;
-  msServiceEnabled = msHost.config.services.keyd.enable;
+  inherit (pkgs) lib;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  keyd = configurations.withTrait "my.keyd.enable" (config: config.my.keyd.enable);
+
+  esc = value: lib.escapeShellArg (toString value);
+
+  fail = message: ''
+    echo ${esc message} >&2
+    failed=1
+  '';
+
+  etcSource = config: name: config.environment.etc.${name}.source or null;
+
+  keydConf = config: etcSource config "keyd/default.conf";
+  units = config: etcSource config "systemd/system";
+
+  # The bindings that must hold whatever the Copilot option is set to.
+  assertBindings =
+    label: conf:
+    if conf == null then
+      fail "${label}: no /etc/keyd/default.conf is declared"
+    else
+      ''
+        conf=${esc conf}
+        if ! section ids "$conf" | grep -Fxq "0001:0001"; then
+          ${fail "${label}: the remap is not scoped to the internal keyboard (ids 0001:0001)"}
+        fi
+        if section ids "$conf" | grep -Fxq "*"; then
+          ${fail "${label}: ids still carries the upstream wildcard"}
+        fi
+        if ! section main "$conf" | grep -Fxq "capslock=hangeul"; then
+          ${fail "${label}: Caps Lock alone does not emit the Hangul key in [main]"}
+        fi
+        if ! section control "$conf" | grep -Fxq "capslock=capslock"; then
+          ${fail "${label}: Ctrl+Caps Lock does not keep the real Caps Lock in [control]"}
+        fi
+        if ! keyd check "$conf"; then
+          ${fail "${label}: keyd check rejects the generated configuration"}
+        fi
+      '';
+
+  assertEnabled =
+    entry:
+    let
+      conf = keydConf entry.config;
+      unitTree = units entry.config;
+      quirks = etcSource entry.config "libinput/local-overrides.quirks";
+    in
+    lib.concatStringsSep "\n" [
+      (
+        if unitTree == null then
+          fail "${entry.name}: the built system declares no /etc/systemd/system tree"
+        else
+          ''
+            if ! grep -q '^ExecStart=.*/bin/keyd$' ${esc "${unitTree}/keyd.service"}; then
+              ${fail "${entry.name}: my.keyd.enable is set but the materialised keyd.service is missing, masked, or does not run keyd"}
+            fi
+          ''
+      )
+      (assertBindings entry.name conf)
+      (lib.optionalString (conf != null) ''
+        if grep -q "f23" ${esc conf}; then
+          ${fail "${entry.name}: the Copilot binding leaked into a configuration that does not ask for it"}
+        fi
+      '')
+      (
+        if quirks == null then
+          fail "${entry.name}: no libinput quirk for keyd's virtual keyboard is declared"
+        else
+          ''
+            if ! grep -Fxq "MatchName=keyd virtual keyboard" ${esc quirks} \
+              || ! grep -Fxq "AttrKeyboardIntegration=internal" ${esc quirks}; then
+              ${fail "${entry.name}: libinput no longer treats keyd's virtual keyboard as internal"}
+            fi
+          ''
+      )
+    ];
+
+  # The production configuration with the Copilot correction forced on. The
+  # option defaults off, and mkForce keeps this fixture valid if a host ever
+  # sets it.
+  assertCopilot =
+    entry:
+    let
+      copilotConfig =
+        (self.nixosConfigurations.${entry.name}.extendModules {
+          modules = [ { my.keyd.copilotKey = lib.mkForce true; } ];
+        }).config;
+      conf = keydConf copilotConfig;
+      label = "${entry.name} with my.keyd.copilotKey";
+    in
+    lib.concatStringsSep "\n" [
+      (assertBindings label conf)
+      (lib.optionalString (conf != null) ''
+        if ! section main ${esc conf} | grep -Fxq "leftshift+leftmeta+f23=layer(meta)"; then
+          ${fail "${label}: the Copilot binding is missing from [main]"}
+        fi
+      '')
+    ];
+
+  assertDisabled =
+    entry:
+    let
+      unitTree = units entry.config;
+    in
+    lib.concatStringsSep "\n" [
+      (lib.optionalString (unitTree != null) ''
+        if grep -qs '^ExecStart=.*/bin/keyd$' ${esc "${unitTree}/keyd.service"}; then
+          ${fail "${entry.name}: my.keyd.enable is off but the materialised keyd.service runs keyd"}
+        fi
+      '')
+      (lib.optionalString (keydConf entry.config != null) (
+        fail "${entry.name}: my.keyd.enable is off but /etc/keyd/default.conf is declared"
+      ))
+      (lib.optionalString (etcSource entry.config "libinput/local-overrides.quirks" != null) (
+        fail "${entry.name}: my.keyd.enable is off but the keyd libinput quirk is declared"
+      ))
+    ];
 in
 pkgs.runCommand "keyd-remap-tests"
   {
@@ -38,59 +165,21 @@ pkgs.runCommand "keyd-remap-tests"
     ];
   }
   ''
-    # Trace every assertion so a failing build log names the check that tripped;
-    # the greps below are quiet by design and would otherwise fail silently.
     set -x
-
-    default=${keydConf host}
-    copilot=${keydConf copilotHost}
-    quirksFile=${quirks}
+    ${configurations.guard}
+    ${keyd.guard}
+    failed=0
 
     section() {
       awk -v want="[$1]" '$0 == want { inside = 1; next } /^\[/ { inside = 0 } inside' "$2"
     }
 
-    # R1: the remapping service is enabled on the host.
-    echo '${builtins.toJSON serviceEnabled}' | grep -Fxq "true"
+    ${lib.concatMapStringsSep "\n" assertEnabled keyd.enabled}
+    ${lib.concatMapStringsSep "\n" assertCopilot (lib.filter (entry: !entry.bootstrap) keyd.enabled)}
+    ${lib.concatMapStringsSep "\n" assertDisabled keyd.disabled}
 
-    # keyd service is disabled on MS-7D91 (mechanical keyboard with custom firmware).
-    echo '${builtins.toJSON msServiceEnabled}' | grep -Fxq "false"
-
-    # The bindings that must hold whatever the Copilot option is set to.
-    for conf in "$default" "$copilot"; do
-      # R5: scoped to the internal keyboard, not to every connected keyboard.
-      section ids "$conf" | grep -Fxq "0001:0001"
-      if section ids "$conf" | grep -Fxq "*"; then
-        echo "ids still carries the upstream wildcard" >&2
-        exit 1
-      fi
-
-      # R2: Caps Lock alone emits the Hangul key.
-      section main "$conf" | grep -Fxq "capslock=hangeul"
-
-      # R3: Ctrl+Caps Lock keeps the real Caps Lock toggle.
-      section control "$conf" | grep -Fxq "capslock=capslock"
-    done
-
-    # R4, AE1: the Copilot correction stays out unless a host asks for it.
-    # Written as an explicit branch: `! cmd` is exempt from set -e, so a bare
-    # negation would silently assert nothing.
-    if grep -q "f23" "$default"; then
-      echo "Copilot binding leaked into the default host configuration" >&2
+    if [ "$failed" != 0 ]; then
       exit 1
     fi
-
-    # R4, AE2: and is present when a host does.
-    section main "$copilot" | grep -Fxq "leftshift+leftmeta+f23=layer(meta)"
-
-    # R7: libinput keeps treating keyd's virtual keyboard as built in.
-    grep -Fxq "MatchName=keyd virtual keyboard" "$quirksFile"
-    grep -Fxq "AttrKeyboardIntegration=internal" "$quirksFile"
-
-    # Both generated files parse as keyd configuration, which the greps above
-    # cannot establish: a misspelled key name greps clean but fails here.
-    keyd check "$default"
-    keyd check "$copilot"
-
     touch $out
   ''

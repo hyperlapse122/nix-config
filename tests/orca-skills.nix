@@ -7,8 +7,9 @@
   for user `h82` on every host this flake declares, at the revision matching
   the Orca build that host installs, in a form Orca itself recognizes.
 
-  The host list is taken from `self.nixosConfigurations`, so a host added later
-  is covered the day it is added.
+  The configuration list comes from `tests/lib/configurations.nix`, so a host
+  added later is covered the day it is added, and the helper's guard fails the
+  build when that list is empty instead of letting it pass.
 
   What the check reads, and why:
 
@@ -64,10 +65,13 @@ let
     "orchestration"
   ];
 
-  assertHost =
-    hostName: host:
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
+  assertEntry =
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
+      hostName = entry.name;
+      userConfig = entry.user;
 
       orcaPkg = lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null (
         userConfig.home.packages or [ ]
@@ -244,9 +248,10 @@ pkgs.runCommand "orca-skills-tests"
     ];
   }
   ''
+    ${configurations.guard}
     failed=0
 
-    ${lib.concatStringsSep "\n" (lib.mapAttrsToList assertHost self.nixosConfigurations)}
+    ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
     if [ "$failed" != "0" ]; then
       exit 1

@@ -3,10 +3,14 @@
 
     import ./tests/pam-fingerprint.nix { inherit pkgs self; }
 
-  Asserts which PAM services the fingerprint factor reaches, on every host this
-  flake builds. A host with no entry in the tables below is checked against an
-  empty allowlist rather than skipped, so enabling the factor on a host added
-  later turns this check red until the allowlist says so deliberately.
+  Asserts which PAM services the fingerprint factor reaches, on every
+  configuration `tests/lib/configurations.nix` yields. Whether a configuration
+  should carry the factor is computed from its `my.fingerprint.enable` trait and
+  its `my.bootstrap` flag -- the trait on a production configuration -- never
+  from `services.fprintd.enable` or `security.pam`, the options the module
+  under test sets. At least one production configuration must enable the trait,
+  or the helper fails the check, so the positive branch never covers zero
+  configurations.
 
   It reads `config.environment.etc."pam.d/<name>".source` -- the file the etc
   module materialises into /etc -- rather than
@@ -17,7 +21,7 @@
   merely defaults to the attribute name and is what decides the destination;
   each entry's `enable` is respected for the same reason.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11:
+  Verifies, on every production configuration that enables the trait:
   - `sudo`, `polkit-1` and `kde-fingerprint` carry pam_fprintd.so. Without this
     positive control every negative below would fold to a constant the moment
     fprintd stopped being enabled at all.
@@ -40,14 +44,15 @@
     any deny list, and turns this check red rather than inheriting the factor
     unnoticed.
 
-  Verifies, on every other host — ThinkPad-X1-Carbon-Gen-11-bootstrap, MS-7D91
-  and MS-7D91-bootstrap today:
-  - the same negatives, and an empty allowlist. The installer consoles have no
-    enrolled finger and the desktop host does not import the fingerprint
-    module, so none of them materialises a PAM file carrying the factor.
+  Verifies, on every other configuration -- every bootstrap output, and every
+  production configuration that leaves the trait off:
+  - the same negatives, no polkit enroll rule, and an empty allowlist. A
+    bootstrap output has no enrolled finger, and a configuration without the
+    trait has no reader, so none of them may materialise a PAM file carrying
+    the factor.
 
-  The collected set is asserted non-empty per host, so the negatives can never
-  pass over nothing.
+  The collected set is asserted non-empty per configuration, so the negatives
+  can never pass over nothing.
 
   Negative assertions are written as explicit `if ... then ... fi` branches.
   POSIX exempts a command whose status is inverted by `!` from `set -e`, so a
@@ -55,21 +60,20 @@
   Every assertion slices the `auth` stack first, because an account or session
   line naming the module would not be an authentication factor. Failures
   accumulate into `failed` and the builder exits once at the end, so one red
-  build names every broken assertion across both hosts -- a mutation round that
-  stops at the first failure leaves every later assertion unproven.
+  build names every broken assertion across every configuration -- a mutation
+  round that stops at the first failure leaves every later assertion unproven.
 */
 { pkgs, self }:
 let
   inherit (pkgs.lib)
     attrValues
     concatMapStrings
+    concatMapStringsSep
     concatStringsSep
     escapeShellArg
     filter
     hasPrefix
-    optionalString
     removePrefix
-    mapAttrsToList
     ;
 
   # Everything below is text spliced into a shell script; escape it rather than
@@ -84,58 +88,49 @@ let
   /*
     DUPLICATION IS DELIBERATE. This allowlist is an independent literal. It is
     not derived from, and must not be derived from, the `fprintAuth = false`
-    lists in modules/nixos/hardware/fingerprint.nix, and that module must not read this.
-    If one edit could change both sides, a change that hands the factor to the
-    greeter would arrive with a matching allowlist and this check would stay
-    green -- which is the entire failure mode it exists to prevent.
+    lists in modules/nixos/hardware/fingerprint.nix, and that module must not
+    read this. If one edit could change both sides, a change that hands the
+    factor to the greeter would arrive with a matching allowlist and this check
+    would stay green -- which is the entire failure mode it exists to prevent.
 
     It was read off the built system rather than guessed: every service that
     carries pam_fprintd.so once fprintd is enabled either appears here as a
     deliberate entry or is denied in the module. Adding an entry here later is a
     deliberate act, which is the property this closed-world comparison buys.
   */
-  # Looked up per host, defaulting to "no file may carry the factor". A host
-  # absent from these tables is not unchecked; it is checked against nothing
-  # being allowed.
-  forHost = table: hostName: table.${hostName} or [ ];
-
-  allowlist = {
-    ThinkPad-X1-Carbon-Gen-11 = [
-      # The three surfaces this feature exists for.
-      "sudo"
-      "polkit-1"
-      "kde-fingerprint"
-      # Inherited from the upstream default rules. None is greeter-reachable and
-      # none mutates a credential; narrowing them further is follow-up work, and
-      # this list is what keeps the set from growing in the meantime.
-      "groupadd"
-      "groupdel"
-      "groupmems"
-      "groupmod"
-      "runuser"
-      "runuser-l"
-      "systemd-run0"
-      "systemd-user"
-      "useradd"
-      "userdel"
-      "usermod"
-      "vlock"
-    ];
-    # The installer console has no enrolled finger, so it carries no factor.
-    ThinkPad-X1-Carbon-Gen-11-bootstrap = [ ];
-  };
+  # Applies to a configuration whose trait and bootstrap flag say the factor
+  # belongs there; every other configuration is checked against nothing being
+  # allowed.
+  factorAllowlist = [
+    # The three surfaces this feature exists for.
+    "sudo"
+    "polkit-1"
+    "kde-fingerprint"
+    # Inherited from the upstream default rules. None is greeter-reachable and
+    # none mutates a credential; narrowing them further is follow-up work, and
+    # this list is what keeps the set from growing in the meantime.
+    "groupadd"
+    "groupdel"
+    "groupmems"
+    "groupmod"
+    "runuser"
+    "runuser-l"
+    "systemd-run0"
+    "systemd-user"
+    "useradd"
+    "userdel"
+    "usermod"
+    "vlock"
+  ];
 
   # Asserted to carry the factor. A subset of the allowlist, stated separately
   # so the check still names the surfaces the feature promises when the
   # allowlist comparison is the thing that changed.
-  carriesFactor = {
-    ThinkPad-X1-Carbon-Gen-11 = [
-      "sudo"
-      "polkit-1"
-      "kde-fingerprint"
-    ];
-    ThinkPad-X1-Carbon-Gen-11-bootstrap = [ ];
-  };
+  factorSurfaces = [
+    "sudo"
+    "polkit-1"
+    "kde-fingerprint"
+  ];
 
   # The greeter inherits through `login`, so the roots are followed transitively
   # rather than asserted one file at a time.
@@ -146,12 +141,20 @@ let
     "sddm-autologin"
   ];
 
-  # The bootstrap host has no enrollment path at all: the module that declares
-  # this service is off there, so the service legitimately materialises no file.
-  enrollRoots = {
-    ThinkPad-X1-Carbon-Gen-11 = [ "enroll-fingerprint" ];
-    ThinkPad-X1-Carbon-Gen-11-bootstrap = [ ];
-  };
+  # A configuration without the factor has no enrollment path at all: the
+  # module that declares this service is off there, so the service legitimately
+  # materialises no file.
+  factorEnrollRoots = [ "enroll-fingerprint" ];
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  fingerprint = configurations.withTrait "my.fingerprint.enable" (
+    config: config.my.fingerprint.enable
+  );
+
+  # The expectation: the trait, withheld from bootstrap outputs. Derived from
+  # the trait and `bootstrap`, never from what the module under test sets.
+  expectsFactor = entry: entry.config.my.fingerprint.enable && !entry.bootstrap;
+  whenFactor = entry: list: if expectsFactor entry then list else [ ];
 
   # Asserted directly: these have no relevant includes and the point is the file
   # itself. `kde` is here for the upstream reason quoted in the header.
@@ -168,36 +171,37 @@ let
   # each entry's `enable`, and skipping any nested target so the flat directory
   # built below cannot silently lose a file.
   pamEntries =
-    host:
+    config:
     filter (
       entry:
       (entry.enable or false)
       && hasPrefix "pam.d/" (entry.target or "")
       && (builtins.match ".*/.*" (removePrefix "pam.d/" (entry.target or "")) == null)
-    ) (attrValues host.config.environment.etc);
+    ) (attrValues config.environment.etc);
 
   hostAssertions =
-    hostName: host:
+    entry:
     let
+      hostName = entry.name;
       dir = "pam-${hostName}";
-      entries = pamEntries host;
+      entries = pamEntries entry.config;
 
       # The store path stays inside a guard: an entry whose source went away must
       # fail inside the builder, not abort evaluation on a null coercion.
       copyLine =
-        entry:
+        pamEntry:
         let
-          name = removePrefix "pam.d/" entry.target;
-          source = entry.source or null;
+          name = removePrefix "pam.d/" pamEntry.target;
+          source = pamEntry.source or null;
         in
         if source == null then
-          fail "${hostName}: the /etc entry targeting ${entry.target} materialises no source"
+          fail "${hostName}: the /etc entry targeting ${pamEntry.target} materialises no source"
         else
           "cp -- ${esc (toString source)} ${esc "${dir}/${name}"}\n";
 
       expectedLines = concatMapStrings (
         name: "printf '%s\\n' ${esc name} >> ${esc "${dir}.expected"}\n"
-      ) (forHost allowlist hostName);
+      ) (whenFactor entry factorAllowlist);
 
       presentLines = concatMapStrings (name: ''
         if [ ! -f ${esc "${dir}/${name}"} ]; then
@@ -205,7 +209,7 @@ let
         elif ! authStack ${esc "${dir}/${name}"} | grep -q pam_fprintd.so; then
           ${fail "${hostName}: ${name} no longer carries the fingerprint factor"}
         fi
-      '') (forHost carriesFactor hostName);
+      '') (whenFactor entry factorSurfaces);
 
       absentLines = concatMapStrings (name: ''
         if [ ! -f ${esc "${dir}/${name}"} ]; then
@@ -225,11 +229,11 @@ let
         done
       '';
 
-      polkitEntry = host.config.environment.etc."polkit-1/rules.d/10-nixos.rules" or null;
+      polkitEntry = entry.config.environment.etc."polkit-1/rules.d/10-nixos.rules" or null;
       polkitSource = if polkitEntry != null then polkitEntry.source or null else null;
 
       polkitLines =
-        if forHost carriesFactor hostName != [ ] then
+        if expectsFactor entry then
           ''
             polkitFile=${esc (toString polkitSource)}
             if [ -z "$polkitFile" ] || [ ! -f "$polkitFile" ]; then
@@ -263,7 +267,7 @@ let
       ${presentLines}
       ${absentLines}
       ${closureLines "the login greeter" greeterRoots}
-      ${closureLines "fingerprint enrollment" (forHost enrollRoots hostName)}
+      ${closureLines "fingerprint enrollment" (whenFactor entry factorEnrollRoots)}
       ${polkitLines}
 
       : > ${esc "${dir}.expected"}
@@ -285,17 +289,11 @@ let
       fi
     '';
 
-  # optionalString keeps the whole body out of the builder if a host ever stops
-  # existing, rather than aborting evaluation on a missing attribute.
-  # Every host the flake builds, not a named pair. A host added later inherits
-  # an empty allowlist, so enabling the factor there without saying so here
-  # turns the build red -- which is the same closed-world property applied to
-  # the host set rather than to the service set.
-  hostBodies = concatStringsSep "\n" (
-    mapAttrsToList (
-      hostName: host: optionalString (host != null) (hostAssertions hostName host)
-    ) self.nixosConfigurations
-  );
+  # Every configuration the flake builds, not a named pair. A host added later
+  # is checked against an empty allowlist unless its trait says otherwise, so
+  # the closed-world property applies to the host set as well as to the service
+  # set.
+  hostBodies = concatMapStringsSep "\n" hostAssertions configurations.entries;
 in
 pkgs.runCommand "pam-fingerprint-tests"
   {
@@ -309,6 +307,8 @@ pkgs.runCommand "pam-fingerprint-tests"
     # The greps below are quiet by design, so trace every assertion: the failing
     # one is then the last traced line in `nix log`.
     set -x
+    ${configurations.guard}
+    ${fingerprint.guard}
     failed=0
 
     # A module line only authenticates if it is in the auth stack. Slice first so

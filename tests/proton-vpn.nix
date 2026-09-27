@@ -3,14 +3,18 @@
 
     import ./tests/proton-vpn.nix { inherit pkgs self; }
 
-  Asserts that the Proton VPN app and the split-DNS setup it needs reach both
-  production configurations as built output, and that neither bootstrap
-  configuration carries them. Every assertion reads the materialised /etc tree
+  Asserts that the Proton VPN app and the split-DNS setup it needs reach every
+  production configuration as built output, and that no bootstrap
+  configuration carries them. The expectation comes from each configuration's
+  `my.bootstrap` (modules/nixos/profile.nix enables Proton VPN only outside
+  bootstrap), never from `my.protonVpn.enable`, the option the module under
+  test reads. Every assertion reads the materialised /etc tree
   or the system path rather than the options they derive from: enabling
   services.resolved sets networking.networkmanager.dns unconditionally, so an
   assertion on that option would fold to a constant.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11 and MS-7D91:
+  Verifies, on every production configuration `tests/lib/configurations.nix`
+  yields:
   - the system path carries bin/protonvpn-app and the app's desktop entry.
   - NetworkManager.conf renders dns=systemd-resolved, and /etc/resolv.conf is
     the link to resolved's stub file.
@@ -21,12 +25,13 @@
     queries that these hosts never sent under resolvconf.
   - /etc/NetworkManager/VPN carries the OpenVPN plugin's service file.
 
-  Verifies, on both bootstrap configurations:
+  Verifies, on every bootstrap configuration:
   - none of the items above are present. These negatives pass trivially when
     the module is missing everywhere, which is why they only run beside the
-    production positives above.
+    production positives above, and the helper fails the check when it yields
+    no production or no bootstrap configuration.
 
-  Verifies, on all four configurations:
+  Verifies, on every configuration:
   - the firewall start script's reverse-path rule is the loose variant.
     Strict mode drops replies that arrive on an interface other than the one
     the default route names, which is what a full-tunnel VPN beside
@@ -37,7 +42,10 @@
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) concatStringsSep mapAttrsToList escapeShellArg;
+  inherit (pkgs) lib;
+  inherit (lib) concatStringsSep concatMapStringsSep escapeShellArg;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: escapeShellArg (toString value);
 
@@ -66,11 +74,12 @@ let
       '';
 
   hostAssertions =
-    hostName:
-    { host, production }:
+    entry:
     let
-      path = host.config.system.path;
-      etc = "${host.config.system.build.etc}/etc";
+      hostName = entry.name;
+      production = !entry.bootstrap;
+      path = entry.config.system.path;
+      etc = "${entry.config.system.build.etc}/etc";
       state = if production then "lacks" else "unexpectedly carries";
     in
     concatStringsSep "\n" [
@@ -107,28 +116,14 @@ let
 in
 pkgs.runCommand "proton-vpn-tests" { } ''
   set -x
+  ${configurations.guard}
+  ${lib.optionalString (configurations.production == [ ]) ''
+    echo 'proton-vpn: no production configuration, so the Proton VPN positives would cover none' >&2
+    exit 1
+  ''}
   failed=0
 
-  ${concatStringsSep "\n" (
-    mapAttrsToList hostAssertions {
-      ThinkPad-X1-Carbon-Gen-11 = {
-        host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
-        production = true;
-      };
-      MS-7D91 = {
-        host = self.nixosConfigurations.MS-7D91;
-        production = true;
-      };
-      ThinkPad-X1-Carbon-Gen-11-bootstrap = {
-        host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap;
-        production = false;
-      };
-      MS-7D91-bootstrap = {
-        host = self.nixosConfigurations.MS-7D91-bootstrap;
-        production = false;
-      };
-    }
-  )}
+  ${concatMapStringsSep "\n" hostAssertions configurations.entries}
 
   if [ "$failed" != 0 ]; then
     exit 1

@@ -7,9 +7,10 @@
   host this flake declares, and that its pin still names the revision this
   repository expects.
 
-  The host list is taken from `self.nixosConfigurations` rather than written
-  out, so a host added later is covered the day it is added instead of
-  silently escaping the assertions. Every host here shares `home/h82`, so the
+  The configuration list comes from `tests/lib/configurations.nix` rather than
+  being written out, so a host added later is covered the day it is added
+  instead of silently escaping the assertions, and the helper's guard fails the
+  build when that list is empty. Every configuration shares `home/h82`, so the
   layer holds on all of them.
 
   What this check can and cannot reach:
@@ -33,8 +34,8 @@
 
   What the segment comparison does and does not catch, established by mutation
   rounds rather than by reading it: changing the registry's `tag` without
-  relocking turns it red for its own reason on both hosts, which is the drift
-  it exists for. Changing `tagPrefix` leaves it green, because the prefix is
+  relocking turns it red for its own reason on every configuration, which is
+  the drift it exists for. Changing `tagPrefix` leaves it green, because the prefix is
   stripped from both the registry's tag and the lock's ref -- both sides move
   together, so that axis is consistent by construction rather than guarded.
   Do not read the prefix as protected here.
@@ -45,7 +46,7 @@
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
   The builder collects every failure instead of exiting at the first, so one
-  red build names every broken assertion across both hosts.
+  red build names every broken assertion across every configuration.
 */
 { pkgs, self }:
 let
@@ -64,10 +65,13 @@ let
 
   pinnedSource = toString (self.inputs.compound-engineering-plugin or "");
 
-  assertHost =
-    hostName: host:
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
+  assertEntry =
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
+      hostName = entry.name;
+      userConfig = entry.user;
 
       registry = userConfig.my.agentPlugins.${pluginName} or null;
 
@@ -200,7 +204,9 @@ let
       # source and version come from building the package again with the
       # host's own pkgs, independently of the registry that consumed it.
       localName = "orca-orchestration";
-      localPlugin = import ../packages/orca-orchestration-plugin.nix { inherit (host) pkgs; };
+      localPlugin = import ../packages/orca-orchestration-plugin.nix {
+        inherit (self.nixosConfigurations.${entry.name}) pkgs;
+      };
       localRegistry = userConfig.my.agentPlugins.${localName} or null;
 
       localAbsent = lib.optionalString (localRegistry == null) ''
@@ -251,6 +257,7 @@ let
 in
 pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
+  ${configurations.guard}
   failed=0
 
   # Reads one flag's value out of a rendered activation script. The `|| true`
@@ -286,7 +293,7 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
     failed=1
   fi
 
-  ${lib.concatStringsSep "\n" (lib.mapAttrsToList assertHost self.nixosConfigurations)}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ "$failed" != "0" ]; then
     exit 1
