@@ -168,11 +168,13 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Dependencies:** None.
 
 **Files:**
+
 - `scripts/agent-settings`
 - `tests/test_agent_settings.py`
 - `flake.nix` (the `agent-settings` check's packaged-binary run)
 
 **Approach:**
+
 1. Add an optional declared field that lists nested assignments as an explicit key path plus a scalar value, validated alongside `set` and `remove`.
 2. Refuse, before any write: an empty path, a non-string path segment, a non-scalar value, a path whose first key is also in `set` or `remove`, and an existing intermediate node that is not an object.
 3. Apply nested assignments after the flat `set` and `remove` within the same compare-and-swap attempt, creating missing intermediate objects.
@@ -181,6 +183,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Patterns to follow:** The existing `declaration()` validation and `merge` loop in `scripts/agent-settings`. The divergent fixture discipline in `tests/test_agent_settings.py:28-46`.
 
 **Test scenarios:**
+
 - A seeded file with `scanner = {"opencodeDbPaths": ["x"], "bucketTimezone": "UTC"}` and a declared path `scanner.bucketTimezone = "Asia/Seoul"` ends with the new timezone and `opencodeDbPaths` unchanged.
 - A seeded file with no `autosubmit` key gains `{"autosubmit": {"enabled": false}}` and nothing else.
 - A seeded `autosubmit` object carrying `lastRunAtMs` and `lastError` keeps both after `autosubmit.enabled` is reasserted.
@@ -203,6 +206,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Dependencies:** None.
 
 **Files:**
+
 - `modules/nixos/system/secrets.nix`
 - `hosts/ThinkPad-X1-Carbon-Gen-11/default.nix`
 - `hosts/MS-7D91/default.nix`
@@ -210,6 +214,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 - `tests/tokscale.nix` (host assertions, shared with U4)
 
 **Approach:**
+
 1. Add `enableTokscaleToken` beside `enableDockerToken`, default false, and extend the `cli-auth/` secret list with `lib.optional cfg.enableTokscaleToken "tokscale_token"`.
 2. Set it true on both hosts next to `my.cliAuth.enable`. Bootstrap variants inherit it, but `cliAuth.enable` is false there, so no secret is declared.
 3. Leave `publishCommand`, `scripts/publish-cli-auth`, and the `missing-cli-secrets` path unchanged.
@@ -218,6 +223,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Patterns to follow:** `enableDockerToken` in `modules/nixos/system/secrets.nix`. The SOPS umask learning in `.compound-engineering/artifacts/solutions/integration-issues/sops-service-umask-blocks-user-secrets.md`: add no `UMask=` or chmod.
 
 **Test scenarios:**
+
 - Both production configurations render a sops manifest entry for `cli-auth/tokscale_token` with owner h82 and mode `0400`, read from the built manifest rather than the option value.
 - Both bootstrap configurations render no such entry.
 - The production `ExecStartPost` still runs `publish-cli-auth` with the same arguments, and the publisher's token list does not include `tokscale_token`.
@@ -234,12 +240,14 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Dependencies:** None for the script. The token path it bakes in comes from U2's secret name.
 
 **Files:**
+
 - `scripts/tokscale`
 - `packages/tokscale.nix`
 - `tests/tokscale.sh`
 - `flake.nix` (register the `tokscale-wrapper` check)
 
 **Approach:**
+
 1. Write the wrapper as a strict-mode bash script with two placeholders: the host name and the token file path.
 2. Package it as `packages/nix-tools.nix` does: install, substitute with `--replace-fail`, patch the shebang. `bun` stays off the package's closure.
 3. Resolve the token per the KTD3 order, build `TOKSCALE_EXTRA_DIRS` per R4 and KTD9, set `TOKSCALE_DEVICE_NAME`, then `exec bun x tokscale@latest "$@"`.
@@ -250,6 +258,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Patterns to follow:** `scripts/nr`, `packages/nix-tools.nix`, and the `nr` check at `flake.nix:737-746` with `tests/nr.sh`. The token-file read in `scripts/docker-credential-sops:47-55`.
 
 **Test scenarios:**
+
 - Arguments `submit --since "a b"` reach the stub `bun` as `x tokscale@latest submit --since "a b"`, and the stub's exit status 3 becomes the wrapper's exit status.
 - With `PATH` holding no `bun`, the wrapper prints one stderr line naming `bun` and exits 127.
 - A fixture token file with `fake-token-123` makes the stub see `TOKSCALE_API_TOKEN=fake-token-123`, and the token appears in neither the stub's argv nor the wrapper's stdout or stderr.
@@ -272,12 +281,14 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Dependencies:** U1, U3.
 
 **Files:**
+
 - `home/h82/agents/tokscale.nix`
 - `home/h82/agents/default.nix`
 - `tests/tokscale.nix`
 - `flake.nix` (register the `tokscale` check)
 
 **Approach:**
+
 1. Add `home/h82/agents/tokscale.nix` and import it from `home/h82/agents/default.nix`.
 2. Put the U3 package in `home.packages`, built with `osConfig.networking.hostName` and `/run/secrets/cli-auth/tokscale_token`.
 3. Render the declared settings document with the three flat keys under `set` and the two nested paths under the U1 field.
@@ -288,6 +299,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Patterns to follow:** `home/h82/agents/claude.nix:50-77` for the activation entry and declared file. `home/h82/agents/gemini.nix:42` for the read-only file. `tests/android-sdk.nix` for iterating all four configurations over materialized Home Manager outputs. `tests/claude.nix:131-186` for the no-swallow regex, argument extraction, and declared-file diff.
 
 **Test scenarios:**
+
 - On each of the four configurations, `home-path/bin/tokscale` resolves to the packaged wrapper, and its baked device name equals that configuration's `networking.hostName`.
 - The `tokscaleSettings` activation entry lists `installPackages` in its `after`, invokes the packaged `agent-settings`, and does not swallow its exit status.
 - The `--settings` argument extracted from the activation script is exactly `/home/h82/.config/tokscale/settings.json`.
@@ -308,12 +320,14 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 **Dependencies:** U1-U4.
 
 **Files:**
+
 - `secrets/README.md`
 - `docs/provisioning.md`
 - `docs/verification.md`
 - `README.md`
 
 **Approach:**
+
 1. In `secrets/README.md`, add `tokscale_token` to the `tokens.yaml` schema and state which keys are opt-in behind a `my.cliAuth` flag.
 2. In `docs/provisioning.md`, add a Tokscale subsection beside the Docker Hub one: add the key with `sops`, the host flag, and the unauthenticated fallback.
 3. In `docs/verification.md`, add sentences for the `tokscale` and `tokscale-wrapper` checks and extend the `agent-settings` sentence for nested paths.
@@ -334,7 +348,7 @@ U1 and U2 are independent. U3 depends on the token path from U2 only as a baked 
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | Nix layout matches `nixfmt-tree` |
 | Checks | `nix flake check` | `agent-settings` (U1), `tokscale-wrapper` (U3), `tokscale` (U2, U4), and the unchanged `auth-provisioning` and `podman-registry-auth` VM checks |
 | Host builds | `nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel` for `ThinkPad-X1-Carbon-Gen-11`, `ThinkPad-X1-Carbon-Gen-11-bootstrap`, `MS-7D91`, `MS-7D91-bootstrap` | R1, R8, and sops-nix validation of the committed `tokscale_token` |
