@@ -6,10 +6,15 @@
 #
 # Asserts the docs-only CI skip wiring in .github/workflows/check.yml:
 #
-# - flake-check and build each declare `needs: changes` and an `if:`
-#   that runs them on any non-pull_request event, or when the changes
+# - flake-check, hosts, and build each depend on `changes` and declare an
+#   `if:` that runs them on any non-pull_request event, or when the changes
 #   job did not complete successfully, and skips only a definitive
 #   docs_only:true (KTD4/R6/R7 in the docs-skip-markdown-lint plan).
+#   flake-check and hosts declare exactly `needs: changes`; build also
+#   needs hosts, so it may list `changes` among others (KTD9 in the
+#   host-generic composition plan).
+# - build reads its matrix from the hosts job's output, so the workflow
+#   never lists host names (R19).
 # - markdown-lint declares the complementary condition: it runs only on
 #   a genuine docs_only:true PR, the one case flake-check's own
 #   `nix flake check` does not already build it, so it is exercised
@@ -52,14 +57,25 @@ job_block() {
   ' "$file"
 }
 
+# needs_pattern scalar|list: the needs: line a gated job must carry.
+# scalar is exactly `needs: changes`; list also accepts a flow list that
+# names `changes` as one of its entries, e.g. `needs: [changes, hosts]`.
+needs_pattern() {
+  case $1 in
+    scalar) echo '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$' ;;
+    list) echo '^[[:space:]]*needs:[[:space:]]*(changes|\[([^]]*,)?[[:space:]]*changes[[:space:]]*(,[^]]*)?\])[[:space:]]*$' ;;
+    *) fail "unknown needs form: $1" ;;
+  esac
+}
+
 assert_gated() {
-  local job=$1 block
+  local job=$1 needs_form=${2:-scalar} block
   block=$(job_block "$job" "$file")
   if [ -z "$block" ]; then
     fail "job '$job' not found in $file"
   fi
-  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$'; then
-    fail "job '$job' does not declare 'needs: changes'"
+  if ! printf '%s\n' "$block" | grep -qE "$(needs_pattern "$needs_form")"; then
+    fail "job '$job' does not declare 'changes' in needs: ($needs_form form)"
   fi
   local if_line expected
   if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
@@ -121,8 +137,24 @@ assert_docs_only_only() {
   echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
 }
 
+# assert_matrix_from_hosts: build depends on the hosts job and reads its
+# matrix from that job's JSON output instead of a literal host list (R19).
+assert_matrix_from_hosts() {
+  local block
+  block=$(job_block build "$file")
+  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*hosts[[:space:]]*(,[^]]*)?\][[:space:]]*$'; then
+    fail "job 'build' does not list 'hosts' in needs: (R19/KTD9)"
+  fi
+  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*target:[[:space:]]*\$\{\{[[:space:]]*fromJSON\(needs\.hosts\.outputs\.targets\)[[:space:]]*\}\}[[:space:]]*$'; then
+    fail "job 'build' matrix target is not fromJSON(needs.hosts.outputs.targets) (R19/KTD9)"
+  fi
+  echo "check-workflow-docs-skip: ok - build reads its matrix from the hosts job (R19/KTD9)"
+}
+
 assert_gated flake-check
-assert_gated build
+assert_gated hosts
+assert_gated build list
+assert_matrix_from_hosts
 assert_unconditional fmt
 assert_docs_only_only markdown-lint
 
