@@ -9,5 +9,6 @@
     ./plasma.nix
     ./power-lid.nix
     ./session.nix
+    ./theme.nix
   ];
 }
