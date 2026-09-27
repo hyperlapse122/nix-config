@@ -1,5 +1,5 @@
 {
-  description = "ThinkPad X1 Carbon Gen 11 NixOS configuration";
+  description = "Declarative NixOS configuration for personal hosts";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -44,7 +44,7 @@
       nixosConfigurations =
         let
           mkHost =
-            { hostModule, bootstrap }:
+            { hostName, bootstrap }:
             nixpkgs.lib.nixosSystem {
               inherit system;
               specialArgs = { inherit inputs; };
@@ -53,8 +53,13 @@
                 inputs.home-manager.nixosModules.home-manager
                 inputs.sops-nix.nixosModules.sops
                 inputs.lanzaboote.nixosModules.lanzaboote
-                hostModule
+                # The host directory precedes the profile so list-valued
+                # options keep the merge order they had when each host
+                # imported the profile itself.
+                ./hosts/${hostName}
+                ./modules/nixos/profile.nix
                 {
+                  networking.hostName = hostName;
                   my.bootstrap = bootstrap;
                   home-manager.useGlobalPkgs = true;
                   home-manager.useUserPackages = true;
@@ -65,25 +70,29 @@
                 }
               ];
             };
+          # Each directory under hosts/ is a host, named by the directory.
+          hostNames = builtins.attrNames (
+            nixpkgs.lib.filterAttrs (_: kind: kind == "directory") (builtins.readDir ./hosts)
+          );
         in
-        {
-          ThinkPad-X1-Carbon-Gen-11 = mkHost {
-            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
-            bootstrap = false;
-          };
-          ThinkPad-X1-Carbon-Gen-11-bootstrap = mkHost {
-            hostModule = ./hosts/ThinkPad-X1-Carbon-Gen-11;
-            bootstrap = true;
-          };
-          MS-7D91 = mkHost {
-            hostModule = ./hosts/MS-7D91;
-            bootstrap = false;
-          };
-          MS-7D91-bootstrap = mkHost {
-            hostModule = ./hosts/MS-7D91;
-            bootstrap = true;
-          };
-        };
+        nixpkgs.lib.listToAttrs (
+          nixpkgs.lib.concatMap (hostName: [
+            {
+              name = hostName;
+              value = mkHost {
+                inherit hostName;
+                bootstrap = false;
+              };
+            }
+            {
+              name = "${hostName}-bootstrap";
+              value = mkHost {
+                inherit hostName;
+                bootstrap = true;
+              };
+            }
+          ]) hostNames
+        );
       packages.${system} = {
         disko = inputs.disko.packages.${system}.disko;
         # Exposed so the release-tracking workflow invokes the packaged helper

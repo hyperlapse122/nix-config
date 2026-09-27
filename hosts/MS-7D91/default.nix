@@ -3,9 +3,7 @@
   imports = [
     ./hardware.nix
     ./disko.nix
-    ../../modules/nixos/profile.nix
   ];
-  networking.hostName = "MS-7D91";
   # keyd stays off here so the NuPhy Gem80 keeps its firmware mapping.
   my.nuphyGem80.enable = true;
   my.tailscale.advertiseRoutes = !config.my.bootstrap;

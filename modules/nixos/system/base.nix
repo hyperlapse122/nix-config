@@ -64,8 +64,8 @@
     ]
     ++ [ (import ../../../packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity ];
 
-  # Both hosts share networking.hostName, so the rebuild helper needs another
-  # signal to tell the bootstrap generation from the production one.
+  # A host's production and bootstrap outputs share networking.hostName, so the
+  # rebuild helper needs another signal to tell the two generations apart.
   environment.etc."nixos-host-variant".text =
     if config.my.bootstrap then "bootstrap\n" else "production\n";
 
