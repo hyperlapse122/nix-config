@@ -164,13 +164,13 @@ let
         # Read the flags the helper is actually invoked with, not merely whether
         # the script mentions a path somewhere: a script naming the right source
         # in a comment and handing the helper a different one would pass.
-        sourceArg=$(argValue ${esc script} source)
+        sourceArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" source)
         if [ "$sourceArg" != ${esc pinnedSource} ]; then
           echo "the helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
           failed=1
         fi
 
-        segmentArg=$(argValue ${esc script} segment)
+        segmentArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" segment)
         if [ "$segmentArg" != ${
           esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
         } ]; then
@@ -178,7 +178,7 @@ let
           failed=1
         fi
 
-        claudeArg=$(argValue ${esc script} claude)
+        claudeArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" claude)
         case "$claudeArg" in
           /nix/store/*/bin/claude) ;;
           *)
@@ -196,6 +196,48 @@ let
         fi
       '';
 
+      # The local plugin is built from this repository, so its expected
+      # source and version come from building the package again with the
+      # host's own pkgs, independently of the registry that consumed it.
+      localName = "orca-orchestration";
+      localPlugin = import ../packages/orca-orchestration-plugin.nix { inherit (host) pkgs; };
+      localRegistry = userConfig.my.agentPlugins.${localName} or null;
+
+      localAbsent = lib.optionalString (localRegistry == null) ''
+        echo 'missing my.agentPlugins.${localName} on ${hostName}' >&2
+        failed=1
+      '';
+
+      localPresent = lib.optionalString (activation != null) ''
+        localBlock=$(blockFor ${esc script} ${esc localName})
+        if [ -z "$localBlock" ]; then
+          echo 'the agentPlugins activation script never syncs ${localName} on ${hostName}' >&2
+          failed=1
+        fi
+        localSource=$(argValue "$localBlock" source)
+        if [ "$localSource" != ${esc localPlugin} ]; then
+          echo "the helper must be handed the built ${localName} plugin on ${hostName}, got: '$localSource'" >&2
+          failed=1
+        fi
+        localSegment=$(argValue "$localBlock" segment)
+        if [ "$localSegment" != ${esc (localPlugin.version or "")} ]; then
+          echo "the ${localName} segment must be its plugin.json version '${localPlugin.version or ""}' on ${hostName}, got: '$localSegment'" >&2
+          failed=1
+        fi
+        localMarketplace=$(argValue "$localBlock" marketplace)
+        if [ "$localMarketplace" != ${esc localName} ]; then
+          echo "the ${localName} marketplace must be '${localName}' on ${hostName}, got: '$localMarketplace'" >&2
+          failed=1
+        fi
+        case ${esc (if localRegistry == null then "" else (localRegistry.destination or ""))} in
+          */agent-plugins/${localName}/"$localSegment") ;;
+          *)
+            echo 'the ${localName} destination must end in its version segment on ${hostName}' >&2
+            failed=1
+            ;;
+        esac
+      '';
+
       symlinkPresent = lib.optionalString destinationTargeted ''
         echo 'Home Manager must not link ${destination} on ${hostName}; the activation entry owns it' >&2
         failed=1
@@ -204,6 +246,7 @@ let
     ''
       ${registryAbsent}${registryPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}
+      ${localAbsent}${localPresent}
     '';
 in
 pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
@@ -216,6 +259,14 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
   argValue() {
     printf '%s' "$1" | tr '\n' ' ' \
       | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | head -1 | awk '{print $2}' || true
+  }
+
+  # The activation script runs the helper once per plugin, so each plugin's
+  # flags are read from the one invocation whose --plugin names it. An absent
+  # invocation yields an empty block, which every flag assertion then reports.
+  blockFor() {
+    printf '%s' "$1" | tr '\n' ' ' | sed 's|/bin/agent-plugin-sync|\n&|g' \
+      | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" | head -1 || true
   }
 
   if [ -z ${esc lockedRev} ]; then

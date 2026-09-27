@@ -14,6 +14,8 @@ let
   # command's --claude flag can never drift onto a different claude-code build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
 
+  orcaOrchestrationPlugin = import ../../../packages/orca-orchestration-plugin.nix { inherit pkgs; };
+
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
   # revision that tag is expected to name, because a git tag is mutable and a
@@ -41,6 +43,20 @@ let
         claude = [ ];
       };
     };
+
+    # A local source is built from this repository rather than fetched, so it
+    # has no upstream, tag, or lock entry to pin against. Its `segment` is the
+    # content-derived version the package also writes into plugin.json, which
+    # Claude Code keys its plugin cache on.
+    orca-orchestration = {
+      src = orcaOrchestrationPlugin;
+      segment = orcaOrchestrationPlugin.version;
+      plugin = orcaOrchestrationPlugin.name;
+      marketplace = orcaOrchestrationPlugin.name;
+      exclude = {
+        claude = [ ];
+      };
+    };
   };
 
   # Harness membership is declared separately from the source, so adding a
@@ -48,6 +64,10 @@ let
   membership = [
     {
       name = "compound-engineering";
+      harness = "claude";
+    }
+    {
+      name = "orca-orchestration";
       harness = "claude";
     }
   ];
@@ -72,7 +92,10 @@ let
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
 
-  segmentOf = spec: lib.removePrefix spec.tagPrefix spec.tag;
+  # A pinned upstream source derives its segment from the tag; a local source
+  # declares one. Neither form falls back to a placeholder, so a source missing
+  # both fails evaluation instead of materializing under an empty segment.
+  segmentOf = spec: if spec ? tag then lib.removePrefix spec.tagPrefix spec.tag else spec.segment;
 
   # A harness with exclusions gets its own pruned tree; one without reads the
   # pinned source directly, so the ordinary case adds no derivation.
@@ -134,19 +157,16 @@ in
     type = lib.types.attrs;
     internal = true;
     readOnly = true;
-    default = lib.mapAttrs (name: spec: {
-      inherit (spec)
-        upstream
-        tagPrefix
-        tag
-        expectedRev
-        plugin
-        marketplace
-        exclude
-        ;
-      segment = segmentOf spec;
-      destination = "${baseDir}/${name}/${segmentOf spec}";
-    }) sources;
+    # Every declared field except the source tree itself, so a pinned source
+    # keeps its pin bookkeeping and a local one carries only what it declares.
+    default = lib.mapAttrs (
+      name: spec:
+      removeAttrs spec [ "src" ]
+      // {
+        segment = segmentOf spec;
+        destination = "${baseDir}/${name}/${segmentOf spec}";
+      }
+    ) sources;
     description = "Resolved agent plugin registry, for repository checks.";
   };
 

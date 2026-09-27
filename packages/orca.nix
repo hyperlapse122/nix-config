@@ -30,7 +30,14 @@ in
 pkgs.appimageTools.wrapType2 {
   inherit pname version src;
 
-  passthru = { inherit skills; };
+  # `cli` is the extracted AppImage's Node-mode entry point, the file Orca's
+  # own linux-orca-cli-shim runs. The wrapper's bin/orca-ide launches the GUI.
+  # It runs the unwrapped Electron binary outside the FHS sandbox, so it relies
+  # on the host's nix-ld (modules/nixos/system/nix-ld.nix).
+  passthru = {
+    inherit skills;
+    cli = "${appimageContents}/resources/bin/orca-ide";
+  };
 
   extraInstallCommands = ''
     for desktop in "${appimageContents}/orca.desktop" "${appimageContents}/orca-ide.desktop"; do

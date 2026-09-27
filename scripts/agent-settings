@@ -13,18 +13,26 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
-The declared document is a JSON object with up to three fields:
+The declared document is a JSON object with up to four fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
   setPaths  [{path: [key, ...], value: scalar}]
                                     leaves to assign inside nested objects
+  own       {name: any JSON}        top-level keys whose whole value is
+                                    declared here
+
+`own` is for a key nobody else writes -- a named entry this repository adds
+to Antigravity's hooks.json beside the one Orca maintains -- so replacing its
+whole value cannot discard another writer's data, which is the reason `set`
+refuses objects.
 
 A path is a list of keys rather than a dotted string, so a key that itself
 contains a dot is never split, and a literal top-level "a.b" key is never taken
 for the path ["a", "b"].
 """
 import argparse
+import copy
 import errno
 import json
 import os
@@ -60,7 +68,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths'}
+FIELDS = {'set', 'remove', 'setPaths', 'own'}
 
 
 def describe(path):
@@ -70,7 +78,7 @@ def describe(path):
 
 
 def declaration(declared):
-    """Parse the rendered declaration into (assign, retire, paths).
+    """Parse the rendered declaration into (assign, retire, paths, owned).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -99,7 +107,19 @@ def declaration(declared):
     contradictory = sorted(set(assign) & set(retire))
     if contradictory:
         raise ValueError('declared as both set and removed: {}'.format(', '.join(contradictory)))
-    return assign, retire, nested_paths(document.get('setPaths', []), assign, retire, declared)
+    owned = document.get('own', {})
+    if not isinstance(owned, dict):
+        raise ValueError('declared "own" is not a JSON object: {}'.format(declared))
+    # An owned key is replaced whole, so any other declaration touching it
+    # would fight that replacement with an outcome that depends on order.
+    shared = sorted(set(owned) & (set(assign) | set(retire)))
+    if shared:
+        raise ValueError('declared as owned and also set or removed: {}'.format(', '.join(shared)))
+    paths = nested_paths(document.get('setPaths', []), assign, retire, declared)
+    through = sorted({path[0] for path, _ in paths if path[0] in owned})
+    if through:
+        raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
+    return assign, retire, paths, owned
 
 
 def nested_paths(entries, assign, retire, declared):
@@ -130,7 +150,7 @@ def nested_paths(entries, assign, retire, declared):
     return paths
 
 
-def apply(current, assign, retire, paths):
+def apply(current, assign, retire, paths, owned=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     Each object along a path is copied before it is changed.  The caller skips
@@ -139,6 +159,8 @@ def apply(current, assign, retire, paths):
     """
     merged = dict(current)
     merged.update(assign)
+    # A copy, so a later edit to the result never reaches the declaration.
+    merged.update(copy.deepcopy(owned or {}))
     for name in retire:
         merged.pop(name, None)
     for path, value in paths:
@@ -221,7 +243,7 @@ def swap(settings, merged, before):
 
 
 def merge(settings, declared):
-    assign, retire, paths = declaration(declared)
+    assign, retire, paths, owned = declaration(declared)
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -229,12 +251,12 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read_settings(settings), assign, retire, paths)
+    apply(read_settings(settings), assign, retire, paths, owned)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
-        merged = apply(current, assign, retire, paths)
+        merged = apply(current, assign, retire, paths, owned)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)
