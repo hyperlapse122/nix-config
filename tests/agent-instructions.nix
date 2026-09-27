@@ -7,8 +7,9 @@
   instruction file for user `h82` on every host this flake declares, rendered
   by gomplate from the one shared template with that harness's context.
 
-  The host list is taken from `self.nixosConfigurations`, so a host added later
-  is covered the day it is added.
+  The configuration list comes from `tests/lib/configurations.nix`, so a host
+  added later is covered the day it is added, and the helper's guard fails the
+  build when that list is empty instead of letting it pass.
 
   Verifies, per host and per harness:
   - exactly one enabled Home Manager file resolves to the harness's target.
@@ -137,17 +138,15 @@ let
     in
     countWrong + entryPresent + sourcePresent + sourceAbsent;
 
-  assertHost =
-    hostName: host:
-    let
-      userConfig = host.config.home-manager.users.h82 or { };
-    in
-    lib.concatMapStrings (assertHarness hostName userConfig) harnesses;
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
+  assertEntry = entry: lib.concatMapStrings (assertHarness entry.name entry.user) harnesses;
 in
 pkgs.runCommand "agent-instructions-tests" { } ''
+  ${configurations.guard}
   failed=0
 
-  ${lib.concatStringsSep "\n" (lib.mapAttrsToList assertHost self.nixosConfigurations)}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ "$failed" != "0" ]; then
     exit 1

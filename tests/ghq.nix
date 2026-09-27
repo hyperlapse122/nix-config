@@ -3,13 +3,15 @@
 
     import ./tests/ghq.nix { inherit pkgs self; }
 
-  Asserts that ghq organizes repositories under ~/src for user `h82` on the
-  ThinkPad and MS-7D91 production configurations. Bootstrap variants import the
-  same Home Manager profile, so they add no coverage.
+  Asserts that ghq organizes repositories under ~/src for user `h82` on every
+  configuration `tests/lib/configurations.nix` yields, bootstrap outputs
+  included. The bootstrap outputs import the same Home Manager profile and ghq
+  is meant to reach them too, so they are checked rather than assumed
+  identical: a change that gates the profile on `my.bootstrap` fails here.
 
   ghq reads its root with `git config --path ghq.root`, so this check runs the
   packaged binary against the rendered Git config rather than matching config
-  text. Per host:
+  text. Per configuration:
 
   - home.path carries bin/ghq.
   - with the rendered git/config installed at $XDG_CONFIG_HOME/git/config,
@@ -22,27 +24,31 @@
   See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
-  Each host runs in a subshell and records failures in a file, so one red build
-  names every broken assertion across both hosts.
+  Each configuration runs in a subshell and records failures in a file, so one
+  red build names every broken assertion across every configuration. The
+  helper's guard runs first, so an empty configuration list fails the build
+  instead of passing it.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
   esc = value: lib.escapeShellArg (toString value);
 
-  assertHost =
-    hostName: host:
+  assertEntry =
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
-      homePath = userConfig.home.path or "";
-      gitConfig = userConfig.xdg.configFile."git/config".source or "";
+      homePath = entry.user.home.path or "";
+      gitConfig = entry.user.xdg.configFile."git/config".source or "";
     in
     ''
-      checkHost ${esc hostName} ${esc homePath} ${esc gitConfig}
+      checkHost ${esc entry.name} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "ghq-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
+  ${configurations.guard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -77,8 +83,7 @@ pkgs.runCommand "ghq-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     [ "$listed" = "$project" ] || fail "ghq list reports '$listed', expected '$project'"
   )
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

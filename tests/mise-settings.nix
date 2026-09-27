@@ -3,14 +3,16 @@
 
     import ./tests/mise-settings.nix { inherit pkgs self; }
 
-  Asserts that mise uses precompiled runtime binaries for user `h82` on the
-  ThinkPad and MS-7D91 production configurations. Bootstrap variants import the
-  same Home Manager profile, so they add no coverage.
+  Asserts that mise uses precompiled runtime binaries for user `h82` on every
+  configuration `tests/lib/configurations.nix` yields, bootstrap outputs
+  included. The bootstrap outputs import the same Home Manager profile and the
+  setting is meant to reach them too, so they are checked rather than assumed
+  identical: a change that gates the profile on `my.bootstrap` fails here.
 
   On NixOS, mise defaults all_compile to true and builds runtimes from source.
   The build sandbox may not look like NixOS to mise, so comparing the value
   alone could pass without the declaration. The check therefore asks the
-  packaged mise which file supplied the setting. Per host:
+  packaged mise which file supplied the setting. Per configuration:
 
   - home.path carries bin/mise.
   - Home Manager renders mise/conf.d/50-home-manager.toml and leaves
@@ -24,29 +26,33 @@
   See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
-  Each host runs in a subshell and records failures in a file, so one red build
-  names every broken assertion across both hosts.
+  Each configuration runs in a subshell and records failures in a file, so one
+  red build names every broken assertion across every configuration. The
+  helper's guard runs first, so an empty configuration list fails the build
+  instead of passing it.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
   esc = value: lib.escapeShellArg (toString value);
 
-  assertHost =
-    hostName: host:
+  assertEntry =
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
-      homePath = userConfig.home.path or "";
-      configFiles = userConfig.xdg.configFile or { };
+      homePath = entry.user.home.path or "";
+      configFiles = entry.user.xdg.configFile or { };
       fragment = configFiles."mise/conf.d/50-home-manager.toml".source or "";
       managesGlobal = if configFiles ? "mise/config.toml" then "1" else "0";
     in
     ''
-      checkHost ${esc hostName} ${esc homePath} ${esc fragment} ${esc managesGlobal}
+      checkHost ${esc entry.name} ${esc homePath} ${esc fragment} ${esc managesGlobal}
     '';
 in
 pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
+  ${configurations.guard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -87,8 +93,7 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
     [ "$source" = "$installed" ] || fail "all_compile comes from '$source', expected '$installed'"
   )
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

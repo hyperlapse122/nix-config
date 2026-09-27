@@ -4,7 +4,9 @@
     import ./tests/claude.nix { inherit pkgs self; }
 
   Asserts that Claude Code's declared settings reach user `h82` through the
-  right tier on both the production and bootstrap ThinkPad configurations.
+  right tier on every configuration `tests/lib/configurations.nix` yields,
+  production and bootstrap alike, since no tier depends on a host trait or on
+  `my.bootstrap`.
 
   The declared set is split across two tiers. A setting whose persistent form
   is an environment variable is declared through session variables; everything
@@ -13,7 +15,7 @@
   there. The managed settings tier is deliberately unused: it blocks a change
   even inside a running session.
 
-  Verifies, per host:
+  Verifies, per configuration:
   - every environment-tier variable carries its declared value.
   - the JSON this repository renders for the settings tier carries every
     declared key at its declared value. Asserting the rendered file rather than
@@ -41,11 +43,13 @@
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
   The builder collects every failure instead of exiting at the first, so one
-  red build names every broken assertion across both hosts.
+  red build names every broken assertion across every configuration.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -68,9 +72,10 @@ let
   };
 
   assertHost =
-    hostName: host:
+    entry:
     let
-      userConfig = host.config.home-manager.users.h82;
+      hostName = entry.name;
+      userConfig = entry.user;
       sessionVariables = userConfig.home.sessionVariables or { };
 
       activation = userConfig.home.activation.claudeSettings or null;
@@ -83,7 +88,7 @@ let
         if activation == null then [ ] else (activation.after or [ ])
       );
 
-      managed = host.config.environment.etc."claude-code/managed-settings.json" or null;
+      managed = entry.config.environment.etc."claude-code/managed-settings.json" or null;
 
       # Home Manager resolves each entry's destination from `target`, which
       # defaults to the attribute name but can be set explicitly, so an
@@ -187,12 +192,11 @@ let
 in
 pkgs.runCommand "claude-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x
+  ${configurations.guard}
   failed=0
   declaredExpected=${declaredExpected}
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
+  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
 
   if [ "$failed" != "0" ]; then
     exit 1

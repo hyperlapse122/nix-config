@@ -47,7 +47,9 @@ in
     enable = lib.mkEnableOption "fingerprint authentication for the lock screen, polkit and sudo";
   };
 
-  config = lib.mkIf cfg.enable {
+  # The bootstrap output carries no enrolled prints and no user secrets, so the
+  # factor stays off there even on a host that declares the reader.
+  config = lib.mkIf (cfg.enable && !(config.my.bootstrap or false)) {
     # `kde` and `kde-fingerprint` are left to the Plasma module: it already
     # withholds the factor from `kde` and routes the lock screen through
     # `kde-fingerprint` when fprintd is enabled.

@@ -78,19 +78,34 @@ jobs:
       - name: Evaluate and test
         run: nix flake check --print-build-logs
 
-  build:
+  hosts:
     needs: changes
+    # Same fail-open gate as build: changes runs only on pull requests, so a
+    # plain needs-succeeded default would skip this job, and every build with
+    # it, on pushes to main.
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+      - name: List host configurations
+        id: list
+        run: |
+          targets=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames)
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [changes, hosts]
     if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - ThinkPad-X1-Carbon-Gen-11
-          - ThinkPad-X1-Carbon-Gen-11-bootstrap
-          - MS-7D91
-          - MS-7D91-bootstrap
+        target: ${{ fromJSON(needs.hosts.outputs.targets) }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Make room for NixOS closures
@@ -100,6 +115,10 @@ jobs:
           extra_nix_config: |
             system-features = big-parallel benchmark
       - name: Build host configuration without secrets
+        # The target comes from hosts/ directory names, so it reaches the
+        # shell as data rather than being spliced into the script.
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           nix build --no-link \
-            .#nixosConfigurations.${{ matrix.target }}.config.system.build.toplevel
+            ".#nixosConfigurations.${TARGET}.config.system.build.toplevel"

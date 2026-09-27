@@ -6,6 +6,20 @@
   disko's upstream test helper replaces the production by-id path with a
   disposable QEMU disk. It formats, mounts, unmounts, and boots the resulting
   installation; no host disk is touched.
+
+  The VM runs once, on the first host directory under hosts/. Every host's
+  layout differs from it only in the disk device path and sizes, and a second
+  VM run would double a slow test. Instead, every host's hosts/<host>/disko.nix
+  is checked at evaluation time for the invariants modules/nixos/system/boot.nix
+  and the VM script rely on:
+  - disk `main` carries a `luks` partition, whose partlabel
+    `disk-main-luks` boot.nix unlocks, holding a LUKS2 container named
+    `cryptroot`.
+  - a vfat ESP is mounted at `/boot`.
+  - the btrfs filesystem inside the container has the subvolumes root, home,
+    nix, log, and swap at `/`, `/home`, `/nix`, `/var/log`, and `/swap`, and
+    the swap subvolume carries a swapfile.
+  Every broken invariant on every host is listed in one evaluation error.
 */
 { pkgs, inputs }:
 let
@@ -17,8 +31,79 @@ let
     qemu-common = import "${inputs.nixpkgs}/nixos/lib/qemu-common.nix";
   };
   bootModule = ../modules/nixos/system/boot.nix;
-  productionDisk = import ../hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix;
-  testDisk = lib.recursiveUpdate productionDisk {
+
+  hostNames = import ./lib/directories.nix { inherit lib; } ../hosts;
+  diskOf =
+    hostName:
+    let
+      path = ../hosts + "/${hostName}/disko.nix";
+    in
+    if builtins.pathExists path then import path else null;
+
+  expectedSubvolumes = {
+    "/root" = "/";
+    "/home" = "/home";
+    "/nix" = "/nix";
+    "/log" = "/var/log";
+    "/swap" = "/swap";
+  };
+
+  layoutProblems =
+    hostName:
+    let
+      disk = diskOf hostName;
+      partitions = lib.attrByPath [ "disko" "devices" "disk" "main" "content" "partitions" ] { } disk;
+      esps = lib.filter (
+        partition:
+        (partition.content.type or null) == "filesystem"
+        && (partition.content.format or null) == "vfat"
+        && (partition.content.mountpoint or null) == "/boot"
+      ) (lib.attrValues partitions);
+      luks = partitions.luks.content or { };
+      formatArgs = luks.extraFormatArgs or [ ];
+      isLuks2 = lib.any (
+        i: lib.elemAt formatArgs i == "--type" && lib.elemAt formatArgs (i + 1) == "luks2"
+      ) (lib.range 0 (lib.length formatArgs - 2));
+      btrfs = luks.content or { };
+      subvolumes = btrfs.subvolumes or { };
+      label = "hosts/${hostName}/disko.nix";
+    in
+    if disk == null then
+      [ "hosts/${hostName} has no disko.nix" ]
+    else
+      lib.optional (partitions == { }) "${label}: disk `main` declares no partitions"
+      ++ lib.optional (esps == [ ]) "${label}: no vfat ESP is mounted at /boot"
+      ++
+        lib.optional ((luks.type or null) != "luks")
+          "${label}: partition `luks` on disk `main` is not a LUKS container, so boot.nix's disk-main-luks partlabel unlocks nothing"
+      ++ lib.optional (
+        (luks.name or null) != "cryptroot"
+      ) "${label}: the LUKS container is not named cryptroot"
+      ++ lib.optional (!isLuks2) "${label}: the LUKS container is not formatted as LUKS2"
+      ++ lib.optional ((btrfs.type or null) != "btrfs") "${label}: the LUKS container does not hold btrfs"
+      ++ lib.concatLists (
+        lib.mapAttrsToList (
+          subvolume: mountpoint:
+          lib.optional (
+            (subvolumes.${subvolume}.mountpoint or null) != mountpoint
+          ) "${label}: btrfs subvolume ${subvolume} is not mounted at ${mountpoint}"
+        ) expectedSubvolumes
+      )
+      ++ lib.optional (
+        (subvolumes."/swap".swap.swapfile or null) == null
+      ) "${label}: the /swap subvolume carries no swapfile";
+
+  problems = lib.concatMap layoutProblems hostNames;
+
+  firstDisk =
+    if hostNames == [ ] then
+      throw "boot-layout: no host directory under hosts/"
+    else if problems != [ ] then
+      throw "boot-layout: host disk layouts break the boot invariants:\n  ${lib.concatStringsSep "\n  " problems}"
+    else
+      diskOf (lib.head hostNames);
+
+  testDisk = lib.recursiveUpdate firstDisk {
     disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
     disko.devices.disk.main.content.partitions.luks.content.content.subvolumes."/swap".swap.swapfile.size =
       "100M";

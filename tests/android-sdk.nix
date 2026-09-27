@@ -9,8 +9,11 @@
   versions are read from the pin file here, independently of the module, so a
   module that stops deriving its versions from the pin fails.
 
-  Verifies, on ThinkPad-X1-Carbon-Gen-11, ThinkPad-X1-Carbon-Gen-11-bootstrap,
-  MS-7D91, and MS-7D91-bootstrap:
+  Verifies, on every configuration `tests/lib/configurations.nix` yields,
+  production and bootstrap alike:
+  - the h82 Home Manager generation exists; its store paths are interpolated
+    only when it does, so a removed user fails inside the builder rather than
+    during evaluation.
   - ~/.local/share/android-sdk is a link into a store SDK that carries every
     pinned package's and system image's package.xml at its repository path,
     and the accepted android-sdk-license.
@@ -35,6 +38,9 @@
   - environment.d/10-home-manager.conf carries the SDK and NDK variables, so
     apps the systemd user manager starts see them too.
   - ~/.androidrc holds exactly the --sdk flag for the link.
+
+  The builder collects every failure before it exits, so one red build names
+  every affected configuration.
 */
 { pkgs, self }:
 let
@@ -44,7 +50,10 @@ let
     concatMap
     concatMapStrings
     escapeShellArg
+    concatMapStringsSep
     ;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   repo = builtins.fromJSON (builtins.readFile ../packages/android-sdk-repo.json);
   # images nest api -> tag -> abi -> entry, one level deeper than packages.
@@ -71,13 +80,22 @@ let
     "ANDROID_SDK_ROOT=${sdkRoot}"
   ];
 
-  assertHost =
-    hostName: host:
+  assertEntry =
+    entry:
+    if entry.user ? home-files then
+      assertPresent entry
+    else
+      ''
+        fail ${escapeShellArg "${entry.name}: the h82 Home Manager generation is missing"}
+      '';
+
+  assertPresent =
+    entry:
     let
-      hm = host.config.home-manager.users.h82;
+      hm = entry.user;
       files = "${hm.home-files}";
       shellFile = "${hm.home.sessionVariablesPackage}/etc/profile.d/hm-session-vars.sh";
-      host' = escapeShellArg hostName;
+      host' = escapeShellArg entry.name;
     in
     ''
       check_file ${host'} ${escapeShellArg shellFile}
@@ -158,6 +176,8 @@ let
     '';
 in
 pkgs.runCommand "android-sdk-tests" { } ''
+  ${configurations.guard}
+
   # adb aborts when it cannot create ~/.android, and the sandbox HOME does
   # not exist.
   export HOME=$TMPDIR/home
@@ -188,10 +208,7 @@ pkgs.runCommand "android-sdk-tests" { } ''
     fi
   }
 
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-  ${assertHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
-  ${assertHost "MS-7D91" self.nixosConfigurations.MS-7D91}
-  ${assertHost "MS-7D91-bootstrap" self.nixosConfigurations.MS-7D91-bootstrap}
+  ${concatMapStringsSep "\n" assertEntry configurations.entries}
 
   if [ "$failed" != 0 ]; then
     exit 1

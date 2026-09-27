@@ -8,15 +8,18 @@ let
 in
 {
   options.my.keyd = {
+    enable = lib.mkEnableOption "the keyd remap of the internal keyboard";
     ids = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "0001:0001" ];
       description = "Keyboards the remap applies to. The default is the internal AT keyboard, narrowing the upstream wildcard so an external keyboard keeps stock behaviour.";
     };
+    # Off by default: a host without a Copilot key, such as the Gen 11 which
+    # predates it, keeps the chord binding out of the generated configuration.
     copilotKey = lib.mkEnableOption "the Copilot key correction, for hosts that ship a Copilot key in place of the right Meta key";
   };
 
-  config = {
+  config = lib.mkIf cfg.enable {
     services.keyd = {
       enable = true;
       keyboards.default = {

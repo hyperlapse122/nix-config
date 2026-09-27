@@ -5,17 +5,21 @@
 
   Asserts that rootless Podman, disabled rootful socket, helper package,
   environment variables, registries search drop-in, and auth.json activation logic
-  materialize correctly on both production and bootstrap ThinkPad configurations.
+  materialize correctly on every configuration `tests/lib/configurations.nix`
+  yields, production and bootstrap alike.
+
+  The builder collects every failure before it exits, so one red build names
+  every affected configuration.
 */
 { pkgs, self }:
 let
-  host = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11;
-  bootstrapHost = self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap;
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   checkHost =
-    hostName: hostCfg:
+    entry:
     let
-      packages = hostCfg.config.environment.systemPackages;
+      hostName = entry.name;
+      packages = entry.config.environment.systemPackages or [ ];
       podmanPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "podman") null packages;
       dockerCompatPkg = pkgs.lib.lists.findFirst (
         p: pkgs.lib.strings.hasPrefix "podman-docker-compat" p.name
@@ -24,40 +28,40 @@ let
 
       absentPodman = pkgs.lib.optionalString (podmanPkg == null) ''
         echo "missing podman in environment.systemPackages on ${hostName}" >&2
-        exit 1
+        failed=1
       '';
       presentPodman = pkgs.lib.optionalString (podmanPkg != null) ''
         if [ ! -x ${podmanPkg}/bin/podman ]; then
           echo "podman package ships no bin/podman executable on ${hostName}" >&2
-          exit 1
+          failed=1
         fi
       '';
 
       absentDockerCompat = pkgs.lib.optionalString (dockerCompatPkg == null) ''
         echo "missing podman-docker-compat in environment.systemPackages on ${hostName}" >&2
-        exit 1
+        failed=1
       '';
       presentDockerCompat = pkgs.lib.optionalString (dockerCompatPkg != null) ''
         if [ ! -x ${dockerCompatPkg}/bin/docker ]; then
           echo "podman-docker-compat package ships no bin/docker compat shim on ${hostName}" >&2
-          exit 1
+          failed=1
         fi
       '';
 
       absentHelper = pkgs.lib.optionalString (helperPkg == null) ''
         echo "missing docker-credential-sops in environment.systemPackages on ${hostName}" >&2
-        exit 1
+        failed=1
       '';
       presentHelper = pkgs.lib.optionalString (helperPkg != null) ''
         if [ ! -x ${helperPkg}/bin/docker-credential-sops ]; then
           echo "docker-credential-sops package ships no bin/docker-credential-sops executable on ${hostName}" >&2
-          exit 1
+          failed=1
         fi
       '';
 
-      rootfulWantedBy = hostCfg.config.systemd.sockets.podman.wantedBy;
+      rootfulWantedBy = entry.config.systemd.sockets.podman.wantedBy or null;
 
-      hm = hostCfg.config.home-manager.users.h82;
+      hm = entry.user;
       sessionAuth = hm.home.sessionVariables.REGISTRY_AUTH_FILE or "";
       sessionDocker = hm.home.sessionVariables.DOCKER_HOST or "";
       userSessionAuth = hm.systemd.user.sessionVariables.REGISTRY_AUTH_FILE or "";
@@ -82,25 +86,25 @@ let
       # 2. Verify rootful podman socket wantedBy is empty
       if [ "${builtins.toJSON rootfulWantedBy}" != "[]" ]; then
         echo "systemd.sockets.podman.wantedBy is not empty on ${hostName}: '${builtins.toJSON rootfulWantedBy}'" >&2
-        exit 1
+        failed=1
       fi
 
       # 3. Verify REGISTRY_AUTH_FILE and DOCKER_HOST session variables
       if [ '${sessionAuth}' != "/home/h82/.config/containers/auth.json" ]; then
         echo "home.sessionVariables.REGISTRY_AUTH_FILE is incorrect on ${hostName}: '${sessionAuth}'" >&2
-        exit 1
+        failed=1
       fi
       if [ '${sessionDocker}' != "unix://\''${XDG_RUNTIME_DIR}/podman/podman.sock" ]; then
         echo "home.sessionVariables.DOCKER_HOST is incorrect on ${hostName}: '${sessionDocker}'" >&2
-        exit 1
+        failed=1
       fi
       if [ '${userSessionAuth}' != "/home/h82/.config/containers/auth.json" ]; then
         echo "systemd.user.sessionVariables.REGISTRY_AUTH_FILE is incorrect on ${hostName}: '${userSessionAuth}'" >&2
-        exit 1
+        failed=1
       fi
       if [ '${userSessionDocker}' != "unix://\''${XDG_RUNTIME_DIR}/podman/podman.sock" ]; then
         echo "systemd.user.sessionVariables.DOCKER_HOST is incorrect on ${hostName}: '${userSessionDocker}'" >&2
-        exit 1
+        failed=1
       fi
 
       # 4. Verify home.activation.containersAuth has credHelpers mappings and no embedded tokens
@@ -110,25 +114,25 @@ let
           :
         else
           echo "home.activation.containersAuth missing $reg helper mapping on ${hostName}" >&2
-          exit 1
+          failed=1
         fi
       done
 
       if echo "$activationScriptData" | grep -q -E '(auths|token|password)'; then
         echo "home.activation.containersAuth contains embedded tokens on ${hostName}" >&2
-        exit 1
+        failed=1
       fi
 
       # 5. Verify registries search drop-in is enabled and sets unqualified-search-registries
       if [ '${if registriesConfEnabled then "1" else "0"}' != "1" ]; then
         echo "registries search drop-in is disabled on ${hostName}" >&2
-        exit 1
+        failed=1
       fi
       if echo '${registriesConf}' | grep -q 'unqualified-search-registries = \["docker.io"\]'; then
         :
       else
         echo "registries.conf drop-in missing unqualified-search-registries on ${hostName}: '${registriesConf}'" >&2
-        exit 1
+        failed=1
       fi
     '';
 in
@@ -140,9 +144,13 @@ pkgs.runCommand "podman-containers-tests"
   }
   ''
     set -x
+    ${configurations.guard}
+    failed=0
 
-    ${checkHost "ThinkPad-X1-Carbon-Gen-11" host}
-    ${checkHost "ThinkPad-X1-Carbon-Gen-11-bootstrap" bootstrapHost}
+    ${pkgs.lib.concatMapStringsSep "\n" checkHost configurations.entries}
 
+    if [ "$failed" != 0 ]; then
+      exit 1
+    fi
     touch $out
   ''

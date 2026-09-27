@@ -3,58 +3,55 @@
 
     import ./tests/logind-lid-switch.nix { inherit pkgs self; }
 
-  Asserts that ThinkPad-X1-Carbon-Gen-11 (production and bootstrap) render
-  suspend-then-hibernate lid-switch behavior on both surfaces that can decide
-  it -- systemd-logind (the fallback, consulted only when no Plasma session
-  holds the handle-lid-switch inhibitor) and KDE Powerdevil (the mechanism
-  actually in effect while a Plasma session is running) -- and that MS-7D91
-  carries neither.
+  Asserts the lid-switch policy on both surfaces that can decide it --
+  systemd-logind (the fallback, consulted only when no Plasma session holds the
+  handle-lid-switch inhibitor) and KDE Powerdevil (the mechanism actually in
+  effect while a Plasma session is running) -- on every configuration
+  `tests/lib/configurations.nix` yields, production and bootstrap alike. The
+  expectation is taken from each configuration's `my.laptop.enable` trait, never
+  from `services.logind.settings` or `home.activation`, the options the modules
+  under test set.
 
-  Verifies:
-  - ThinkPad-X1-Carbon-Gen-11 (production, bootstrap): environment.etc.
-    "systemd/logind.conf" renders HandleLidSwitch=suspend-then-hibernate,
-    HandleLidSwitchExternalPower=ignore, HandleLidSwitchDocked=ignore.
-  - ThinkPad-X1-Carbon-Gen-11 (production, bootstrap): the kdePowerLid home
-    activation script sets Battery/LowBattery LidAction=1 and SleepMode=3, AC
-    LidAction=0, and InhibitLidActionWhenExternalMonitorPresent=true on all
-    three profiles.
-  - MS-7D91: environment.etc."systemd/logind.conf" carries none of the three
-    Handle* keys, and no kdePowerLid activation entry exists at all.
+  On a configuration that enables the trait:
+  - the materialised /etc/systemd/logind.conf renders
+    HandleLidSwitch=suspend-then-hibernate, HandleLidSwitchExternalPower=ignore
+    and HandleLidSwitchDocked=ignore.
+  - the h82 kdePowerLid Home Manager activation script sets Battery/LowBattery
+    LidAction=1 and SleepMode=3, AC LidAction=0, and
+    InhibitLidActionWhenExternalMonitorPresent=true on all three profiles.
+
+  On a configuration that leaves the trait off:
+  - the materialised /etc/systemd/logind.conf carries none of the three
+    Handle* lines.
+  - no kdePowerLid activation entry exists at all.
+
+  At least one production configuration must enable the trait, or the helper
+  fails the check, so the positive branch never covers zero configurations.
+
+  Every lookup carries an `or null` fallback and store paths are interpolated
+  only inside the present branch, so a missing entry fails inside the builder
+  rather than during evaluation. The builder collects every failure before it
+  exits, so one red build names every affected configuration.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
+
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  laptop = configurations.withTrait "my.laptop.enable" (config: config.my.laptop.enable);
+
+  esc = value: lib.escapeShellArg (toString value);
+
+  fail = message: ''
+    echo ${esc message} >&2
+    failed=1
+  '';
 
   logindExpectedLines = [
     "HandleLidSwitch=suspend-then-hibernate"
     "HandleLidSwitchExternalPower=ignore"
     "HandleLidSwitchDocked=ignore"
   ];
-
-  assertLogindLines =
-    hostName: host: expectPresent:
-    let
-      logindFile = pkgs.writeText "${hostName}-logind.conf" (
-        host.config.environment.etc."systemd/logind.conf".text
-      );
-    in
-    lib.concatMapStringsSep "\n" (
-      line:
-      if expectPresent then
-        ''
-          if ! grep -Fxq -- '${line}' "${logindFile}"; then
-            echo "${hostName}: logind.conf is missing expected line: ${line}" >&2
-            exit 1
-          fi
-        ''
-      else
-        ''
-          if grep -Fxq -- '${line}' "${logindFile}"; then
-            echo "${hostName}: logind.conf unexpectedly carries: ${line}" >&2
-            exit 1
-          fi
-        ''
-    ) logindExpectedLines;
 
   powerdevilExpectedLines = [
     "--file powerdevilrc --group Battery --group SuspendAndShutdown --key LidAction -- 1"
@@ -67,36 +64,71 @@ let
     "--file powerdevilrc --group LowBattery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent --type bool true"
   ];
 
-  assertPowerdevilHandled =
-    hostName: host:
+  # The file the etc module materialises, honouring the entry's `enable`: a
+  # disabled entry keeps its source but never reaches /etc.
+  logindConf =
+    config:
     let
-      activationData = host.config.home-manager.users.h82.home.activation.kdePowerLid.data or null;
-      scriptFile = pkgs.writeText "${hostName}-kde-power-lid.sh" (
+      entry = config.environment.etc."systemd/logind.conf" or null;
+    in
+    if entry != null && (entry.enable or false) then entry.source or null else null;
+
+  powerLidData = entry: entry.user.home.activation.kdePowerLid.data or null;
+
+  assertEnabled =
+    entry:
+    let
+      conf = logindConf entry.config;
+      activationData = powerLidData entry;
+      scriptFile = pkgs.writeText "${entry.name}-kde-power-lid.sh" (
         if activationData != null then activationData else ""
       );
     in
-    ''
-      if [ ! -s "${scriptFile}" ]; then
-        echo "${hostName}: kdePowerLid activation script is missing or empty" >&2
-        exit 1
-      fi
-      ${lib.concatMapStringsSep "\n" (line: ''
-        if ! grep -Fq -- '${line}' "${scriptFile}"; then
-          echo "${hostName}: kdePowerLid activation script is missing: ${line}" >&2
-          exit 1
-        fi
-      '') powerdevilExpectedLines}
-    '';
+    lib.concatStringsSep "\n" [
+      (
+        if conf == null then
+          fail "${entry.name}: my.laptop.enable is set but no /etc/systemd/logind.conf is materialised"
+        else
+          lib.concatMapStringsSep "\n" (line: ''
+            if ! grep -Fxq -- ${esc line} ${esc conf}; then
+              ${fail "${entry.name}: my.laptop.enable is set but logind.conf is missing: ${line}"}
+            fi
+          '') logindExpectedLines
+      )
+      (
+        if activationData == null then
+          fail "${entry.name}: my.laptop.enable is set but no kdePowerLid activation entry exists"
+        else
+          ''
+            if [ ! -s ${esc scriptFile} ]; then
+              ${fail "${entry.name}: the kdePowerLid activation script is empty"}
+            fi
+            ${lib.concatMapStringsSep "\n" (line: ''
+              if ! grep -Fq -- ${esc line} ${esc scriptFile}; then
+                ${fail "${entry.name}: the kdePowerLid activation script is missing: ${line}"}
+              fi
+            '') powerdevilExpectedLines}
+          ''
+      )
+    ];
 
-  assertPowerdevilAbsent =
-    hostName: host:
+  assertDisabled =
+    entry:
     let
-      activationData = host.config.home-manager.users.h82.home.activation.kdePowerLid.data or null;
+      conf = logindConf entry.config;
     in
-    lib.optionalString (activationData != null) ''
-      echo "${hostName}: kdePowerLid activation entry unexpectedly exists" >&2
-      exit 1
-    '';
+    lib.concatStringsSep "\n" [
+      (lib.optionalString (conf != null) (
+        lib.concatMapStringsSep "\n" (line: ''
+          if grep -Fxq -- ${esc line} ${esc conf}; then
+            ${fail "${entry.name}: my.laptop.enable is off but logind.conf carries: ${line}"}
+          fi
+        '') logindExpectedLines
+      ))
+      (lib.optionalString (powerLidData entry != null) (
+        fail "${entry.name}: my.laptop.enable is off but a kdePowerLid activation entry exists"
+      ))
+    ];
 in
 pkgs.runCommand "logind-lid-switch-tests"
   {
@@ -104,19 +136,15 @@ pkgs.runCommand "logind-lid-switch-tests"
   }
   ''
     set -x
+    ${configurations.guard}
+    ${laptop.guard}
+    failed=0
 
-    ${assertLogindLines "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11
-      true
-    }
-    ${assertLogindLines "ThinkPad-X1-Carbon-Gen-11-bootstrap"
-      self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap
-      true
-    }
-    ${assertLogindLines "MS-7D91" self.nixosConfigurations.MS-7D91 false}
+    ${lib.concatMapStringsSep "\n" assertEnabled laptop.enabled}
+    ${lib.concatMapStringsSep "\n" assertDisabled laptop.disabled}
 
-    ${assertPowerdevilHandled "ThinkPad-X1-Carbon-Gen-11" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11}
-    ${assertPowerdevilHandled "ThinkPad-X1-Carbon-Gen-11-bootstrap" self.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap}
-    ${assertPowerdevilAbsent "MS-7D91" self.nixosConfigurations.MS-7D91}
-
+    if [ "$failed" != 0 ]; then
+      exit 1
+    fi
     touch $out
   ''

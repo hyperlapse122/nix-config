@@ -1,34 +1,13 @@
-{ config, lib, ... }:
+{ config, ... }:
 {
-  config.networking.hostName = "MS-7D91";
   imports = [
     ./hardware.nix
     ./disko.nix
-    ../../modules/nixos/system/base.nix
-    ../../modules/nixos/system/boot.nix
-    ../../modules/nixos/desktop/desktop.nix
-    ../../modules/nixos/desktop/user-avatar.nix
-    ../../modules/nixos/desktop/fonts.nix
-    ../../modules/nixos/system/nix-ld.nix
-    ../../modules/nixos/system/agent-browser-deps.nix
-    ../../modules/nixos/services/podman.nix
-    ../../modules/nixos/services/tailscale.nix
-    ../../modules/nixos/services/proton-vpn.nix
-    ../../modules/nixos/system/secrets.nix
-    ../../modules/nixos/wifi.nix
-    ../../modules/nixos/hardware/yubikey.nix
-    ../../modules/nixos/hardware/nuphy-gem80.nix
-    ../../modules/nixos/hardware/sennheiser-btd.nix
-    ../../modules/nixos/hardware/dualsense.nix
-    ../../modules/nixos/hardware/bluetooth-audio.nix
   ];
-  config.my.podman.enable = true;
-  config.my.cliAuth.enable = !config.my.bootstrap;
-  config.my.cliAuth.enableTokscaleToken = true;
-  config.my.tailscale.enable = !config.my.bootstrap;
-  config.my.tailscale.advertiseRoutes = !config.my.bootstrap;
-  config.my.protonVpn.enable = !config.my.bootstrap;
-  config.fileSystems."/mnt/data" = {
+  # keyd stays off here so the NuPhy Gem80 keeps its firmware mapping.
+  my.nuphyGem80.enable = true;
+  my.tailscale.advertiseRoutes = !config.my.bootstrap;
+  fileSystems."/mnt/data" = {
     device = "/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1";
     fsType = "exfat";
     options = [
@@ -38,10 +17,5 @@
       "dmask=0022"
       "fmask=0133"
     ];
-  };
-  options.my.bootstrap = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = "Install without private boot keys or user authentication secrets.";
   };
 }
