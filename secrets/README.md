@@ -32,14 +32,21 @@ itself give it access to an existing file: re-encrypt that file to the new
 recipient first, or split the rule per host.
 
 The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
-with exactly these string fields (the service usernames are public
-configuration and are not secret):
+of string fields (the service usernames are public configuration and are not
+secret):
 
 ```yaml
 github_token: <GitHub token>
 gitlab_token: <GitLab.com token>
 jpi_token: <git.jpi.app token>
+docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
+tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
 ```
+
+The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
+keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
+every decrypted key against this file at build time, so a flag set without its
+key fails the build.
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
