@@ -191,6 +191,23 @@
               exit 1
             fi
 
+            # An owned key through the packaged binary: the repository's entry
+            # starts stale with an extra event, and Orca's entry beside it must
+            # come through byte for byte.
+            mkdir -p home/.gemini/config
+            printf '{"orca-status":{"enabled":true,"Stop":[{"type":"command","command":"orca-hook","timeout":10}]},"orca-orchestration":{"enabled":false,"Stop":[]}}\n' \
+              > home/.gemini/config/hooks.json
+            printf '{"own":{"orca-orchestration":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
+              > owned.json
+            env -i ${packaged}/bin/agent-settings --label 'Antigravity hooks' \
+              --settings "$PWD/home/.gemini/config/hooks.json" --declared "$PWD/owned.json"
+            ${pkgs.python3}/bin/python3 - <<'PY'
+            import json
+            merged = json.load(open('home/.gemini/config/hooks.json'))
+            assert merged['orca-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'orca-hook', 'timeout': 10}]}, merged
+            assert merged['orca-orchestration'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
+            PY
+
             touch $out
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };

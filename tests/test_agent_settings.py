@@ -583,5 +583,119 @@ class NestedPathTests(unittest.TestCase):
         self.assertIn('scanner', result.stderr)
 
 
+# Antigravity's hooks.json maps a hook name to its events. Orca owns
+# `orca-status` and rewrites it at run time; the repository owns
+# `orca-orchestration`, seeded here with a stale value so a merger that
+# skipped the key could not match by accident.
+OWNED = {
+    'orca-orchestration': {
+        'enabled': True,
+        'SessionStart': [{'type': 'command', 'command': '/nix/store/new --harness antigravity', 'timeout': 10}],
+    },
+}
+
+OWNED_EXISTING = {
+    'orca-status': {
+        'enabled': True,
+        'PreInvocation': [{'type': 'command', 'command': 'orca-hook pre', 'timeout': 10}],
+        'Stop': [{'type': 'command', 'command': 'orca-hook stop', 'timeout': 10}],
+    },
+    'orca-orchestration': {
+        'enabled': False,
+        'SessionStart': [{'type': 'command', 'command': '/nix/store/old', 'timeout': 99}],
+        'Stop': [{'type': 'command', 'command': 'stale', 'timeout': 1}],
+    },
+}
+
+
+class OwnedKeyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.gemini/config/hooks.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare()
+
+    def declare(self, own=None, **fields):
+        document = {'own': OWNED if own is None else own}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else OWNED_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def assert_refused_untouched(self, *needles):
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError) as raised:
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+        for needle in needles:
+            self.assertIn(needle, str(raised.exception))
+
+    def test_owned_key_is_replaced_whole_and_other_keys_survive(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['orca-orchestration'], OWNED['orca-orchestration'])
+        self.assertEqual(result['orca-status'], OWNED_EXISTING['orca-status'])
+        self.assertEqual(sorted(result), ['orca-orchestration', 'orca-status'])
+
+    def test_creates_the_file_with_only_the_owned_key(self):
+        self.merge()
+        self.assertEqual(self.read(), OWNED)
+
+    def test_second_run_does_not_rewrite_the_file(self):
+        self.seed()
+        self.merge()
+        before = os.stat(self.settings)
+        self.merge()
+        after = os.stat(self.settings)
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_owned_value_is_not_aliased_to_the_declaration(self):
+        assign, retire, paths, owned = merger.declaration(self.declared)
+        merged = merger.apply({}, assign, retire, paths, owned)
+        merged['orca-orchestration']['enabled'] = False
+        self.assertTrue(owned['orca-orchestration']['enabled'])
+
+    def test_refuses_a_key_both_owned_and_set(self):
+        self.seed()
+        self.declare(set={'orca-orchestration': 'flat'})
+        self.assert_refused_untouched('orca-orchestration')
+
+    def test_refuses_a_key_both_owned_and_removed(self):
+        self.seed()
+        self.declare(remove=['orca-orchestration'])
+        self.assert_refused_untouched('orca-orchestration')
+
+    def test_refuses_a_path_through_an_owned_key(self):
+        self.seed()
+        self.declare(setPaths=[{'path': ['orca-orchestration', 'enabled'], 'value': True}])
+        self.assert_refused_untouched('orca-orchestration')
+
+    def test_refuses_an_own_field_that_is_not_an_object(self):
+        self.seed()
+        self.declare(own=['orca-orchestration'])
+        self.assert_refused_untouched('own')
+
+    def test_process_merges_owned_keys(self):
+        self.seed()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--label', 'Antigravity hooks',
+             '--settings', str(self.settings), '--declared', str(self.declared)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read()['orca-orchestration'], OWNED['orca-orchestration'])
+        self.assertEqual(self.read()['orca-status'], OWNED_EXISTING['orca-status'])
+
+
 if __name__ == '__main__':
     unittest.main()
