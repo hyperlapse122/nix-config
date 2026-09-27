@@ -18,9 +18,13 @@
     or holds no bootstrap output. Every check splices it before its per-entry
     assertions, so an empty list is a failure, never a silent pass.
   - `withTrait label predicate`: `{ enabled, disabled, guard }` for the trait
-    `predicate config` computes. `enabled` and `disabled` split `entries`;
-    `guard` fails the builder when no production configuration enables the
-    trait, so a check's positive branch can never cover zero configurations.
+    `predicate config` computes, where `label` is the trait's option path
+    (`my.keyd.enable`). `enabled` and `disabled` split `entries`; `guard`
+    fails the builder when no production configuration enables the trait, so
+    a check's positive branch can never cover zero configurations. When no
+    configuration leaves the trait off, `disabled` holds each production
+    configuration re-evaluated with `label` forced to `false`, so the
+    negative branch never covers zero configurations either.
 
   Trait options are read without `or` fallbacks: the shared profile imports
   every trait module, so each trait option exists on every configuration and a
@@ -30,12 +34,24 @@
 let
   inherit (pkgs) lib;
 
-  entries = lib.mapAttrsToList (name: host: {
+  entryOf = name: host: {
     inherit name;
     inherit (host) config;
     bootstrap = host.config.my.bootstrap;
     user = host.config.home-manager.users.h82 or { };
-  }) self.nixosConfigurations;
+  };
+
+  entries = lib.mapAttrsToList entryOf self.nixosConfigurations;
+
+  # A production configuration with the trait at `label` forced off, for a
+  # fleet in which every configuration enables it.
+  withTraitForcedOff =
+    label: entry:
+    entryOf "${entry.name} with ${label} forced off" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [ (lib.setAttrByPath (lib.splitString "." label) (lib.mkForce false)) ];
+      }
+    );
 
   production = lib.filter (entry: !entry.bootstrap) entries;
 in
@@ -56,12 +72,17 @@ in
         exit 1
       '';
 
-  withTrait = label: predicate: {
-    enabled = lib.filter (entry: predicate entry.config) entries;
-    disabled = lib.filter (entry: !predicate entry.config) entries;
-    guard = lib.optionalString (!lib.any (entry: predicate entry.config) production) ''
-      echo ${lib.escapeShellArg "tests/lib/configurations.nix: no production configuration enables ${label}, so this check's positive branch would cover no configuration"} >&2
-      exit 1
-    '';
-  };
+  withTrait =
+    label: predicate:
+    let
+      disabled = lib.filter (entry: !predicate entry.config) entries;
+    in
+    {
+      enabled = lib.filter (entry: predicate entry.config) entries;
+      disabled = if disabled != [ ] then disabled else map (withTraitForcedOff label) production;
+      guard = lib.optionalString (!lib.any (entry: predicate entry.config) production) ''
+        echo ${lib.escapeShellArg "tests/lib/configurations.nix: no production configuration enables ${label}, so this check's positive branch would cover no configuration"} >&2
+        exit 1
+      '';
+    };
 }

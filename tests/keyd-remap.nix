@@ -97,7 +97,14 @@ let
           ''
       )
       (assertBindings entry.name conf)
-      (lib.optionalString (conf != null) ''
+      # The Copilot chord follows the host's own my.keyd.copilotKey: present
+      # where the host asks for it, absent everywhere else.
+      (lib.optionalString (conf != null && entry.config.my.keyd.copilotKey) ''
+        if ! section main ${esc conf} | grep -Fxq "leftshift+leftmeta+f23=layer(meta)"; then
+          ${fail "${entry.name}: my.keyd.copilotKey is set but the Copilot binding is missing from [main]"}
+        fi
+      '')
+      (lib.optionalString (conf != null && !entry.config.my.keyd.copilotKey) ''
         if grep -q "f23" ${esc conf}; then
           ${fail "${entry.name}: the Copilot binding leaked into a configuration that does not ask for it"}
         fi

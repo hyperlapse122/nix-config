@@ -115,6 +115,10 @@ jobs:
           extra_nix_config: |
             system-features = big-parallel benchmark
       - name: Build host configuration without secrets
+        # The target comes from hosts/ directory names, so it reaches the
+        # shell as data rather than being spliced into the script.
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           nix build --no-link \
-            .#nixosConfigurations.${{ matrix.target }}.config.system.build.toplevel
+            ".#nixosConfigurations.${TARGET}.config.system.build.toplevel"
