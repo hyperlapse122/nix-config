@@ -27,6 +27,7 @@
   ];
   config.my.podman.enable = true;
   config.my.cliAuth.enable = !config.my.bootstrap;
+  config.my.cliAuth.enableTokscaleToken = true;
   config.my.tailscale.enable = !config.my.bootstrap;
   config.my.protonVpn.enable = !config.my.bootstrap;
   config.my.fingerprint.enable = !config.my.bootstrap;

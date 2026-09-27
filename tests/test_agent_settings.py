@@ -340,5 +340,248 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(self.read(), EXISTING)
 
 
+
+# Tokscale nests preferences one level down, beside runtime state it writes
+# itself.  Every nested object below already carries siblings the declaration
+# does not name, and the declared leaves start at other values, so a merger that
+# replaced the whole object would lose a key rather than coincide with the fix.
+NESTED_EXISTING = {
+    'colorPalette': 'green',
+    'scanner': {'opencodeDbPaths': ['x'], 'bucketTimezone': 'UTC'},
+    'autosubmit': {'enabled': True, 'lastRunAtMs': 1700000000000, 'lastError': 'timeout'},
+    'scanner.bucketTimezone': 'literal top-level key',
+    'usage': {'daily': [1, 2, 3]},
+}
+
+NESTED_PATHS = [
+    {'path': ['scanner', 'bucketTimezone'], 'value': 'Asia/Seoul'},
+    {'path': ['autosubmit', 'enabled'], 'value': False},
+]
+
+
+class NestedPathTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.config/tokscale/settings.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare(NESTED_PATHS, assign={'colorPalette': 'blue'})
+
+    def declare(self, paths, assign=None, remove=None):
+        self.declared.write_text(json.dumps(
+            {'set': assign or {}, 'remove': remove or [], 'setPaths': paths}))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else NESTED_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def assert_refused_untouched(self, *needles):
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError) as raised:
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+        for needle in needles:
+            self.assertIn(needle, str(raised.exception))
+
+    def test_nested_leaf_reasserts_and_its_siblings_survive(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['scanner'], {'opencodeDbPaths': ['x'], 'bucketTimezone': 'Asia/Seoul'})
+        self.assertEqual(result['colorPalette'], 'blue')
+        self.assertEqual(result['usage'], NESTED_EXISTING['usage'])
+
+    def test_missing_intermediate_object_is_created_with_only_the_leaf(self):
+        self.seed({'colorPalette': 'green'})
+        self.declare([{'path': ['autosubmit', 'enabled'], 'value': False}])
+        self.merge()
+        self.assertEqual(self.read(), {'colorPalette': 'green', 'autosubmit': {'enabled': False}})
+
+    def test_runtime_state_beside_a_reasserted_leaf_survives(self):
+        self.seed()
+        self.merge()
+        self.assertEqual(self.read()['autosubmit'],
+                         {'enabled': False, 'lastRunAtMs': 1700000000000, 'lastError': 'timeout'})
+
+    def test_creates_the_file_when_absent(self):
+        self.merge()
+        self.assertEqual(self.read(), {
+            'colorPalette': 'blue',
+            'scanner': {'bucketTimezone': 'Asia/Seoul'},
+            'autosubmit': {'enabled': False},
+        })
+
+    def test_refuses_a_non_object_intermediate_and_names_the_path(self):
+        self.seed(dict(NESTED_EXISTING, scanner='flat'))
+        self.assert_refused_untouched('["scanner", "bucketTimezone"]')
+
+    def test_refuses_a_null_intermediate(self):
+        # null is not an object either; replacing it would discard a value
+        # the owner wrote on purpose.
+        self.seed(dict(NESTED_EXISTING, scanner=None))
+        self.assert_refused_untouched('["scanner", "bucketTimezone"]')
+
+    def test_non_object_intermediate_refusal_does_not_tighten_the_parent(self):
+        self.seed(dict(NESTED_EXISTING, scanner='flat'))
+        self.settings.parent.chmod(0o755)
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.parent.stat().st_mode & 0o777, 0o755)
+
+    def test_a_dotted_top_level_key_is_neither_read_nor_written(self):
+        self.seed()
+        self.merge()
+        self.assertEqual(self.read()['scanner.bucketTimezone'], 'literal top-level key')
+        # A literal dotted key is also not taken as the object to merge into.
+        self.seed({'scanner.bucketTimezone': 'UTC'})
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['scanner.bucketTimezone'], 'UTC')
+        self.assertEqual(result['scanner'], {'bucketTimezone': 'Asia/Seoul'})
+
+    def test_a_segment_containing_a_dot_is_one_key(self):
+        self.seed({'a': {'b': 1}})
+        self.declare([{'path': ['a.b', 'c'], 'value': 2}])
+        self.merge()
+        self.assertEqual(self.read(), {'a': {'b': 1}, 'a.b': {'c': 2}})
+
+    def test_deeper_paths_merge_at_every_level(self):
+        self.seed({'a': {'keep': 1, 'b': {'keep': 2, 'c': 'old'}}})
+        self.declare([{'path': ['a', 'b', 'c'], 'value': 'new'}])
+        self.merge()
+        self.assertEqual(self.read(), {'a': {'keep': 1, 'b': {'keep': 2, 'c': 'new'}}})
+
+    def test_refuses_object_and_list_values(self):
+        self.seed()
+        for value in ({'bucketTimezone': 'Asia/Seoul'}, ['Asia/Seoul']):
+            with self.subTest(value=value):
+                self.declare([{'path': ['scanner'], 'value': value}])
+                self.assert_refused_untouched('["scanner"]')
+
+    def test_refuses_malformed_path_entries(self):
+        self.seed()
+        cases = [
+            'not a list',
+            ['not an entry'],
+            [{'path': [], 'value': 1}],
+            [{'path': 'scanner.bucketTimezone', 'value': 1}],
+            [{'path': ['scanner', 3], 'value': 1}],
+            [{'path': ['scanner', 'bucketTimezone']}],
+            [{'path': ['scanner', 'bucketTimezone'], 'value': 1, 'extra': True}],
+        ]
+        for paths in cases:
+            with self.subTest(paths=paths):
+                self.declare(paths)
+                self.assert_refused_untouched()
+
+    def test_refuses_a_path_whose_first_key_is_set_flat(self):
+        self.seed()
+        self.declare(NESTED_PATHS, assign={'scanner': 'x'})
+        self.assert_refused_untouched('scanner')
+
+    def test_refuses_a_path_whose_first_key_is_removed(self):
+        self.seed()
+        self.declare(NESTED_PATHS, remove=['autosubmit'])
+        self.assert_refused_untouched('autosubmit')
+
+    def test_refuses_overlapping_paths(self):
+        # One path running through another's leaf would either replace a
+        # declared scalar with an object or be refused only at run time,
+        # depending on the order they happened to be listed in.
+        self.seed()
+        for paths in ([{'path': ['a'], 'value': 1}, {'path': ['a', 'b'], 'value': 2}],
+                      [{'path': ['a', 'b'], 'value': 2}, {'path': ['a'], 'value': 1}],
+                      [{'path': ['a', 'b'], 'value': 1}, {'path': ['a', 'b'], 'value': 2}]):
+            with self.subTest(paths=paths):
+                self.declare(paths)
+                self.assert_refused_untouched('["a"')
+
+    def test_refuses_an_unknown_declared_field(self):
+        # A misspelt field would otherwise be ignored and its values never
+        # asserted, with nothing in the rebuild log to say so.
+        self.seed()
+        self.declared.write_text(json.dumps({'set': {}, 'setPath': NESTED_PATHS}))
+        self.assert_refused_untouched('setPath')
+
+    def test_second_run_does_not_rewrite_the_file(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual(before.st_ino, after.st_ino)
+        self.assertEqual(before.st_mtime_ns, after.st_mtime_ns)
+
+    def test_preserves_a_nested_write_that_lands_while_merging(self):
+        self.seed()
+        original = merger.read_settings
+        calls = []
+
+        def read_then_interfere(path):
+            current = original(path)
+            calls.append(None)
+            # The merge loop's first read, after the validation read.
+            if len(calls) == 2:
+                concurrent = json.loads(json.dumps(current))
+                concurrent['scanner']['writtenByTokscale'] = 'keep me'
+                path.write_text(json.dumps(concurrent))
+            return current
+
+        with mock.patch.object(merger, 'read_settings', read_then_interfere):
+            self.merge()
+        self.assertEqual(self.read()['scanner'], {
+            'opencodeDbPaths': ['x'],
+            'bucketTimezone': 'Asia/Seoul',
+            'writtenByTokscale': 'keep me',
+        })
+
+    def test_does_not_mutate_the_read_document(self):
+        # The unchanged check compares the merge against what was read; a merge
+        # that edited the read objects in place would always compare equal and
+        # never write.
+        current = json.loads(json.dumps(NESTED_EXISTING))
+        merger.apply(current, {}, [], [(['scanner', 'bucketTimezone'], 'Asia/Seoul')])
+        self.assertEqual(current, NESTED_EXISTING)
+
+    def test_flat_declarations_behave_as_before(self):
+        # The Claude and Gemini declarations carry no setPaths; with and without
+        # an empty one they must produce the same bytes.
+        outputs = []
+        for extra in ({}, {'setPaths': []}):
+            self.seed(EXISTING)
+            self.declared.write_text(json.dumps(dict({'set': DECLARED, 'remove': ['numStartups']}, **extra)))
+            self.merge()
+            outputs.append(self.settings.read_bytes())
+        self.assertEqual(outputs[0], outputs[1])
+        result = json.loads(outputs[0])
+        self.assertEqual(result, dict({k: v for k, v in EXISTING.items() if k != 'numStartups'}, **DECLARED))
+
+    def test_process_merges_nested_paths(self):
+        self.seed()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--label', 'Tokscale',
+             '--settings', str(self.settings), '--declared', str(self.declared)],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read()['scanner']['bucketTimezone'], 'Asia/Seoul')
+
+    def test_process_reports_a_non_object_intermediate(self):
+        self.seed(dict(NESTED_EXISTING, scanner='flat'))
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--label', 'Tokscale',
+             '--settings', str(self.settings), '--declared', str(self.declared)],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Tokscale settings merge failed', result.stderr)
+        self.assertIn('scanner', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

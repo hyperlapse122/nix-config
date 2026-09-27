@@ -5,5 +5,6 @@
     ./claude.nix
     ./gemini.nix
     ./orca-skills.nix
+    ./tokscale.nix
   ];
 }

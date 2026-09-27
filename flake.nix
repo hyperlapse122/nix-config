@@ -159,6 +159,38 @@
             assert 'retired' not in merged, merged
             PY
 
+            # Nested assignment through the packaged binary: the declared leaves
+            # start divergent and every nested object carries a sibling, so a
+            # whole-object replace drops a key here instead of matching.
+            mkdir -p home/.config/tokscale
+            printf '{"autoRefreshMs":60000,"tuiLightMode":true,"scanner":{"opencodeDbPaths":["x"],"bucketTimezone":"UTC"},"autosubmit":{"enabled":true,"lastRunAtMs":1700000000000},"scanner.bucketTimezone":"literal"}\n' \
+              > home/.config/tokscale/settings.json
+            printf '{"set":{"autoRefreshMs":30000},"setPaths":[{"path":["scanner","bucketTimezone"],"value":"Asia/Seoul"},{"path":["autosubmit","enabled"],"value":false}]}\n' \
+              > nested.json
+            env -i ${packaged}/bin/agent-settings --label Tokscale \
+              --settings "$PWD/home/.config/tokscale/settings.json" --declared "$PWD/nested.json"
+            ${pkgs.python3}/bin/python3 - <<'PY'
+            import json
+            merged = json.load(open('home/.config/tokscale/settings.json'))
+            assert merged['autoRefreshMs'] == 30000, merged
+            assert merged['tuiLightMode'] is True, merged
+            assert merged['scanner'] == {'opencodeDbPaths': ['x'], 'bucketTimezone': 'Asia/Seoul'}, merged
+            assert merged['autosubmit'] == {'enabled': False, 'lastRunAtMs': 1700000000000}, merged
+            assert merged['scanner.bucketTimezone'] == 'literal', merged
+            PY
+
+            # A non-object intermediate must fail the process and leave the file alone.
+            printf '{"scanner":"flat"}\n' > home/.config/tokscale/settings.json
+            if env -i ${packaged}/bin/agent-settings --label Tokscale \
+                --settings "$PWD/home/.config/tokscale/settings.json" --declared "$PWD/nested.json"; then
+              echo "packaged merger accepted a non-object intermediate" >&2
+              exit 1
+            fi
+            if [ "$(cat home/.config/tokscale/settings.json)" != '{"scanner":"flat"}' ]; then
+              echo "refused nested merge still rewrote the settings file" >&2
+              exit 1
+            fi
+
             touch $out
           '';
         gemini = import ./tests/gemini.nix { inherit pkgs self; };
@@ -745,6 +777,26 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
+        tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
+        tokscale-wrapper =
+          let
+            packaged = import ./packages/tokscale.nix {
+              inherit pkgs;
+              hostName = "test-host";
+              tokenFile = "${pkgs.writeText "tokscale-fake-token" "fake-token-123\n"}";
+            };
+          in
+          pkgs.runCommand "tokscale-wrapper-tests" { } ''
+            export HOME=$TMPDIR
+            mkdir -p scripts tests
+            cp ${./scripts/tokscale} scripts/tokscale
+            cp ${./tests/tokscale.sh} tests/tokscale.sh
+            chmod +x scripts/tokscale
+            patchShebangs scripts/tokscale
+            bash tests/tokscale.sh scripts/tokscale
+            bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
+            touch $out
+          '';
         ci-docs-only-paths =
           pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
             ''

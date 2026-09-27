@@ -85,6 +85,11 @@ in
       default = false;
       description = "Decrypt docker_token from secrets/tokens.yaml when provisioned.";
     };
+    enableTokscaleToken = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Decrypt tokscale_token from secrets/tokens.yaml for the tokscale wrapper, which reads it at run time.";
+    };
   };
   config = lib.mkMerge [
     {
@@ -138,6 +143,7 @@ in
                     "jpi_token"
                   ]
                   ++ lib.optional cfg.enableDockerToken "docker_token"
+                  ++ lib.optional cfg.enableTokscaleToken "tokscale_token"
                 ))
                 (name: {
                   key = lib.removePrefix "cli-auth/" name;

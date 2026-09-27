@@ -146,6 +146,26 @@ Bumping Orca therefore means updating two hashes in `packages/orca.nix`: the App
 
 Do not also run `orca skills install`, or the `npx skills add https://github.com/stablyai/orca ... --global` command Orca's Settings suggests: both install from the upstream default branch into the same roots, and the next new Home Manager generation overwrites those skill directories with the pinned release.
 
+### Tokscale
+
+`home/h82/agents/tokscale.nix` puts a `tokscale` wrapper on `PATH` (`scripts/tokscale`, packaged by `packages/tokscale.nix`). It runs `bun x tokscale@latest` with three additions:
+
+- `TOKSCALE_DEVICE_NAME` is the host name baked in at build time: `ThinkPad-X1-Carbon-Gen-11` or `MS-7D91`.
+- `TOKSCALE_EXTRA_DIRS` gains a `codex:<dir>` entry for each existing `~/.config/orca/codex-accounts/*/home/sessions`, after any value you already exported. A path containing a comma is skipped, because the variable is comma-separated.
+- `TOKSCALE_API_TOKEN` is read from `/run/secrets/cli-auth/tokscale_token` on each run, unless you exported a non-empty value yourself. No `~/.config/tokscale/credentials.json` is written.
+
+Both production hosts set `my.cliAuth.enableTokscaleToken = true;`, which decrypts `tokscale_token` from `secrets/tokens.yaml` to that path, owned by h82 with mode 0400. `publish-cli-auth` never reads it, so a Tokscale problem cannot block gh and glab. To add or rotate the token, edit it into `secrets/tokens.yaml` without passing it as an argument:
+
+```sh
+SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt" sops secrets/tokens.yaml
+```
+
+A rotated token takes effect on the next `tokscale` run after the rebuild that decrypts it. On a bootstrap host, or with the flag off, the file is absent and Tokscale runs unauthenticated: local reports work and commands that need an account report "Not logged in". Commands run through `bunx` directly, rather than through the wrapper, are unauthenticated too.
+
+Tokscale owns `~/.config/tokscale/settings.json`, so activation runs the same `agent-settings` merger as Claude Code. It reasserts `colorPalette`, `autoRefreshEnabled`, `autoRefreshMs`, `scanner.bucketTimezone`, and `autosubmit.enabled`, and leaves every other key, runtime state included, as Tokscale wrote it. As with Claude Code, a declared key returns only on a rebuild that produces a new Home Manager generation. Do not change the declared `scanner.bucketTimezone` casually: Tokscale refuses to move it without a server resync, because submitted day rows are monotonic. `~/.config/tokscale/custom-pricing.json` is a read-only store link holding the declared model prices.
+
+Autosubmit stays off. Its scheduler would run Tokscale outside the wrapper, without the token.
+
 ### Memory
 
 Persistent memory features are explicitly disabled so mutable per-user history does not affect agent behavior. Claude Code uses the `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable above; the Antigravity CLI sets `"disableAutoGenerateMemories": true` in `~/.gemini/antigravity-cli/settings.json`, and `~/.gemini/settings.json` sets `"experimental": { "autoMemory": false }`.
