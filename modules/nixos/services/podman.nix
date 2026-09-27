@@ -21,5 +21,9 @@ in
     # virtualisation.podman.enable adds "sockets.target" to systemd.sockets.podman.wantedBy,
     # which starts the rootful daemon socket. We explicitly empty it.
     systemd.sockets.podman.wantedBy = lib.mkForce [ ];
+
+    # Rootless Podman needs /etc/subuid and /etc/subgid entries. nixpkgs only
+    # sets this with mkDefault for normal users that declare no explicit ranges.
+    users.users.h82.autoSubUidGidRange = true;
   };
 }
