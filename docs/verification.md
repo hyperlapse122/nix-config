@@ -17,7 +17,7 @@ Run VM checks on Linux with access to `/dev/kvm`. Use only temporary VM disks; d
 A successful VM test or build does not replace these checks. The person who performs them must record the results.
 
 - [ ] Before installation, recover the bootstrap age identity with an actual YubiKey carrying key `621512777E6933FEB4458FDC4945855D4F283F05`.
-- [ ] Boot the installed NixOS with Secure Boot in the enabled/user state.
+- [x] Boot the installed NixOS with Secure Boot in the enabled/user state.
 - [ ] Confirm that the TPM unlocks LUKS automatically.
 - [ ] Boot with the recovery passphrase when the TPM is unavailable.
 - [ ] Boot both the new generation and a previous generation.
@@ -26,20 +26,20 @@ A successful VM test or build does not replace these checks. The person who perf
 - [ ] After a rebuild that produces a new Home Manager generation, log in and confirm Plasma panels, Dolphin, and System Settings render in Breeze Dark. Also record whether a GTK app (Ghostty) and a browser follow the dark scheme; the repository sets only the KDE side.
 - [ ] After populating `secrets/wifi.yaml` with real values and rebuilding, confirm a declared network auto-connects with no manual `nmcli`/GUI configuration on each host that comes into its range. This is distinct from the generic Wi-Fi check above, which only confirms the hardware itself works, not that this repo's declared profile is what connected.
 - [ ] Rebuild successfully without a YubiKey or 1Password session.
-- [ ] Confirm valid authentication on GitHub, GitLab.com, and git.jpi.app.
-- [ ] Verify signed commits and tags in a temporary Git repository with `git verify-commit` and `git verify-tag`.
-- [ ] Confirm commits and tags signed before the rotation still verify against `keys/signing-legacy.asc`.
-- [ ] Confirm each of the three cards signs and decrypts, with only that card inserted.
-- [ ] Confirm `gpg --card-status` reports `UIF setting` as `Sign=off Decrypt=off Auth=off` on each card.
-- [ ] Register each card's PIN under its own serial, and confirm signing proceeds without a prompt for each.
-- [ ] Confirm a rejected PIN discards only that serial's entry and falls back to the pinentry prompt, leaving the other cards registered.
-- [ ] With a card inserted, confirm its hidraw device carries `ID_SECURITY_TOKEN`. That tag, set by systemd's own rules rather than by anything this repository declares, is what hands the device to the logged-in user.
-- [ ] From an ordinary login shell, with no development shell entered, run `ykman fido credentials list` and confirm it reaches the card's FIDO application without a permission error. An empty list passes, and so does a refusal naming an unset FIDO2 PIN: neither setting a PIN nor creating a credential is in scope here, so neither absence is a fault.
-- [ ] Open Yubico Authenticator from the application launcher and confirm its passkey view reports the same credentials as the command above.
+- [x] Confirm valid authentication on GitHub, GitLab.com, and git.jpi.app.
+- [x] Verify signed commits and tags in a temporary Git repository with `git verify-commit` and `git verify-tag`.
+- [x] Confirm commits and tags signed before the rotation still verify against `keys/signing-legacy.asc`. The repository has no tags, so only commits were verified.
+- [x] Confirm each of the three cards signs and decrypts, with only that card inserted.
+- [x] Confirm `gpg --card-status` reports `UIF setting` as `Sign=off Decrypt=off Auth=off` on each card.
+- [x] Register each card's PIN under its own serial, and confirm signing proceeds without a prompt for each.
+- [x] Confirm a rejected PIN discards only that serial's entry and falls back to the pinentry prompt, leaving the other cards registered.
+- [x] With a card inserted, confirm its hidraw device carries `ID_SECURITY_TOKEN`. That tag, set by systemd's own rules rather than by anything this repository declares, is what hands the device to the logged-in user.
+- [x] From an ordinary login shell, with no development shell entered, run `ykman fido credentials list` and confirm it reaches the card's FIDO application without a permission error. An empty list passes, and so does a refusal naming an unset FIDO2 PIN: neither setting a PIN nor creating a credential is in scope here, so neither absence is a fault.
+- [x] Open Yubico Authenticator from the application launcher and confirm its passkey view reports the same credentials as the command above.
 - [ ] Pick a site where a card is registered as a second factor rather than as a passkey, and confirm it is absent from both listings. That absence is the documented limit, not a fault: the card stores nothing for a non-discoverable credential. Record it once so a later reader does not chase it as a bug.
-- [ ] Sign a commit with a card inserted while Yubico Authenticator is running, and confirm signing still proceeds through the existing PIN proxy. The GUI is a third client of the same card, and no repository check can reach that contention.
-- [ ] After signing in to 1Password and enabling its SSH agent, connect over SSH with the selected key.
-- [ ] Confirm `op --version` runs and that `op` resolves to the setgid wrapper under `/run/wrappers/bin`.
+- [x] Sign a commit with a card inserted while Yubico Authenticator is running, and confirm signing still proceeds through the existing PIN proxy. The GUI is a third client of the same card, and no repository check can reach that contention.
+- [x] After signing in to 1Password and enabling its SSH agent, connect over SSH with the selected key.
+- [x] Confirm `op --version` runs and that `op` resolves to the setgid wrapper under `/run/wrappers/bin`.
 - [ ] After enabling "Integrate with 1Password CLI" in the app's Developer settings, read one item with `op` and confirm the desktop app authorizes it without a manual `op signin`.
 - [ ] Confirm 1Password and Kleopatra both appear in the tray after login with no manual launch, and that neither opens a window.
 - [ ] Record whether `~/.1password/agent.sock` exists while 1Password is running but still locked, or only after unlocking. That answer sizes the window in which the first SSH or Git operation of a session can still fail.
@@ -56,14 +56,14 @@ A successful VM test or build does not replace these checks. The person who perf
 - [ ] Install agent-browser, run `agent-browser install` without `--with-deps`, then open a page and take a screenshot. Confirm Chrome for Testing launches with no `cannot open shared object file` error and renders Korean text. Record any missing library it names instead of working around it. Also record whether emoji render in color: a local headless smoke drew them as monochrome glyphs, because `defaultFonts.emoji` prefers Twitter Color Emoji over Noto Color Emoji.
 - [ ] After activation, start a fresh `claude` session and confirm it reports Claude Opus 5.5 with the 1M context window (declared as `opus[1m]`) and effort `medium` without manual setup. The repository checks verify only the declared values, not that Claude Code applies them; report a mismatch instead of working around it.
 - [ ] Change a setting the repository does not declare and one the repository does declare, then rebuild **with a repository change in the same rebuild** and confirm the undeclared one survived while the declared one returned. The repository change is required: `home-manager-h82.service` is a `RemainAfterExit` oneshot whose unit embeds the generation path, so a rebuild that produces an identical Home Manager generation does not re-run activation and the merge does not happen at all.
-- [ ] Confirm `/etc/claude-code/managed-settings.json` no longer exists after the first rebuild that carries this change. While it exists it outranks every declared value, and the repository checks cannot see it.
-- [ ] Confirm auto memory is actually off in a fresh session. The retired managed tier used to force `autoMemoryEnabled = false` and outrank the user file, so a stale `true` may sit in `~/.claude/settings.json` where it was previously inert; the repository now declares only the environment variable.
-- [ ] Confirm with `sudo keyd monitor` that the built-in keyboard reports the device id the keyd module targets.
-- [ ] Switch between Korean and English with Caps Lock alone in a Plasma session.
-- [ ] Toggle capitalisation with Ctrl+Caps Lock.
-- [ ] Confirm the Caps Lock toggle still switches input after resuming from suspend.
-- [ ] At the SDDM greeter, confirm Caps Lock alone does nothing and leaves its LED off while Ctrl+Caps Lock still toggles capitalisation.
-- [ ] Confirm `podman run --rm hello-world` runs rootlessly without sudo.
+- [x] Confirm `/etc/claude-code/managed-settings.json` no longer exists after the first rebuild that carries this change. While it exists it outranks every declared value, and the repository checks cannot see it.
+- [x] Confirm auto memory is actually off in a fresh session. The retired managed tier used to force `autoMemoryEnabled = false` and outrank the user file, so a stale `true` may sit in `~/.claude/settings.json` where it was previously inert; the repository now declares only the environment variable.
+- [x] Confirm with `sudo keyd monitor` that the built-in keyboard reports the device id the keyd module targets.
+- [x] Switch between Korean and English with Caps Lock alone in a Plasma session.
+- [x] Toggle capitalisation with Ctrl+Caps Lock.
+- [x] Confirm the Caps Lock toggle still switches input after resuming from suspend.
+- [x] At the SDDM greeter, confirm Caps Lock alone does nothing and leaves its LED off while Ctrl+Caps Lock still toggles capitalisation.
+- [x] Confirm `podman run --rm hello-world` runs rootlessly without sudo.
 - [ ] Confirm `podman pull` succeeds against private repositories on `ghcr.io`, `registry.gitlab.com`, `registry.jpi.app`, and `docker.io` without a manual `podman login` step.
 - [ ] Confirm `readlink ~/.local/share/android-sdk` resolves into an `androidsdk` store path, and that `sdkmanager --list_installed` reports exactly the versions `packages/android-sdk-repo.json` pins. The `android` CLI that cmdline-tools 23 delegates to downloads its own runtime into `~/.android` on first use, runs it through nix-ld, and cannot write to the read-only SDK; record whether listing works from the store SDK, since no repository check has network access to exercise it.
 - [ ] From a login shell, run `./gradlew assembleDebug` in an existing Android project and confirm the APK builds without a manual SDK or JDK setup. The SDK is read-only, so a project that asks for a compileSdk or build-tools version the pin lacks fails instead of downloading it; the fix is to add the version with `android-sdk-release --platforms`, `--build-tools`, `--cmake`, or `--ndk`.
@@ -80,14 +80,14 @@ A successful VM test or build does not replace these checks. The person who perf
 - [ ] Confirm the SDDM greeter still demands the password and offers no fingerprint.
 - [ ] Confirm the SDDM greeter shows the `h82` avatar rather than the generic icon, and that `/run/current-system/sw/share/sddm/faces/h82.face.icon` exists. The greeter cannot read `~/.face.icon` through the mode-700 home directory, so this file is its only source.
 - [ ] Confirm System Settings (Users) and the Plasma launcher show the same avatar. With no avatar set through System Settings, both fall back to `~/.face` or `~/.face.icon`; an avatar set there is stored by AccountsService and outranks those files until cleared. `user-avatar` checks only that the files are deployed, not that Plasma picks them up.
-- [ ] Confirm `readlink ~/.face ~/.face.icon` both resolve into a `home-manager-files` store path, not a leftover file from the legacy dotfiles.
+- [x] Confirm `readlink ~/.face ~/.face.icon` both resolve into a `home-manager-files` store path, not a leftover file from the legacy dotfiles.
 - [ ] Confirm `fprintd-list h82` reports exactly the fingers that were meant to be enrolled. No build-time check can see this, and a stale enrollment from before a reinstall is a live credential.
 - [ ] After a suspend/resume cycle, record whether fingerprint unlock works at the lock screen. It is known to fail until the screen locker is recycled, because fprintd restarts on resume while the preserved locker keeps a stale PAM connection (nixpkgs#432276). Record the behaviour rather than chasing it; this configuration did not cause it.
 - [ ] Swipe an unenrolled finger repeatedly at the lock screen and confirm the password still works afterwards.
 - [ ] Boot a previous generation after this change lands and confirm the machine is usable there. Under PCR 7 the TPM still releases the disk key, so no passphrase is needed for the rollback itself.
 - [ ] On battery, close the lid and confirm the machine suspends immediately, then confirm it actually powers off (not merely stays suspended) after the hibernate delay elapses.
 - [ ] On external AC power, close the lid and confirm nothing happens; reconnect AC while running on battery with the lid open, and separately connect an external monitor while on battery, then confirm closing the lid does nothing in either case.
-- [ ] Confirm the 64G btrfs swapfile is large enough to hold a hibernation image for this machine's installed RAM; `logind-lid-switch` cannot verify swap capacity from static configuration.
+- [x] Confirm the 64G btrfs swapfile is large enough to hold a hibernation image for this machine's installed RAM; `logind-lid-switch` cannot verify swap capacity from static configuration.
 - [ ] After a hibernate triggered by lid close, confirm the next boot starts a fresh session rather than resuming the previous one. This repository configures no resume offset for the btrfs swapfile, so session state is expected to be lost, not restored.
 - [ ] On `MS-7D91`, with the NuPhy Gem80 plugged in, confirm its hidraw node carries the `uaccess` tag and an ACL entry for `h82` (`udevadm info` on the node, `getfacl` on `/dev/hidraw*`), and that the VIA configurator opens the keyboard without `sudo`. `udev-device-access` proves the rule sits before the uaccess builtin, not that the builtin acts on the device, so this is the check that confirms the ordering rationale.
 - [ ] On `MS-7D91`, list the Gem80's hidraw nodes and their interface numbers (`udevadm info -a` on each `/dev/hidraw*`), and record which of them carry the `uaccess` ACL for `h82`. The Gem80 rule matches the vendor and product IDs on the parent chain, so it tags every hidraw node of the keyboard, not only the VIA interface, and the typing interface can then be read by any process running as `h82`. If the VIA interface number can be pinned, narrow the rule with `ENV{ID_USB_INTERFACE_NUM}` and update the matching literal in `tests/udev-device-access.nix`; otherwise keep the exposure as an accepted trade-off and say so in `modules/nixos/hardware/nuphy-gem80.nix`.
