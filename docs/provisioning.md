@@ -19,25 +19,19 @@ The preparation helper does this. It runs on the pre-migration host, from the de
 
 ```sh
 nix develop
-# For ThinkPad:
 ./scripts/prepare-age-identity \
-  --host ThinkPad-X1-Carbon-Gen-11 \
-  --recipient 621512777E6933FEB4458FDC4945855D4F283F05
-
-# For MS-7D91 Desktop:
-./scripts/prepare-age-identity \
-  --host MS-7D91 \
+  --host <host> \
   --recipient 621512777E6933FEB4458FDC4945855D4F283F05
 ```
 
-It writes `secrets/bootstrap/<hostname>/age-key.asc` and `secrets/bootstrap/<hostname>/recipient.txt`.
+Replace `<host>` with the machine's directory name under `hosts/`. It writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/recipient.txt`.
 
-Set the recipient in `.sops.yaml` to the value it recorded under `&<hostname>`. Every host whose recipient appears in the creation rules list can decrypt `secrets/tokens.yaml`; adding a new host requires re-encrypting the file with `sops updatekeys -y secrets/tokens.yaml`. Create or update the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
+`.sops.yaml` has no per-host anchors: each creation rule lists its age recipients inline, comma-separated. Append the recorded recipient to the `age:` list of every rule the host needs. Every host whose recipient appears in a file's rule can decrypt that file. Adding a recipient to an existing file's rule requires re-encrypting it, for example with `sops updatekeys -y secrets/tokens.yaml`; [adding a host](adding-a-host.md#add-the-recipient-to-sopsyaml-and-re-encrypt) gives the commands for every file. Create or update the token YAML in a private temporary directory using the schema in `secrets/README.md`. Prepare tokens and usernames for GitHub, GitLab.com, and git.jpi.app. Do not pass tokens as command arguments.
 
 ```sh
 umask 077
 secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
-# When encrypting for both hosts listed in .sops.yaml:
+# Encrypts for every recipient listed in the matching .sops.yaml rule:
 sops --encrypt \
   --input-type yaml --output-type yaml \
   "$secret_tmp/tokens.yaml" > secrets/tokens.yaml
@@ -55,15 +49,12 @@ First, log in as h82 with the bootstrap configuration's public GPG key and user 
 ./scripts/recover-age-identity
 ```
 
-Pass `--host NAME` when the hostname is not the configuration name, which is the case in the installation media and inside `nixos-enter`. See `secrets/README.md` for the pipeline it runs and the boundary it preserves.
+Pass `--host <host>` when the hostname is not the configuration name, which is the case in the installation media and inside `nixos-enter`. See `secrets/README.md` for the pipeline it runs and the boundary it preserves.
 
 The recovery helper verifies the expected age public recipient and atomically installs `/var/lib/sops-nix/key.txt` with ownership root:root and mode 0600. An invalid identity does not overwrite the existing key. Once the key is ready, run the following command to apply the configuration, including user authentication files.
 
 ```sh
-# On ThinkPad:
-sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
-# On MS-7D91:
-sudo nixos-rebuild switch --flake .#MS-7D91
+sudo nixos-rebuild switch --flake .#<host>
 ```
 
 Use the same command for later applies. It works with the YubiKey disconnected or Secret Service and 1Password locked. The gh/glab authentication files are user-owned regular files with mode 0600. The next apply restores their declared contents. Do not repeat manual `gh auth login` or `glab auth login` as follow-up steps.
@@ -156,11 +147,11 @@ Do not also run `orca skills install`, or the `npx skills add https://github.com
 
 `home/h82/agents/tokscale.nix` puts a `tokscale` wrapper on `PATH` (`scripts/tokscale`, packaged by `packages/tokscale.nix`). It runs `bun x tokscale@latest` with three additions:
 
-- `TOKSCALE_DEVICE_NAME` is the host name baked in at build time: `ThinkPad-X1-Carbon-Gen-11` or `MS-7D91`.
+- `TOKSCALE_DEVICE_NAME` is the host name baked in at build time: the configuration's `networking.hostName`, which is the host's directory name under `hosts/`.
 - `TOKSCALE_EXTRA_DIRS` gains a `codex:<dir>` entry for each existing `~/.config/orca/codex-accounts/*/home/sessions`, after any value you already exported. A path containing a comma is skipped, because the variable is comma-separated.
 - `TOKSCALE_API_TOKEN` is read from `/run/secrets/cli-auth/tokscale_token` on each run, unless you exported a non-empty value yourself. No `~/.config/tokscale/credentials.json` is written.
 
-Both production hosts set `my.cliAuth.enableTokscaleToken = true;`, which decrypts `tokscale_token` from `secrets/tokens.yaml` to that path, owned by h82 with mode 0400. `publish-cli-auth` never reads it, so a Tokscale problem cannot block gh and glab. To add or rotate the token, edit it into `secrets/tokens.yaml` without passing it as an argument:
+The shared profile, `modules/nixos/profile.nix`, sets `my.cliAuth.enableTokscaleToken` to `true` by default on every host, which on a production output decrypts `tokscale_token` from `secrets/tokens.yaml` to that path, owned by h82 with mode 0400. `publish-cli-auth` never reads it, so a Tokscale problem cannot block gh and glab. To add or rotate the token, edit it into `secrets/tokens.yaml` without passing it as an argument:
 
 ```sh
 SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt" sops secrets/tokens.yaml
@@ -182,7 +173,7 @@ Existing memory stores on disk are intentionally left untouched. Disabling the f
 
 ## Fingerprint enrollment
 
-The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` keeps only a receipt naming the on-device record, so an enrollment can neither be restored from a backup nor removed by erasing the disk. Nothing about it belongs in `secrets/`.
+This applies to hosts that enable the `my.fingerprint.enable` trait; the fingerprint module keeps it off on the bootstrap output. The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` keeps only a receipt naming the on-device record, so an enrollment can neither be restored from a backup nor removed by erasing the disk. Nothing about it belongs in `secrets/`.
 
 Enrollment can be performed directly through KDE Plasma System Settings (Users → Fingerprint Settings) or using the packaged `enroll-fingerprint` helper. The polkit rule authorizes `root` and members of the `wheel` group for `net.reactivated.fprint.device.enroll`, while denying unprivileged non-administrative users.
 
@@ -206,7 +197,7 @@ fprintd-delete "$USER"
 
 `fprintd-delete` is authorized for `wheel` users and `root` because upstream's policy names one `enroll` action covering both enrollment and deletion.
 
-Removing every enrolled finger is a required step before the laptop is reinstalled, sold, serviced, or disposed of. Erasing the disk does not reach the sensor, and a template left there is a credential the next installation will happily match.
+Removing every enrolled finger is a required step before a host with the `my.fingerprint.enable` trait is reinstalled, sold, serviced, or disposed of. Erasing the disk does not reach the sensor, and a template left there is a credential the next installation will happily match.
 
 ## Container runtime and registry authentication
 
@@ -227,7 +218,7 @@ Supported registries:
    sops secrets/tokens.yaml
    ```
 
-   Then enable Docker Hub token decryption in your host configuration:
+   Then enable Docker Hub token decryption in `hosts/<host>/default.nix`:
 
    ```nix
    my.cliAuth.enableDockerToken = true;

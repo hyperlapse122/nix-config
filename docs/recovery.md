@@ -3,16 +3,12 @@
 ## Routine configuration applies
 
 ```sh
-# On ThinkPad:
-sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
-
-# On MS-7D91:
-sudo nixos-rebuild switch --flake .#MS-7D91
+sudo nixos-rebuild switch --flake .#<host>
 ```
 
-This command does not format disks or enroll TPM or UEFI keys. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
+Replace `<host>` with the machine's directory name under `hosts/`, here and in the commands below. This command does not format disks or enroll TPM or UEFI keys. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
 
-Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check` and all host builds before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
+Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check` and the builds of every `nixosConfigurations` output ([verification](verification.md#repository-checks)) before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
 
 ## Failed authentication applies
 
@@ -21,7 +17,7 @@ systemctl status sops-install-secrets.service --no-pager
 sudo journalctl -u sops-install-secrets.service -b --no-pager
 ```
 
-Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [initial recovery](provisioning.md) with `./scripts/recover-age-identity` and run the same rebuild command. From the installation media or inside `nixos-enter` the hostname is the image's, not a configuration name, so the helper cannot detect the host and `--host <hostName>` (e.g. `--host ThinkPad-X1-Carbon-Gen-11` or `--host MS-7D91`) is required there. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
+Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [initial recovery](provisioning.md) with `./scripts/recover-age-identity` and run the same rebuild command. From the installation media or inside `nixos-enter` the hostname is the image's, not a configuration name, so the helper cannot detect the host and `--host <host>` is required there. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
 
 A failed NixOS switch does not transactionally roll back all system changes. If token publication updated only some files, fix the problem and run the same command again. Do not ignore the error or treat provisioning as complete.
 
@@ -67,13 +63,13 @@ Use `--wipe-slot=tpm2` only for TPM slots. Do not delete the recovery passphrase
 
 ## Back up LUKS and Secure Boot recovery material
 
-Immediately after installation and after updating TPM slots, connect external media and verify that it is mounted. Replace `backup_mount` and `backup_dir` below with paths on that external media, not on the target disk. The backup files are encrypted for a GPG recipient, so they can be stored independently of whether the media itself is encrypted. Keep plaintext intermediate files only on the temporary filesystem under `/run/user`.
+Immediately after installation and after updating TPM slots, connect external media and verify that it is mounted. Replace `backup_mount` below with the external media's mount point, not a path on the target disk. `backup_dir` keeps each host's backup in its own folder, named by the hostname, which `mkHost` sets to `<host>`. The backup files are encrypted for a GPG recipient, so they can be stored independently of whether the media itself is encrypted. Keep plaintext intermediate files only on the temporary filesystem under `/run/user`.
 
 ```sh
 set -euo pipefail
 umask 077
 backup_mount=/run/media/h82/EXTERNAL_BACKUP
-backup_dir="$backup_mount/thinkpad"
+backup_dir="$backup_mount/$(uname -n)"
 if ! findmnt --mountpoint "$backup_mount" >/dev/null; then
   printf '%s\n' 'external backup mount is missing; refusing to write under /run' >&2
   exit 1
@@ -137,7 +133,7 @@ gpg --decrypt /path/to/sbctl.tar.asc | \
   sudo tar --xattrs --acls --numeric-owner -xpf - -C /var/lib
 sudo chown -R root:root /var/lib/sbctl
 sudo chmod -R go-rwx /var/lib/sbctl
-sudo nixos-rebuild boot --flake .#ThinkPad-X1-Carbon-Gen-11
+sudo nixos-rebuild boot --flake .#<host>
 ```
 
 On the installation USB, complete the mount procedure above, then import the public key and check the card as the live environment's normal user. Decrypt in the shell opened by `nix develop`; do not depend on the target's root GPG agent.
@@ -152,7 +148,7 @@ gpg --decrypt /path/to/sbctl.tar.asc | \
 sudo chown -R root:root /mnt/var/lib/sbctl
 sudo chmod -R go-rwx /mnt/var/lib/sbctl
 sudo nixos-enter --root /mnt -c \
-  'cd /tmp/nix-config && nixos-rebuild boot --flake .#ThinkPad-X1-Carbon-Gen-11'
+  'cd /tmp/nix-config && nixos-rebuild boot --flake .#<host>'
 ```
 
 If the existing `/mnt/var/lib/sbctl` is intact, skip decryption and extraction and run only the last command. Without a backup, generate a new bundle and repeat UEFI key enrollment. Update TPM enrollment under the new Secure Boot policy too.
@@ -163,7 +159,7 @@ Do not keep LUKS recovery material only on the locked target disk or rely on tha
 
 Three cards carry the same key, so losing one costs a card, not the key. Rebuilds are unaffected either way, and signing continues on any remaining card. Nothing in this repository changes: the fingerprint, `keys/signing.asc`, and every existing ciphertext stay as they are.
 
-Provision the replacement from the offline backup, never from another card. YubiKey private keys cannot be extracted, so there is no card-to-card path. Restore the backup into a tmpfs `GNUPGHOME`, set the card's key attributes to ed25519 and cv25519, move the subkeys onto it, and give it its own User and Admin PINs. Because every card holds the same encryption subkey, the replacement decrypts existing ciphertext, `secrets/bootstrap/thinkpad-age-key.asc` and the external media backups included. Nothing has to be re-encrypted for it.
+Provision the replacement from the offline backup, never from another card. YubiKey private keys cannot be extracted, so there is no card-to-card path. Restore the backup into a tmpfs `GNUPGHOME`, set the card's key attributes to ed25519 and cv25519, move the subkeys onto it, and give it its own User and Admin PINs. Because every card holds the same encryption subkey, the replacement decrypts existing ciphertext, every `secrets/bootstrap/<host>/age-key.asc` and the external media backups included. Nothing has to be re-encrypted for it.
 
 Clear the lost card's Secret Service entry, and register the replacement under its own serial. Automatic PIN entry is per card and is never a rebuild requirement.
 

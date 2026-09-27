@@ -2,18 +2,17 @@
 
 ## Project structure
 
-This flake configures two machines: a ThinkPad X1 Carbon Gen 11 laptop and an MS-7D91 desktop workstation. Preserve the default Plasma desktop. Other operating systems, desktop customization, and coding-agent settings are outside the migration.
+This flake configures personal NixOS machines, one per directory under `hosts/`; today those are a ThinkPad X1 Carbon Gen 11 laptop and an MS-7D91 desktop workstation. Preserve the default Plasma desktop. Other operating systems, desktop customization, and coding-agent settings are outside the migration.
 
-- `flake.nix`: production and bootstrap hosts, checks, and development tools.
-- `hosts/ThinkPad-X1-Carbon-Gen-11/`: hardware and disk configuration for ThinkPad laptop.
-- `hosts/MS-7D91/`: hardware, NVIDIA, secondary storage, and disk configuration for desktop.
-- `modules/nixos/`: system modules by subsystem -- `hardware/` (udev, keyd, fingerprint, YubiKey), `system/` (base, boot, sysctl/cleanup, nix-ld, agent-browser runtime deps, secrets), `desktop/` (Plasma/SDDM, fonts), `services/` (Podman). No domain-level `default.nix`: each host's `hosts/*/default.nix` cherry-picks the exact modules it imports.
+- `flake.nix`: host discovery, checks, and development tools. Every directory under `hosts/` is a host named by the directory, and `mkHost` builds a production `<host>` and a `<host>-bootstrap` output for each and sets `networking.hostName` from the name.
+- `hosts/<host>/`: one machine's hardware (`hardware.nix`), disk layout (`disko.nix`), and traits (`default.nix`). [Adding a host](docs/adding-a-host.md) walks through a new one.
+- `modules/nixos/`: system modules by subsystem -- `hardware/` (udev, keyd, fingerprint, YubiKey, Thunderbolt, laptop lid policy), `system/` (base, boot, sysctl/cleanup, nix-ld, agent-browser runtime deps, secrets), `desktop/` (Plasma/SDDM, fonts), `services/` (Podman, Tailscale, Proton VPN). Every host gets the one shared profile, `modules/nixos/profile.nix`, which `mkHost` imports: it imports every NixOS module, declares `my.bootstrap`, and sets shared defaults with `lib.mkDefault`. There is no domain-level `default.nix` and no per-host import list. Hosts differ only through traits, the `my.*.enable` options that default to `false` (`my.keyd`, `my.fingerprint`, `my.thunderbolt`, `my.nuphyGem80`, `my.laptop`), and through per-host values the host file sets. Hardware-specific modules stay inert until a host enables their trait. Modules, Home Manager (through `osConfig`), and checks branch on traits and `my.bootstrap`, never on a host name; the `host-name-guard` check fails when a host directory name appears in `flake.nix`, `modules/`, `home/`, `tests/`, `scripts/`, `packages/`, or `.github/workflows/`.
 - `home/h82/`: Home Manager modules by domain, each with its own `default.nix` that `home/h82/default.nix` imports -- `agents/` (Claude Code, Gemini CLI, agent plugins, shared agent instructions), `desktop/` (Fcitx5, terminal, `kde/`), `dev/` (Git, containers, Android SDK), `security/` (GPG, SSH), `shell/` (Zsh/shell config).
 - `scripts/`: authentication and rebuild helpers; `packages/`: Nix packaging for those helpers.
 - `tests/`: Python, shell, and NixOS VM checks.
-- `docs/`: installation, provisioning, recovery, and verification. `secrets/README.md` defines secret conventions.
+- `docs/`: installation, provisioning, recovery, verification, and adding a host. `secrets/README.md` defines secret conventions.
 
-The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-feat-thinkpad-nixos-declarative-environment-plan.md) and [desktop plan](.compound-engineering/artifacts/plans/2026-09-22-1646-feat-ms-7d91-desktop-nixos-plan.md) record migration scope.
+The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-feat-thinkpad-nixos-declarative-environment-plan.md) and [desktop plan](.compound-engineering/artifacts/plans/2026-09-22-1646-feat-ms-7d91-desktop-nixos-plan.md) record migration scope. The [host-generic composition plan](.compound-engineering/artifacts/plans/2026-09-28-0203-refactor-host-generic-composition-plan.md) records the shared profile, traits, and host discovery.
 
 ## Build and development commands
 
@@ -22,13 +21,13 @@ The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-
 - `nix fmt -- --ci`: check formatting without edits.
 - `nix flake check`: run declared checks.
 
-Before shipping, run `nix flake check` and all host builds:
+Before shipping, run `nix flake check` and build every output under `nixosConfigurations`, production and bootstrap. List them, then build each:
 
 ```sh
-nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel
-nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11-bootstrap.config.system.build.toplevel
-nix build --no-link .#nixosConfigurations.MS-7D91.config.system.build.toplevel
-nix build --no-link .#nixosConfigurations.MS-7D91-bootstrap.config.system.build.toplevel
+nix eval .#nixosConfigurations --apply builtins.attrNames
+for host in $(nix eval --raw .#nixosConfigurations --apply 'c: toString (builtins.attrNames c)'); do
+  nix build --no-link ".#nixosConfigurations.$host.config.system.build.toplevel"
+done
 ```
 
 ## Coding style and naming

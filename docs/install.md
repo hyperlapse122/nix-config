@@ -1,15 +1,12 @@
 # Fresh installation
 
-The supported host configurations are:
-
-- `ThinkPad-X1-Carbon-Gen-11`: Lenovo ThinkPad X1 Carbon Gen 11 laptop (internal Samsung 980 PRO 1TB NVMe).
-- `MS-7D91`: MSI MS-7D91 desktop workstation with Intel i7-13700F, NVIDIA GeForce RTX 3060, Samsung 980 PRO 1TB NVMe, and preserved secondary 2TB HDD at `/mnt/data`.
+The supported hosts are the directories under `hosts/`. In the commands below, replace `<host>` with the target machine's directory name; `nix eval .#nixosConfigurations --apply builtins.attrNames` lists every configuration. A machine without a host directory needs [adding a host](adding-a-host.md) first. Notes that apply to one machine only are under [per-host notes](#per-host-notes).
 
 This procedure erases the existing operating system and data on the target installation NVMe disk. Do not repeat it for routine configuration changes.
 
 ## Prepare before erasing the disk
 
-1. Complete [authentication recovery preparation](provisioning.md) on the existing system. Store the public GPG key, encrypted tokens, and per-host age identity encrypted for the YubiKey under `secrets/bootstrap/<hostname>/` in the repository. Verify decryption.
+1. Complete [authentication recovery preparation](provisioning.md) on the existing system. Store the public GPG key, encrypted tokens, and per-host age identity encrypted for the YubiKey under `secrets/bootstrap/<host>/` in the repository. Verify decryption.
 2. Push repository changes to the remote and confirm that the installation environment can clone it over HTTPS without SSH authentication. You can also keep a clone on separate media.
 3. Choose a LUKS recovery passphrase. Do not store it in plaintext in the repository or on the target disk. If you will reuse an existing Secure Boot signing bundle, prepare an encrypted external backup.
 4. Prepare a NixOS x86_64 installation USB. If the firmware's current Secure Boot policy does not trust the installation media, temporarily disable Secure Boot. Do not erase all certificates or dbx.
@@ -24,15 +21,11 @@ Run the following commands in the installation media's terminal. Check network a
 git clone https://github.com/hyperlapse122/nix-config.git
 cd nix-config
 lsblk -o NAME,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS
-sudo dmidecode -s system-version
-# or for desktop:
 sudo dmidecode -s system-product-name
+sudo dmidecode -s system-version
 ```
 
-Confirm that the by-id path declared in the host's `disko.nix` matches the target NVMe drive:
-
-- For ThinkPad: `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X`.
-- For MS-7D91: `hosts/MS-7D91/disko.nix` identifies `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNF0WB26038A`. (Note: The secondary HDD `/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1` is not touched by disko and will be mounted read-write at `/mnt/data`).
+Confirm that the machine is the one `<host>` describes, and that the `/dev/disk/by-id/` path declared as `device` in `hosts/<host>/disko.nix` matches the target NVMe drive in the `lsblk` output. The per-host notes list each machine's expected path.
 
 Do not select the target solely by its enumeration as `/dev/nvme0n1`.
 
@@ -40,25 +33,14 @@ Do not select the target solely by its enumeration as `/dev/nvme0n1`.
 
 The disko command below **erases the entire target disk**. Run it only when the target path in the file matches the `lsblk` output. Use the disko version pinned in the lock file.
 
-### For ThinkPad X1 Carbon Gen 11
-
 ```sh
 sudo nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
-  --mode disko hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix
-sudo nixos-install --flake .#ThinkPad-X1-Carbon-Gen-11-bootstrap --no-root-passwd
+  --mode disko hosts/<host>/disko.nix
+sudo nixos-install --flake .#<host>-bootstrap --no-root-passwd
 sudo nixos-enter --root /mnt -c 'passwd h82'
 ```
 
-### For MS-7D91 Desktop
-
-```sh
-sudo nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
-  --mode disko hosts/MS-7D91/disko.nix
-sudo nixos-install --flake .#MS-7D91-bootstrap --no-root-passwd
-sudo nixos-enter --root /mnt -c 'passwd h82'
-```
-
-Enter the LUKS passphrase and keep it safe. The layout consists of a 2 GiB ESP and Btrfs root/home/nix/log subvolumes inside LUKS2. Disk swap and hibernation are not configured.
+Enter the LUKS passphrase and keep it safe. The layout consists of a 2 GiB ESP and Btrfs root/home/nix/log/swap subvolumes inside LUKS2. The `/swap` subvolume holds a 64 GiB swapfile; no hibernation resume offset is configured. Disks other than the one in `disko.nix` are not touched.
 
 For the first reboot, keep Secure Boot disabled and enter the LUKS passphrase. Verify Plasma login and `sudo -v`. The bootstrap configuration does not require real token decryption or Secure Boot private keys.
 
@@ -69,6 +51,8 @@ On the installed NixOS, fetch the repository again over HTTPS and recover the ag
 ```sh
 ./scripts/recover-age-identity
 ```
+
+On the installed system the helper resolves the host from its hostname, which `mkHost` sets to `<host>`. Pass `--host <host>` when running it anywhere else.
 
 Register this card's PIN now so later Git signing does not prompt for it again. See [provisioning](provisioning.md) for the full per-card, multi-serial design. Enter the PIN at the command's prompt, not in its arguments or shell history.
 
@@ -81,10 +65,7 @@ unset card_serial
 
 ```sh
 sudo sbctl create-keys
-# On ThinkPad:
-sudo nixos-rebuild switch --flake .#ThinkPad-X1-Carbon-Gen-11
-# On MS-7D91:
-sudo nixos-rebuild switch --flake .#MS-7D91
+sudo nixos-rebuild switch --flake .#<host>
 sudo sbctl verify
 ```
 
@@ -92,12 +73,9 @@ If restoring an existing signing bundle, restore the full backup of `/var/lib/sb
 
 ## Enroll Secure Boot keys
 
-Switch the firmware to Setup Mode so you can enroll user keys. In Lenovo or MSI Click BIOS / UEFI setup, set Secure Boot mode to "Custom" or clear existing factory keys to enter Setup Mode. Do not delete dbx. Retain Microsoft certificates for compatibility.
+Switch the firmware to Setup Mode so you can enroll user keys. In the firmware setup, set Secure Boot mode to "Custom" or clear existing factory keys to enter Setup Mode. Do not delete dbx. Retain Microsoft certificates for compatibility. Check the [per-host notes](#per-host-notes) for a firmware-specific step before enrolling.
 
 ```sh
-# On ThinkPad UEFI, existing EFI variables may have the immutable bit set by efivarfs
-sudo chattr -i /sys/firmware/efi/efivars/{PK,KEK,db}* 2>/dev/null || true
-
 sudo sbctl status
 sudo sbctl enroll-keys --microsoft
 ```
@@ -132,3 +110,29 @@ If the system previously had a separate pcrlock configuration, consult the curre
 Reboot to verify automatic unlocking, then confirm that you can also boot with the recovery passphrase. PCR7 binds to the Secure Boot policy; it does not guarantee the integrity of a particular kernel or root data. Retaining Microsoft certificates also trusts other boot paths signed by those certificates.
 
 After enrollment, encrypt and back up the LUKS header and `/var/lib/sbctl` to external media. A header backup contains the key slots from the time of the backup, so treat old backups as sensitive too. Follow the [recovery guide](recovery.md) and [verification checklist](verification.md).
+
+## Per-host notes
+
+### ThinkPad-X1-Carbon-Gen-11
+
+Lenovo ThinkPad X1 Carbon Gen 11 laptop.
+
+- `sudo dmidecode -s system-version` reports the model name here; `system-product-name` reports only Lenovo's machine type.
+- `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies the internal Samsung 980 PRO 1TB NVMe as `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X`.
+- In the Lenovo UEFI setup, enter Setup Mode through the Secure Boot settings. The existing `PK`, `KEK`, and `db` EFI variables may carry the efivarfs immutable bit, which makes `sbctl enroll-keys` fail even in Setup Mode. Clear it just before enrolling ([EFI variables immutability](../.compound-engineering/artifacts/solutions/boot-issues/thinkpad-efivars-immutable-blocks-sbctl-enroll.md)):
+
+  ```sh
+  sudo chattr -i /sys/firmware/efi/efivars/{PK,KEK,db}* 2>/dev/null || true
+  ```
+
+- The fingerprint reader is enabled only on the production output. Enroll after the first production switch; see [provisioning](provisioning.md#fingerprint-enrollment).
+
+### MS-7D91
+
+MSI MS-7D91 desktop workstation with Intel i7-13700F and NVIDIA GeForce RTX 3060.
+
+- `sudo dmidecode -s system-product-name` reports `MS-7D91`.
+- `hosts/MS-7D91/disko.nix` identifies the Samsung 980 PRO 1TB NVMe as `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNF0WB26038A`.
+- The secondary 2TB HDD, `/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1`, is not touched by disko and is mounted read-write at `/mnt/data` with `nofail`.
+- `hosts/MS-7D91/hardware.nix` selects the NVIDIA driver.
+- In MSI Click BIOS, enter Setup Mode through the Secure Boot settings.

@@ -7,11 +7,15 @@ machine.  Do not add an age private key, GPG private key, PIN, or token in
 plain text.
 
 Bootstrap material is scoped per host under
-`secrets/bootstrap/<hostname>/`, which holds `age-key.asc` (the age identity
+`secrets/bootstrap/<host>/`, which holds `age-key.asc` (the age identity
 encrypted to the OpenPGP card's encryption subkey) and `recipient.txt` (that
-identity's single public `age1...` recipient).  `ThinkPad-X1-Carbon-Gen-11`
-currently has both.  `scripts/prepare-age-identity` creates them for a new
-host; do not write either file by hand.
+identity's single public `age1...` recipient).  Every directory under `hosts/`
+has a matching directory here, and every directory here has a matching host;
+the `bootstrap-recipients` check fails when either side is missing, when
+either file is missing, or when the recorded recipient does not appear in
+`.sops.yaml`.  `scripts/prepare-age-identity` creates both files for a new
+host; do not write either file by hand.  [Adding a host](../docs/adding-a-host.md)
+covers the full procedure.
 
 `.sops.yaml` carries one creation rule per encrypted file, each listing every
 recipient host that may decrypt it:
@@ -22,14 +26,16 @@ creation_rules:
     age: <comma-separated recipients of every host that shares this file>
   - path_regex: secrets/wifi\.yaml$
     age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/tailscale\.yaml$
+    age: <comma-separated recipients of every host that shares this file>
 ```
 
 Only a host whose recipient appears in a file's rule can decrypt it.
-`secrets/tokens.yaml` and `secrets/wifi.yaml` currently list both
-`ThinkPad-X1-Carbon-Gen-11`'s and `MS-7D91`'s recipients, so either host can
-decrypt either file. Adding a new host's bootstrap material does not by
-itself give it access to an existing file: re-encrypt that file to the new
-recipient first, or split the rule per host.
+`secrets/tokens.yaml`, `secrets/wifi.yaml`, and `secrets/tailscale.yaml`
+currently list every host's recipient, so any host can decrypt any of them.
+Adding a new host's bootstrap material does not by itself give it access to
+an existing file: add its recipient to the file's rule and re-encrypt the
+file with `sops updatekeys`, or split the rule per host.
 
 The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
 of string fields (the service usernames are public configuration and are not
@@ -83,9 +89,9 @@ decrypting as the normal user and crossing sudo exactly once into the fixed
 root installer:
 
 ```sh
-gpg --batch --no-tty --decrypt -- secrets/bootstrap/<hostname>/age-key.asc \
+gpg --batch --no-tty --decrypt -- secrets/bootstrap/<host>/age-key.asc \
   | sudo -- /run/current-system/sw/bin/restore-age-identity \
-      --recipient "$(cat secrets/bootstrap/<hostname>/recipient.txt)"
+      --recipient "$(cat secrets/bootstrap/<host>/recipient.txt)"
 ```
 
 The helper refuses to run as root, because GPG has to reach the invoking
