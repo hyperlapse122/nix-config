@@ -22,6 +22,8 @@
       google-chrome
       kdePackages.kleopatra
       kdePackages.ksshaskpass
+      kdePackages.okular
+      libreoffice-qt
       nodejs
       python3
       telegram-desktop
