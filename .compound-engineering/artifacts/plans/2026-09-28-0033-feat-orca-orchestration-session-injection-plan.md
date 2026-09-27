@@ -99,7 +99,7 @@ The global instruction files rendered from `home/h82/agents/instructions/instruc
 - `home/h82/agents/agent-plugins.nix` and `scripts/agent-plugin-sync` — the Claude plugin registry and its sync tool, which registers a local directory marketplace.
 - `packages/orca.nix` — `orca-ide` package; it links `orca` beside `orca-ide` in `$out/bin`.
 - `tests/orca-skills.nix`, `tests/agent-plugins.nix`, `tests/test_agent_settings.py`, `tests/test_agent_plugin_sync.py` — check patterns to follow.
-- Claude Code hooks reference (https://code.claude.com/docs/en/hooks) and plugins reference (https://code.claude.com/docs/en/plugins-reference): SessionStart matchers `startup|resume|clear|compact|fork`, the 10,000-character per-output cap, plugin hooks merging with settings hooks.
+- Claude Code hooks reference (<https://code.claude.com/docs/en/hooks>) and plugins reference (<https://code.claude.com/docs/en/plugins-reference>): SessionStart matchers `startup|resume|clear|compact|fork`, the 10,000-character per-output cap, plugin hooks merging with settings hooks.
 - Antigravity evidence: `agy changelog`, the live `~/.gemini/config/hooks.json` schema written by Orca, and third-party captures (obra/superpowers#2247, automatis-tools/agents-can-communicate#177, thedotmack/claude-mem#4057).
 - `.compound-engineering/artifacts/solutions/best-practices/home-manager-activation-does-not-run-on-every-rebuild.md`, `.compound-engineering/artifacts/solutions/integration-issues/orca-rejects-hardlinked-nix-store-skill-files.md`, and the check mutation-testing solutions named in `AGENTS.md`.
 
@@ -161,6 +161,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Dependencies:** none.
 
 **Files:**
+
 - `scripts/orca-orchestration-context` (new, shell)
 - `packages/orca.nix` (add `passthru.cli`, the extracted `resources/bin/orca-ide`)
 - `packages/agent-tools.nix` (expose the script, with `passthru.cli` substituted)
@@ -168,6 +169,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 - `flake.nix` (register the check)
 
 **Approach:**
+
 1. Arguments: `--harness claude --part <i>` or `--harness antigravity`. An unknown argument exits 0 silently, since a hook must never fail loudly. Cover it in tests so a typo is still caught.
 2. Gate on KTD6, resolve per KTD5, run the guide under the KTD7 timeout, and capture stdout only; stderr goes to `/dev/null`.
 3. Split per KTD3 on line boundaries. A single line longer than the bound is hard-split at the bound.
@@ -176,6 +178,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Patterns to follow:** `home/h82/agents/orca-skills.nix` for `writeShellApplication`; `tests/tokscale.sh` and its `flake.nix` registration, which run a shell test against both the raw script and the packaged binary.
 
 **Test scenarios:**
+
 - Covers AE1. With `ORCA_PANE_KEY` set and a fake `ORCA_CLI_COMMAND` printing a 13,000-character guide, parts 1 and 2 are non-empty, part 3 is empty, each part is at most 9,000 characters plus its header, and the parts' bodies concatenate to the original byte for byte.
 - Covers AE2. With `ORCA_PANE_KEY` unset, and again set to the empty string, output is empty and exit is 0 for every harness and part.
 - Covers AE4. The fake executable exits 1, prints nothing, or sleeps past the timeout: output is empty and exit is 0.
@@ -197,17 +200,20 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Dependencies:** U1.
 
 **Files:**
+
 - `packages/orca-orchestration-plugin.nix` (new; builds the tree, including a generated `hooks/hooks.json` naming U1 by store path)
 - `tests/orca-orchestration-plugin.nix` (new)
 - `flake.nix` (register the check)
 
 **Approach:**
+
 1. Generate the manifests from Nix values. `plugin.json` carries `name`, `description`, and `version` equal to the KTD8 hash, which the derivation also exposes so U3 passes the same value as `--segment`. `marketplace.json` lists the one plugin with `source: "./"`. Neither declares `command`, `commands`, or `headersHelper`, which `agent-plugin-sync` refuses.
 2. `hooks/hooks.json` holds one `SessionStart` entry with matcher `startup` and three command handlers, each with a 10-second timeout.
 
 **Patterns to follow:** the `compound-engineering` plugin's manifest shape under `~/.local/share/agent-plugins/compound-engineering/v3.29.0/.claude-plugin/`, and `agent-plugin-sync`'s `read_manifests()` contract.
 
 **Test scenarios:**
+
 - Covers AE3. The materialized `hooks/hooks.json` has exactly one `SessionStart` matcher, equal to `startup`. A mutation to `startup|resume` or `*` fails the check.
 - Each handler's command runs a path that exists in the built tree's closure, and running it with a fake Orca environment prints the matching part. This asserts the materialized command, not a Nix option value.
 - Parts 1, 2, and 3 are all present, and no two handlers request the same part.
@@ -225,11 +231,13 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Dependencies:** U2.
 
 **Files:**
+
 - `home/h82/agents/agent-plugins.nix` (local-source form, new source and membership rows)
 - `tests/agent-plugins.nix` (pin comparison limited to flake-input sources; new local-source assertions)
 - `scripts/agent-plugin-sync` and `tests/test_agent_plugin_sync.py` (only if a local source exposes a gap)
 
 **Approach:**
+
 1. Add a source with `src` pointing at U2's derivation and `segment` from KTD8. `treeFor`, `syncInvocation`, and `my.agentPlugins` must accept both source forms without `or ""` placeholders that would hide a missing field.
 2. Keep the refusal behavior: an unknown harness or undeclared plugin still throws.
 
@@ -238,6 +246,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Patterns to follow:** the existing `compound-engineering` row, and `tests/agent-plugins.nix`'s host iteration and materialized activation text assertions.
 
 **Test scenarios:**
+
 - On every host, the `agentPlugins` activation text invokes `agent-plugin-sync` with `--source` equal to U2's store path and `--plugin orca-orchestration`.
 - The `compound-engineering` pin assertion still runs and still goes red when its `expectedRev` is mutated.
 - A local source missing its derivation fails evaluation with the registry's own message rather than an interpolation error.
@@ -270,17 +279,20 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Dependencies:** none.
 
 **Files:**
+
 - `scripts/agent-settings`
 - `tests/test_agent_settings.py`
 - `flake.nix` (extend the `agent-settings` check with a packaged run over a hooks-shaped fixture)
 
 **Approach:**
+
 1. Add an `own` field, `{name: any JSON}`, to the declaration. A key may appear in only one of `set`, `own`, `remove`, and the first path element of `setPaths`; overlap is refused before any write.
 2. Keep the compare-and-swap write and the docstring's fail-closed reasoning. Explain why `own` is safe: the key is the repository's alone, so a whole-value replace cannot clobber another writer.
 
 **Patterns to follow:** the existing `set` and `setPaths` validation and their tests.
 
 **Test scenarios:**
+
 - Covers AE5. A fixture with `orca-status` and a stale `orca-orchestration`: after the merge, `orca-status` is byte-identical and `orca-orchestration` equals the declared object.
 - A missing settings file is created with only the owned key.
 - A key in both `own` and `set`, or in `own` and `remove`, is refused and the file is unchanged.
@@ -297,10 +309,12 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Dependencies:** U1, U6.
 
 **Files:**
+
 - `home/h82/agents/gemini.nix` (new activation merge of `~/.gemini/config/hooks.json` declaring the owned `orca-orchestration` key)
 - `tests/gemini.nix`
 
 **Approach:**
+
 1. First, probe with an isolated `HOME` holding a SessionStart hook that injects a random token as an `ephemeralMessage`, then run `agy -p` asking for the token. This costs one model turn.
 2. If the token is visible, declare `{"orca-orchestration": {"enabled": true, "SessionStart": [{"type": "command", "command": "<U1 store path> --harness antigravity", "timeout": 10}]}}`, ordered after `installPackages` like the other merges.
 3. If the token is not visible, do not land this unit. Record the result and the `PreInvocation` follow-up in the PR body.
@@ -309,6 +323,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 **Patterns to follow:** the existing `antigravitySettings` activation block in `home/h82/agents/gemini.nix` and its check.
 
 **Test scenarios:**
+
 - On every host, the activation text passes `--settings` ending in `.gemini/config/hooks.json` and a declaration whose `own.orca-orchestration.SessionStart[0].command` runs U1 with `--harness antigravity`.
 - The declaration contains no key other than `orca-orchestration`, so it cannot reach `orca-status`.
 - The activation entry is ordered after `installPackages`.
@@ -320,7 +335,7 @@ U1 → U2 → U3 → U4 (Claude path, shippable alone). U6 has no dependencies. 
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | Nix layout |
 | Checks | `nix flake check` | U1 script test, U2 plugin check, U3 `agent-plugins`, U6 `agent-settings`, U5 `gemini` |
 | ThinkPad build | `nix build --no-link .#nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.system.build.toplevel` | Host evaluates and builds |
