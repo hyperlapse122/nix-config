@@ -8,7 +8,9 @@
 # Claude Code caps each hook's output at 10,000 characters and replaces a
 # longer one with a file path and a short preview, so the guide is split on
 # line boundaries into labeled parts and each hook handler prints one of them.
-# Antigravity gets every part in order as one injectSteps document.
+# The last part Claude Code receives ends with a note on running Orca waits
+# in the background. Antigravity gets every part in order as one injectSteps
+# document.
 #
 # The hook must never stand between the user and a session: every path out of
 # this script exits 0, and anything short of a complete guide prints nothing.
@@ -29,6 +31,11 @@ PART_BYTES=9000
 # package substitutes the same value the plugin builds its handlers from.
 CLAUDE_PARTS='@CLAUDE_PARTS@'
 GUIDE_TIMEOUT=5
+
+# Claude Code's Bash tool stops a foreground command at 10 minutes, under the
+# guide's 15-minute waits, and holds the session while it runs. The note
+# follows the last part Claude Code receives, after the guide it amends.
+CLAUDE_WAIT_NOTE="Claude Code: run every Orca command that waits on an agent, such as \`orchestration check --wait\` or \`terminal wait\`, with the Bash tool's \`run_in_background\` option, never in the foreground. A foreground Bash command stops at 10 minutes, before the guide's 15-minute waits expire, and blocks the session while it runs. A background command re-invokes you when it exits, so do not poll it with sleep; read its output then and handle the result as the guide describes."
 
 harness=
 part=
@@ -107,6 +114,9 @@ if [[ $harness == claude ]]; then
   text=$(render "$part")
   if ((part == CLAUDE_PARTS && total > CLAUDE_PARTS)); then
     text+=$'\n\n'"The guide continues past this part. Run \`$cli skills get orchestration\` for the rest."
+  fi
+  if ((part == (total < CLAUDE_PARTS ? total : CLAUDE_PARTS))); then
+    text+=$'\n\n'$CLAUDE_WAIT_NOTE
   fi
   printf '%s\n' "$text"
   exit 0
