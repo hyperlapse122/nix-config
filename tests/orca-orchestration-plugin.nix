@@ -77,7 +77,7 @@ pkgs.runCommand "orca-orchestration-plugin-tests"
     script = Path(commands[0][0]) if commands else None
     declared = None
     if script and script.is_file():
-        match = re.search(r'^CLAUDE_PARTS=(\d+)$', script.read_text(), re.M)
+        match = re.search(r"^CLAUDE_PARTS='?(\d+)'?$", script.read_text(), re.M)
         declared = int(match.group(1)) if match else None
     check(declared == len(parts), 'script declares {} Claude parts, hooks.json runs {}'.format(declared, len(parts)))
 

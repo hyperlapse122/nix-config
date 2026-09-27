@@ -52,6 +52,7 @@ if [[ $mode == source ]]; then
   pinned=$scratch/pinned-orca-cli
   script=$scratch/orca-orchestration-context
   sed -e "s|@ORCA_CLI@|$pinned|" -e "s|@JQ@|$jq_bin|" -e "s|@TIMEOUT@|$timeout_bin|" \
+    -e "s|@CLAUDE_PARTS@|3|" -e "s|@CLI_PATH@|$(dirname "$cat_bin")|" \
     "$target" >"$script"
   chmod +x "$script"
   grep -q '@[A-Z_]*@' "$script" && fail 'a placeholder survived rendering'
@@ -226,11 +227,16 @@ grep -q "^$dev_bin/orca-dev skills get orchestration$" "$calls" || fail 'ORCA_DE
 expect_silent 'ORCA_DEV_REPO_ROOT without orca-dev' in_orca ORCA_DEV_REPO_ROOT=/src/orca "$script" --harness claude --part 1
 
 if [[ $mode == source ]]; then
+  # Orca's real entry point is a bash script that calls dirname and readlink
+  # from PATH, and a hook inherits whatever PATH the agent started with. The
+  # stub fails the same way under the test's bare PATH unless the script
+  # supplies its own.
   make_cli "$pinned"
+  sed -i "2i command -v dirname >/dev/null || exit 9" "$pinned"
   : >"$calls"
   in_orca "$script" --harness claude --part 1 >"$scratch/pinned-part" || fail 'pinned run exited non-zero'
   grep -q "^$pinned skills get orchestration$" "$calls" || fail 'the pinned CLI was not used by default'
-  [[ -s $scratch/pinned-part ]] || fail 'pinned CLI output was not injected'
+  [[ -s $scratch/pinned-part ]] || fail 'the pinned CLI did not get the tools it needs on PATH'
 fi
 [[ ! -e $screen_reader_mark ]] || fail 'a bare orca on PATH was executed'
 pass 'the CLI resolves as ORCA_CLI_COMMAND, then orca-dev, then the pinned path, never bare orca'

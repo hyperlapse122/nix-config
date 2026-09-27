@@ -32,6 +32,7 @@ contains a dot is never split, and a literal top-level "a.b" key is never taken
 for the path ["a", "b"].
 """
 import argparse
+import copy
 import errno
 import json
 import os
@@ -159,7 +160,7 @@ def apply(current, assign, retire, paths, owned=None):
     merged = dict(current)
     merged.update(assign)
     # A copy, so a later edit to the result never reaches the declaration.
-    merged.update(json.loads(json.dumps(owned or {})))
+    merged.update(copy.deepcopy(owned or {}))
     for name in retire:
         merged.pop(name, None)
     for path, value in paths:

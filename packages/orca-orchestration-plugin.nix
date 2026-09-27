@@ -3,16 +3,17 @@
 let
   inherit (pkgs) lib;
 
-  context = lib.getExe (import ./agent-tools.nix { inherit pkgs; }).orcaOrchestrationContext;
+  contextPackage = (import ./agent-tools.nix { inherit pkgs; }).orcaOrchestrationContext;
+  context = lib.getExe contextPackage;
 
   name = "orca-orchestration";
 
   # Claude Code caps each hook's output, so the guide arrives as parts and
-  # each handler prints one; the script declares the same count. `startup`
+  # each handler prints one, as many as the script was built for. `startup`
   # alone: resume, clear, compact, and fork keep the context they already
   # have. The hook names the script by store path because
   # ${CLAUDE_PLUGIN_ROOT} points at Claude Code's cache copy, not this tree.
-  parts = 3;
+  parts = contextPackage.claudeParts;
   hooks = {
     description = "Inject Orca's orchestration guide into sessions started inside Orca";
     hooks.SessionStart = [

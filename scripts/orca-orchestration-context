@@ -19,11 +19,15 @@ set -uo pipefail
 ORCA_CLI='@ORCA_CLI@'
 JQ='@JQ@'
 TIMEOUT='@TIMEOUT@'
+# The pinned CLI is a bash script that calls coreutils from PATH, and a hook
+# inherits whatever PATH the agent was started with.
+CLI_PATH='@CLI_PATH@'
 
 # Bytes rather than characters, so a multibyte guide still fits the cap.
 PART_BYTES=9000
-# The number of handlers hooks/hooks.json declares for Claude Code.
-CLAUDE_PARTS=3
+# The number of handlers hooks/hooks.json declares for Claude Code; the
+# package substitutes the same value the plugin builds its handlers from.
+CLAUDE_PARTS='@CLAUDE_PARTS@'
 GUIDE_TIMEOUT=5
 
 harness=
@@ -55,6 +59,7 @@ elif [[ -n ${ORCA_DEV_REPO_ROOT:-} ]]; then
   cli=$(command -v orca-dev) || exit 0
 else
   cli=$ORCA_CLI
+  PATH=$CLI_PATH${PATH:+:$PATH}
 fi
 
 guide=$("$TIMEOUT" "$GUIDE_TIMEOUT" "$cli" skills get orchestration </dev/null 2>/dev/null) || exit 0

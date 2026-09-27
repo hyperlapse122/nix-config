@@ -66,6 +66,11 @@ let
     pkgs.ruby.withPackages (ps: [ ps.nokogiri ])
   );
 
+  # Claude Code caps each hook's output, so the guide arrives in parts, one
+  # per handler. The plugin declares this many handlers and the script appends
+  # its pointer to the full guide to the last of them.
+  claudeParts = 3;
+
   # Runs as a coding agent's session-start hook, whose PATH is whatever the
   # agent was started with, so every tool it calls is named by store path.
   orcaOrchestrationContext = pkgs.stdenvNoCC.mkDerivation {
@@ -77,9 +82,17 @@ let
       substituteInPlace $out/bin/orca-orchestration-context \
         --replace-fail '@ORCA_CLI@' '${(import ./orca.nix { inherit pkgs; }).cli}' \
         --replace-fail '@JQ@' '${lib.getExe pkgs.jq}' \
-        --replace-fail '@TIMEOUT@' '${pkgs.coreutils}/bin/timeout'
+        --replace-fail '@TIMEOUT@' '${pkgs.coreutils}/bin/timeout' \
+        --replace-fail '@CLAUDE_PARTS@' '${toString claudeParts}' \
+        --replace-fail '@CLI_PATH@' '${
+          lib.makeBinPath [
+            pkgs.bash
+            pkgs.coreutils
+          ]
+        }'
       patchShebangs $out/bin/orca-orchestration-context
     '';
+    passthru = { inherit claudeParts; };
     meta.mainProgram = "orca-orchestration-context";
   };
 in
