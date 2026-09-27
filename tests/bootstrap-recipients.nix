@@ -26,8 +26,7 @@ let
 
   bootstrap = ../secrets/bootstrap;
 
-  directoriesIn =
-    dir: lib.attrNames (lib.filterAttrs (_: kind: kind == "directory") (builtins.readDir dir));
+  directoriesIn = import ./lib/directories.nix { inherit lib; };
 
   hosts = directoriesIn bootstrap;
 

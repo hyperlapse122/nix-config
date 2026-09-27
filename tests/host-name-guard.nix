@@ -18,9 +18,7 @@
 let
   inherit (pkgs) lib;
 
-  hostNames = builtins.attrNames (
-    lib.filterAttrs (_: type: type == "directory") (builtins.readDir ../hosts)
-  );
+  hostNames = import ./lib/directories.nix { inherit lib; } ../hosts;
 
   scannedPaths = [
     "flake.nix"

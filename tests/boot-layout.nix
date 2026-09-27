@@ -32,9 +32,7 @@ let
   };
   bootModule = ../modules/nixos/system/boot.nix;
 
-  hostNames = lib.attrNames (
-    lib.filterAttrs (_: kind: kind == "directory") (builtins.readDir ../hosts)
-  );
+  hostNames = import ./lib/directories.nix { inherit lib; } ../hosts;
   diskOf =
     hostName:
     let

@@ -71,9 +71,7 @@
               ];
             };
           # Each directory under hosts/ is a host, named by the directory.
-          hostNames = builtins.attrNames (
-            nixpkgs.lib.filterAttrs (_: kind: kind == "directory") (builtins.readDir ./hosts)
-          );
+          hostNames = import ./tests/lib/directories.nix { inherit (nixpkgs) lib; } ./hosts;
         in
         nixpkgs.lib.listToAttrs (
           nixpkgs.lib.concatMap (hostName: [
@@ -591,11 +589,11 @@
                 pkgs.lib.concatMapStrings
                   (
                     pname:
-                    pkgs.lib.optionalString (!pkgs.lib.lists.any (p: (p.pname or "") == pname) (userPackagesOf entry))
-                      ''
-                        echo 'missing ${pname} in user packages on ${entry.name}' >&2
-                        fail=1
-                      ''
+                    assertUserPackage {
+                      inherit pname;
+                      executables = [ ];
+                      desktopEntries = [ ];
+                    } entry
                   )
                   [
                     "python3"
@@ -737,43 +735,26 @@
               assertConfiguration =
                 entry:
                 let
-                  userConfig = entry.user;
-                  userPackages = userPackagesOf entry;
-                  orcaPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null userPackages;
-                  service = userConfig.systemd.user.services.orca-settings-reconcile or null;
-                  activation = userConfig.home.activation.orcaSettings or null;
-                  absent = pkgs.lib.optionalString (orcaPkg == null) ''
-                    echo 'missing orca-ide in user packages on ${entry.name}' >&2
-                    fail=1
-                  '';
-                  present = pkgs.lib.optionalString (orcaPkg != null) ''
-                    if [ ! -x ${orcaPkg}/bin/orca-ide ]; then
-                      echo 'orca package ships no bin/orca-ide executable on ${entry.name}' >&2
-                      fail=1
-                    fi
-                    if [ ! -x ${orcaPkg}/bin/orca ]; then
-                      echo 'orca package ships no bin/orca executable on ${entry.name}' >&2
-                      fail=1
-                    fi
-                    if [ ! -f ${orcaPkg}/share/applications/orca.desktop ]; then
-                      echo 'orca package ships no share/applications/orca.desktop on ${entry.name}' >&2
-                      fail=1
-                    fi
-                  '';
-                  servicePresent = pkgs.lib.optionalString (service != null) ''
-                    echo 'unexpected systemd.user.services.orca-settings-reconcile on ${entry.name}' >&2
-                    fail=1
-                  '';
-                  activationPresent = pkgs.lib.optionalString (activation != null) ''
-                    echo 'unexpected home.activation.orcaSettings on ${entry.name}' >&2
-                    fail=1
-                  '';
+                  service = entry.user.systemd.user.services.orca-settings-reconcile or null;
+                  activation = entry.user.home.activation.orcaSettings or null;
                 in
                 ''
-                  ${absent}
-                  ${present}
-                  ${servicePresent}
-                  ${activationPresent}
+                  ${assertUserPackage {
+                    pname = "orca-ide";
+                    executables = [
+                      "orca-ide"
+                      "orca"
+                    ];
+                    desktopEntries = [ "orca.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (service != null) ''
+                    echo 'unexpected systemd.user.services.orca-settings-reconcile on ${entry.name}' >&2
+                    fail=1
+                  ''}
+                  ${pkgs.lib.optionalString (activation != null) ''
+                    echo 'unexpected home.activation.orcaSettings on ${entry.name}' >&2
+                    fail=1
+                  ''}
                 '';
             in
             pkgs.runCommand "orca-desktop-tests" { } ''
@@ -786,38 +767,23 @@
               assertConfiguration =
                 entry:
                 let
-                  userPackages = entry.user.home.packages;
-                  claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-desktop") null userPackages;
                   hasKvmGroup = builtins.elem "kvm" entry.config.users.users.h82.extraGroups;
                   hasVhostVsock = builtins.elem "vhost_vsock" entry.config.boot.kernelModules;
-                  absent = pkgs.lib.optionalString (claudePkg == null) ''
-                    echo 'missing claude-desktop in user packages on ${entry.name}' >&2
-                    fail=1
-                  '';
-                  present = pkgs.lib.optionalString (claudePkg != null) ''
-                    if [ ! -x ${claudePkg}/bin/claude-desktop ]; then
-                      echo 'claude-desktop package ships no bin/claude-desktop executable on ${entry.name}' >&2
-                      fail=1
-                    fi
-                    if [ ! -f ${claudePkg}/share/applications/com.anthropic.Claude.desktop ]; then
-                      echo 'claude-desktop package ships no share/applications/com.anthropic.Claude.desktop on ${entry.name}' >&2
-                      fail=1
-                    fi
-                  '';
-                  kvmGroupCheck = pkgs.lib.optionalString (!hasKvmGroup) ''
-                    echo 'user h82 missing kvm group on ${entry.name}' >&2
-                    fail=1
-                  '';
-                  vhostVsockCheck = pkgs.lib.optionalString (!hasVhostVsock) ''
-                    echo 'missing vhost_vsock kernel module on ${entry.name}' >&2
-                    fail=1
-                  '';
                 in
                 ''
-                  ${absent}
-                  ${present}
-                  ${kvmGroupCheck}
-                  ${vhostVsockCheck}
+                  ${assertUserPackage {
+                    pname = "claude-desktop";
+                    executables = [ "claude-desktop" ];
+                    desktopEntries = [ "com.anthropic.Claude.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (!hasKvmGroup) ''
+                    echo 'user h82 missing kvm group on ${entry.name}' >&2
+                    fail=1
+                  ''}
+                  ${pkgs.lib.optionalString (!hasVhostVsock) ''
+                    echo 'missing vhost_vsock kernel module on ${entry.name}' >&2
+                    fail=1
+                  ''}
                 '';
             in
             pkgs.runCommand "claude-desktop-tests" { } ''
@@ -840,18 +806,9 @@
               assertConfiguration =
                 entry:
                 let
-                  userPackages = entry.user.home.packages;
-                  claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-code") null userPackages;
-                  absent = pkgs.lib.optionalString (claudePkg == null) ''
-                    echo 'missing claude-code in user packages on ${entry.name}' >&2
-                    fail=1
-                  '';
-                  present = pkgs.lib.optionalString (claudePkg != null) ''
-                    if [ ! -x ${claudePkg}/bin/claude ]; then
-                      echo 'claude-code package ships no bin/claude executable on ${entry.name}' >&2
-                      fail=1
-                    fi
-                  '';
+                  claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-code") null (
+                    userPackagesOf entry
+                  );
                   versionMismatch =
                     pkgs.lib.optionalString (claudePkg != null && claudePkg.version != pinnedVersion)
                       ''
@@ -860,8 +817,11 @@
                       '';
                 in
                 ''
-                  ${absent}
-                  ${present}
+                  ${assertUserPackage {
+                    pname = "claude-code";
+                    executables = [ "claude" ];
+                    desktopEntries = [ ];
+                  } entry}
                   ${versionMismatch}
                 '';
             in
