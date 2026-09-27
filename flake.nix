@@ -776,6 +776,25 @@
           bash tests/nr.sh scripts/nr
           touch $out
         '';
+        tokscale-wrapper =
+          let
+            packaged = import ./packages/tokscale.nix {
+              inherit pkgs;
+              hostName = "test-host";
+              tokenFile = "${pkgs.writeText "tokscale-fake-token" "fake-token-123\n"}";
+            };
+          in
+          pkgs.runCommand "tokscale-wrapper-tests" { } ''
+            export HOME=$TMPDIR
+            mkdir -p scripts tests
+            cp ${./scripts/tokscale} scripts/tokscale
+            cp ${./tests/tokscale.sh} tests/tokscale.sh
+            chmod +x scripts/tokscale
+            patchShebangs scripts/tokscale
+            bash tests/tokscale.sh scripts/tokscale
+            bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
+            touch $out
+          '';
         ci-docs-only-paths =
           pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
             ''
