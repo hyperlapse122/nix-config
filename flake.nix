@@ -799,6 +799,7 @@
               bash tests/orca-orchestration-context.sh --packaged ${pkgs.lib.getExe agentTools.orcaOrchestrationContext}
               touch $out
             '';
+        orca-orchestration-plugin = import ./tests/orca-orchestration-plugin.nix { inherit pkgs; };
         tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
         tokscale-wrapper =
           let
