@@ -5,11 +5,24 @@ Claude Code and the Antigravity CLI each own their settings file and rewrite it
 whenever a setting changes at runtime, so Home Manager cannot place a read-only
 store symlink there.  Activation assigns the declared top-level keys, drops the
 ones this repository has retired, and leaves every other key exactly as the
-agent wrote it.
+agent wrote it.  Tokscale does the same with a settings file whose preferences
+sit inside objects beside its own runtime state, so a declaration may also
+assign scalars at explicit nested paths.
 
 --label names the agent in failure messages only.  Nothing else in the merge
-depends on which agent owns the file: both write a flat JSON object that the
-user also edits through the agent's own interface.
+depends on which agent owns the file: each writes a JSON object that the user
+also edits through the agent's own interface.
+
+The declared document is a JSON object with up to three fields:
+
+  set       {name: scalar}          top-level keys to assign
+  remove    [name]                  top-level keys to drop
+  setPaths  [{path: [key, ...], value: scalar}]
+                                    leaves to assign inside nested objects
+
+A path is a list of keys rather than a dotted string, so a key that itself
+contains a dot is never split, and a literal top-level "a.b" key is never taken
+for the path ["a", "b"].
 """
 import argparse
 import errno
@@ -47,8 +60,17 @@ def private_directory(path):
     path.chmod(0o700)
 
 
+FIELDS = {'set', 'remove', 'setPaths'}
+
+
+def describe(path):
+    # JSON rather than a dotted join, which would print ["a.b"] and ["a", "b"]
+    # identically.
+    return json.dumps(path, ensure_ascii=False)
+
+
 def declaration(declared):
-    """Parse the rendered declaration into (assign, retire).
+    """Parse the rendered declaration into (assign, retire, paths).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -57,6 +79,11 @@ def declaration(declared):
     document = json.loads(declared.read_text())
     if not isinstance(document, dict):
         raise ValueError('declared settings are not a JSON object: {}'.format(declared))
+    # A misspelt field would otherwise be ignored, and the values under it
+    # never asserted, with nothing in the rebuild log to say so.
+    unknown = sorted(set(document) - FIELDS)
+    if unknown:
+        raise ValueError('declared settings carry unknown fields: {}'.format(', '.join(unknown)))
     assign = document.get('set', {})
     retire = document.get('remove', [])
     if not isinstance(assign, dict):
@@ -72,7 +99,64 @@ def declaration(declared):
     contradictory = sorted(set(assign) & set(retire))
     if contradictory:
         raise ValueError('declared as both set and removed: {}'.format(', '.join(contradictory)))
-    return assign, retire
+    return assign, retire, nested_paths(document.get('setPaths', []), assign, retire, declared)
+
+
+def nested_paths(entries, assign, retire, declared):
+    if not isinstance(entries, list):
+        raise ValueError('declared "setPaths" is not a list: {}'.format(declared))
+    paths = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'path', 'value'}:
+            raise ValueError('declared "setPaths" entry is not {{path, value}}: {}'.format(declared))
+        path, value = entry['path'], entry['value']
+        if not isinstance(path, list) or not path or any(not isinstance(key, str) for key in path):
+            raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+        # Values stay scalars for the same reason as `set`: an object would
+        # replace whatever the owner keeps beside the declared keys.
+        if isinstance(value, (dict, list)):
+            raise ValueError('declared path value must be a scalar: {}'.format(describe(path)))
+        # A top-level key owned by `set` or `remove` as well would have two
+        # declarations fighting over it, with the outcome depending on order.
+        if path[0] in assign or path[0] in retire:
+            raise ValueError('declared path starts at a key that set or remove also declares: {}'.format(describe(path)))
+        paths.append((path, value))
+    # Likewise when one path runs through another's leaf, or repeats it.
+    for index, (path, _) in enumerate(paths):
+        for other, _ in paths[index + 1:]:
+            shorter = min(len(path), len(other))
+            if path[:shorter] == other[:shorter]:
+                raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+    return paths
+
+
+def apply(current, assign, retire, paths):
+    """Return `current` with the declaration applied, leaving `current` alone.
+
+    Each object along a path is copied before it is changed.  The caller skips
+    the write when the result equals what it read, and editing the read
+    objects in place would make that comparison true every time.
+    """
+    merged = dict(current)
+    merged.update(assign)
+    for name in retire:
+        merged.pop(name, None)
+    for path, value in paths:
+        node = merged
+        for depth, key in enumerate(path[:-1]):
+            if key not in node:
+                child = {}
+            elif isinstance(node[key], dict):
+                child = dict(node[key])
+            else:
+                # Replacing it would discard whatever the owner stored there,
+                # so refuse and let the rebuild report it.
+                raise ValueError('{} is not an object, so {} cannot be set'.format(
+                    describe(path[:depth + 1]), describe(path)))
+            node[key] = child
+            node = child
+        node[path[-1]] = value
+    return merged
 
 
 def snapshot(settings):
@@ -137,21 +221,20 @@ def swap(settings, merged, before):
 
 
 def merge(settings, declared):
-    assign, retire = declaration(declared)
+    assign, retire, paths = declaration(declared)
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
-    # disk exactly as it found it. The value is deliberately discarded: each
-    # attempt below pairs its own read with its own snapshot, and reusing this
-    # one would break that pairing and let a concurrent write be overwritten.
-    read_settings(settings)
+    # disk exactly as it found it; applying the declaration here also refuses
+    # a non-object intermediate before anything changes. The result is
+    # deliberately discarded: each attempt below pairs its own read with its
+    # own snapshot, and reusing this one would break that pairing and let a
+    # concurrent write be overwritten.
+    apply(read_settings(settings), assign, retire, paths)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
-        merged = dict(current)
-        merged.update(assign)
-        for name in retire:
-            merged.pop(name, None)
+        merged = apply(current, assign, retire, paths)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)
