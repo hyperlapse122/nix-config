@@ -26,6 +26,29 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
+  # The Antigravity CLI reads hooks from ~/.gemini/config/hooks.json, a map
+  # from hook name to its events, and Orca rewrites its own `orca-status`
+  # entry there at run time. This repository owns the `orca-orchestration`
+  # entry outright, so the merge replaces that one key whole and leaves Orca's
+  # beside it. The script prints nothing outside an Orca terminal.
+  contextScript =
+    lib.getExe
+      (import ../../../packages/agent-tools.nix { inherit pkgs; }).orcaOrchestrationContext;
+  declaredHooks = pkgs.writeText "antigravity-declared-hooks.json" (
+    builtins.toJSON {
+      own.orca-orchestration = {
+        enabled = true;
+        SessionStart = [
+          {
+            type = "command";
+            command = "${contextScript} --harness antigravity";
+            timeout = 10;
+          }
+        ];
+      };
+    }
+  );
+
   declared = pkgs.writeText "antigravity-declared-settings.json" (
     builtins.toJSON {
       set = antigravityTier;
@@ -54,5 +77,13 @@ in
       --label 'Antigravity CLI' \
       --settings ${config.home.homeDirectory}/.gemini/antigravity-cli/settings.json \
       --declared ${declared}
+  '';
+
+  # Ordered like antigravitySettings, for the same reasons.
+  home.activation.antigravityHooks = lib.hm.dag.entryAfter [ "installPackages" ] ''
+    ${merger} \
+      --label 'Antigravity hooks' \
+      --settings ${config.home.homeDirectory}/.gemini/config/hooks.json \
+      --declared ${declaredHooks}
   '';
 }
