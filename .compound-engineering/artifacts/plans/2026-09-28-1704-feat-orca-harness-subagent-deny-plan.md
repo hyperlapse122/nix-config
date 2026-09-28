@@ -88,7 +88,6 @@ The probe on 2026-09-28 left two such terminals behind (`retained`, reason `user
 - Compound-engineering skills are not changed to run inline or through Orca; inside Orca their subagent steps are refused per R1.
 - The guide text Orca ships is not edited; the cleanup is an added instruction beside it.
 
-
 ### Dependencies / Assumptions
 
 - The deny hook runs only in Orca sessions, identified by the session injection plan's trigger: a non-empty `ORCA_PANE_KEY`.
