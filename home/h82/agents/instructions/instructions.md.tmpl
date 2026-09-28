@@ -44,3 +44,12 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 {{- else }}
 {{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
 {{- end }}
+
+# Review findings
+
+Apply every finding that `ce-code-review` and `ce-simplify-code` report, whatever its severity, P2 and P3 included. A low-severity finding is still a defect in the change, and fixing it now costs less than tracking it.
+
+- Fix P2, P3, and lower findings on the branch the same way you fix P0 and P1 findings, and verify each fix.
+- Do not defer a finding to a residual list, a follow-up ticket, or a note in the pull request body.
+- When a fix needs a decision only the user can make, ask with the question tool instead of deferring it.
+- Leave a finding unapplied only when you have verified that it is wrong or cannot be applied, and report which one and why.
