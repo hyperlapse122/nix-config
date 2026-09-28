@@ -30,10 +30,12 @@ let
   # from hook name to its events, and Orca rewrites its own `orca-status`
   # entry there at run time. This repository owns the `orca-orchestration`
   # entry outright, so the merge replaces that one key whole and leaves Orca's
-  # beside it. The script prints nothing outside an Orca terminal.
-  contextScript =
-    lib.getExe
-      (import ../../../packages/agent-tools.nix { inherit pkgs; }).orcaOrchestrationContext;
+  # beside it. Both scripts print nothing outside an Orca terminal. The guard
+  # runs before every tool, refuses invoke_subagent inside Orca, and gives
+  # every other tool no decision, which leaves Orca's own hook to rule on it.
+  agentTools = import ../../../packages/agent-tools.nix { inherit pkgs; };
+  contextScript = lib.getExe agentTools.orcaOrchestrationContext;
+  guardScript = lib.getExe agentTools.orcaSubagentGuard;
   declaredHooks = pkgs.writeText "antigravity-declared-hooks.json" (
     builtins.toJSON {
       own.orca-orchestration = {
@@ -43,6 +45,18 @@ let
             type = "command";
             command = "${contextScript} --harness antigravity";
             timeout = 10;
+          }
+        ];
+        PreToolUse = [
+          {
+            matcher = "*";
+            hooks = [
+              {
+                type = "command";
+                command = "${guardScript} --harness antigravity";
+                timeout = 10;
+              }
+            ];
           }
         ];
       };
