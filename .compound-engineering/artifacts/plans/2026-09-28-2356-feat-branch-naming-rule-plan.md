@@ -71,11 +71,11 @@ Orca and other agent tools create worktree branches with placeholder names, such
 
 ### Sources
 
-- GitHub Flow: "A short, descriptive branch name enables your collaborators to see ongoing work at a glance." https://docs.github.com/en/get-started/using-github/github-flow
-- GitLab Flow (archived doc): "The name of a branch might be dictated by organizational standards." https://gitlab.com/gitlab-org/gitlab/-/raw/v15.0.0-ee/doc/topics/gitlab_flow.md
-- Conventional Commits 1.0.0 types: https://www.conventionalcommits.org/en/v1.0.0/
-- `git branch -m` carries the upstream config to the new name, still pointing at the old remote branch. This makes a rename after push unsafe and supports R2. https://git-scm.com/docs/git-branch
-- A local branch named exactly `feat` or `fix` makes `git branch -m` fail for `feat/…` or `fix/…`. A remote branch with that name makes the push fail with a refname conflict, and a remote-only branch with the target name lets the rename succeed and the push land on that branch. These are the cases R3 covers. `git check-ref-format --branch` checks syntax only and sees none of them. https://git-scm.com/docs/git-check-ref-format
+- GitHub Flow: "A short, descriptive branch name enables your collaborators to see ongoing work at a glance." <https://docs.github.com/en/get-started/using-github/github-flow>
+- GitLab Flow (archived doc): "The name of a branch might be dictated by organizational standards." <https://gitlab.com/gitlab-org/gitlab/-/raw/v15.0.0-ee/doc/topics/gitlab_flow.md>
+- Conventional Commits 1.0.0 types: <https://www.conventionalcommits.org/en/v1.0.0/>
+- `git branch -m` carries the upstream config to the new name, still pointing at the old remote branch. This makes a rename after push unsafe and supports R2. <https://git-scm.com/docs/git-branch>
+- A local branch named exactly `feat` or `fix` makes `git branch -m` fail for `feat/…` or `fix/…`. A remote branch with that name makes the push fail with a refname conflict, and a remote-only branch with the target name lets the rename succeed and the push land on that branch. These are the cases R3 covers. `git check-ref-format --branch` checks syntax only and sees none of them. <https://git-scm.com/docs/git-check-ref-format>
 
 ## Implementation Units
 
