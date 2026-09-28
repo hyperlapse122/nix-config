@@ -78,6 +78,9 @@ jobs:
           # 5. Update the Android SDK pin
           nix run .#android-sdk-release -- --output packages/android-sdk-repo.json
 
+          # 6. Update mise
+          nix run .#mise-release -- --output packages/mise-release.json
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -126,6 +129,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/claude-code-manifest.json)
             git add packages/claude-code-manifest.json
             git commit -m "chore(packages): bump claude-code to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/mise-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/mise-release.json)
+            git add packages/mise-release.json
+            git commit -m "chore(packages): bump mise to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/android-sdk-repo.json)" ]; then
