@@ -4,6 +4,7 @@
 
   programs.git = {
     enable = true;
+    lfs.enable = true;
     signing = {
       key = "621512777E6933FEB4458FDC4945855D4F283F05";
       signByDefault = true;
