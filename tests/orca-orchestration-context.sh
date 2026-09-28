@@ -150,6 +150,8 @@ takeover_note="Orca worker cleanup: when \`worker-release\`"
 delegation_note="Orca subagents: this session refuses the harness's own subagent tools"
 tail -n 1 "$scratch/part2" | grep -qF "$wait_note" || fail 'the last part does not end with the background-wait note'
 grep -q 'run_in_background' "$scratch/part2" || fail 'the wait note does not name run_in_background'
+tail -n 1 "$scratch/part2" | grep -qF 'armed with no `--types` filter' ||
+  fail 'the wait note does not keep an unfiltered wait armed against Orca mailbox pointers'
 grep -qF "$wait_note" "$scratch/part1" && fail 'the background-wait note appeared before the last part'
 [[ -z $(tail -n 2 "$scratch/part2" | head -n 1) ]] || fail 'the wait note is not set off by a blank line'
 tail -n 3 "$scratch/part2" | head -n 1 | grep -qF "$takeover_note" ||
