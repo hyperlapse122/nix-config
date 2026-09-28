@@ -101,6 +101,7 @@
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
+        mise = import ./packages/mise.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       checks.${system} =
