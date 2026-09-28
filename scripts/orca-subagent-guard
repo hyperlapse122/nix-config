@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# PreToolUse guard: inside an Orca-managed terminal, refuses the harness's own
+# subagent tools and points the agent at Orca orchestration instead.
+#
+#   orca-subagent-guard --harness claude        Claude Code, matcher ^(Agent|Task)$
+#   orca-subagent-guard --harness antigravity   Antigravity, matcher *
+#
+# The hook payload arrives on stdin. Outside Orca, for every other tool, and
+# for any bad argument, the guard prints nothing and exits 0, which both
+# harnesses treat as no decision. It never prints an allow: Orca's own
+# Antigravity hook asks before every tool, and an allow could override it.
+# The Nix package replaces @JQ@ with a store path, because a hook runs with
+# whatever PATH the agent was started with.
+set -uo pipefail
+
+JQ='@JQ@'
+
+REASON="This Orca session disables the harness's own subagents. Delegate through Orca instead: load the /orchestration skill (orca skills get orchestration) and start workers with \`orca orchestration worker-start\`, or do the work yourself in this session."
+
+harness=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --harness) harness=${2:-}; shift 2 || exit 0 ;;
+    *) exit 0 ;;
+  esac
+done
+
+case $harness in
+  claude | antigravity) ;;
+  *) exit 0 ;;
+esac
+
+# Orca sets ORCA_PANE_KEY in every terminal it manages and in every agent it
+# launches, coordinators and workers alike. Empty is absent.
+[[ -n ${ORCA_PANE_KEY:-} ]] || exit 0
+
+# A builtin read, since the inherited PATH may not reach cat.
+IFS= read -r -d '' payload || true
+
+if [[ $harness == claude ]]; then
+  # Only the matched subagent tools reach this hook, so a payload that cannot
+  # be read is still one of them and is refused.
+  tool=$("$JQ" -r '.tool_name // empty' <<<"$payload" 2>/dev/null) || tool=
+  case $tool in
+    Agent | Task | '') ;;
+    *) exit 0 ;;
+  esac
+  "$JQ" -cn --arg reason "$REASON" \
+    '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}' \
+    2>/dev/null || true
+  exit 0
+fi
+
+# Antigravity runs this hook before every tool, so a payload that cannot be
+# read gets no decision rather than blocking everything.
+tool=$("$JQ" -r '.toolCall.name // empty' <<<"$payload" 2>/dev/null) || exit 0
+[[ $tool == invoke_subagent ]] || exit 0
+"$JQ" -cn --arg reason "$REASON" '{decision: "deny", reason: $reason}' 2>/dev/null || true
+exit 0
