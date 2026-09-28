@@ -137,7 +137,10 @@ let
           failed=1
         fi
 
-        if ! printf '%s' ${esc script} | grep -qF '/bin/agent-plugin-sync'; then
+        # The script is fed as a here-string, never piped from printf: grep -q
+        # exits on its first match, and under the builder's pipefail the
+        # writer's SIGPIPE then fails a pipeline that matched.
+        if ! grep -qF '/bin/agent-plugin-sync' <<< ${esc script}; then
           echo 'the agentPlugins activation script must invoke the packaged sync helper on ${hostName}' >&2
           failed=1
         fi
@@ -146,21 +149,21 @@ let
         # Comment lines are stripped first, because the module documents why the
         # swallow is absent and matching that sentence would fail the honest
         # script.
-        if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+        if grep -v '^[[:space:]]*#' <<< ${esc script} \
+          | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' > /dev/null; then
           echo 'the agentPlugins activation script must not swallow the helper exit status on ${hostName}' >&2
           failed=1
         fi
 
         # --accept-command would run upstream-authored shell during activation.
-        if printf '%s' ${esc script} | grep -qF -- '--accept-command'; then
+        if grep -qF -- '--accept-command' <<< ${esc script}; then
           echo 'the agentPlugins activation script must never pass --accept-command on ${hostName}' >&2
           failed=1
         fi
 
         # The activation unit carries no session variables, so the declared
         # environment tier has to be exported around the agent CLI.
-        if ! printf '%s' ${esc script} | grep -qF 'DISABLE_AUTOUPDATER='; then
+        if ! grep -qF 'DISABLE_AUTOUPDATER=' <<< ${esc script}; then
           echo 'the agentPlugins activation script must export the declared DISABLE_AUTOUPDATER on ${hostName}' >&2
           failed=1
         fi
@@ -288,7 +291,7 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
 
   # This work installs the plugin for the user; the project-scope dotagents
   # declaration is a separate layer and stays exactly as it was.
-  if ! printf '%s' ${esc agentsToml} | grep -qF 'EveryInc/compound-engineering-plugin'; then
+  if ! grep -qF 'EveryInc/compound-engineering-plugin' <<< ${esc agentsToml}; then
     echo 'agents.toml no longer declares the plugin for the project scope' >&2
     failed=1
   fi
