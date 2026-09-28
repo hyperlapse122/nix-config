@@ -58,6 +58,11 @@ let
   # the sandboxed repository check can drive it with fixtures.
   claudeCodeRelease = pythonHelper "claude-code-release" ../scripts/claude-code-release;
 
+  # Resolves the latest mise release from the SHASUMS256.txt asset of its
+  # latest GitHub release. Its network call goes through an overridable
+  # command so the sandboxed repository check can drive it with fixtures.
+  miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
+
   # Pins the Android SDK packages from Google's repository XML. Its network
   # call goes through an overridable command for the same reason. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
@@ -104,6 +109,7 @@ in
     agentPluginRelease
     claudeDesktopRelease
     claudeCodeRelease
+    miseRelease
     androidSdkRelease
     ;
 }

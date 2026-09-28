@@ -100,6 +100,7 @@
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
+        mise-release = agentTools.miseRelease;
         android-sdk-release = agentTools.androidSdkRelease;
       };
       checks.${system} =
@@ -317,6 +318,14 @@
                 python tests/test_claude_code_release.py
                 touch $out
               '';
+          mise-release = pkgs.runCommand "mise-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            mkdir -p scripts tests
+            cp ${./scripts/mise-release} scripts/mise-release
+            cp ${./tests/test_mise_release.py} tests/test_mise_release.py
+            python tests/test_mise_release.py
+            touch $out
+          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
