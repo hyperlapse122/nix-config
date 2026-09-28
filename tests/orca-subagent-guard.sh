@@ -93,6 +93,21 @@ out=$(in_orca 'not json' "$script" --harness claude) || fail 'claude unparseable
   fail 'claude unparseable payload inside Orca was not denied'
 pass 'claude denies Agent, Task, and an unparseable payload inside Orca'
 
+# The reason is what the agent reads when it decides how to carry on. Skills
+# fall back to inline or serial work when subagents are unavailable, so the
+# reason must say the work still goes to Orca workers and never offer doing
+# it in this session. The guide keeps the coordinator role for an explicit
+# request to supervise, so the reason also says the denied call is one.
+reason=$("$jq_bin" -r '.hookSpecificOutput.permissionDecisionReason' \
+  <<<"$(in_orca "$(claude_payload Agent)" "$script" --harness claude)")
+for word in 'orchestration worker-start' 'worker_done' 'inline or serial fallback' 'does not mean' \
+  'itself the request to supervise' 'however small'; do
+  grep -qF -- "$word" <<<"$reason" || fail "the deny reason does not say '$word': $reason"
+done
+grep -qiE 'or do the work yourself|do it yourself' <<<"$reason" &&
+  fail "the deny reason offers doing the delegated work inline: $reason"
+pass 'the deny reason sends the denied work to Orca workers, not inline'
+
 for tool in Workflow Bash AgentOutput; do
   expect_silent "claude $tool inside Orca" in_orca "$(claude_payload "$tool")" "$script" --harness claude
 done

@@ -8,9 +8,10 @@
 # Claude Code caps each hook's output at 10,000 characters and replaces a
 # longer one with a file path and a short preview, so the guide is split on
 # line boundaries into labeled parts and each hook handler prints one of them.
-# The last part either harness receives ends with a note on closing a worker
+# The last part either harness receives ends with a note that Orca workers
+# replace the harness's own subagents, then a note on closing a worker
 # terminal that release keeps because the user opened it; for Claude Code a
-# note on running Orca waits in the background follows it. Antigravity gets
+# note on running Orca waits in the background follows them. Antigravity gets
 # every part in order as one injectSteps document.
 #
 # The hook must never stand between the user and a session: every path out of
@@ -27,9 +28,9 @@ TIMEOUT='@TIMEOUT@'
 CLI_PATH='@CLI_PATH@'
 
 # Bytes rather than characters, so a multibyte guide still fits the cap. The
-# last Claude part also carries the overflow line and both notes, about 1,300
-# bytes, which a full part must leave room for.
-PART_BYTES=8000
+# last Claude part also carries the overflow line and all three notes, about
+# 2,000 bytes, which a full part must leave room for.
+PART_BYTES=7500
 # The number of handlers hooks/hooks.json declares for Claude Code; the
 # package substitutes the same value the plugin builds its handlers from.
 CLAUDE_PARTS='@CLAUDE_PARTS@'
@@ -39,6 +40,14 @@ GUIDE_TIMEOUT=5
 # guide's 15-minute waits, and holds the session while it runs. The note
 # follows the last part Claude Code receives, after the guide it amends.
 CLAUDE_WAIT_NOTE="Claude Code: run every Orca command that waits on an agent, such as \`orchestration check --wait\` or \`terminal wait\`, with the Bash tool's \`run_in_background\` option, never in the foreground. A foreground Bash command stops at 10 minutes, before the guide's 15-minute waits expire, and blocks the session while it runs. A background command re-invokes you when it exits, so do not poll it with sleep; read its output then and handle the result as the guide describes."
+
+# The subagent guard refuses the harness's own subagents in these sessions,
+# and skills fall back to inline work when subagents are unavailable, while
+# the guide reserves the coordinator role for an explicit request to
+# supervise. Agents then do delegated work inline, so the standing rule says
+# Orca workers replace those subagents. Harness-neutral: both harnesses are
+# guarded.
+DELEGATION_NOTE="Orca subagents: this session refuses the harness's own subagent tools, and Orca workers take their place. Whenever a skill, prompt, or plan calls for subagents (reviewers, researchers, scouts, parallel dispatch), that is a request to supervise: start one worker per subagent with \`ORCA orchestration worker-start --spec \"<its full prompt>\"\` and use each \`worker_done\` report as its result, however small the work. A fallback to inline or serial work when subagents are unavailable never applies here; if Orca fails, report its error and stop."
 
 # Opening a worker's tab in Orca marks its terminal as taken over by the user,
 # and worker-release then keeps the terminal open, so the guide's cleanup
@@ -124,7 +133,7 @@ if [[ $harness == claude ]]; then
     text+=$'\n\n'"The guide continues past this part. Run \`$cli skills get orchestration\` for the rest."
   fi
   if ((part == (total < CLAUDE_PARTS ? total : CLAUDE_PARTS))); then
-    text+=$'\n\n'$TAKEOVER_NOTE$'\n\n'$CLAUDE_WAIT_NOTE
+    text+=$'\n\n'$DELEGATION_NOTE$'\n\n'$TAKEOVER_NOTE$'\n\n'$CLAUDE_WAIT_NOTE
   fi
   printf '%s\n' "$text"
   exit 0
@@ -134,7 +143,7 @@ rendered=()
 for ((index = 1; index <= total; index++)); do
   rendered+=("$(render "$index")")
 done
-rendered[total - 1]+=$'\n\n'$TAKEOVER_NOTE
+rendered[total - 1]+=$'\n\n'$DELEGATION_NOTE$'\n\n'$TAKEOVER_NOTE
 "$JQ" -cn '{injectSteps: [$ARGS.positional[] | {ephemeralMessage: .}]}' \
   --args "${rendered[@]}" 2>/dev/null || true
 exit 0
