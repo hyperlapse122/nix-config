@@ -30,6 +30,15 @@ in
 pkgs.appimageTools.wrapType2 {
   inherit pname version src;
 
+  # Agent terminals inherit this bubblewrap sandbox: its /etc lacks containers/,
+  # subuid, and subgid, and no_new_privs disables the setuid newuidmap. A local
+  # rootless Podman started here builds its pause process from that view, and
+  # the host's Podman service then joins it and fails image pulls. Remote mode
+  # sends every podman and docker call to the host service instead.
+  extraBwrapArgs = [
+    ''--setenv CONTAINER_HOST "unix://$XDG_RUNTIME_DIR/podman/podman.sock"''
+  ];
+
   # `cli` is the extracted AppImage's Node-mode entry point, the file Orca's
   # own linux-orca-cli-shim runs. The wrapper's bin/orca-ide launches the GUI.
   # It runs the unwrapped Electron binary outside the FHS sandbox, so it relies
