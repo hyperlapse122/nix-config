@@ -77,7 +77,8 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     printf '#!/bin/sh\necho "$1"\n' > clean.sh
 
     expect jq 1 sh -c 'printf "{\"a\":1}" | "$0" .a' "$bin/jq"
-    expect yq 1 sh -c 'printf "a: 1\n" | "$0" .a' "$bin/yq"
+    # yq-go edits YAML in place; the Python yq wrapper would print JSON.
+    expect yq "$(printf 'a: 1\nb: 2')" sh -c 'printf "a: 1\n" | "$0" ".b = 2"' "$bin/yq"
     expect rg needle "$bin/rg" --no-filename --no-line-number needle haystack
     expect fd needle.txt "$bin/fd" --base-directory tree needle
     expect fzf banana sh -c 'printf "apple\nbanana\n" | "$0" --filter ban' "$bin/fzf"
