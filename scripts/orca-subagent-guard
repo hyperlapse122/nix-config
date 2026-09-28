@@ -52,7 +52,9 @@ if [[ $harness == claude ]]; then
 fi
 
 # Antigravity runs this hook before every tool, so a payload that cannot be
-# read gets no decision rather than blocking everything.
+# read gets no decision rather than blocking everything. A payload that never
+# names the tool cannot be for it, so most calls skip starting jq.
+[[ $payload == *invoke_subagent* ]] || exit 0
 tool=$("$JQ" -r '.toolCall.name // empty' <<<"$payload" 2>/dev/null) || exit 0
 [[ $tool == invoke_subagent ]] || exit 0
 "$JQ" -cn --arg reason "$REASON" '{decision: "deny", reason: $reason}' 2>/dev/null || true
