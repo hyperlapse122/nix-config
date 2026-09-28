@@ -20,6 +20,8 @@
   - the materialized file carries the shared body's opening sentence with this
     harness's name filled in, so a context carrying the other harness's name
     fails.
+  - it carries the shared rule to apply every review finding, so a rule
+    dropped from the template or moved into one harness's branch fails.
   - it names every native tool its harness template maps, and none of the
     other harness's, so a branch keyed on the wrong id, or swapped targets,
     fail.
@@ -42,6 +44,8 @@ let
   inherit (pkgs) lib;
 
   esc = value: lib.escapeShellArg (toString value);
+
+  reviewFindingsSentence = "Apply every finding that `ce-code-review` and `ce-simplify-code` report, whatever its severity, P2 and P3 included.";
 
   claudeTools = [
     "`Read`"
@@ -111,6 +115,10 @@ let
         file=${source}
         if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then
           echo ${esc "${label} lacks the shared instructions"} >&2
+          failed=1
+        fi
+        if ! grep -qF -- ${esc reviewFindingsSentence} "$file"; then
+          echo ${esc "${label} lacks the rule to apply every review finding"} >&2
           failed=1
         fi
         for tool in ${lib.escapeShellArgs harness.present}; do
