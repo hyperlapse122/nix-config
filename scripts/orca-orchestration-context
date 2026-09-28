@@ -29,7 +29,7 @@ CLI_PATH='@CLI_PATH@'
 
 # Bytes rather than characters, so a multibyte guide still fits the cap. The
 # last Claude part also carries the overflow line and all three notes, about
-# 2,000 bytes, which a full part must leave room for.
+# 2,300 bytes, which a full part must leave room for.
 PART_BYTES=7500
 # The number of handlers hooks/hooks.json declares for Claude Code; the
 # package substitutes the same value the plugin builds its handlers from.
@@ -39,7 +39,13 @@ GUIDE_TIMEOUT=5
 # Claude Code's Bash tool stops a foreground command at 10 minutes, under the
 # guide's 15-minute waits, and holds the session while it runs. The note
 # follows the last part Claude Code receives, after the guide it amends.
-CLAUDE_WAIT_NOTE="Claude Code: run every Orca command that waits on an agent, such as \`orchestration check --wait\` or \`terminal wait\`, with the Bash tool's \`run_in_background\` option, never in the foreground. A foreground Bash command stops at 10 minutes, before the guide's 15-minute waits expire, and blocks the session while it runs. A background command re-invokes you when it exits, so do not poll it with sleep; read its output then and handle the result as the guide describes."
+#
+# Orca types a "You have N orchestration messages" pointer into an idle agent
+# terminal for each unread message with no live `check --wait` of its type, and
+# has no setting to turn that off. The guide's `--types` filter leaves status
+# and heartbeat mail to that pointer, which lands in the user's prompt, so the
+# note keeps an unfiltered wait armed instead.
+CLAUDE_WAIT_NOTE="Claude Code: run every Orca command that waits on an agent, such as \`orchestration check --wait\` or \`terminal wait\`, with the Bash tool's \`run_in_background\` option, never in the foreground. A foreground Bash command stops at 10 minutes, before the guide's 15-minute waits expire, and blocks the session while it runs. A background command re-invokes you when it exits, so do not poll it with sleep; read its output then and handle the result as the guide describes. While any Dispatch in your Run has not settled, keep one background \`ORCA orchestration check --wait\` armed with no \`--types\` filter, and re-arm it with \`--ack\` as soon as you have handled its result: Orca types \`You have N orchestration messages\` into this terminal whenever the session is idle and an unread message has no live wait of its type, and a \`--types\` filter leaves \`status\` and \`heartbeat\` mail to that prompt."
 
 # The subagent guard refuses the harness's own subagents in these sessions,
 # and skills fall back to inline work when subagents are unavailable, while
