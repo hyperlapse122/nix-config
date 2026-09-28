@@ -32,7 +32,8 @@
   - home.activation.antigravityHooks exists, runs after installPackages, points
     the merger at ~/.gemini/config/hooks.json, and hands it a declaration that
     owns exactly the `orca-orchestration` entry, whose SessionStart command runs
-    the packaged orca-orchestration-context script for Antigravity. Orca writes
+    the packaged orca-orchestration-context script for Antigravity and whose
+    PreToolUse command runs the packaged orca-subagent-guard. Orca writes
     its own `orca-status` entry in that file, so owning any other key -- or the
     whole document -- would erase it. The expected declaration is rendered here
     from the configuration's own pkgs, not read back from the module.
@@ -164,6 +165,22 @@ let
                 timeout = 10;
               }
             ];
+            PreToolUse = [
+              {
+                matcher = "*";
+                hooks = [
+                  {
+                    type = "command";
+                    command = "${
+                      lib.getExe
+                        (import ../packages/agent-tools.nix { inherit (self.nixosConfigurations.${entry.name}) pkgs; })
+                        .orcaSubagentGuard
+                    } --harness antigravity";
+                    timeout = 10;
+                  }
+                ];
+              }
+            ];
           };
         }
       );
@@ -200,7 +217,7 @@ let
           echo 'the antigravityHooks activation script passes no declared file on ${hostName}' >&2
           failed=1
         elif ! diff -u "$hooksDeclaredPath" ${hooksExpected} >&2; then
-          echo 'the declared Antigravity hooks must own exactly orca-orchestration, running the packaged context script, on ${hostName}' >&2
+          echo 'the declared Antigravity hooks must own exactly orca-orchestration, running the packaged context and guard scripts, on ${hostName}' >&2
           failed=1
         fi
       '';

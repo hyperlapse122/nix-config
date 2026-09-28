@@ -6,8 +6,13 @@
   Asserts what the built Claude Code plugin tree actually contains, read from
   its materialized files rather than from the Nix values that produced them:
 
-  - hooks/hooks.json declares SessionStart only, under the single matcher
-    `startup`, so resume, clear, compact, and fork never re-inject.
+  - hooks/hooks.json declares SessionStart and PreToolUse only. SessionStart
+    sits under the single matcher `startup`, so resume, clear, compact, and
+    fork never re-inject.
+  - PreToolUse has one entry whose matcher fully matches Agent and Task and
+    nothing else tried here, Workflow included, and whose command, run
+    against an Agent payload, denies with an /orchestration reason inside Orca
+    and prints nothing outside it.
   - Its handlers request parts 1..N exactly once each, N equals the part
     count the packaged script appends its overflow line to, and each command
     runs and prints its labeled part against a stub Orca CLI.
@@ -53,7 +58,7 @@ pkgs.runCommand "orca-orchestration-plugin-tests"
     hooks_path = tree / 'hooks' / 'hooks.json'
     hooks_bytes = hooks_path.read_bytes()
     hooks = json.loads(hooks_bytes).get('hooks', {})
-    check(sorted(hooks) == ['SessionStart'], 'hooks.json declares {}, not SessionStart alone'.format(sorted(hooks)))
+    check(sorted(hooks) == ['PreToolUse', 'SessionStart'], 'hooks.json declares {}, not PreToolUse and SessionStart'.format(sorted(hooks)))
     entries = hooks.get('SessionStart', [])
     check(len(entries) == 1, 'SessionStart has {} entries, not one'.format(len(entries)))
     entry = entries[0] if entries else {}
@@ -98,6 +103,36 @@ pkgs.runCommand "orca-orchestration-plugin-tests"
                   'part {} printed {!r}'.format(part, first))
         else:
             check(result.stdout == "", 'part {} printed text for a two-part guide'.format(part))
+
+    guards = hooks.get('PreToolUse', [])
+    check(len(guards) == 1, 'PreToolUse has {} entries, not one'.format(len(guards)))
+    guard = guards[0] if guards else {}
+    try:
+        matcher = re.compile(guard.get('matcher', ""))
+        for tool in ['Agent', 'Task']:
+            check(matcher.fullmatch(tool) is not None, 'PreToolUse matcher {!r} does not match {}'.format(matcher.pattern, tool))
+        for tool in ['Workflow', 'AgentOutput', 'SubAgent', 'Bash', 'Read']:
+            check(matcher.search(tool) is None, 'PreToolUse matcher {!r} also matches {}'.format(matcher.pattern, tool))
+    except re.error as exc:
+        failures.append('PreToolUse matcher is not a regular expression: {}'.format(exc))
+    guard_handlers = guard.get('hooks', [])
+    check(len(guard_handlers) == 1, 'PreToolUse has {} handlers, not one'.format(len(guard_handlers)))
+    for handler in guard_handlers:
+        check(handler.get('type') == 'command', 'the PreToolUse handler is not a command hook: {}'.format(handler))
+        timeout = handler.get('timeout')
+        check(isinstance(timeout, int) and 0 < timeout <= 10, 'PreToolUse timeout {!r} is not 1-10 seconds'.format(timeout))
+        argv = shlex.split(handler.get('command', ""))
+        payload = json.dumps({'hook_event_name': 'PreToolUse', 'tool_name': 'Agent', 'tool_input': {}})
+        inside = subprocess.run(argv, env={'PATH': '/var/empty', 'ORCA_PANE_KEY': 'pane-1'}, input=payload, capture_output=True, text=True)
+        check(inside.returncode == 0, 'PreToolUse command exited {} inside Orca'.format(inside.returncode))
+        try:
+            decision = json.loads(inside.stdout).get('hookSpecificOutput', {})
+        except ValueError:
+            decision = {}
+        check(decision.get('permissionDecision') == 'deny' and '/orchestration' in decision.get('permissionDecisionReason', ""),
+              'PreToolUse command did not deny Agent with an /orchestration reason inside Orca: {!r}'.format(inside.stdout))
+        outside = subprocess.run(argv, env={'PATH': '/var/empty'}, input=payload, capture_output=True, text=True)
+        check(outside.returncode == 0 and outside.stdout == "", 'PreToolUse command printed {!r} outside Orca'.format(outside.stdout))
 
     manifest = json.loads((tree / '.claude-plugin' / 'plugin.json').read_text())
     version = manifest.get('version')

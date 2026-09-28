@@ -100,10 +100,26 @@ let
     passthru = { inherit claudeParts; };
     meta.mainProgram = "orca-orchestration-context";
   };
+
+  # Runs as a coding agent's PreToolUse hook, with the same inherited PATH as
+  # the session-start hook above.
+  orcaSubagentGuard = pkgs.stdenvNoCC.mkDerivation {
+    pname = "orca-subagent-guard";
+    version = "1";
+    dontUnpack = true;
+    installPhase = ''
+      install -Dm755 ${../scripts/orca-subagent-guard} $out/bin/orca-subagent-guard
+      substituteInPlace $out/bin/orca-subagent-guard \
+        --replace-fail '@JQ@' '${lib.getExe pkgs.jq}'
+      patchShebangs $out/bin/orca-subagent-guard
+    '';
+    meta.mainProgram = "orca-subagent-guard";
+  };
 in
 {
   inherit
     orcaOrchestrationContext
+    orcaSubagentGuard
     agentSettings
     agentPluginSync
     agentPluginRelease
