@@ -23,6 +23,10 @@
   - it carries the shared rule to apply every review finding and its ban on
     deferring findings, so either sentence dropped from the template or moved
     into one harness's branch fails.
+  - it carries the shared branch-name rule: rename a placeholder before the
+    first push, only a branch never pushed, and the `type/short-kebab-slug`
+    fallback, so any of those sentences dropped or moved into one harness's
+    branch fails.
   - it names every native tool its harness template maps, and none of the
     other harness's, so a branch keyed on the wrong id, or swapped targets,
     fail.
@@ -49,6 +53,12 @@ let
   reviewFindingsSentences = [
     "Apply every finding that `ce-code-review` and `ce-simplify-code` report, whatever its severity, P2 and P3 included."
     "Do not defer a finding to a residual list, a follow-up ticket, or a note in the pull request body."
+  ];
+
+  branchNameSentences = [
+    "Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not."
+    "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
+    "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
   ];
 
   claudeTools = [
@@ -124,6 +134,12 @@ let
         for sentence in ${lib.escapeShellArgs reviewFindingsSentences}; do
           if ! grep -qF -- "$sentence" "$file"; then
             echo ${esc "${label} lacks the review-findings rule:"} "$sentence" >&2
+            failed=1
+          fi
+        done
+        for sentence in ${lib.escapeShellArgs branchNameSentences}; do
+          if ! grep -qF -- "$sentence" "$file"; then
+            echo ${esc "${label} lacks the branch-name rule:"} "$sentence" >&2
             failed=1
           fi
         done

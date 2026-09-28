@@ -53,3 +53,12 @@ Apply every finding that `ce-code-review` and `ce-simplify-code` report, whateve
 - Do not defer a finding to a residual list, a follow-up ticket, or a note in the pull request body.
 - When a fix needs a decision only the user can make, ask with the question tool instead of deferring it.
 - Leave a finding unapplied only when you have verified that it is wrong or cannot be applied, and report which one and why.
+
+# Branch names
+
+Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not. A tool-generated placeholder, such as an Orca worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, does not describe a change. A name that already does stays.
+
+- Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it. A pushed branch keeps its name, even a placeholder. An upstream that points at another branch, such as `origin/main` set when the worktree was created, does not make a branch pushed. Push the renamed branch with `git push -u origin <new-name>` so the new name becomes its upstream.
+- Never overwrite or push onto an existing branch. Before renaming, check that the new name is free locally and on the remote with `git ls-remote --heads origin <new-name>`. When it is taken, or the push is rejected for a conflicting ref, pick another descriptive name instead of forcing it with `git branch -M`.
+- Follow the project's documented branch-naming rule, from `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`, the project docs, or a CI check or hook that validates branch names. A pattern seen only in existing branch names is not a rule.
+- When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change. This follows GitHub Flow's short, descriptive names, for example `feat/add-branch-naming-rule`. Drop an owner prefix a tool added, such as `hyperlapse122/`, and check the name with `git check-ref-format --branch`, which checks syntax only.
