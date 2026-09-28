@@ -47,7 +47,7 @@ CLAUDE_WAIT_NOTE="Claude Code: run every Orca command that waits on an agent, su
 # supervise. Agents then do delegated work inline, so the standing rule says
 # Orca workers replace those subagents. Harness-neutral: both harnesses are
 # guarded.
-DELEGATION_NOTE="Orca subagents: this session refuses the harness's own subagent tools, and Orca workers take their place. Whenever a skill, prompt, or plan calls for subagents (reviewers, researchers, scouts, parallel dispatch), that is a request to supervise: start one worker per subagent with \`ORCA orchestration worker-start --spec \"<its full prompt>\"\` and use each \`worker_done\` report as its result, however small the work. A fallback to inline or serial work when subagents are unavailable never applies here; if Orca fails, report its error and stop."
+DELEGATION_NOTE="Orca subagents: this session refuses the harness's own subagent tools, and Orca workers take their place. Whenever a skill, prompt, or plan calls for subagents (reviewers, researchers, scouts, parallel dispatch), that is a request to supervise: start one worker per subagent with \`ORCA orchestration worker-start --spec \"<its full prompt>\"\` and use each \`worker_done\` report as its result, however small the work. A fallback to inline or serial work when subagents are unavailable never applies here. Only if worker-start refuses because this session is at Orca's nesting depth limit, do that work in this session; for any other Orca failure, report its error and stop."
 
 # Opening a worker's tab in Orca marks its terminal as taken over by the user,
 # and worker-release then keeps the terminal open, so the guide's cleanup

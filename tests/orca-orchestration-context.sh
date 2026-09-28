@@ -167,7 +167,7 @@ tail -n 5 "$scratch/part2" | head -n 1 | grep -qF "$delegation_note" ||
 grep -qF "$delegation_note" "$scratch/part1" && fail 'the delegation note appeared before the last part'
 delegation_line=$(tail -n 5 "$scratch/part2" | head -n 1)
 for word in 'orchestration worker-start --spec' 'worker_done' 'request to supervise' 'however small' \
-  'inline or serial work' 'never applies'; do
+  'inline or serial work' 'never applies' "Only if worker-start refuses because this session is at Orca's nesting depth limit"; do
   grep -qF -- "$word" <<<"$delegation_line" || fail "the delegation note does not name '$word'"
 done
 head -n -6 "$scratch/body2" >"$scratch/body2.guide"
