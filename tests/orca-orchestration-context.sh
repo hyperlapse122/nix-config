@@ -142,13 +142,24 @@ for index in 1 2; do
     fail "part $index header is '$header'"
   tail -n +3 "$scratch/part$index" >"$scratch/body$index"
 done
-# The Claude Code wait note is the last line of the last part and only there.
+# The last part ends with the takeover note, then the Claude Code wait note as
+# its last line, each set off by a blank line; neither appears earlier.
 wait_note="Claude Code: run every Orca command that waits on an agent"
+takeover_note="Orca worker cleanup: when \`worker-release\`"
 tail -n 1 "$scratch/part2" | grep -qF "$wait_note" || fail 'the last part does not end with the background-wait note'
 grep -q 'run_in_background' "$scratch/part2" || fail 'the wait note does not name run_in_background'
 grep -qF "$wait_note" "$scratch/part1" && fail 'the background-wait note appeared before the last part'
 [[ -z $(tail -n 2 "$scratch/part2" | head -n 1) ]] || fail 'the wait note is not set off by a blank line'
-head -n -2 "$scratch/body2" >"$scratch/body2.guide"
+tail -n 3 "$scratch/part2" | head -n 1 | grep -qF "$takeover_note" ||
+  fail 'the takeover note does not come right before the wait note'
+[[ -z $(tail -n 4 "$scratch/part2" | head -n 1) ]] || fail 'the takeover note is not set off by a blank line'
+grep -qF "$takeover_note" "$scratch/part1" && fail 'the takeover note appeared before the last part'
+takeover_line=$(tail -n 3 "$scratch/part2" | head -n 1)
+for word in 'worker-read --dispatch' 'terminal close --terminal' 'user_takeover' 'release_unknown'; do
+  grep -qF -- "$word" <<<"$takeover_line" || fail "the takeover note does not name '$word'"
+done
+grep -qF -- '--tab' <<<"$takeover_line" && fail 'the takeover note closes the whole tab'
+head -n -4 "$scratch/body2" >"$scratch/body2.guide"
 mv "$scratch/body2.guide" "$scratch/body2"
 # Each body ends with the newline the script prints, which stands in for the
 # newline between parts, so concatenating the bodies restores the guide.
@@ -164,13 +175,18 @@ write_guide 30000
 in_orca ORCA_CLI_COMMAND="$good_cli" "$script" --harness claude --part 3 >"$scratch/part3" ||
   fail 'part 3 exited non-zero'
 head -n 1 "$scratch/part3" | grep -q 'part 3 of 4$' || fail 'part 3 of a four-part guide is mislabeled'
-tail -n 3 "$scratch/part3" | head -n 1 | grep -qF "Run \`$good_cli skills get orchestration\` for the rest." ||
-  fail 'part 3 of an oversized guide does not point at the full command before the wait note'
+tail -n 5 "$scratch/part3" | head -n 1 | grep -qF "Run \`$good_cli skills get orchestration\` for the rest." ||
+  fail 'part 3 of an oversized guide does not point at the full command before the notes'
+tail -n 3 "$scratch/part3" | head -n 1 | grep -qF "$takeover_note" ||
+  fail 'part 3 of an oversized guide does not carry the takeover note before the wait note'
 tail -n 1 "$scratch/part3" | grep -qF "$wait_note" || fail 'part 3 of an oversized guide does not end with the wait note'
-(($(stat -c %s "$scratch/part3") < 10000)) || fail 'part 3 with the overflow line is over the cap'
+# A full part plus the overflow line and both notes is the largest output a
+# handler prints.
+(($(stat -c %s "$scratch/part3") < 10000)) || fail 'part 3 with the overflow line and both notes is over the cap'
 in_orca ORCA_CLI_COMMAND="$good_cli" "$script" --harness claude --part 4 >"$scratch/part4"
 [[ -s $scratch/part4 ]] || fail 'part 4 is empty although the guide has four parts'
 grep -qF "$wait_note" "$scratch/part4" && fail 'part 4 repeats the wait note Claude Code never receives'
+grep -qF "$takeover_note" "$scratch/part4" && fail 'part 4 repeats the takeover note Claude Code never receives'
 pass 'a guide past three parts ends part 3 with the full command'
 
 # --- Antigravity gets every part in order as one document ---------------------
@@ -181,7 +197,15 @@ in_orca ORCA_CLI_COMMAND="$good_cli" "$script" --harness antigravity >"$scratch/
 jq_check=${jq_bin:-$(command -v jq)}
 "$jq_check" -e '.injectSteps | length == 2 and all(.[]; keys == ["ephemeralMessage"])' \
   "$scratch/agy.json" >/dev/null || fail 'antigravity output is not two ephemeralMessage steps'
-"$jq_check" -j '.injectSteps | map(.ephemeralMessage | split("\n\n") | .[1:] | join("\n\n")) | join("\n")' \
+# The takeover note is the last paragraph of the last step and only there.
+"$jq_check" -e --arg note "$takeover_note" '.injectSteps
+  | (.[-1].ephemeralMessage | split("\n\n") | .[-1] | startswith($note))
+    and all(.[:-1][]; .ephemeralMessage | contains($note) | not)' \
+  "$scratch/agy.json" >/dev/null || fail 'antigravity does not end its last step with the takeover note alone'
+"$jq_check" -j '.injectSteps
+  | (.[:-1] | map(.ephemeralMessage | split("\n\n") | .[1:] | join("\n\n")))
+    + [.[-1].ephemeralMessage | split("\n\n") | .[1:-1] | join("\n\n")]
+  | join("\n")' \
   "$scratch/agy.json" >"$scratch/agy-rejoined"
 printf '\n' >>"$scratch/agy-rejoined"
 cmp -s "$scratch/agy-rejoined" "$guide_file" || fail 'antigravity steps do not rejoin to the guide'

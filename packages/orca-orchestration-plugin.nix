@@ -3,8 +3,10 @@
 let
   inherit (pkgs) lib;
 
-  contextPackage = (import ./agent-tools.nix { inherit pkgs; }).orcaOrchestrationContext;
+  agentTools = import ./agent-tools.nix { inherit pkgs; };
+  contextPackage = agentTools.orcaOrchestrationContext;
   context = lib.getExe contextPackage;
+  guard = lib.getExe agentTools.orcaSubagentGuard;
 
   name = "orca-orchestration";
 
@@ -15,7 +17,7 @@ let
   # ${CLAUDE_PLUGIN_ROOT} points at Claude Code's cache copy, not this tree.
   parts = contextPackage.claudeParts;
   hooks = {
-    description = "Inject Orca's orchestration guide into sessions started inside Orca";
+    description = "Inject Orca's orchestration guide and refuse harness subagents in sessions inside Orca";
     hooks.SessionStart = [
       {
         matcher = "startup";
@@ -24,6 +26,21 @@ let
           command = "${context} --harness claude --part ${toString part}";
           timeout = 10;
         }) (lib.range 1 parts);
+      }
+    ];
+    # Refuses the harness's own subagents inside Orca. The matcher is anchored
+    # so Workflow and every other tool never reach the guard, and the guard
+    # checks the tool name again itself.
+    hooks.PreToolUse = [
+      {
+        matcher = "^(Agent|Task)$";
+        hooks = [
+          {
+            type = "command";
+            command = "${guard} --harness claude";
+            timeout = 10;
+          }
+        ];
       }
     ];
   };
@@ -37,7 +54,7 @@ let
 
   plugin = {
     inherit name version;
-    description = "Injects Orca's version-matched orchestration guide at session start inside Orca";
+    description = "Injects Orca's version-matched orchestration guide at session start and refuses harness subagents inside Orca";
   };
 
   # No command, commands, or headersHelper: agent-plugin-sync refuses a
