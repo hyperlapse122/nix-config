@@ -31,9 +31,9 @@ Orca and other agent tools create worktree branches with placeholder names, such
 
 **When to rename**
 
-- R1. Before the first push of a branch, the agent checks whether the branch name describes the change. If it does not, the agent renames the branch locally before pushing. A name that already describes the change stays.
+- R1. Before the first push of a branch, the agent checks whether the branch name describes the change. If it does not, the agent renames the branch locally before pushing. A descriptive name that keeps a tool-added owner prefix is also renamed unless a documented project rule uses that prefix. Any other descriptive name stays.
 - R2. The agent renames only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it. Such a branch keeps its name, even when that name is a placeholder. An upstream pointing at a different branch, such as `origin/main` set when the worktree was created, does not count as pushed.
-- R3. The agent never overwrites or pushes onto an existing branch. Before renaming, it checks that the target name is free both locally and on the remote. When the name is taken or conflicts with another ref, including a push rejected for a conflicting remote ref, it picks a different descriptive name.
+- R3. The agent never renames a branch onto, or pushes the renamed branch onto, a branch that already exists. Ordinary pushes to the agent's own branch are unaffected. Before renaming, it checks that the target name is free both locally and on the remote. When the name is taken or conflicts with another ref, including a push rejected for a conflicting remote ref, it picks a different descriptive name.
 
 **How to name**
 
