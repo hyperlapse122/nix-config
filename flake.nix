@@ -749,6 +749,7 @@
                   activation = entry.user.home.activation.orcaSettings or null;
                   package = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null (userPackagesOf entry);
                   dockerHost = entry.user.home.sessionVariables.DOCKER_HOST or "";
+                  fakeRuntimeDir = "/run/user/4242";
                 in
                 ''
                   ${assertUserPackage {
@@ -763,17 +764,17 @@
                     # Expand both values under one runtime directory, so a path
                     # baked in at build time cannot match the session's socket.
                     containerHost=$(
-                      XDG_RUNTIME_DIR=/run/user/4242
+                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
                       line=$(grep -E '^[[:space:]]*--setenv CONTAINER_HOST ' ${package}/bin/orca-ide) || exit 0
                       eval "set -- $line"
                       printf '%s' "$3"
                     )
                     dockerHost=$(
-                      XDG_RUNTIME_DIR=/run/user/4242
+                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
                       printf '%s' "${pkgs.lib.escape [ "\"" "\\" "`" ] dockerHost}"
                     )
                     if [ -z "$containerHost" ] || [ "$containerHost" != "$dockerHost" ] \
-                      || [ "$containerHost" = "''${containerHost#*/run/user/4242/}" ]; then
+                      || [ "$containerHost" = "''${containerHost#*${fakeRuntimeDir}/}" ]; then
                       echo "orca-ide sandbox CONTAINER_HOST '$containerHost' is not the session Podman socket '$dockerHost' on ${entry.name}" >&2
                       fail=1
                     fi
