@@ -93,6 +93,27 @@ out=$(in_orca 'not json' "$script" --harness claude) || fail 'claude unparseable
   fail 'claude unparseable payload inside Orca was not denied'
 pass 'claude denies Agent, Task, and an unparseable payload inside Orca'
 
+# The reason is what the agent reads when it decides how to carry on. Skills
+# fall back to inline or serial work when subagents are unavailable, so the
+# reason must say the work still goes to Orca workers and never offer doing
+# it in this session. The guide keeps the coordinator role for an explicit
+# request to supervise, so the reason also says the denied call is one. A
+# worker at Orca's nesting depth limit cannot start another, so that refusal
+# alone permits in-session work.
+check_reason() {
+  local harness=$1 reason=$2 word
+  for word in 'orchestration worker-start' 'worker_done' 'inline or serial fallback' 'does not mean' \
+    'itself the request to supervise' 'however small' "Only if worker-start refuses because this session is at Orca's nesting depth limit"; do
+    grep -qF -- "$word" <<<"$reason" || fail "the $harness deny reason does not say '$word': $reason"
+  done
+  grep -qiE 'or do the work yourself|do it yourself' <<<"$reason" &&
+    fail "the $harness deny reason offers doing the delegated work inline: $reason"
+  return 0
+}
+check_reason claude "$("$jq_bin" -r '.hookSpecificOutput.permissionDecisionReason' \
+  <<<"$(in_orca "$(claude_payload Agent)" "$script" --harness claude)")"
+pass 'the deny reason sends the denied work to Orca workers, not inline'
+
 for tool in Workflow Bash AgentOutput; do
   expect_silent "claude $tool inside Orca" in_orca "$(claude_payload "$tool")" "$script" --harness claude
 done
@@ -105,6 +126,7 @@ out=$(in_orca "$(antigravity_payload invoke_subagent)" "$script" --harness antig
 "$jq_bin" -e 'keys == ["decision", "reason"] and .decision == "deny" and (.reason | contains("/orchestration"))' \
   <<<"$out" >/dev/null || fail "antigravity invoke_subagent was not denied with an /orchestration reason: $out"
 [[ $(wc -l <<<"$out") -eq 1 ]] || fail 'antigravity deny is not exactly one JSON line'
+check_reason antigravity "$("$jq_bin" -r '.reason' <<<"$out")"
 pass 'antigravity denies invoke_subagent inside Orca'
 
 for tool in run_command define_subagent send_message; do

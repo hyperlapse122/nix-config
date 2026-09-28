@@ -90,7 +90,7 @@ pkgs.runCommand "orca-orchestration-plugin-tests"
     # indexes past the guide print nothing.
     stub = Path(os.environ['TMPDIR']) / 'orca-stub'
     guide = Path(os.environ['TMPDIR']) / 'guide'
-    guide.write_text("".join('guide line {:05d}\n'.format(i) for i in range(900)))
+    guide.write_text("".join('guide line {:05d}\n'.format(i) for i in range(800)))
     stub.write_text('#!{}\nimport sys\nsys.stdout.write(open({!r}).read())\n'.format(sys.executable, str(guide)))
     stub.chmod(0o755)
     env = {'PATH': '/var/empty', 'ORCA_PANE_KEY': 'pane-1', 'ORCA_CLI_COMMAND': str(stub)}

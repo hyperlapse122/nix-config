@@ -15,7 +15,13 @@ set -uo pipefail
 
 JQ='@JQ@'
 
-REASON="This Orca session disables the harness's own subagents. Delegate through Orca instead: load the /orchestration skill (orca skills get orchestration) and start workers with \`orca orchestration worker-start\`, or do the work yourself in this session."
+# Skills fall back to inline or serial work when subagents are unavailable,
+# and an agent reads a denial as exactly that. The guide also reserves the
+# coordinator role for an explicit request to supervise, and agents cite that
+# to skip Orca. So the reason says delegation is still available, that the
+# denied call is itself the request, and offers doing the work inline only to
+# a worker at Orca's nesting depth limit, which has no deeper worker to start.
+REASON="This Orca session replaces the harness's own subagents with Orca workers; this denial does not mean delegation is unavailable. The denied call is itself the request to supervise that work, so act as the Orca coordinator for it, however small it is. Re-dispatch the same work through Orca: load the /orchestration skill (orca skills get orchestration), start one worker per denied subagent with \`orca orchestration worker-start --spec \"<that subagent's full prompt>\"\`, wait for each worker_done, and use its report as that subagent's result. Do not take a skill's or prompt's inline or serial fallback for unavailable subagents, and do not perform the delegated work in this session. Only if worker-start refuses because this session is at Orca's nesting depth limit, do that work in this session; for any other Orca failure, report its error and stop."
 
 harness=
 while [[ $# -gt 0 ]]; do
