@@ -44,7 +44,22 @@ Add regression checks beside related tests and register new checks in `flake.nix
 
 Use lowercase Conventional Commit subjects, matching the history's `feat(nixos):` and `chore:` prefixes. Write imperative, specific subjects, preferably under 50 characters and never over 72. PRs should describe behavior changes, link relevant issues, and report check and build results.
 
-Always apply all review findings. When code review or adversarial analysis identifies failure modes, regressions, or architectural edge cases with concrete fixes, implement and verify them on the branch rather than deferring them as unapplied residuals.
+Always apply all review findings. When code review or adversarial analysis identifies failure modes, regressions, or architectural edge cases with concrete fixes, implement and verify them on the branch rather than deferring them as unapplied residuals. This covers every finding from `ce-code-review` and `ce-simplify-code`, whether you invoke them directly or through a workflow such as `lfg`, and it supersedes those skills' defaults:
+
+- Apply every severity, P0 through P3 and anything lower. Severity sets the order of work, not whether it happens; the rubric's "Fix if straightforward" for P2 and "User's discretion" for P3 do not apply here.
+- Apply every `autofix_class`. Apply `gated_auto` fixes, resolve `manual` findings by choosing a defensible fix and implementing it, and apply `advisory` findings and `testing_gaps` or `residual_risks` entries that name a concrete change, such as a missing test or check. A fix that changes a contract, a permission, or user-visible behavior is applied like any other.
+- Apply the `ce-simplify-code` findings that the skill would record as low-value, as long as the change keeps behavior.
+- A bare or `mode:agent` `ce-code-review` run is report-only, so apply its findings yourself after it returns.
+- In `lfg`, apply the findings that step 5's eligibility bar would exclude, whatever their `suggested_fix`, confidence, or mechanical shape. Do not move a finding into the step-6 residual handoff because it is hard or low-priority.
+
+Leave a finding unapplied only when:
+
+- it is a false positive you verified against the code;
+- a `ce-simplify-code` fix would change behavior, remove a safety check the skill must keep, edit outside the scope the user named for that run, or cannot be shown to preserve outputs, errors, side effects, and ordering;
+- it conflicts with a user-settled decision or with the security and lifecycle constraints below; or
+- it needs an irreversible action the user did not grant.
+
+Report each unapplied finding, and each `testing_gaps` or `residual_risks` entry that names no change, with its exception or reason and the evidence. An unapplied finding with no named exception is a defect in the run. In `lfg`, these reports go in step 6's `## Unapplied review findings` PR-body section, or in tickets and the DONE report when no PR exists, and that section lists nothing else. Verify applied fixes with the checks this file requires before shipping.
 
 When watching a pull request from a local session, judge readiness on check evidence rather than on a quiet period. Every reviewer here reports as a check, so arm the babysit watch with `--settle-seconds 0`; this supersedes that skill's instruction not to pass `--settle-seconds` on the ordinary arm. Evidence counts only when every workflow that runs on pull requests has a run registered against the current head, every such run is terminal, and no review check merely skipped; a skipped review is absent evidence, not a clean review. Nothing else relaxes: outstanding threads, comments, `needs-human`, and the base and branch-currency blockers keep their current force. While evidence is incomplete, do not declare readiness and do not re-arm at a shorter window. When a review check skipped, report the missing review evidence and hand back rather than withholding readiness with no report.
 
