@@ -14,7 +14,10 @@
   alone could pass without the declaration. The check therefore asks the
   packaged mise which file supplied the setting. Per configuration:
 
-  - home.path carries bin/mise.
+  - home.path carries bin/mise, and it resolves to the upstream release
+    packages/mise.nix pins rather than to nixpkgs' mise. The package's own
+    versionCheckHook already proves that binary reports the pinned version,
+    so the check compares the materialized path instead of re-running it.
   - Home Manager renders mise/conf.d/50-home-manager.toml and leaves
     mise/config.toml unmanaged, so the hand-edited global file stays writable.
   - with that fragment installed under a sandboxed $XDG_CONFIG_HOME,
@@ -37,6 +40,8 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
+  pinnedMise = "${import ../packages/mise.nix { inherit pkgs; }}/bin/mise";
+
   esc = value: lib.escapeShellArg (toString value);
 
   assertEntry =
@@ -48,7 +53,7 @@ let
       managesGlobal = if configFiles ? "mise/config.toml" then "1" else "0";
     in
     ''
-      checkHost ${esc entry.name} ${esc homePath} ${esc fragment} ${esc managesGlobal}
+      checkHost ${esc entry.name} ${esc homePath} ${esc fragment} ${esc managesGlobal} ${esc pinnedMise}
     '';
 in
 pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
@@ -57,7 +62,7 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
   : > "$failures"
 
   checkHost() (
-    host=$1 homePath=$2 fragment=$3 managesGlobal=$4
+    host=$1 homePath=$2 fragment=$3 managesGlobal=$4 pinnedMise=$5
     fail() { echo "$host: $*" >> "$failures"; }
 
     mise=$homePath/bin/mise
@@ -65,6 +70,8 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
       fail "mise is not in home.path"
       exit
     fi
+    resolved=$(readlink -f "$mise")
+    [ "$resolved" = "$pinnedMise" ] || fail "bin/mise is '$resolved', expected the pinned upstream release '$pinnedMise'"
     if [ "$managesGlobal" != 0 ]; then
       fail "home-manager manages mise/config.toml; it must stay mutable"
     fi

@@ -1,4 +1,4 @@
-{ config, ... }:
+{ config, pkgs, ... }:
 {
   programs.zsh = {
     enable = true;
@@ -50,6 +50,8 @@
 
   programs.mise = {
     enable = true;
+    # Track upstream releases instead of nixpkgs' lagging version.
+    package = import ../../../packages/mise.nix { inherit pkgs; };
     enableZshIntegration = true;
     # Render settings to conf.d and keep config.toml writable for `mise use --global`.
     enableMutableConfig = true;
