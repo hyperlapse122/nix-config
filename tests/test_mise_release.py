@@ -1,0 +1,157 @@
+"""Drive mise-release against fake SHASUMS256.txt fixtures.
+
+The helper's network call goes through an overridable command, so these tests
+feed it a fixture body instead of a network call.
+"""
+
+import base64
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/mise-release"
+
+MUSL_HEX = "e331f3fa3c360c63e996ef70bc183ce178cb16d21f8bf4926c61cf6fa6b9fafd"
+GLIBC_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
+
+
+def shasums(version, musl_hex=MUSL_HEX, include_musl=True):
+    """Build a SHASUMS256.txt body shaped like upstream's release asset."""
+    lines = [
+        f"09ea631d6f3e7031d63606a0892dc4c796f9fb57f493bc45937f9f7113c88216  ./mise-v{version}-linux-x64",
+        f"b46c551f5e795a81144a3dbe74227c40b7cbe231024d8e9167e691208031ec30  ./mise-v{version}-linux-x64-musl",
+        f"45e8f07235640ca52dd168933d6e369435f1af9e486ee70997bc15f0fac22987  ./mise-v{version}-linux-x64-musl.tar.xz",
+        f"3e17995959d92d46d638a481134421ba6c9b1695e22a032761a01acbf45b2d7a  ./mise-v{version}-linux-x64-musl.tar.zst",
+        f"{GLIBC_HEX}  ./mise-v{version}-linux-x64.tar.gz",
+        f"ef349bbbcf3526865c551dc3dc317d354d63b26553855014db51caf7a063c7d2  ./mise-v{version}-linux-arm64-musl.tar.gz",
+    ]
+    if include_musl:
+        lines.insert(2, f"{musl_hex}  ./mise-v{version}-linux-x64-musl.tar.gz")
+    return "\n".join(lines) + "\n"
+
+
+def sri(hex_digest):
+    return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
+
+
+FAKE_FETCH = """#!/usr/bin/env python3
+import os, sys
+status = int(os.environ.get('FAKE_STATUS', '0'))
+if status:
+    sys.exit(status)
+sys.stdout.write(os.environ.get('FAKE_BODY', ''))
+"""
+
+
+class MiseReleaseTestCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.fetch = root / "fake-fetch"
+        self.fetch.write_text(FAKE_FETCH)
+        self.fetch.chmod(0o755)
+        self.output = root / "mise-release.json"
+
+    def run_release(self, body=None, extra_args=None, status=0, fetch=None):
+        if body is None:
+            body = shasums("2026.9.15")
+        env = dict(os.environ)
+        env["MISE_RELEASE_FETCH"] = (
+            f"{sys.executable} {self.fetch}" if fetch is None else fetch
+        )
+        env["FAKE_BODY"] = body
+        env["FAKE_STATUS"] = str(status)
+        args = [sys.executable, str(SCRIPT)]
+        args.extend(extra_args if extra_args is not None else ["--dry-run"])
+        return subprocess.run(args, capture_output=True, text=True, env=env)
+
+    def write_pin(self, version):
+        self.output.write_text(
+            json.dumps({"version": version, "sha256": "0" * 64, "hash": sri("0" * 64)})
+        )
+
+    def test_writes_version_and_musl_tarball_hash_when_newer(self):
+        self.write_pin("2026.9.14")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("updated", result.stdout)
+        self.assertEqual(
+            json.loads(self.output.read_text()),
+            {"version": "2026.9.15", "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
+        )
+
+    def test_writes_a_pin_when_none_exists(self):
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "2026.9.15")
+
+    def test_numeric_version_comparison_beats_lexical(self):
+        self.write_pin("2026.9.9")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "2026.9.15")
+
+    def test_same_version_leaves_the_pin_byte_identical(self):
+        self.write_pin("2026.9.15")
+        before = self.output.read_bytes()
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already up to date", result.stdout)
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_refuses_a_downgrade(self):
+        self.write_pin("2026.10.0")
+        before = self.output.read_bytes()
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already up to date", result.stdout)
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_unreadable_existing_pin_is_treated_as_absent(self):
+        self.output.write_text(json.dumps([1, 2, 3]))
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "2026.9.15")
+
+    def test_refuses_a_release_without_the_musl_tarball(self):
+        result = self.run_release(
+            body=shasums("2026.9.15", include_musl=False),
+            extra_args=["-o", str(self.output)],
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("linux-x64-musl.tar.gz", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_refuses_a_malformed_checksum(self):
+        result = self.run_release(body=shasums("2026.9.15", musl_hex="abc123"))
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(self.output.exists())
+
+    def test_refuses_a_non_numeric_version(self):
+        result = self.run_release(body=shasums("2026.9.15-rc1"))
+        self.assertEqual(result.returncode, 1)
+
+    def test_fetch_error_names_the_url(self):
+        result = self.run_release(status=22)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("SHASUMS256.txt failed with status 22", result.stderr)
+
+    def test_dry_run_prints_json_and_writes_nothing(self):
+        result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["hash"], sri(MUSL_HEX))
+        self.assertFalse(self.output.exists())
+
+    def test_empty_fetch_command_fails(self):
+        result = self.run_release(fetch="")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("MISE_RELEASE_FETCH is empty", result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
