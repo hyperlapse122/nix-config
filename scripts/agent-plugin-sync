@@ -102,17 +102,22 @@ def link_version(base, segment, source, dry_run):
     return destination
 
 
-def registrations(claude, dry_run):
-    if dry_run:
-        return []
-    code, output = run([claude, 'plugin', 'marketplace', 'list', '--json'], False)
+def listing(claude, argv, what):
+    """The entries of one of the agent's JSON listings."""
+    code, output = run([claude] + argv, False)
     if code != 0:
-        raise Failure('marketplace list failed: {}'.format(output or 'no output'))
+        raise Failure('{} failed: {}'.format(what, output or 'no output'))
     try:
         parsed = json.loads(output)
     except ValueError as exc:
-        raise Failure('marketplace list did not return JSON: {}'.format(exc))
+        raise Failure('{} did not return JSON: {}'.format(what, exc))
     return parsed if isinstance(parsed, list) else []
+
+
+def registrations(claude, dry_run):
+    if dry_run:
+        return []
+    return listing(claude, ['plugin', 'marketplace', 'list', '--json'], 'marketplace list')
 
 
 def recorded_source(entry):
@@ -124,9 +129,9 @@ def recorded_source(entry):
     return ''
 
 
-def find(entries, name):
+def find(entries, value, key='name'):
     for entry in entries:
-        if isinstance(entry, dict) and entry.get('name') == name:
+        if isinstance(entry, dict) and entry.get(key) == value:
             return entry
     return None
 
@@ -143,6 +148,14 @@ def resolves_to(entry, segment, destination):
     return segment in recorded or str(destination) in recorded
 
 
+def remove_entry(path):
+    """Delete a symlink, or a directory tree this script created."""
+    try:
+        path.unlink()
+    except IsADirectoryError:
+        shutil.rmtree(path)
+
+
 def prune(base, segment, dry_run):
     """Remove superseded version entries, leaving anything this script did not create."""
     if dry_run or not base.is_dir():
@@ -153,25 +166,9 @@ def prune(base, segment, dry_run):
             continue
         if not (child.is_symlink() or child.is_dir()):
             continue
-        if child.is_symlink():
-            child.unlink()
-        else:
-            shutil.rmtree(child)
+        remove_entry(child)
         removed.append(child.name)
     return removed
-
-
-def listed(claude, argv, key, value):
-    """Whether the agent's JSON listing names an entry whose `key` is `value`."""
-    code, output = run([claude] + argv, False)
-    if code != 0:
-        raise Failure('{} failed: {}'.format(' '.join(argv[:-1]), output or 'no output'))
-    try:
-        parsed = json.loads(output)
-    except ValueError as exc:
-        raise Failure('{} did not return JSON: {}'.format(' '.join(argv[:-1]), exc))
-    entries = parsed if isinstance(parsed, list) else []
-    return any(isinstance(entry, dict) and entry.get(key) == value for entry in entries)
 
 
 def retire(args):
@@ -188,22 +185,23 @@ def retire(args):
                 plugin_id, args.marketplace))
             print('would remove {}'.format(args.base))
             return 0
-        if listed(args.claude, ['plugin', 'list', '--json'], 'id', plugin_id):
+        plugins = listing(args.claude, ['plugin', 'list', '--json'], 'plugin list')
+        if find(plugins, plugin_id, key='id') is not None:
             require(
                 [args.claude, 'plugin', 'uninstall', plugin_id, '--scope', 'user'],
                 False,
                 'plugin uninstall',
             )
-        if listed(args.claude, ['plugin', 'marketplace', 'list', '--json'], 'name', args.marketplace):
+        if find(registrations(args.claude, False), args.marketplace) is not None:
             require(
                 [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
                 False,
                 'marketplace remove',
             )
-        if args.base.is_symlink():
-            args.base.unlink()
-        elif args.base.exists():
-            shutil.rmtree(args.base)
+        try:
+            remove_entry(args.base)
+        except FileNotFoundError:
+            pass
         return 0
     except (Failure, OSError) as exc:
         print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)

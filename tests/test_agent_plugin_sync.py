@@ -132,21 +132,23 @@ class FakeCliCase(unittest.TestCase):
         )
         return src
 
-    def run_sync(self, segment='v3.28.0', source=None, env=None, extra=None):
+    def invoke(self, args, env=None):
         environ = dict(os.environ)
         environ['FAKE_STATE'] = str(self.state)
         environ.update(env or {})
-        argv = [
-            sys.executable,
-            str(SCRIPT),
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)] + args, capture_output=True, text=True, env=environ
+        )
+
+    def run_sync(self, segment='v3.28.0', source=None, env=None, extra=None):
+        return self.invoke([
             '--claude', str(self.cli),
             '--source', str(source or self.source),
             '--base', str(self.base),
             '--segment', segment,
             '--plugin', 'compound-engineering',
             '--marketplace', 'compound-engineering-plugin',
-        ] + (extra or [])
-        return subprocess.run(argv, capture_output=True, text=True, env=environ)
+        ] + (extra or []), env)
 
     def verbs(self):
         return [' '.join(call[:3]) for call in self.read_state()['calls']]
@@ -339,25 +341,19 @@ class RetireTestCase(FakeCliCase):
     def setUp(self):
         super().setUp()
         self.retired_base = self.root / 'agent-plugins' / 'retired-plugin'
-        (self.retired_base).mkdir(parents=True)
+        self.retired_base.mkdir(parents=True)
         (self.retired_base / '0.0.0-abc').symlink_to(self.source)
         self.sibling = self.root / 'agent-plugins' / 'compound-engineering'
         self.sibling.mkdir(parents=True)
 
     def run_retire(self, env=None, extra=None):
-        environ = dict(os.environ)
-        environ['FAKE_STATE'] = str(self.state)
-        environ.update(env or {})
-        argv = [
-            sys.executable,
-            str(SCRIPT),
+        return self.invoke([
             '--retire',
             '--claude', str(self.cli),
             '--base', str(self.retired_base),
             '--plugin', 'retired-plugin',
             '--marketplace', 'retired-market',
-        ] + (extra or [])
-        return subprocess.run(argv, capture_output=True, text=True, env=environ)
+        ] + (extra or []), env)
 
     def test_retire_uninstalls_then_removes_the_marketplace(self):
         self.reset_state([RETIRED_MARKET], [{'id': RETIRED_ID}])
@@ -426,11 +422,8 @@ class RetireTestCase(FakeCliCase):
         self.assertEqual(self.read_state()['calls'], [])
 
     def test_sync_still_requires_source_and_segment(self):
-        environ = dict(os.environ, FAKE_STATE=str(self.state))
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), '--claude', str(self.cli), '--base', str(self.base),
-             '--plugin', 'p', '--marketplace', 'm'],
-            capture_output=True, text=True, env=environ,
+        result = self.invoke(
+            ['--claude', str(self.cli), '--base', str(self.base), '--plugin', 'p', '--marketplace', 'm']
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn('--source', result.stderr)
