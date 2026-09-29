@@ -23,6 +23,8 @@
     /dev/null, so the assertion reads the unit's content.
   - resolved.conf renders LLMNR=false, since resolved otherwise sends LLMNR
     queries that these hosts never sent under resolvconf.
+  - resolved.conf renders Cache=no-negative, since a cached NXDOMAIN hides a
+    newly created record for up to the zone's SOA minimum TTL.
   - /etc/NetworkManager/VPN carries the OpenVPN plugin's service file.
 
   Verifies, on every bootstrap configuration:
@@ -102,6 +104,9 @@ let
       )
       (expect production "grep -Fxqs LLMNR=false ${esc "${etc}/systemd/resolved.conf"}"
         "${hostName}: resolved.conf ${state} LLMNR=false"
+      )
+      (expect production "grep -Fxqs Cache=no-negative ${esc "${etc}/systemd/resolved.conf"}"
+        "${hostName}: resolved.conf ${state} Cache=no-negative"
       )
       (expect production "[ -e ${esc "${etc}/NetworkManager/VPN/nm-openvpn-service.name"} ]"
         "${hostName}: /etc/NetworkManager/VPN ${state} the OpenVPN plugin"

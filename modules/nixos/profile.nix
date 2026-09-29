@@ -17,6 +17,7 @@
     ./services/podman.nix
     ./services/tailscale.nix
     ./services/proton-vpn.nix
+    ./services/resolved.nix
     ./system/secrets.nix
     ./wifi.nix
     ./hardware/yubikey.nix
