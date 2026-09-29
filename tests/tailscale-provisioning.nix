@@ -111,6 +111,23 @@ pkgs.testers.nixosTest {
       assert client_up_flags == {"--ssh", "--accept-routes"}, client_up_flags
       assert router_up_flags == {"--ssh", "--accept-routes"}, router_up_flags
 
+      # --- Runtime: an already-registered node still gets the declared prefs ---
+      #
+      # Clear RouteAll and RunSSH as on a node registered before the flags
+      # were declared (autoconnect skips extraUpFlags then), then confirm
+      # tailscaled-set restores them.
+      prefs_query = "tailscale debug prefs | jq -r '[.RouteAll, .RunSSH] | @tsv'"
+      for machine in [client, router]:
+          machine.wait_for_unit("tailscaled.service")
+          machine.succeed("tailscale set --accept-routes=false --ssh=false")
+          assert machine.succeed(prefs_query).split() == ["false", "false"]
+          machine.succeed("systemctl start tailscaled-set.service")
+          prefs = machine.succeed(prefs_query).split()
+          assert prefs == ["true", "true"], f"{machine.name}: [RouteAll, RunSSH] is {prefs} after tailscaled-set"
+          assert "tailscaled.service" in machine.succeed(
+              "systemctl show -p WantedBy --value tailscaled-set.service"
+          ).split()
+
       assert 41641 in ${builtins.toJSON nodes.client.networking.firewall.allowedUDPPorts}
       assert 41641 in ${builtins.toJSON nodes.router.networking.firewall.allowedUDPPorts}
 
