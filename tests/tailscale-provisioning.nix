@@ -111,23 +111,22 @@ pkgs.testers.nixosTest {
       assert client_up_flags == {"--ssh", "--accept-routes"}, client_up_flags
       assert router_up_flags == {"--ssh", "--accept-routes"}, router_up_flags
 
-      # --- Runtime: an already-registered node still accepts subnet routes ---
+      # --- Runtime: an already-registered node still gets the declared prefs ---
       #
-      # tailscaled-autoconnect passes extraUpFlags only while the node needs
-      # login, so a node whose saved prefs lack RouteAll (registered before
-      # --accept-routes was declared, or by a manual `tailscale up`) never
-      # got it. Clear the pref the way such a node has it, then run the unit
-      # tailscaled's start pulls in and read the prefs tailscaled holds.
+      # Clear RouteAll and RunSSH as on a node registered before the flags
+      # were declared (autoconnect skips extraUpFlags then), then confirm
+      # tailscaled-set restores them.
+      prefs_query = "tailscale debug prefs | jq -r '[.RouteAll, .RunSSH] | @tsv'"
       for machine in [client, router]:
           machine.wait_for_unit("tailscaled.service")
-          machine.succeed("tailscale set --accept-routes=false")
-          assert machine.succeed("tailscale debug prefs | jq -r .RouteAll").strip() == "false"
+          machine.succeed("tailscale set --accept-routes=false --ssh=false")
+          assert machine.succeed(prefs_query).split() == ["false", "false"]
           machine.succeed("systemctl start tailscaled-set.service")
-          route_all = machine.succeed("tailscale debug prefs | jq -r .RouteAll").strip()
-          assert route_all == "true", f"{machine.name}: RouteAll is {route_all} after tailscaled-set"
+          prefs = machine.succeed(prefs_query).split()
+          assert prefs == ["true", "true"], f"{machine.name}: [RouteAll, RunSSH] is {prefs} after tailscaled-set"
           assert "tailscaled.service" in machine.succeed(
               "systemctl show -p WantedBy --value tailscaled-set.service"
-          )
+          ).split()
 
       assert 41641 in ${builtins.toJSON nodes.client.networking.firewall.allowedUDPPorts}
       assert 41641 in ${builtins.toJSON nodes.router.networking.firewall.allowedUDPPorts}

@@ -8,6 +8,10 @@ let
   cfg = config.my.tailscale;
   available = cfg.sopsFile != null;
   tailscalePkg = config.services.tailscale.package;
+  nodeFlags = [
+    "--ssh"
+    "--accept-routes"
+  ];
   routeLabels = [
     "lan_10"
     "lan_1"
@@ -48,14 +52,11 @@ in
         services.tailscale = {
           enable = true;
           openFirewall = true;
-          extraUpFlags = [
-            "--ssh"
-            "--accept-routes"
-          ];
-          # tailscaled-autoconnect passes extraUpFlags only while the node
-          # needs login, so a node already registered without them never
-          # accepts subnet routes; `tailscale set` runs on every tailscaled start.
-          extraSetFlags = [ "--accept-routes" ];
+          extraUpFlags = nodeFlags;
+          # tailscaled-autoconnect applies extraUpFlags only while the node
+          # needs login; extraSetFlags runs `tailscale set` on every tailscaled
+          # start, so an already-registered node gets the same prefs.
+          extraSetFlags = nodeFlags;
           useRoutingFeatures = if cfg.advertiseRoutes then "server" else "none";
         };
       }
