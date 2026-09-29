@@ -211,7 +211,7 @@ U2 and U3 remove every consumer of the plugin package and the two `agentTools` a
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | Nix layout unchanged by the edits |
 | Checks | `nix flake check` | U1–U5 checks evaluate and pass |
 | Host builds | Build every `nixosConfigurations` output, production and bootstrap, per `AGENTS.md` | No module still references removed attributes |
