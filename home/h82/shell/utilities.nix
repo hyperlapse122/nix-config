@@ -15,6 +15,7 @@
     tree
     unzip
     wget
+    wl-clipboard
     yq-go
     zip
   ];

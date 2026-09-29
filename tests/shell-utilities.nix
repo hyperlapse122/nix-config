@@ -92,6 +92,10 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     expect sponge "" sh -c 'printf "soaked\n" | "$0" sponged' "$bin/sponge"
     [ "$(cat sponged 2>/dev/null)" = soaked ] || fail "sponge did not write its input to the file"
     expect wget "GNU Wget" sh -c '"$0" --version | head -n 1 | cut -d " " -f 1-2' "$bin/wget"
+    # The build sandbox has no Wayland compositor, so run --version, which
+    # exits before connecting to a display.
+    expect wl-copy wl-clipboard sh -c '"$0" --version | head -n 1 | cut -d " " -f 1' "$bin/wl-copy"
+    expect wl-paste wl-clipboard sh -c '"$0" --version | head -n 1 | cut -d " " -f 1' "$bin/wl-paste"
   )
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
