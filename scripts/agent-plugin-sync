@@ -4,6 +4,9 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one.
+
+With --retire it does the reverse for a plugin the repository no longer
+declares: unregister it and delete its version-keyed base directory.
 """
 
 import argparse
@@ -158,12 +161,63 @@ def prune(base, segment, dry_run):
     return removed
 
 
+def listed(claude, argv, key, value):
+    """Whether the agent's JSON listing names an entry whose `key` is `value`."""
+    code, output = run([claude] + argv, False)
+    if code != 0:
+        raise Failure('{} failed: {}'.format(' '.join(argv[:-1]), output or 'no output'))
+    try:
+        parsed = json.loads(output)
+    except ValueError as exc:
+        raise Failure('{} did not return JSON: {}'.format(' '.join(argv[:-1]), exc))
+    entries = parsed if isinstance(parsed, list) else []
+    return any(isinstance(entry, dict) and entry.get(key) == value for entry in entries)
+
+
+def retire(args):
+    """Remove a plugin an earlier generation registered, and its base directory.
+
+    Each removal runs only when the agent still lists what it removes, so a
+    converged run changes nothing and every other CLI failure stops activation
+    instead of being mistaken for an already-retired plugin.
+    """
+    plugin_id = '{}@{}'.format(args.plugin, args.marketplace)
+    try:
+        if args.dry_run:
+            print('would uninstall {} and remove marketplace {} if listed'.format(
+                plugin_id, args.marketplace))
+            print('would remove {}'.format(args.base))
+            return 0
+        if listed(args.claude, ['plugin', 'list', '--json'], 'id', plugin_id):
+            require(
+                [args.claude, 'plugin', 'uninstall', plugin_id, '--scope', 'user'],
+                False,
+                'plugin uninstall',
+            )
+        if listed(args.claude, ['plugin', 'marketplace', 'list', '--json'], 'name', args.marketplace):
+            require(
+                [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
+                False,
+                'marketplace remove',
+            )
+        if args.base.is_symlink():
+            args.base.unlink()
+        elif args.base.exists():
+            shutil.rmtree(args.base)
+        return 0
+    except (Failure, OSError) as exc:
+        print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
+        return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--retire', action='store_true',
+                        help='unregister the plugin and delete its base directory')
     parser.add_argument('--claude', required=True, help='path to the agent CLI')
-    parser.add_argument('--source', required=True, type=Path, help='pinned plugin source')
+    parser.add_argument('--source', type=Path, help='pinned plugin source (sync only)')
     parser.add_argument('--base', required=True, type=Path, help='version-keyed base directory')
-    parser.add_argument('--segment', required=True, help='version segment, e.g. v3.28.0')
+    parser.add_argument('--segment', help='version segment, e.g. v3.28.0 (sync only)')
     parser.add_argument('--plugin', required=True, help='plugin name from plugin.json')
     parser.add_argument('--marketplace', required=True, help='marketplace name from marketplace.json')
     parser.add_argument('--dry-run', action='store_true')
@@ -171,6 +225,12 @@ def main(argv=None):
 
     if os.geteuid() == 0:
         parser.error('must run as the destination user, not root')
+    if args.retire:
+        if args.source is not None or args.segment is not None:
+            parser.error('--retire takes no --source or --segment')
+        return retire(args)
+    if args.source is None or args.segment is None:
+        parser.error('sync requires --source and --segment')
     if not SEGMENT.match(args.segment):
         parser.error('refusing unsafe version segment: {!r}'.format(args.segment))
 

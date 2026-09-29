@@ -917,47 +917,6 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
-          # The packaged run never executes its pinned Orca CLI: every case that
-          # would reach it sets ORCA_CLI_COMMAND, and the pin is checked by path.
-          orca-orchestration-context =
-            pkgs.runCommand "orca-orchestration-context-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.jq
-                  pkgs.coreutils
-                ];
-              }
-              ''
-                export HOME=$TMPDIR
-                mkdir -p scripts tests
-                cp ${./scripts/orca-orchestration-context} scripts/orca-orchestration-context
-                cp ${./tests/orca-orchestration-context.sh} tests/orca-orchestration-context.sh
-                chmod +x scripts/orca-orchestration-context
-                patchShebangs scripts/orca-orchestration-context
-                bash tests/orca-orchestration-context.sh scripts/orca-orchestration-context
-                bash tests/orca-orchestration-context.sh --packaged ${pkgs.lib.getExe agentTools.orcaOrchestrationContext}
-                touch $out
-              '';
-          orca-orchestration-plugin = import ./tests/orca-orchestration-plugin.nix { inherit pkgs; };
-          orca-subagent-guard =
-            pkgs.runCommand "orca-subagent-guard-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.jq
-                  pkgs.coreutils
-                ];
-              }
-              ''
-                export HOME=$TMPDIR
-                mkdir -p scripts tests
-                cp ${./scripts/orca-subagent-guard} scripts/orca-subagent-guard
-                cp ${./tests/orca-subagent-guard.sh} tests/orca-subagent-guard.sh
-                chmod +x scripts/orca-subagent-guard
-                patchShebangs scripts/orca-subagent-guard
-                bash tests/orca-subagent-guard.sh scripts/orca-subagent-guard
-                bash tests/orca-subagent-guard.sh --packaged ${pkgs.lib.getExe agentTools.orcaSubagentGuard}
-                touch $out
-              '';
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           tokscale-wrapper =
             let

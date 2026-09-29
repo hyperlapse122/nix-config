@@ -203,48 +203,36 @@ let
         fi
       '';
 
-      # The local plugin is built from this repository, so its expected
-      # source and version come from building the package again with the
-      # host's own pkgs, independently of the registry that consumed it.
-      localName = "orca-orchestration";
-      localPlugin = import ../packages/orca-orchestration-plugin.nix {
-        inherit (self.nixosConfigurations.${entry.name}) pkgs;
-      };
-      localRegistry = userConfig.my.agentPlugins.${localName} or null;
+      # A retired plugin must be unregistered on every machine that installed
+      # it, and never installed again. Both halves are read from the rendered
+      # activation script, so dropping the retirement entry, or restoring the
+      # plugin to the registry, turns this red.
+      retiredName = "orca-orchestration";
+      retiredRegistered = userConfig.my.agentPlugins ? ${retiredName};
+      retiredBase = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${retiredName}";
 
-      localAbsent = lib.optionalString (localRegistry == null) ''
-        echo 'missing my.agentPlugins.${localName} on ${hostName}' >&2
+      retiredStillDeclared = lib.optionalString retiredRegistered ''
+        echo 'my.agentPlugins still declares the retired ${retiredName} on ${hostName}' >&2
         failed=1
       '';
 
-      localPresent = lib.optionalString (activation != null) ''
-        localBlock=$(blockFor ${esc script} ${esc localName})
-        if [ -z "$localBlock" ]; then
-          echo 'the agentPlugins activation script never syncs ${localName} on ${hostName}' >&2
+      retiredRemoved = lib.optionalString (activation != null) ''
+        retiredBlocks=$(blocksFor ${esc script} ${esc retiredName})
+        # Every invocation naming the plugin, dry-run branch included, must
+        # retire it; one that does not would install it again.
+        if ! grep -qF -- '--retire' <<< "$retiredBlocks"; then
+          echo 'the agentPlugins activation script never retires ${retiredName} on ${hostName}' >&2
           failed=1
         fi
-        localSource=$(argValue "$localBlock" source)
-        if [ "$localSource" != ${esc localPlugin} ]; then
-          echo "the helper must be handed the built ${localName} plugin on ${hostName}, got: '$localSource'" >&2
+        if grep -vF -- '--retire' <<< "$retiredBlocks" | grep -q .; then
+          echo 'the agentPlugins activation script still syncs the retired ${retiredName} on ${hostName}' >&2
           failed=1
         fi
-        localSegment=$(argValue "$localBlock" segment)
-        if [ "$localSegment" != ${esc (localPlugin.version or "")} ]; then
-          echo "the ${localName} segment must be its plugin.json version '${localPlugin.version or ""}' on ${hostName}, got: '$localSegment'" >&2
+        retiredBaseArg=$(argValue "$retiredBlocks" base)
+        if [ "$retiredBaseArg" != ${esc (lib.escapeShellArg retiredBase)} ]; then
+          echo "the ${retiredName} retirement must delete ${retiredBase} on ${hostName}, got: '$retiredBaseArg'" >&2
           failed=1
         fi
-        localMarketplace=$(argValue "$localBlock" marketplace)
-        if [ "$localMarketplace" != ${esc localName} ]; then
-          echo "the ${localName} marketplace must be '${localName}' on ${hostName}, got: '$localMarketplace'" >&2
-          failed=1
-        fi
-        case ${esc (if localRegistry == null then "" else (localRegistry.destination or ""))} in
-          */agent-plugins/${localName}/"$localSegment") ;;
-          *)
-            echo 'the ${localName} destination must end in its version segment on ${hostName}' >&2
-            failed=1
-            ;;
-        esac
       '';
 
       symlinkPresent = lib.optionalString destinationTargeted ''
@@ -255,7 +243,7 @@ let
     ''
       ${registryAbsent}${registryPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}
-      ${localAbsent}${localPresent}
+      ${retiredStillDeclared}${retiredRemoved}
     '';
 in
 pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
@@ -274,9 +262,12 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
   # The activation script runs the helper once per plugin, so each plugin's
   # flags are read from the one invocation whose --plugin names it. An absent
   # invocation yields an empty block, which every flag assertion then reports.
-  blockFor() {
+  blocksFor() {
     printf '%s' "$1" | tr '\n' ' ' | sed 's|/bin/agent-plugin-sync|\n&|g' \
-      | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" | head -1 || true
+      | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" || true
+  }
+  blockFor() {
+    blocksFor "$1" "$2" | head -1 || true
   }
 
   if [ -z ${esc lockedRev} ]; then

@@ -51,6 +51,16 @@ if argv[:3] == ['plugin', 'marketplace', 'list']:
     print(json.dumps(data['markets']))
     sys.exit(0)
 
+if argv[:2] == ['plugin', 'list']:
+    save()
+    print(json.dumps(data['plugins']))
+    sys.exit(0)
+
+if argv[:2] == ['plugin', 'uninstall']:
+    data['plugins'] = [p for p in data['plugins'] if p['id'] != argv[2]]
+    save()
+    sys.exit(0)
+
 if argv[:3] == ['plugin', 'marketplace', 'remove']:
     data['markets'] = [m for m in data['markets'] if m['name'] != argv[3]]
     save()
@@ -83,7 +93,7 @@ sys.exit(0)
 '''
 
 
-class SyncTestCase(unittest.TestCase):
+class FakeCliCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -99,8 +109,10 @@ class SyncTestCase(unittest.TestCase):
         self.base = self.root / 'base'
         self.source = self.make_source('v3.28.0')
 
-    def reset_state(self, markets=None):
-        self.state.write_text(json.dumps({'calls': [], 'markets': markets or []}))
+    def reset_state(self, markets=None, plugins=None):
+        self.state.write_text(
+            json.dumps({'calls': [], 'markets': markets or [], 'plugins': plugins or []})
+        )
 
     def read_state(self):
         return json.loads(self.state.read_text())
@@ -139,6 +151,8 @@ class SyncTestCase(unittest.TestCase):
     def verbs(self):
         return [' '.join(call[:3]) for call in self.read_state()['calls']]
 
+
+class SyncTestCase(FakeCliCase):
     # -- happy path ----------------------------------------------------
 
     def test_first_run_links_registers_and_orders_the_sequence(self):
@@ -313,6 +327,113 @@ class SyncTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.base.exists())
         self.assertEqual(self.read_state()['calls'], [])
+
+
+RETIRED_ID = 'retired-plugin@retired-market'
+RETIRED_MARKET = {'name': 'retired-market', 'source': 'directory', 'path': '/old'}
+
+
+class RetireTestCase(FakeCliCase):
+    """Retirement removes what an earlier generation registered, and only that."""
+
+    def setUp(self):
+        super().setUp()
+        self.retired_base = self.root / 'agent-plugins' / 'retired-plugin'
+        (self.retired_base).mkdir(parents=True)
+        (self.retired_base / '0.0.0-abc').symlink_to(self.source)
+        self.sibling = self.root / 'agent-plugins' / 'compound-engineering'
+        self.sibling.mkdir(parents=True)
+
+    def run_retire(self, env=None, extra=None):
+        environ = dict(os.environ)
+        environ['FAKE_STATE'] = str(self.state)
+        environ.update(env or {})
+        argv = [
+            sys.executable,
+            str(SCRIPT),
+            '--retire',
+            '--claude', str(self.cli),
+            '--base', str(self.retired_base),
+            '--plugin', 'retired-plugin',
+            '--marketplace', 'retired-market',
+        ] + (extra or [])
+        return subprocess.run(argv, capture_output=True, text=True, env=environ)
+
+    def test_retire_uninstalls_then_removes_the_marketplace(self):
+        self.reset_state([RETIRED_MARKET], [{'id': RETIRED_ID}])
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        verbs = self.verbs()
+        uninstall = verbs.index('plugin uninstall ' + RETIRED_ID)
+        remove = verbs.index('plugin marketplace remove')
+        self.assertLess(uninstall, remove)
+        state = self.read_state()
+        self.assertEqual(state['plugins'], [])
+        self.assertEqual(state['markets'], [])
+
+    def test_retire_uninstalls_at_user_scope(self):
+        self.reset_state([RETIRED_MARKET], [{'id': RETIRED_ID}])
+        self.assertEqual(self.run_retire().returncode, 0)
+        call = next(c for c in self.read_state()['calls'] if c[:2] == ['plugin', 'uninstall'])
+        self.assertEqual(call[call.index('--scope') + 1], 'user')
+
+    def test_converged_retire_only_lists(self):
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.verbs(), ['plugin list --json', 'plugin marketplace list'])
+
+    def test_retire_removes_a_marketplace_left_without_its_plugin(self):
+        self.reset_state([RETIRED_MARKET], [])
+        self.assertEqual(self.run_retire().returncode, 0)
+        verbs = self.verbs()
+        self.assertNotIn('plugin uninstall ' + RETIRED_ID, verbs)
+        self.assertIn('plugin marketplace remove', verbs)
+
+    def test_retire_leaves_other_registrations_alone(self):
+        other_market = {'name': 'compound-engineering-plugin', 'source': 'directory', 'path': '/ce'}
+        other_plugin = {'id': 'compound-engineering@compound-engineering-plugin'}
+        self.reset_state([RETIRED_MARKET, other_market], [{'id': RETIRED_ID}, other_plugin])
+        self.assertEqual(self.run_retire().returncode, 0)
+        state = self.read_state()
+        self.assertEqual(state['markets'], [other_market])
+        self.assertEqual(state['plugins'], [other_plugin])
+
+    def test_uninstall_failure_stops_before_marketplace_remove(self):
+        self.reset_state([RETIRED_MARKET], [{'id': RETIRED_ID}])
+        result = self.run_retire(env={'FAKE_FAIL_ON': 'plugin uninstall'})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('plugin uninstall failed', result.stderr)
+        self.assertNotIn('plugin marketplace remove', self.verbs())
+        self.assertTrue(self.retired_base.is_dir())
+
+    def test_retire_deletes_its_base_and_spares_siblings(self):
+        self.assertEqual(self.run_retire().returncode, 0)
+        self.assertFalse(self.retired_base.exists())
+        self.assertTrue(self.sibling.is_dir())
+        self.assertTrue(self.source.is_dir())
+
+    def test_retire_dry_run_touches_nothing(self):
+        self.reset_state([RETIRED_MARKET], [{'id': RETIRED_ID}])
+        result = self.run_retire(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read_state()['calls'], [])
+        self.assertTrue(self.retired_base.is_dir())
+
+    def test_retire_refuses_sync_only_arguments(self):
+        result = self.run_retire(extra=['--segment', 'v1'])
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.read_state()['calls'], [])
+
+    def test_sync_still_requires_source_and_segment(self):
+        environ = dict(os.environ, FAKE_STATE=str(self.state))
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--claude', str(self.cli), '--base', str(self.base),
+             '--plugin', 'p', '--marketplace', 'm'],
+            capture_output=True, text=True, env=environ,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('--source', result.stderr)
 
 
 if __name__ == '__main__':
