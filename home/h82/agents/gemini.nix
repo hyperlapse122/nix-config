@@ -28,38 +28,13 @@ let
 
   # The Antigravity CLI reads hooks from ~/.gemini/config/hooks.json, a map
   # from hook name to its events, and Orca rewrites its own `orca-status`
-  # entry there at run time. This repository owns the `orca-orchestration`
-  # entry outright, so the merge replaces that one key whole and leaves Orca's
-  # beside it. Both scripts print nothing outside an Orca terminal. The guard
-  # runs before every tool, refuses invoke_subagent inside Orca, and gives
-  # every other tool no decision, which leaves Orca's own hook to rule on it.
-  agentTools = import ../../../packages/agent-tools.nix { inherit pkgs; };
-  contextScript = lib.getExe agentTools.orcaOrchestrationContext;
-  guardScript = lib.getExe agentTools.orcaSubagentGuard;
+  # entry there at run time. This repository used to own an
+  # `orca-orchestration` entry beside it and has retired it. The merge only
+  # drops keys named in `remove` and leaves Orca's entry alone; delete this
+  # declaration once every host has rebuilt past it.
   declaredHooks = pkgs.writeText "antigravity-declared-hooks.json" (
     builtins.toJSON {
-      own.orca-orchestration = {
-        enabled = true;
-        SessionStart = [
-          {
-            type = "command";
-            command = "${contextScript} --harness antigravity";
-            timeout = 10;
-          }
-        ];
-        PreToolUse = [
-          {
-            matcher = "*";
-            hooks = [
-              {
-                type = "command";
-                command = "${guardScript} --harness antigravity";
-                timeout = 10;
-              }
-            ];
-          }
-        ];
-      };
+      remove = [ "orca-orchestration" ];
     }
   );
 

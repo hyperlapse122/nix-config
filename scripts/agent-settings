@@ -22,10 +22,10 @@ The declared document is a JSON object with up to four fields:
   own       {name: any JSON}        top-level keys whose whole value is
                                     declared here
 
-`own` is for a key nobody else writes -- a named entry this repository adds
-to Antigravity's hooks.json beside the one Orca maintains -- so replacing its
-whole value cannot discard another writer's data, which is the reason `set`
-refuses objects.
+`own` is for a top-level key nobody else writes -- a named entry beside the
+ones the agent or another tool maintains -- so replacing its whole value
+cannot discard another writer's data, which is the reason `set` refuses
+objects.
 
 A path is a list of keys rather than a dotted string, so a key that itself
 contains a dot is never split, and a literal top-level "a.b" key is never taken

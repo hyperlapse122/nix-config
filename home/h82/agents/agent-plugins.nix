@@ -14,8 +14,6 @@ let
   # command's --claude flag can never drift onto a different claude-code build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
 
-  orcaOrchestrationPlugin = import ../../../packages/orca-orchestration-plugin.nix { inherit pkgs; };
-
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
   # revision that tag is expected to name, because a git tag is mutable and a
@@ -43,20 +41,6 @@ let
         claude = [ ];
       };
     };
-
-    # A local source is built from this repository rather than fetched, so it
-    # has no upstream, tag, or lock entry to pin against. Its `segment` is the
-    # content-derived version the package also writes into plugin.json, which
-    # Claude Code keys its plugin cache on.
-    orca-orchestration = {
-      src = orcaOrchestrationPlugin;
-      segment = orcaOrchestrationPlugin.version;
-      plugin = orcaOrchestrationPlugin.name;
-      marketplace = orcaOrchestrationPlugin.name;
-      exclude = {
-        claude = [ ];
-      };
-    };
   };
 
   # Harness membership is declared separately from the source, so adding a
@@ -64,10 +48,6 @@ let
   membership = [
     {
       name = "compound-engineering";
-      harness = "claude";
-    }
-    {
-      name = "orca-orchestration";
       harness = "claude";
     }
   ];
@@ -92,10 +72,9 @@ let
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
 
-  # A pinned upstream source derives its segment from the tag; a local source
-  # declares one. Neither form falls back to a placeholder, so a source missing
-  # both fails evaluation instead of materializing under an empty segment.
-  segmentOf = spec: if spec ? tag then lib.removePrefix spec.tagPrefix spec.tag else spec.segment;
+  # A source's segment is its tag without the train prefix, the same version
+  # the materialized path is keyed by.
+  segmentOf = spec: lib.removePrefix spec.tagPrefix spec.tag;
 
   # A harness with exclusions gets its own pruned tree; one without reads the
   # pinned source directly, so the ordinary case adds no derivation.
@@ -140,13 +119,38 @@ let
         --plugin ${lib.escapeShellArg spec.plugin} \
         --marketplace ${lib.escapeShellArg spec.marketplace}'';
 
-  syncScript = lib.concatMapStringsSep "\n" (row: ''
+  # Plugins this repository used to install and has since dropped. Removing a
+  # row from `sources` alone leaves the plugin registered with Claude Code, and
+  # its hooks keep firing, on every machine that ran an earlier generation.
+  # Move it here instead, and delete the entry once every host has rebuilt
+  # past it.
+  retired = [
+    {
+      name = "orca-orchestration";
+      plugin = "orca-orchestration";
+      marketplace = "orca-orchestration";
+    }
+  ];
+
+  retireInvocation = row: ''
+    env ${claudeEnv} ${syncTool} --retire \
+      --claude ${claudeCode}/bin/claude \
+      --base ${lib.escapeShellArg "${baseDir}/${row.name}"} \
+      --plugin ${lib.escapeShellArg row.plugin} \
+      --marketplace ${lib.escapeShellArg row.marketplace}'';
+
+  withDryRun = invocation: ''
     if [[ -v DRY_RUN ]]; then
-      ${syncInvocation row} --dry-run
+      ${invocation} --dry-run
     else
-      ${syncInvocation row}
+      ${invocation}
     fi
-  '') claudeRows;
+  '';
+
+  syncScript = lib.concatStringsSep "\n" (
+    map (row: withDryRun (syncInvocation row)) claudeRows
+    ++ map (row: withDryRun (retireInvocation row)) retired
+  );
 in
 {
   # Exposed so tests/agent-plugins.nix can compare the recorded expectation
@@ -157,8 +161,8 @@ in
     type = lib.types.attrs;
     internal = true;
     readOnly = true;
-    # Every declared field except the source tree itself, so a pinned source
-    # keeps its pin bookkeeping and a local one carries only what it declares.
+    # Every declared field except the source tree itself, so each source keeps
+    # its pin bookkeeping.
     default = lib.mapAttrs (
       name: spec:
       removeAttrs spec [ "src" ]

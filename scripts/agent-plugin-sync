@@ -4,6 +4,9 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one.
+
+With --retire it does the reverse for a plugin the repository no longer
+declares: unregister it and delete its version-keyed base directory.
 """
 
 import argparse
@@ -99,17 +102,22 @@ def link_version(base, segment, source, dry_run):
     return destination
 
 
-def registrations(claude, dry_run):
-    if dry_run:
-        return []
-    code, output = run([claude, 'plugin', 'marketplace', 'list', '--json'], False)
+def listing(claude, argv, what):
+    """The entries of one of the agent's JSON listings."""
+    code, output = run([claude] + argv, False)
     if code != 0:
-        raise Failure('marketplace list failed: {}'.format(output or 'no output'))
+        raise Failure('{} failed: {}'.format(what, output or 'no output'))
     try:
         parsed = json.loads(output)
     except ValueError as exc:
-        raise Failure('marketplace list did not return JSON: {}'.format(exc))
+        raise Failure('{} did not return JSON: {}'.format(what, exc))
     return parsed if isinstance(parsed, list) else []
+
+
+def registrations(claude, dry_run):
+    if dry_run:
+        return []
+    return listing(claude, ['plugin', 'marketplace', 'list', '--json'], 'marketplace list')
 
 
 def recorded_source(entry):
@@ -121,9 +129,9 @@ def recorded_source(entry):
     return ''
 
 
-def find(entries, name):
+def find(entries, value, key='name'):
     for entry in entries:
-        if isinstance(entry, dict) and entry.get('name') == name:
+        if isinstance(entry, dict) and entry.get(key) == value:
             return entry
     return None
 
@@ -140,6 +148,14 @@ def resolves_to(entry, segment, destination):
     return segment in recorded or str(destination) in recorded
 
 
+def remove_entry(path):
+    """Delete a symlink, or a directory tree this script created."""
+    try:
+        path.unlink()
+    except IsADirectoryError:
+        shutil.rmtree(path)
+
+
 def prune(base, segment, dry_run):
     """Remove superseded version entries, leaving anything this script did not create."""
     if dry_run or not base.is_dir():
@@ -150,20 +166,56 @@ def prune(base, segment, dry_run):
             continue
         if not (child.is_symlink() or child.is_dir()):
             continue
-        if child.is_symlink():
-            child.unlink()
-        else:
-            shutil.rmtree(child)
+        remove_entry(child)
         removed.append(child.name)
     return removed
 
 
+def retire(args):
+    """Remove a plugin an earlier generation registered, and its base directory.
+
+    Each removal runs only when the agent still lists what it removes, so a
+    converged run changes nothing and every other CLI failure stops activation
+    instead of being mistaken for an already-retired plugin.
+    """
+    plugin_id = '{}@{}'.format(args.plugin, args.marketplace)
+    try:
+        if args.dry_run:
+            print('would uninstall {} and remove marketplace {} if listed'.format(
+                plugin_id, args.marketplace))
+            print('would remove {}'.format(args.base))
+            return 0
+        plugins = listing(args.claude, ['plugin', 'list', '--json'], 'plugin list')
+        if find(plugins, plugin_id, key='id') is not None:
+            require(
+                [args.claude, 'plugin', 'uninstall', plugin_id, '--scope', 'user'],
+                False,
+                'plugin uninstall',
+            )
+        if find(registrations(args.claude, False), args.marketplace) is not None:
+            require(
+                [args.claude, 'plugin', 'marketplace', 'remove', args.marketplace],
+                False,
+                'marketplace remove',
+            )
+        try:
+            remove_entry(args.base)
+        except FileNotFoundError:
+            pass
+        return 0
+    except (Failure, OSError) as exc:
+        print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
+        return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--retire', action='store_true',
+                        help='unregister the plugin and delete its base directory')
     parser.add_argument('--claude', required=True, help='path to the agent CLI')
-    parser.add_argument('--source', required=True, type=Path, help='pinned plugin source')
+    parser.add_argument('--source', type=Path, help='pinned plugin source (sync only)')
     parser.add_argument('--base', required=True, type=Path, help='version-keyed base directory')
-    parser.add_argument('--segment', required=True, help='version segment, e.g. v3.28.0')
+    parser.add_argument('--segment', help='version segment, e.g. v3.28.0 (sync only)')
     parser.add_argument('--plugin', required=True, help='plugin name from plugin.json')
     parser.add_argument('--marketplace', required=True, help='marketplace name from marketplace.json')
     parser.add_argument('--dry-run', action='store_true')
@@ -171,6 +223,12 @@ def main(argv=None):
 
     if os.geteuid() == 0:
         parser.error('must run as the destination user, not root')
+    if args.retire:
+        if args.source is not None or args.segment is not None:
+            parser.error('--retire takes no --source or --segment')
+        return retire(args)
+    if args.source is None or args.segment is None:
+        parser.error('sync requires --source and --segment')
     if not SEGMENT.match(args.segment):
         parser.error('refusing unsafe version segment: {!r}'.format(args.segment))
 

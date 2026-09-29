@@ -256,9 +256,9 @@
               # starts stale with an extra event, and Orca's entry beside it must
               # come through byte for byte.
               mkdir -p home/.gemini/config
-              printf '{"orca-status":{"enabled":true,"Stop":[{"type":"command","command":"orca-hook","timeout":10}]},"orca-orchestration":{"enabled":false,"Stop":[]}}\n' \
+              printf '{"orca-status":{"enabled":true,"Stop":[{"type":"command","command":"orca-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
                 > home/.gemini/config/hooks.json
-              printf '{"own":{"orca-orchestration":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
+              printf '{"own":{"repo-owned":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
                 > owned.json
               env -i ${packaged}/bin/agent-settings --label 'Antigravity hooks' \
                 --settings "$PWD/home/.gemini/config/hooks.json" --declared "$PWD/owned.json"
@@ -266,7 +266,7 @@
               import json
               merged = json.load(open('home/.gemini/config/hooks.json'))
               assert merged['orca-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'orca-hook', 'timeout': 10}]}, merged
-              assert merged['orca-orchestration'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
+              assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
 
               touch $out
@@ -917,47 +917,6 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
-          # The packaged run never executes its pinned Orca CLI: every case that
-          # would reach it sets ORCA_CLI_COMMAND, and the pin is checked by path.
-          orca-orchestration-context =
-            pkgs.runCommand "orca-orchestration-context-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.jq
-                  pkgs.coreutils
-                ];
-              }
-              ''
-                export HOME=$TMPDIR
-                mkdir -p scripts tests
-                cp ${./scripts/orca-orchestration-context} scripts/orca-orchestration-context
-                cp ${./tests/orca-orchestration-context.sh} tests/orca-orchestration-context.sh
-                chmod +x scripts/orca-orchestration-context
-                patchShebangs scripts/orca-orchestration-context
-                bash tests/orca-orchestration-context.sh scripts/orca-orchestration-context
-                bash tests/orca-orchestration-context.sh --packaged ${pkgs.lib.getExe agentTools.orcaOrchestrationContext}
-                touch $out
-              '';
-          orca-orchestration-plugin = import ./tests/orca-orchestration-plugin.nix { inherit pkgs; };
-          orca-subagent-guard =
-            pkgs.runCommand "orca-subagent-guard-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.jq
-                  pkgs.coreutils
-                ];
-              }
-              ''
-                export HOME=$TMPDIR
-                mkdir -p scripts tests
-                cp ${./scripts/orca-subagent-guard} scripts/orca-subagent-guard
-                cp ${./tests/orca-subagent-guard.sh} tests/orca-subagent-guard.sh
-                chmod +x scripts/orca-subagent-guard
-                patchShebangs scripts/orca-subagent-guard
-                bash tests/orca-subagent-guard.sh scripts/orca-subagent-guard
-                bash tests/orca-subagent-guard.sh --packaged ${pkgs.lib.getExe agentTools.orcaSubagentGuard}
-                touch $out
-              '';
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           tokscale-wrapper =
             let

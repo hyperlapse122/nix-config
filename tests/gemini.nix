@@ -31,12 +31,10 @@
 
   - home.activation.antigravityHooks exists, runs after installPackages, points
     the merger at ~/.gemini/config/hooks.json, and hands it a declaration that
-    owns exactly the `orca-orchestration` entry, whose SessionStart command runs
-    the packaged orca-orchestration-context script for Antigravity and whose
-    PreToolUse command runs the packaged orca-subagent-guard. Orca writes
-    its own `orca-status` entry in that file, so owning any other key -- or the
-    whole document -- would erase it. The expected declaration is rendered here
-    from the configuration's own pkgs, not read back from the module.
+    only removes the retired `orca-orchestration` entry and declares no hook of
+    its own. Orca writes its own `orca-status` entry in that file, so owning
+    or removing any other key -- or the whole document -- would erase it. The
+    expected declaration is rendered here, not read back from the module.
 
   Whether the merge preserves the keys the agent owns is behaviour of the
   packaged script, not of evaluated configuration; the `agent-settings` check in
@@ -152,36 +150,7 @@ let
       );
       hooksExpected = pkgs.writeText "antigravity-expected-hooks.json" (
         builtins.toJSON {
-          own.orca-orchestration = {
-            enabled = true;
-            SessionStart = [
-              {
-                type = "command";
-                command = "${
-                  lib.getExe
-                    (import ../packages/agent-tools.nix { inherit (self.nixosConfigurations.${entry.name}) pkgs; })
-                    .orcaOrchestrationContext
-                } --harness antigravity";
-                timeout = 10;
-              }
-            ];
-            PreToolUse = [
-              {
-                matcher = "*";
-                hooks = [
-                  {
-                    type = "command";
-                    command = "${
-                      lib.getExe
-                        (import ../packages/agent-tools.nix { inherit (self.nixosConfigurations.${entry.name}) pkgs; })
-                        .orcaSubagentGuard
-                    } --harness antigravity";
-                    timeout = 10;
-                  }
-                ];
-              }
-            ];
-          };
+          remove = [ "orca-orchestration" ];
         }
       );
 
@@ -217,7 +186,7 @@ let
           echo 'the antigravityHooks activation script passes no declared file on ${hostName}' >&2
           failed=1
         elif ! diff -u "$hooksDeclaredPath" ${hooksExpected} >&2; then
-          echo 'the declared Antigravity hooks must own exactly orca-orchestration, running the packaged context and guard scripts, on ${hostName}' >&2
+          echo 'the declared Antigravity hooks must only remove the retired orca-orchestration entry on ${hostName}' >&2
           failed=1
         fi
       '';
