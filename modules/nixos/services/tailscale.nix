@@ -52,6 +52,10 @@ in
             "--ssh"
             "--accept-routes"
           ];
+          # tailscaled-autoconnect passes extraUpFlags only while the node
+          # needs login, so a node already registered without them never
+          # accepts subnet routes; `tailscale set` runs on every tailscaled start.
+          extraSetFlags = [ "--accept-routes" ];
           useRoutingFeatures = if cfg.advertiseRoutes then "server" else "none";
         };
       }
