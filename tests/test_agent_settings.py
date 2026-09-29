@@ -583,12 +583,12 @@ class NestedPathTests(unittest.TestCase):
         self.assertIn('scanner', result.stderr)
 
 
-# Antigravity's hooks.json maps a hook name to its events. Orca owns
-# `orca-status` and rewrites it at run time; the repository owns
-# `orca-orchestration`, seeded here with a stale value so a merger that
-# skipped the key could not match by accident.
+# A hooks.json-shaped file maps a hook name to its events. Orca owns
+# `orca-status` and rewrites it at run time; the declaration owns
+# `repo-owned`, seeded here with a stale value so a merger that skipped the
+# key could not match by accident.
 OWNED = {
-    'orca-orchestration': {
+    'repo-owned': {
         'enabled': True,
         'SessionStart': [{'type': 'command', 'command': '/nix/store/new --harness antigravity', 'timeout': 10}],
     },
@@ -600,7 +600,7 @@ OWNED_EXISTING = {
         'PreInvocation': [{'type': 'command', 'command': 'orca-hook pre', 'timeout': 10}],
         'Stop': [{'type': 'command', 'command': 'orca-hook stop', 'timeout': 10}],
     },
-    'orca-orchestration': {
+    'repo-owned': {
         'enabled': False,
         'SessionStart': [{'type': 'command', 'command': '/nix/store/old', 'timeout': 99}],
         'Stop': [{'type': 'command', 'command': 'stale', 'timeout': 1}],
@@ -644,9 +644,9 @@ class OwnedKeyTests(unittest.TestCase):
         self.seed()
         self.merge()
         result = self.read()
-        self.assertEqual(result['orca-orchestration'], OWNED['orca-orchestration'])
+        self.assertEqual(result['repo-owned'], OWNED['repo-owned'])
         self.assertEqual(result['orca-status'], OWNED_EXISTING['orca-status'])
-        self.assertEqual(sorted(result), ['orca-orchestration', 'orca-status'])
+        self.assertEqual(sorted(result), ['orca-status', 'repo-owned'])
 
     def test_creates_the_file_with_only_the_owned_key(self):
         self.merge()
@@ -663,27 +663,27 @@ class OwnedKeyTests(unittest.TestCase):
     def test_owned_value_is_not_aliased_to_the_declaration(self):
         assign, retire, paths, owned = merger.declaration(self.declared)
         merged = merger.apply({}, assign, retire, paths, owned)
-        merged['orca-orchestration']['enabled'] = False
-        self.assertTrue(owned['orca-orchestration']['enabled'])
+        merged['repo-owned']['enabled'] = False
+        self.assertTrue(owned['repo-owned']['enabled'])
 
     def test_refuses_a_key_both_owned_and_set(self):
         self.seed()
-        self.declare(set={'orca-orchestration': 'flat'})
-        self.assert_refused_untouched('orca-orchestration')
+        self.declare(set={'repo-owned': 'flat'})
+        self.assert_refused_untouched('repo-owned')
 
     def test_refuses_a_key_both_owned_and_removed(self):
         self.seed()
-        self.declare(remove=['orca-orchestration'])
-        self.assert_refused_untouched('orca-orchestration')
+        self.declare(remove=['repo-owned'])
+        self.assert_refused_untouched('repo-owned')
 
     def test_refuses_a_path_through_an_owned_key(self):
         self.seed()
-        self.declare(setPaths=[{'path': ['orca-orchestration', 'enabled'], 'value': True}])
-        self.assert_refused_untouched('orca-orchestration')
+        self.declare(setPaths=[{'path': ['repo-owned', 'enabled'], 'value': True}])
+        self.assert_refused_untouched('repo-owned')
 
     def test_refuses_an_own_field_that_is_not_an_object(self):
         self.seed()
-        self.declare(own=['orca-orchestration'])
+        self.declare(own=['repo-owned'])
         self.assert_refused_untouched('own')
 
     def test_process_merges_owned_keys(self):
@@ -693,7 +693,7 @@ class OwnedKeyTests(unittest.TestCase):
              '--settings', str(self.settings), '--declared', str(self.declared)],
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.read()['orca-orchestration'], OWNED['orca-orchestration'])
+        self.assertEqual(self.read()['repo-owned'], OWNED['repo-owned'])
         self.assertEqual(self.read()['orca-status'], OWNED_EXISTING['orca-status'])
 
 
