@@ -9,5 +9,6 @@
     ./rust.nix
     ./swift.nix
     ./tool-environment.nix
+    ./vscodium.nix
   ];
 }

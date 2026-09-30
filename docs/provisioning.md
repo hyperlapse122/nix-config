@@ -229,3 +229,11 @@ Supported registries:
 
    Before that token is added and enabled, lookups for `docker.io` report a clean credential miss and fall back to anonymous pulls.
 2. **Token scopes**: Ensure the existing GitHub token carries `read:packages` (or `write:packages` for pushes) and the GitLab tokens carry `read_registry` (or `write_registry`). Tokens issued solely for CLI or Git HTTPS access will return 401 Unauthorized upon pulling container images even when credentials are provided correctly.
+
+## VSCodium
+
+`home/h82/dev/vscodium.nix` installs VSCodium through Home Manager's `programs.vscodium`, with `codium` and a `code` wrapper on `PATH`, `nixd`, and the Nix IDE and Biome extensions. Other extensions, including GitHub Copilot and GitLens, stay user-installed from Open VSX; their settings are declared anyway and apply once they are installed. The extensions directory stays writable for them.
+
+VSCodium owns `~/.config/VSCodium/User/settings.json`, so activation runs the same `agent-settings` merger as Claude Code. It reasserts the settings ported from the legacy dotfiles, and leaves every other key as VSCodium wrote it, including keys VSCodium or an extension adds inside a declared object such as `[nix]` or `json.schemaDownload.trustedDomains`. Array settings, such as `todo-tree.general.tags`, are reasserted whole. As with Claude Code, a declared value returns only on a rebuild that produces a new Home Manager generation. The merger reads plain JSON only: a comment or trailing comma in `settings.json` makes it refuse the file and fail the rebuild, naming the file, until the comment is removed.
+
+`~/.config/VSCodium/User/keybindings.json` is a read-only store link, forced over the regular file the legacy dotfiles left there. A keybinding added through VSCodium's keyboard shortcuts editor cannot be saved; add it to `home/h82/dev/vscodium.nix` instead.
