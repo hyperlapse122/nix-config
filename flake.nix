@@ -19,6 +19,17 @@
       url = "github:nix-community/lanzaboote/v1.1.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Applies the system layer of a non-NixOS host: /etc files and systemd
+    # units on a distribution this flake does not own.
+    system-manager = {
+      url = "github:numtide/system-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Boots a foreign distribution's cloud image for the non-NixOS VM check.
+    nix-vm-test = {
+      url = "github:numtide/nix-vm-test";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Pinned to a release tag rather than a branch, and the registry in
     # home/h82/agents/agent-plugins.nix records the revision that tag is expected to
     # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
@@ -39,8 +50,57 @@
         config.allowUnfree = true;
       };
       agentTools = import ./packages/agent-tools.nix { inherit pkgs; };
+      inherit (nixpkgs) lib;
+
+      # Each directory under hosts/ is a host, named by the directory. One that
+      # holds host.nix is a non-NixOS host; every other one is a NixOS host.
+      hostNames = import ./tests/lib/directories.nix { inherit lib; } ./hosts;
+      isLinuxHost = hostName: builtins.pathExists (./hosts + "/${hostName}/host.nix");
+      nixosHostNames = lib.filter (hostName: !isLinuxHost hostName) hostNames;
+
+      # Both variants of every non-NixOS host, keyed by output name.
+      mkLinuxHost = import ./lib/linux-host.nix { inherit inputs; };
+      linuxHosts = lib.listToAttrs (
+        lib.concatMap (
+          hostName:
+          map
+            (bootstrap: {
+              name = if bootstrap then "${hostName}-bootstrap" else hostName;
+              value = mkLinuxHost {
+                inherit hostName bootstrap;
+                dir = ./hosts + "/${hostName}";
+              };
+            })
+            [
+              false
+              true
+            ]
+        ) (lib.filter isLinuxHost hostNames)
+      );
+
+      # The non-NixOS fixture hosts build on their own architecture, so each
+      # system's checks carry the fixtures of that system.
+      linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
+      fixtureChecksFor =
+        fixtureSystem:
+        lib.listToAttrs (
+          lib.concatMap (entry: [
+            {
+              name = "non-nixos-home-${entry.name}";
+              value = entry.host.home.activationPackage;
+            }
+            {
+              name = "non-nixos-system-${entry.name}";
+              value = entry.host.systemManager;
+            }
+          ]) (lib.filter (entry: entry.host.system == fixtureSystem) linuxFixtures)
+        );
     in
     {
+      homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
+      systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
+      checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+
       nixosConfigurations =
         let
           mkHost =
@@ -100,8 +160,6 @@
                 )
               ];
             };
-          # Each directory under hosts/ is a host, named by the directory.
-          hostNames = import ./tests/lib/directories.nix { inherit (nixpkgs) lib; } ./hosts;
         in
         nixpkgs.lib.listToAttrs (
           nixpkgs.lib.concatMap (hostName: [
@@ -119,7 +177,7 @@
                 bootstrap = true;
               };
             }
-          ]) hostNames
+          ]) nixosHostNames
         );
       packages.${system} = {
         disko = inputs.disko.packages.${system}.disko;
@@ -1002,7 +1060,12 @@
                   scripts/recover-age-identity scripts/prepare-age-identity
                 touch $out
               '';
-        };
+          non-nixos-outputs = import ./tests/non-nixos-outputs.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+        }
+        // fixtureChecksFor system;
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
