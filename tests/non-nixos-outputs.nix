@@ -102,6 +102,9 @@ let
         hm.home.activation ? nixConfigSecretsStage == !entry.bootstrap
         && hm.home.activation ? nixConfigSecretsPublish == !entry.bootstrap
       ) "${entry.name}: the secret activation steps must run in production and never in bootstrap")
+      (check (
+        lib.elem "nr-linux" pnames && !lib.elem "nr" pnames
+      ) "${entry.name}: nr must be the non-NixOS apply helper, not the nixos-rebuild one")
       (check (lib.elem "install-user-age-identity" pnames) "${entry.name}: install-user-age-identity is missing, so the identity cannot be recovered")
       (check (
         lib.hasInfix "IdentityFile ~/.ssh/id_ed25519_nix_config" sshConfig

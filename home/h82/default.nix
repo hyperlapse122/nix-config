@@ -58,7 +58,12 @@ in
     ++ gui [ (import ../../packages/claude-desktop.nix { inherit pkgs; }) ]
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
-      (import ../../packages/nix-tools.nix { inherit pkgs; }).nr
+      (
+        let
+          nixTools = import ../../packages/nix-tools.nix { inherit pkgs; };
+        in
+        if hostKind == "nixos" then nixTools.nr else nixTools.nrLinux
+      )
     ]
     ++ gui [ (import ../../packages/orca.nix { inherit pkgs; }) ];
 

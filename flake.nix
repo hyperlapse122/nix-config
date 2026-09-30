@@ -1007,6 +1007,15 @@
                 python tests/test_install_user_age_identity.py
                 touch $out
               '';
+          nr-linux = pkgs.runCommand "nr-linux-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
+            mkdir -p scripts tests
+            cp ${./scripts/nr-linux} scripts/nr-linux
+            cp ${./tests/nr-linux.sh} tests/nr-linux.sh
+            chmod +x scripts/nr-linux
+            patchShebangs scripts/nr-linux
+            bash tests/nr-linux.sh scripts/nr-linux
+            touch $out
+          '';
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests
