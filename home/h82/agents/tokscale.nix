@@ -1,6 +1,5 @@
 {
   config,
-  osConfig,
   pkgs,
   lib,
   ...
@@ -15,7 +14,7 @@ let
   # included, have no such file and run Tokscale unauthenticated.
   wrapper = import ../../../packages/tokscale.nix {
     inherit pkgs;
-    inherit (osConfig.networking) hostName;
+    inherit (config.my) hostName;
   };
 
   # Tokscale owns ~/.config/tokscale/settings.json and rewrites it from its TUI,

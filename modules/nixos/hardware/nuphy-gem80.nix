@@ -5,10 +5,6 @@
   ...
 }:
 {
-  options.my.nuphyGem80 = {
-    enable = lib.mkEnableOption "device access for the NuPhy Gem80 configurator and firmware flashing";
-  };
-
   config = lib.mkIf config.my.nuphyGem80.enable {
     # These rules hand a device to the logged-in seat user through the `uaccess`
     # tag. systemd's 73-seat-late.rules runs the uaccess builtin only for devices

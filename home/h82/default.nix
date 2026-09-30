@@ -1,4 +1,9 @@
-{ pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 {
   imports = [
     ./agents
@@ -8,8 +13,8 @@
     ./shell
   ];
 
-  home.username = "h82";
-  home.homeDirectory = "/home/h82";
+  home.username = config.my.user.name;
+  home.homeDirectory = config.my.user.home;
   home.stateVersion = "26.05";
 
   home.packages =

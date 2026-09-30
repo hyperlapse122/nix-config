@@ -27,13 +27,8 @@
     ./hardware/bluetooth-audio.nix
     ./hardware/thunderbolt.nix
     ./hardware/laptop.nix
+    ../shared/host.nix
   ];
-
-  options.my.bootstrap = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = "Install without private boot keys or user authentication secrets.";
-  };
 
   config.my = {
     podman.enable = lib.mkDefault true;

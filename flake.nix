@@ -58,16 +58,46 @@
                 # imported the profile itself.
                 ./hosts/${hostName}
                 ./modules/nixos/profile.nix
-                {
-                  networking.hostName = hostName;
-                  my.bootstrap = bootstrap;
-                  home-manager.useGlobalPkgs = true;
-                  home-manager.useUserPackages = true;
-                  # specialArgs reaches NixOS modules only; the agent-plugin
-                  # registry needs the pinned plugin source, which is an input.
-                  home-manager.extraSpecialArgs = { inherit inputs; };
-                  home-manager.users.h82 = import ./home/h82;
-                }
+                (
+                  { config, ... }:
+                  {
+                    networking.hostName = hostName;
+                    my.hostName = hostName;
+                    my.bootstrap = bootstrap;
+                    home-manager.useGlobalPkgs = true;
+                    home-manager.useUserPackages = true;
+                    # specialArgs reaches NixOS modules only; the agent-plugin
+                    # registry needs the pinned plugin source, which is an input.
+                    # programs._1password-gui.package carries apply = pkg.override
+                    # { polkitPolicyOwners }, so the desktop autostart takes the
+                    # system's package rather than pkgs._1password-gui.
+                    home-manager.extraSpecialArgs = {
+                      inherit inputs;
+                      hostKind = "nixos";
+                      onePasswordGui = config.programs._1password-gui.package;
+                    };
+                    # The user sees the same host facts and traits as the system.
+                    home-manager.sharedModules = [
+                      ./modules/shared/host.nix
+                      {
+                        my = {
+                          inherit (config.my)
+                            bootstrap
+                            hostName
+                            kind
+                            user
+                            ;
+                          laptop.enable = config.my.laptop.enable;
+                          keyd.enable = config.my.keyd.enable;
+                          fingerprint.enable = config.my.fingerprint.enable;
+                          thunderbolt.enable = config.my.thunderbolt.enable;
+                          nuphyGem80.enable = config.my.nuphyGem80.enable;
+                        };
+                      }
+                    ];
+                    home-manager.users.h82 = import ./home/h82;
+                  }
+                )
               ];
             };
           # Each directory under hosts/ is a host, named by the directory.
@@ -907,6 +937,7 @@
           thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
+          host-options = import ./tests/host-options.nix { inherit pkgs self; };
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests

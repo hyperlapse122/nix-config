@@ -1,7 +1,8 @@
 {
+  config,
   pkgs,
   lib,
-  osConfig,
+  onePasswordGui,
   ...
 }:
 
@@ -16,11 +17,11 @@ let
     RestartSec=5s
   '';
 
-  # programs._1password-gui.package carries apply = pkg.override { polkitPolicyOwners },
-  # so pkgs._1password-gui is a different derivation that ships no polkit policy.
-  onePassword = osConfig.programs._1password-gui.package;
+  # The system's programs._1password-gui.package, passed in by mkHost:
+  # pkgs._1password-gui is a different derivation that ships no polkit policy.
+  onePassword = onePasswordGui;
 in
-lib.mkIf (!osConfig.my.bootstrap) {
+lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite
   # these paths from their own "start at login" settings, and a backup extension
   # only clears the first collision.
