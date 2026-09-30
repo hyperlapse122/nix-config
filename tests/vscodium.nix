@@ -19,7 +19,8 @@
   - .config/VSCodium/User/keybindings.json parses to the legacy bindings, and
     its Home Manager entry is forced, because the legacy dotfiles left an
     unmanaged copy at that path.
-  - no Home Manager file targets .config/VSCodium/User/settings.json.
+  - no Home Manager file targets .config/VSCodium/User/settings.json, and
+    Home Manager's own userSettings activation writers are absent.
   - home.activation.vscodiumSettings runs after installPackages, invokes the
     packaged merger without swallowing its exit status, points it at
     ~/.config/VSCodium/User/settings.json, and passes a declared document that
@@ -278,6 +279,12 @@ let
       keybindingsForced =
         keybindingsEntries != [ ] && lib.all (file: file.force or false) keybindingsEntries;
       settingsTargeted = targeting ".config/VSCodium/User/settings.json" != [ ];
+      # Home Manager's own userSettings writers, which a later declaration
+      # would add beside the merge without targeting settings.json.
+      hmSettingsWriters = lib.filter (name: lib.hasAttr name (hm.home.activation or { })) [
+        "vscodiumMutableUserSettings"
+        "vscodiumImmutableUserSettings"
+      ];
 
       host' = esc entry.name;
     in
@@ -294,7 +301,7 @@ let
             done
             if [ -x ${homePath}/bin/code ] && [ -x ${homePath}/bin/codium ]; then
               codium=$(readlink -f ${homePath}/bin/codium)
-              target=$(grep -oE '^exec [^[:space:]]+' "$(readlink -f ${homePath}/bin/code)" | awk '{print $2}' | head -1 || true)
+              target=$(sed -n '/^exec /{s/^exec \([^[:space:]]*\).*/\1/p;q}' "$(readlink -f ${homePath}/bin/code)")
               if [ -z "$target" ] || [ "$(readlink -f "$target")" != "$codium" ]; then
                 fail ${host'}": bin/code does not exec the codium bin/codium resolves to ($codium), got: '$target'"
               fi
@@ -325,6 +332,9 @@ let
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
         fail ${host'}": Home Manager must not target .config/VSCodium/User/settings.json; VSCodium owns it"
       fi
+      ${lib.optionalString (hmSettingsWriters != [ ]) ''
+        fail ${host'}": Home Manager's own settings writer would run beside the merge: ${lib.concatStringsSep ", " hmSettingsWriters}"
+      ''}
 
       ${lib.optionalString (activation == null) ''
         fail ${host'}": missing home.activation.vscodiumSettings"
