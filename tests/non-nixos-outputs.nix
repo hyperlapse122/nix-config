@@ -12,7 +12,14 @@
   - the account and home directory follow the host's `my.user` values;
   - no desktop configuration reaches the user environment, even on a fixture
     that declares the laptop trait: no KDE lid activation, no Plasma or
-    autostart files, no GUI packages.
+    autostart files, no GUI packages;
+  - the system layer manages no file the distribution owns: no user database,
+    subordinate id range, login-shell list, or NVIDIA configuration;
+  - on fixtures of the builder's own architecture, the materialized system
+    layer runs pcscd with the ccid reader drivers, writes a nix.conf that keeps
+    builds on the nixbld users and trusts only root, and records the host and
+    variant in /etc/nix-config-host. Other architectures are proven by their
+    own build in CI.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation.
@@ -92,16 +99,71 @@ let
       )
     ];
 
+  # /etc paths the distribution owns, relative to /etc as environment.etc
+  # keys are.
+  distributionOwned = [
+    "passwd"
+    "group"
+    "shadow"
+    "gshadow"
+    "subuid"
+    "subgid"
+    "shells"
+  ];
+
+  assertSystem =
+    entry:
+    let
+      sm = entry.host.systemManager;
+      managed = lib.attrNames (lib.filterAttrs (_: file: file.enable) sm.config.environment.etc);
+      owned = lib.filter (
+        name: lib.elem name distributionOwned || lib.hasPrefix "nvidia" name || lib.hasPrefix "../" name
+      ) managed;
+      variant = if entry.bootstrap then "bootstrap" else "production";
+    in
+    lib.concatStrings [
+      (check (owned == [ ])
+        "${entry.name}: the system layer manages distribution-owned files: ${lib.concatStringsSep ", " owned}"
+      )
+      (lib.optionalString (entry.host.system == pkgs.stdenv.hostPlatform.system) ''
+        sm=${sm}
+        unit=$(jq -r '.["pcscd.service"].storePath // empty' "$sm/services/services.json")
+        if [ -z "$unit" ] || ! grep -q '^ExecStart=/nix/store/[^ ]*/bin/pcscd ' "$unit"; then
+          ${fail "${entry.name}: pcscd.service is missing or does not run pcscd"}
+        else
+          dropdir=$(sed -n 's/^Environment="PCSCLITE_HP_DROPDIR=\(.*\)"$/\1/p' "$unit")
+          if [ ! -d "$dropdir/ifd-ccid.bundle" ]; then
+            ${fail "${entry.name}: pcscd's driver directory holds no ccid bundle"}
+          fi
+        fi
+        if [ -z "$(jq -r '.["pcscd.socket"].storePath // empty' "$sm/services/services.json")" ]; then
+          ${fail "${entry.name}: pcscd.socket is missing"}
+        fi
+        conf=$(jq -r '.entries["nix/nix.conf"].source // empty' "$sm/etcFiles/etcFiles.json")/nix/nix.conf
+        if ! grep -qx 'build-users-group = nixbld' "$conf"; then
+          ${fail "${entry.name}: nix.conf does not keep builds on the nixbld users"}
+        fi
+        if ! grep -qx 'trusted-users = root' "$conf"; then
+          ${fail "${entry.name}: nix.conf trusts more than root"}
+        fi
+        marker=$(jq -r '.entries["nix-config-host"].source // empty' "$sm/etcFiles/etcFiles.json")/nix-config-host
+        if ! grep -qx 'host=${entry.fixture}' "$marker" || ! grep -qx 'variant=${variant}' "$marker"; then
+          ${fail "${entry.name}: /etc/nix-config-host does not record host ${entry.fixture}, variant ${variant}"}
+        fi
+      '')
+    ];
+
   # The laptop trait must be exercised, or the desktop assertions above could
   # pass only because no fixture asked for anything desktop-shaped.
   laptopFixtures = lib.filter (entry: entry.host.home.config.my.laptop.enable) fixtures;
 in
-pkgs.runCommand "non-nixos-outputs" { } ''
+pkgs.runCommand "non-nixos-outputs" { nativeBuildInputs = [ pkgs.jq ]; } ''
   fail=0
   ${lib.optionalString (fixtures == [ ]) (fail "tests/fixtures/hosts holds no fixture host")}
   ${lib.optionalString (laptopFixtures == [ ]) (fail "no fixture declares my.laptop.enable")}
   ${assertPairs}
   ${lib.concatMapStrings assertEntry fixtures}
+  ${lib.concatMapStrings assertSystem fixtures}
   [ "$fail" = 0 ] || exit 1
   touch "$out"
 ''
