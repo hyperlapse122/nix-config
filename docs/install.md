@@ -1,6 +1,6 @@
 # Fresh installation
 
-The supported hosts are the directories under `hosts/`. In the commands below, replace `<host>` with the target machine's directory name; `nix eval .#nixosConfigurations --apply builtins.attrNames` lists every configuration. A machine without a host directory needs [adding a host](adding-a-host.md) first. Notes that apply to one machine only are under [per-host notes](#per-host-notes).
+The supported hosts are the directories under `hosts/`. In the commands below, replace `<host>` with the target machine's directory name; `nix eval .#nixosConfigurations --apply builtins.attrNames` lists every configuration. A machine without a host directory needs [adding a host](adding-a-host.md) first. This guide installs NixOS; a machine that keeps its own Linux distribution follows [non-NixOS hosts](adding-a-host.md#non-nixos-hosts) instead. Notes that apply to one machine only are under [per-host notes](#per-host-notes).
 
 This procedure erases the existing operating system and data on the target installation NVMe disk. Do not repeat it for routine configuration changes.
 

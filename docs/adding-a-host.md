@@ -4,6 +4,8 @@ A host is a directory under `hosts/`. `flake.nix` reads that directory and build
 
 Replace `<host>` in every command below with the new directory name.
 
+The sections up to [Install](#install) describe a NixOS host. A machine that keeps another Linux distribution follows [Non-NixOS hosts](#non-nixos-hosts) instead.
+
 ## Choose the name
 
 The directory name is the host name. `mkHost` in `flake.nix` sets `networking.hostName` from it, so the host files never declare it.
@@ -110,3 +112,196 @@ Two checks fail when a step above was missed:
 ## Install
 
 Follow [fresh installation](install.md) with the new host's name. Add a subsection under its per-host notes for anything specific to the machine, such as a secondary disk or firmware quirk, and a matching subsection in [verification](verification.md#per-host-hardware-checks) for the hardware checks it needs.
+
+## Non-NixOS hosts
+
+A non-NixOS host is a Linux machine that keeps its own distribution, on x86_64-linux or aarch64-linux. It gets the same shell, development tools, coding-agent configuration, Git signing, and CLI authentication as a NixOS host. It gets no desktop configuration. The distribution keeps everything the flake does not declare, including its user database and any vendor stack such as a JetPack NVIDIA driver.
+
+The flake builds four outputs for each non-NixOS host:
+
+- `homeConfigurations.<host>` and `homeConfigurations.<host>-bootstrap`: the user environment, applied by standalone Home Manager.
+- `systemConfigs.<host>` and `systemConfigs.<host>-bootstrap`: the system layer, applied by system-manager. It runs pcscd with the ccid reader drivers, takes over `/etc/nix/nix.conf` (keeping the installer's copy as `nix.conf.system-manager-backup`), and writes `/etc/nix-config-host`. It never writes `/etc/passwd`, `/etc/group`, `/etc/shadow`, `/etc/subuid`, `/etc/subgid`, or `/etc/shells`.
+
+The bootstrap outputs hold no secrets. The production user environment also publishes the CLI tokens and the host's own SSH key.
+
+### Name the non-NixOS host
+
+The name rule is the same as for a NixOS host; see [Choose the name](#choose-the-name). `host-name-guard` also scans `lib/`, and it treats the fixture hosts under `tests/fixtures/hosts/` as taken names.
+
+### Create `host.nix` and `default.nix`
+
+Create `hosts/<host>/` with two files. `host.nix` marks the directory as a non-NixOS host and names its architecture. The flake reads it with a plain `import`, so it must be a bare attribute set:
+
+```nix
+{
+  kind = "linux";
+  system = "x86_64-linux"; # or "aarch64-linux"
+}
+```
+
+`default.nix` sets the shared host options from `modules/shared/host.nix`. The account defaults to `h82` at `/home/h82`; set both when the machine uses another account:
+
+```nix
+{
+  my.user.name = "<account>";
+  my.user.home = "/home/<account>";
+}
+```
+
+Only the options in `modules/shared/host.nix` exist here. NixOS options such as `my.cliAuth.enableDockerToken` fail evaluation. The traits (`my.*.enable`) are accepted, but they change nothing on a non-NixOS host today, because every module that reads them is NixOS system or desktop configuration.
+
+### Create the non-NixOS bootstrap age material
+
+Run the same helper as for a NixOS host, on a machine with a card inserted:
+
+```sh
+nix develop
+./scripts/prepare-age-identity \
+  --host <host> \
+  --recipient 621512777E6933FEB4458FDC4945855D4F283F05
+```
+
+It writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/recipient.txt`. The machine later recovers this identity into `~/.config/nix-config/age/key.txt`.
+
+### Add the recipient to the `tokens.yaml` rule only
+
+Append the value from `secrets/bootstrap/<host>/recipient.txt` to the `age:` list of the `secrets/tokens.yaml` rule in `.sops.yaml`. Do not add it to the `secrets/wifi.yaml` or `secrets/tailscale.yaml` rules. A non-NixOS host uses neither file, and its identity rests on the distribution's disk encryption.
+
+Re-encrypt `tokens.yaml` on a NixOS machine whose local identity can already decrypt it:
+
+```sh
+nix develop
+export SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt"
+sops updatekeys -y secrets/tokens.yaml
+unset SOPS_AGE_KEY_CMD
+```
+
+A non-NixOS production apply decrypts `github_token`, `gitlab_token`, `jpi_token`, and `tokscale_token`. All four must be present in `tokens.yaml`, or the apply stops. `docker_token` is never published on a non-NixOS host, so `docker.io` pulls stay anonymous.
+
+### Create the host SSH key file
+
+Each non-NixOS host has its own SSH key, stored in `secrets/hosts/<host>/ssh.yaml` and encrypted to that host's recipient alone. First add a rule for the file to `.sops.yaml`, listing only this host's recipient:
+
+```yaml
+  - path_regex: secrets/hosts/<host>/ssh\.yaml$
+    age: <the value from secrets/bootstrap/<host>/recipient.txt>
+```
+
+Then generate the key in a private temporary directory, wrap it in the file's schema, and encrypt it. The schema is one key, `ssh_private_key`, whose value is the OpenSSH private key as a YAML block scalar. Do not pass the key as a command argument or print it:
+
+```sh
+nix develop
+umask 077
+secret_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-secrets.XXXXXX)
+ssh-keygen -q -t ed25519 -N '' -C '<host> nix-config' -f "$secret_tmp/id_ed25519"
+{ printf 'ssh_private_key: |\n'; sed 's/^/  /' "$secret_tmp/id_ed25519"; } > "$secret_tmp/ssh.yaml"
+mkdir -p secrets/hosts/<host>
+sops --encrypt --filename-override secrets/hosts/<host>/ssh.yaml \
+  --input-type yaml --output-type yaml \
+  "$secret_tmp/ssh.yaml" > secrets/hosts/<host>/ssh.yaml
+grep 'recipient:' secrets/hosts/<host>/ssh.yaml
+rm -rf "$secret_tmp"
+```
+
+`--filename-override` makes `sops` pick the new rule, not a rule matching the temporary path. The `grep` line must print exactly one recipient, the host's own.
+
+### Stage and check the non-NixOS host
+
+Stage the new files, so the flake sees them:
+
+```sh
+git add hosts/<host> secrets/bootstrap/<host> secrets/hosts/<host> .sops.yaml secrets/tokens.yaml
+```
+
+Confirm that the flake lists `<host>` and `<host>-bootstrap` in both output sets, then run the checks and build the host's outputs:
+
+```sh
+nix eval .#homeConfigurations --apply builtins.attrNames
+nix eval .#systemConfigs --apply builtins.attrNames
+nix fmt -- --ci
+nix flake check
+nix build --no-link .#homeConfigurations.<host>.activationPackage
+nix build --no-link .#homeConfigurations.<host>-bootstrap.activationPackage
+nix build --no-link .#systemConfigs.<host>
+nix build --no-link .#systemConfigs.<host>-bootstrap
+```
+
+An aarch64 host builds only on an aarch64 machine. CI builds every `homeConfigurations` and `systemConfigs` output on a runner of its own architecture, so an aarch64 host joins the arm build jobs without a workflow change.
+
+Three checks fail when a step above was missed:
+
+- `bootstrap-recipients` fails when the host has no bootstrap material, or when its recipient is missing from `.sops.yaml`.
+- `linux-host-secrets` fails when `secrets/hosts/<host>/ssh.yaml` is missing or lists any recipient other than the host's own, when the recipient is missing from the `tokens.yaml` rule, or when it appears in the `wifi.yaml` or `tailscale.yaml` rule.
+- `host-name-guard` fails when the new name appears in scanned code.
+
+Commit and push, so the machine can clone the result.
+
+### First setup on the machine
+
+The steps below run on the target machine, in order. The Ubuntu and Debian commands are examples; system-manager supports those two distributions.
+
+1. Install Nix as a multi-user installation. The system layer cannot install Nix, so this step stays manual:
+
+   ```sh
+   sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+   ```
+
+   Open a new shell afterwards, so `nix` and `~/.nix-profile/bin` are on `PATH`.
+
+2. Meet the distribution prerequisites. The apply helper checks each one before it applies anything and stops with the fix below when one is missing:
+
+   - The account has subordinate uid and gid ranges. Ubuntu's `useradd` usually assigns them. Otherwise run `sudo usermod --add-subuids 100000-165535 <account>` and `sudo usermod --add-subgids 100000-165535 <account>`.
+   - `newuidmap` and `newgidmap` are setuid: `sudo apt install uidmap`.
+   - The distribution's pcscd is not installed, because it would conflict with the flake's: `sudo apt remove pcscd`.
+   - `/etc/shells` lists the managed zsh: `echo $HOME/.nix-profile/bin/zsh | sudo tee -a /etc/shells`.
+
+3. Decide how rootless Podman gets user namespaces. The flake does not install Podman on a non-NixOS host. It configures the registry search, `auth.json`, and the credential helper for the Podman you install. Ubuntu 24.04's AppArmor restricts unprivileged user namespaces for any binary without a profile that allows them, such as a `podman` installed with Nix. This is a distribution setting, and the choice is yours. One option lifts the restriction for the whole machine:
+
+   ```sh
+   echo 'kernel.apparmor_restrict_unprivileged_userns = 0' | sudo tee /etc/sysctl.d/60-userns.conf
+   sudo sysctl --system
+   ```
+
+   The narrower option is an AppArmor profile that grants `userns` to that `podman` binary only. Skip this step if you do not run containers.
+
+4. Move aside any file that Home Manager will manage, such as `~/.ssh/config`. Home Manager stops rather than overwrite a file it did not create.
+
+5. Clone the repository and enable flakes for the first apply. The system layer enables them in `/etc/nix/nix.conf` from then on:
+
+   ```sh
+   git clone https://github.com/hyperlapse122/nix-config.git
+   cd nix-config
+   export NIX_CONFIG='experimental-features = nix-command flakes'
+   ```
+
+6. Apply the bootstrap output. `nr` is not installed yet, so run the helper from the clone:
+
+   ```sh
+   ./scripts/nr-linux switch --host <host> --bootstrap --flake-dir .
+   ```
+
+   It builds both layers as you, activates the system layer through `sudo`, then activates the user environment. This brings up GPG, the card tools, pcscd, and `install-user-age-identity`. The system layer records the host in `/etc/nix-config-host`, so later runs need no `--host`.
+
+7. With a YubiKey inserted, recover the host's age identity:
+
+   ```sh
+   ./scripts/recover-age-identity --user --host <host>
+   ```
+
+   It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
+
+8. Apply the production output. It publishes the gh and glab configuration, the tokens, and the SSH key:
+
+   ```sh
+   nr switch
+   ```
+
+9. Register the host's SSH public key with GitHub and every server the host must reach; see [provisioning](provisioning.md#ssh-key-on-a-non-nixos-host).
+
+10. Switch the login shell to the managed zsh. `nr` prints this reminder after each apply until you do:
+
+    ```sh
+    chsh -s $HOME/.nix-profile/bin/zsh
+    ```
+
+Later applies run `nr switch` from the clone after `git pull`. They need no card. `nr switch --bootstrap` applies the bootstrap output again; it leaves the published secrets in place. `nr build` builds both layers without activating them. `nr boot` and `nr test` refuse, because a non-NixOS host has no boot generation.
