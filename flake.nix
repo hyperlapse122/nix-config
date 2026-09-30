@@ -918,6 +918,7 @@
             touch $out
           '';
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
+          vscodium = import ./tests/vscodium.nix { inherit pkgs self; };
           tokscale-wrapper =
             let
               packaged = import ./packages/tokscale.nix {
