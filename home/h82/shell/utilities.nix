@@ -8,7 +8,9 @@
     file
     fzf
     jq
+    lsof
     moreutils
+    procps
     ripgrep
     shellcheck
     shfmt
