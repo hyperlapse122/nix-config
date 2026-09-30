@@ -58,19 +58,12 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
-  declared = pkgs.writeText "claude-declared-settings.json" (
-    builtins.toJSON {
-      set = settingsTier;
-      remove = retiredKeys;
-    }
-  );
+  renderDeclared =
+    name: set: remove:
+    pkgs.writeText name (builtins.toJSON { inherit set remove; });
 
-  declaredGlobalConfig = pkgs.writeText "claude-declared-global-config.json" (
-    builtins.toJSON {
-      set = globalConfigTier;
-      remove = [ ];
-    }
-  );
+  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys;
+  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ];
 in
 {
   home.sessionVariables = environmentTier;
@@ -94,8 +87,8 @@ in
       --declared ${declared}
   '';
 
-  # A separate entry rather than a second call in claudeSettings, ordered the
-  # same way and unguarded for the same reasons.
+  # Its own entry, so each merge names exactly one file and a refusal reports
+  # which one.  Ordered and left unguarded as claudeSettings is, above.
   home.activation.claudeGlobalConfig = lib.hm.dag.entryAfter [ "installPackages" ] ''
     ${merger} \
       --label 'Claude Code' \
