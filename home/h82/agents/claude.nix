@@ -39,6 +39,17 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
+    # The advisor must be at least as capable as the main model, and `fable`
+    # as advisor bills to usage credits, so `opus` is the alias that serves
+    # the `opus[1m]` main model without either.
+    advisorModel = "opus";
+  };
+
+  # Keys Claude Code reads only from its global config, ~/.claude.json, and
+  # never from settings.json.  That file is Claude Code's own runtime state too,
+  # so the same merge assigns these keys and leaves the rest untouched.
+  globalConfigTier = {
+    leftArrowOpensAgents = false;
   };
 
   # Keys this repository used to declare and has since retired. The merge only
@@ -51,6 +62,13 @@ let
     builtins.toJSON {
       set = settingsTier;
       remove = retiredKeys;
+    }
+  );
+
+  declaredGlobalConfig = pkgs.writeText "claude-declared-global-config.json" (
+    builtins.toJSON {
+      set = globalConfigTier;
+      remove = [ ];
     }
   );
 in
@@ -74,5 +92,14 @@ in
       --label 'Claude Code' \
       --settings ${config.home.homeDirectory}/.claude/settings.json \
       --declared ${declared}
+  '';
+
+  # A separate entry rather than a second call in claudeSettings, ordered the
+  # same way and unguarded for the same reasons.
+  home.activation.claudeGlobalConfig = lib.hm.dag.entryAfter [ "installPackages" ] ''
+    ${merger} \
+      --label 'Claude Code' \
+      --settings ${config.home.homeDirectory}/.claude.json \
+      --declared ${declaredGlobalConfig}
   '';
 }

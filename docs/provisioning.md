@@ -104,12 +104,15 @@ Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed decla
 
 ### Which tier owns which setting
 
-Each Claude Code setting this repository declares is assigned to exactly one settings tier, and `home/h82/agents/claude.nix` holds both lists.
+Each Claude Code setting this repository declares is assigned to exactly one settings tier, and `home/h82/agents/claude.nix` holds all three lists.
 
 - **Environment variables**, for settings whose persistent form is a variable: `DISABLE_AUTOUPDATER`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, and `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. A variable that only overrides a single session, such as `ANTHROPIC_MODEL` or `CLAUDE_CODE_EFFORT_LEVEL`, does not move its setting into this tier. These are session variables, so they reach every program in the session, not only Claude Code — `DISABLE_AUTOUPDATER` in particular is read by other coding-agent CLIs as well; it lives in this module because the declared set belongs in one place.
-- **The user settings file** `~/.claude/settings.json`, for everything else declared: `model`, `effortLevel`, `language`, `theme`, `preferredNotifChannel`, `agentPushNotifEnabled`, `inputNeededNotifEnabled`, and `cleanupPeriodDays`.
+- **The user settings file** `~/.claude/settings.json`, for everything else declared: `model`, `effortLevel`, `language`, `theme`, `preferredNotifChannel`, `agentPushNotifEnabled`, `inputNeededNotifEnabled`, `cleanupPeriodDays`, and `advisorModel`.
+- **The global config file** `~/.claude.json`, for keys Claude Code reads only from there and never from the settings file: `leftArrowOpensAgents`, set to `false` so the left arrow on an empty prompt no longer opens the agents view. A second activation entry runs the same merger against that file; the rest of this section applies to both files.
 
-Claude Code owns that file and rewrites it whenever a `/config` option changes, so Home Manager cannot place a read-only store symlink there. Activation instead runs the packaged `agent-settings` merger, which assigns the declared keys and leaves every other key exactly as the agent wrote it. A key this repository does not declare stays the user's permanently. To hand a choice back to the user, remove it from the declared set in `home/h82/agents/claude.nix` and from `tests/claude.nix` in the same change; the `claude` check asserts the whole rendered set.
+`advisorModel` is `opus` because the advisor must be at least as capable as the main model, and `fable` as advisor bills to usage credits.
+
+Claude Code owns both files and rewrites them whenever a `/config` option changes, so Home Manager cannot place a read-only store symlink at either. Activation instead runs the packaged `agent-settings` merger, which assigns the declared keys and leaves every other key exactly as the agent wrote it. A key this repository does not declare stays the user's permanently. To hand a choice back to the user, remove it from the declared set in `home/h82/agents/claude.nix` and from `tests/claude.nix` in the same change; the `claude` check asserts the whole rendered set.
 
 A declared key returns to its declared value on the next rebuild **that produces a new Home Manager generation**, not on every `nixos-rebuild switch`. `home-manager-h82.service` is a `RemainAfterExit` oneshot whose unit embeds the generation store path, so a rebuild that changes nothing in this repository leaves the unit untouched and activation does not re-run. Runtime drift in a declared key therefore persists until the next rebuild that actually changes something here.
 
