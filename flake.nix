@@ -1091,6 +1091,10 @@
                   scripts/recover-age-identity scripts/prepare-age-identity
                 touch $out
               '';
+          non-nixos-vm = import ./tests/non-nixos-vm.nix {
+            inherit pkgs inputs;
+            fixtures = linuxFixtures;
+          };
           non-nixos-outputs = import ./tests/non-nixos-outputs.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
