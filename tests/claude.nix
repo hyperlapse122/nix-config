@@ -72,7 +72,7 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
-    advisorModel = "opus";
+    advisorModel = "fable";
   };
 
   globalConfigTier = {
