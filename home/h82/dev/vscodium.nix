@@ -19,8 +19,8 @@ let
     "D2KodingLigature Nerd Font"
   ];
 
-  # Ported from the legacy dotfiles' vscodium-settings.json.tmpl. Its empty
-  # `emmet.preferences` object is VSCodium's default and is left out.
+  # `emmet.preferences` is omitted: its empty legacy object is VSCodium's
+  # default.
   settings = {
     "[json]"."editor.defaultFormatter" = "vscode.json-language-features";
     "[jsonc]"."editor.defaultFormatter" = "biomejs.biome";
@@ -174,9 +174,7 @@ let
   declared = pkgs.writeText "vscodium-declared-settings.json" (
     builtins.toJSON {
       set = lib.filterAttrs (_: value: !(lib.isAttrs value || lib.isList value)) settings;
-      setPaths = lib.concatLists (
-        lib.mapAttrsToList (name: value: lib.optionals (lib.isAttrs value) (leaves [ name ] value)) settings
-      );
+      setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) settings);
       own = lib.filterAttrs (_: lib.isList) settings;
     }
   );
