@@ -101,7 +101,7 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     # name. The unreaped child stays visible as a zombie, so wait on it rather
     # than probing: 143 means SIGTERM from pkill ended it. The sleep is short
     # so a pkill that exits 0 without signalling fails instead of hanging.
-    sleep 30 &
+    sleep 5 &
     sleeper=$!
     expect pgrep "$sleeper" "$bin/pgrep" -P "$BASHPID" -x sleep
     expect pkill "" "$bin/pkill" -P "$BASHPID" -x sleep
@@ -112,7 +112,6 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     # lsof reports the file behind a descriptor this subshell holds open.
     exec 3< haystack
     expect lsof "$PWD/haystack" sh -c '"$0" -a -p "$1" -d 3 -Fn 2>/dev/null | sed -n "s/^n//p"' "$bin/lsof" "$BASHPID"
-    exec 3<&-
   )
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
