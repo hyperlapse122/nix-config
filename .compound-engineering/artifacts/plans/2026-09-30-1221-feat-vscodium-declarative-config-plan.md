@@ -154,7 +154,7 @@ VSCodium's package, settings, and keybindings live in the chezmoi dotfiles repos
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | Nix files are formatted |
 | New check | `nix build .#checks.x86_64-linux.vscodium` | R1 through R6 |
 | All checks | `nix flake check` | no regression in other checks |
@@ -175,7 +175,7 @@ Hardware evidence (the new "Every host" item) is reported separately from these 
 
 ## Sources
 
-- Issue: https://github.com/hyperlapse122/nix-config/issues/59
-- Legacy files in https://github.com/hyperlapse122/dotfiles: `home/.chezmoitemplates/vscodium-settings.json.tmpl`, `home/dot_config/VSCodium/User/keybindings.json`, `home/dot_config/VSCodium/User/settings.json.tmpl`.
+- Issue: <https://github.com/hyperlapse122/nix-config/issues/59>
+- Legacy files in <https://github.com/hyperlapse122/dotfiles>: `home/.chezmoitemplates/vscodium-settings.json.tmpl`, `home/dot_config/VSCodium/User/keybindings.json`, `home/dot_config/VSCodium/User/settings.json.tmpl`.
 - Merger contract: `scripts/agent-settings` (`set` takes scalars only, `own` takes whole values).
 - Font declaration: `modules/nixos/desktop/fonts.nix`.
