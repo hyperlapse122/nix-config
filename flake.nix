@@ -996,6 +996,17 @@
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
+          host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
+          install-user-age-identity =
+            pkgs.runCommand "install-user-age-identity-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/install-user-age-identity} scripts/install-user-age-identity
+                cp ${./tests/test_install_user_age_identity.py} tests/test_install_user_age_identity.py
+                python tests/test_install_user_age_identity.py
+                touch $out
+              '';
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests

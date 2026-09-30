@@ -13,6 +13,9 @@
   - no desktop configuration reaches the user environment, even on a fixture
     that declares the laptop trait: no KDE lid activation, no Plasma or
     autostart files, no GUI packages;
+  - production runs the host-secrets activation steps and bootstrap never
+    does; both carry the user-mode identity installer, and ~/.ssh/config
+    names the host key rather than the 1Password agent;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
@@ -74,6 +77,7 @@ let
       hm = home.config;
       pnames = map (p: p.pname or (lib.getName p)) hm.home.packages;
       leakedGui = lib.filter (name: lib.elem name pnames) guiPackages;
+      sshConfig = hm.home.file.".ssh/config".text or "";
       desktopFiles = lib.filter (
         name: lib.hasPrefix "autostart/" name || lib.hasPrefix "plasma" name || lib.hasPrefix "kde" name
       ) (lib.attrNames hm.xdg.configFile);
@@ -94,6 +98,15 @@ let
       (check (
         leakedGui == [ ]
       ) "${entry.name}: GUI packages reached a non-NixOS host: ${lib.concatStringsSep ", " leakedGui}")
+      (check (
+        hm.home.activation ? nixConfigSecretsStage == !entry.bootstrap
+        && hm.home.activation ? nixConfigSecretsPublish == !entry.bootstrap
+      ) "${entry.name}: the secret activation steps must run in production and never in bootstrap")
+      (check (lib.elem "install-user-age-identity" pnames) "${entry.name}: install-user-age-identity is missing, so the identity cannot be recovered")
+      (check (
+        lib.hasInfix "IdentityFile ~/.ssh/id_ed25519_nix_config" sshConfig
+        && !lib.hasInfix "IdentityAgent" sshConfig
+      ) "${entry.name}: ~/.ssh/config must name the host key and no agent socket")
       (check (desktopFiles == [ ])
         "${entry.name}: desktop configuration reached a non-NixOS host: ${lib.concatStringsSep ", " desktopFiles}"
       )

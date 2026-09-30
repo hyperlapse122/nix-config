@@ -22,6 +22,20 @@ let
 
   fixtureNames = import ./directories.nix { inherit lib; } ../fixtures/hosts;
 
+  # Fixtures have no card-encrypted material under secrets/, so production
+  # decrypts fake secrets built for the fixture's own architecture.
+  fakeSecretsModule =
+    { pkgs, ... }:
+    let
+      fakeSecrets = import ./fake-secrets.nix { inherit pkgs; };
+    in
+    {
+      my.secrets = {
+        tokensFile = "${fakeSecrets}/tokens.yaml";
+        sshKeyFile = "${fakeSecrets}/ssh.yaml";
+      };
+    };
+
   entryOf = fixture: bootstrap: {
     name = if bootstrap then "${fixture}-bootstrap" else fixture;
     inherit fixture bootstrap;
@@ -29,6 +43,7 @@ let
       hostName = fixture;
       dir = ../fixtures/hosts + "/${fixture}";
       inherit bootstrap;
+      extraModules.home = [ fakeSecretsModule ];
     };
   };
 in

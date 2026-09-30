@@ -6,11 +6,9 @@
 }:
 let
   cfg = config.my.cliAuth;
+  accounts = import ../../shared/cli-accounts.nix;
   available = cfg.sopsFile != null;
-  publisher = pkgs.writeScriptBin "publish-cli-auth" ''
-    #!${pkgs.python3}/bin/python3
-    ${builtins.readFile ../../../scripts/publish-cli-auth}
-  '';
+  publisher = import ../../../packages/publish-cli-auth.nix { inherit pkgs; };
   publishCommand = lib.escapeShellArgs [
     "${pkgs.util-linux}/bin/runuser"
     "-u"
@@ -66,19 +64,19 @@ in
     };
     githubUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse122";
+      default = accounts.github;
     };
     gitlabUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse";
+      default = accounts.gitlab;
     };
     jpiUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse";
+      default = accounts.jpi;
     };
     dockerUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse122";
+      default = accounts.docker;
     };
     enableDockerToken = lib.mkOption {
       type = lib.types.bool;

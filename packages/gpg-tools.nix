@@ -31,7 +31,23 @@ let
     '';
     meta.mainProgram = "restore-age-identity";
   };
+
+  # The non-NixOS counterpart: installs into the invoking user's home, so it
+  # needs no root and no fixed system path.
+  installUserAgeIdentity = pkgs.stdenvNoCC.mkDerivation {
+    pname = "install-user-age-identity";
+    version = "1";
+    dontUnpack = true;
+    nativeBuildInputs = [ pkgs.python3 ];
+    installPhase = ''
+      install -Dm755 ${../scripts/install-user-age-identity} $out/bin/install-user-age-identity
+      substituteInPlace $out/bin/install-user-age-identity \
+        --replace-fail '@AGE_KEYGEN@' '${pkgs.age}/bin/age-keygen'
+      patchShebangs $out/bin/install-user-age-identity
+    '';
+    meta.mainProgram = "install-user-age-identity";
+  };
 in
 {
-  inherit pinentryCard restoreAgeIdentity;
+  inherit pinentryCard restoreAgeIdentity installUserAgeIdentity;
 }
