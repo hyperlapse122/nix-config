@@ -96,6 +96,23 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     # exits before connecting to a display.
     expect wl-copy wl-clipboard sh -c '"$0" --version | head -n 1 | cut -d " " -f 1' "$bin/wl-copy"
     expect wl-paste wl-clipboard sh -c '"$0" --version | head -n 1 | cut -d " " -f 1' "$bin/wl-paste"
+
+    # pgrep and pkill target a sleep this subshell owns, matched by parent and
+    # name. The unreaped child stays visible as a zombie, so wait on it rather
+    # than probing: 143 means SIGTERM from pkill ended it. The sleep is short
+    # so a pkill that exits 0 without signalling fails instead of hanging.
+    sleep 30 &
+    sleeper=$!
+    expect pgrep "$sleeper" "$bin/pgrep" -P "$BASHPID" -x sleep
+    expect pkill "" "$bin/pkill" -P "$BASHPID" -x sleep
+    [ -x "$bin/pkill" ] || kill "$sleeper"
+    wait "$sleeper" && status=0 || status=$?
+    [ "$status" = 143 ] || fail "pkill did not stop its target: wait returned $status"
+
+    # lsof reports the file behind a descriptor this subshell holds open.
+    exec 3< haystack
+    expect lsof "$PWD/haystack" sh -c '"$0" -a -p "$1" -d 3 -Fn 2>/dev/null | sed -n "s/^n//p"' "$bin/lsof" "$BASHPID"
+    exec 3<&-
   )
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
