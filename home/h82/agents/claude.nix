@@ -39,6 +39,16 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
+    # The advisor must be at least as capable as the `opus[1m]` main model,
+    # which `fable` is.
+    advisorModel = "fable";
+  };
+
+  # Keys Claude Code reads only from its global config, ~/.claude.json, and
+  # never from settings.json.  That file is Claude Code's own runtime state too,
+  # so the same merge assigns these keys and leaves the rest untouched.
+  globalConfigTier = {
+    leftArrowOpensAgents = false;
   };
 
   # Keys this repository used to declare and has since retired. The merge only
@@ -47,12 +57,12 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
-  declared = pkgs.writeText "claude-declared-settings.json" (
-    builtins.toJSON {
-      set = settingsTier;
-      remove = retiredKeys;
-    }
-  );
+  renderDeclared =
+    name: set: remove:
+    pkgs.writeText name (builtins.toJSON { inherit set remove; });
+
+  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys;
+  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ];
 in
 {
   home.sessionVariables = environmentTier;
@@ -74,5 +84,14 @@ in
       --label 'Claude Code' \
       --settings ${config.home.homeDirectory}/.claude/settings.json \
       --declared ${declared}
+  '';
+
+  # Its own entry, so each merge names exactly one file and a refusal reports
+  # which one.  Ordered and left unguarded as claudeSettings is, above.
+  home.activation.claudeGlobalConfig = lib.hm.dag.entryAfter [ "installPackages" ] ''
+    ${merger} \
+      --label 'Claude Code' \
+      --settings ${config.home.homeDirectory}/.claude.json \
+      --declared ${declaredGlobalConfig}
   '';
 }

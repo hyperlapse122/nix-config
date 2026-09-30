@@ -8,25 +8,28 @@
   production and bootstrap alike, since no tier depends on a host trait or on
   `my.bootstrap`.
 
-  The declared set is split across two tiers. A setting whose persistent form
-  is an environment variable is declared through session variables; everything
-  else is written into ~/.claude/settings.json at activation, because Claude
-  Code rewrites that file itself and a read-only store symlink cannot live
-  there. The managed settings tier is deliberately unused: it blocks a change
-  even inside a running session.
+  The declared set is split across three tiers. A setting whose persistent
+  form is an environment variable is declared through session variables; a key
+  Claude Code reads only from its global config is written into ~/.claude.json
+  at activation; everything else is written into ~/.claude/settings.json at
+  activation. Claude Code rewrites both files itself, so a read-only store
+  symlink cannot live at either. The managed settings tier is deliberately
+  unused: it blocks a change even inside a running session.
 
   Verifies, per configuration:
   - every environment-tier variable carries its declared value.
-  - the JSON this repository renders for the settings tier carries every
-    declared key at its declared value. Asserting the rendered file rather than
-    the Nix attribute set keeps the check on what activation actually feeds the
+  - for each merge -- home.activation.claudeSettings into
+    ~/.claude/settings.json and home.activation.claudeGlobalConfig into
+    ~/.claude.json -- the activation exists, runs after installPackages,
+    invokes the packaged merger on that file, and does not swallow the merger's
+    exit status, so a symlinked or malformed file fails the rebuild instead of
+    passing silently.
+  - the JSON this repository renders for each merge carries every declared key
+    at its declared value. Asserting the rendered file rather than the Nix
+    attribute set keeps the check on what activation actually feeds the
     merger.
-  - home.activation.claudeSettings exists, runs after writeBoundary, and its
-    script names the packaged merger's store path.
-  - that script does not swallow the merger's exit status, so a symlinked or
-    malformed settings file fails the rebuild instead of passing silently.
   - no environment.etc entry declares claude-code/managed-settings.json.
-  - no Home Manager file targets .claude/settings.json. An activation-time
+  - no Home Manager file targets either merged file. An activation-time
     merge and a store symlink are mutually exclusive, so this assertion now
     guards the mechanism rather than contradicting it. Home Manager resolves a
     file's destination from `target`, which only defaults to the attribute
@@ -69,7 +72,34 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
+    advisorModel = "fable";
   };
+
+  globalConfigTier = {
+    leftArrowOpensAgents = false;
+  };
+
+  expectedDeclared =
+    name: set:
+    pkgs.writeText name (
+      builtins.toJSON {
+        inherit set;
+        remove = [ ];
+      }
+    );
+
+  merges = [
+    {
+      attr = "claudeSettings";
+      file = ".claude/settings.json";
+      expected = expectedDeclared "claude-expected-settings.json" settingsTier;
+    }
+    {
+      attr = "claudeGlobalConfig";
+      file = ".claude.json";
+      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier;
+    }
+  ];
 
   assertHost =
     entry:
@@ -78,24 +108,7 @@ let
       userConfig = entry.user;
       sessionVariables = userConfig.home.sessionVariables or { };
 
-      activation = userConfig.home.activation.claudeSettings or null;
-      script = if activation == null then "" else (activation.data or "");
-      # After installPackages, so a refusal cannot strand linkGeneration and
-      # installPackages behind it. Asserting writeBoundary instead would pass
-      # the position that causes that, since installPackages is itself after
-      # writeBoundary.
-      runsAfterPackages = lib.elem "installPackages" (
-        if activation == null then [ ] else (activation.after or [ ])
-      );
-
       managed = entry.config.environment.etc."claude-code/managed-settings.json" or null;
-
-      # Home Manager resolves each entry's destination from `target`, which
-      # defaults to the attribute name but can be set explicitly, so an
-      # attribute-name test would miss a renamed entry.
-      claudeSettingsTargeted = lib.any (file: (file.target or "") == ".claude/settings.json") (
-        lib.attrValues (userConfig.home.file or { })
-      );
 
       environmentChecks = lib.concatStringsSep "\n" (
         lib.mapAttrsToList (name: value: ''
@@ -107,38 +120,94 @@ let
         '') environmentTier
       );
 
-      activationAbsent = lib.optionalString (activation == null) ''
-        echo 'missing home.activation.claudeSettings on ${hostName}' >&2
-        failed=1
-      '';
+      mergeChecks =
+        merge:
+        let
+          activation = userConfig.home.activation.${merge.attr} or null;
+          script = if activation == null then "" else (activation.data or "");
+          # After installPackages, so a refusal cannot strand linkGeneration and
+          # installPackages behind it. Asserting writeBoundary instead would pass
+          # the position that causes that, since installPackages is itself after
+          # writeBoundary.
+          runsAfterPackages = lib.elem "installPackages" (
+            if activation == null then [ ] else (activation.after or [ ])
+          );
 
-      activationPresent = lib.optionalString (activation != null) ''
-        if [ ${esc (lib.boolToString runsAfterPackages)} != "true" ]; then
-          echo 'home.activation.claudeSettings must run after installPackages on ${hostName}' >&2
-          failed=1
-        fi
+          # Home Manager resolves each entry's destination from `target`, which
+          # defaults to the attribute name but can be set explicitly, so an
+          # attribute-name test would miss a renamed entry.
+          targeted = lib.any (file: (file.target or "") == merge.file) (
+            lib.attrValues (userConfig.home.file or { })
+          );
 
-        if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
-          echo 'the claudeSettings activation script must invoke the packaged merger on ${hostName}' >&2
-          failed=1
-        fi
+          activationAbsent = lib.optionalString (activation == null) ''
+            echo 'missing home.activation.${merge.attr} on ${hostName}' >&2
+            failed=1
+          '';
 
-        # Swallowing the merger's exit status turns a refusal into a silent
-        # no-op, which is the failure mode the no-swallow rule exists for.
-        # `|| true` is only the most obvious spelling, so this matches the
-        # equivalents too -- a check that names one of them lets the others
-        # through while reporting the guarantee as held. The merger invocation
-        # spans several lines, so this looks anywhere in this single-purpose
-        # block rather than on the line naming the binary; a line-anchored
-        # pattern silently passes the mutation that adds the swallow. Comment
-        # lines are stripped first, because the block documents why the swallow
-        # is absent and matching that sentence would fail the honest script.
-        if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
-          echo 'the claudeSettings activation script must not swallow the merger exit status on ${hostName}' >&2
-          failed=1
-        fi
-      '';
+          activationPresent = lib.optionalString (activation != null) ''
+            if [ ${esc (lib.boolToString runsAfterPackages)} != "true" ]; then
+              echo 'home.activation.${merge.attr} must run after installPackages on ${hostName}' >&2
+              failed=1
+            fi
+
+            if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
+              echo 'the ${merge.attr} activation script must invoke the packaged merger on ${hostName}' >&2
+              failed=1
+            fi
+
+            # Swallowing the merger's exit status turns a refusal into a silent
+            # no-op, which is the failure mode the no-swallow rule exists for.
+            # `|| true` is only the most obvious spelling, so this matches the
+            # equivalents too -- a check that names one of them lets the others
+            # through while reporting the guarantee as held. The merger invocation
+            # spans several lines, so this looks anywhere in this single-purpose
+            # block rather than on the line naming the binary; a line-anchored
+            # pattern silently passes the mutation that adds the swallow. Comment
+            # lines are stripped first, because the block documents why the swallow
+            # is absent and matching that sentence would fail the honest script.
+            if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
+              | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+              echo 'the ${merge.attr} activation script must not swallow the merger exit status on ${hostName}' >&2
+              failed=1
+            fi
+          '';
+        in
+        ''
+          ${activationAbsent}${activationPresent}
+          # Read the flags the merger is actually invoked with, not merely whether
+          # the script mentions a path somewhere. A check that greps for the store
+          # path anywhere in the text passes a script that names the right file in
+          # a comment and hands the merger a different one, and a check that
+          # re-derives the JSON from this file's own attribute set compares a
+          # literal against itself, which no mutation of the module can turn red.
+          # The builder runs under `set -e -o pipefail`, so a non-matching grep
+          # would abort before the remaining assertions ran and leave one mutation
+          # round with evidence about a single assertion.
+          settingsArg=$(printf '%s' ${esc script} \
+            | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
+            | head -1 | awk '{print $2}' || true)
+          if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/${merge.file}"} ]; then
+            echo "${merge.attr} must point the merger at ~/${merge.file} on ${hostName}, got: '$settingsArg'" >&2
+            failed=1
+          fi
+
+          declaredPath=$(printf '%s' ${esc script} \
+            | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
+            | head -1 | awk '{print $2}' || true)
+          if [ -z "$declaredPath" ]; then
+            echo 'the ${merge.attr} activation script passes no declared-settings file on ${hostName}' >&2
+            failed=1
+          elif ! diff -u "$declaredPath" ${merge.expected} >/dev/null; then
+            echo 'the declared keys ${merge.attr} renders drifted from the asserted values on ${hostName}' >&2
+            failed=1
+          fi
+
+          if [ ${esc (lib.boolToString targeted)} != "false" ]; then
+            echo 'Home Manager must not target ~/${merge.file} on ${hostName}; Claude Code owns it' >&2
+            failed=1
+          fi
+        '';
 
       managedPresent = lib.optionalString (managed != null) ''
         echo 'the managed settings tier must stay unused, but ${hostName} declares claude-code/managed-settings.json' >&2
@@ -147,54 +216,14 @@ let
     in
     ''
       ${environmentChecks}
-      ${activationAbsent}${activationPresent}${managedPresent}
-
-      # Read the flags the merger is actually invoked with, not merely whether
-      # the script mentions a path somewhere. A check that greps for the store
-      # path anywhere in the text passes a script that names the right file in
-      # a comment and hands the merger a different one, and a check that
-      # re-derives the JSON from this file's own attribute set compares a
-      # literal against itself, which no mutation of the module can turn red.
-      # The builder runs under `set -e -o pipefail`, so a non-matching grep
-      # would abort before the remaining assertions ran and leave one mutation
-      # round with evidence about a single assertion.
-      settingsArg=$(printf '%s' ${esc script} \
-        | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-        | head -1 | awk '{print $2}' || true)
-      if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/.claude/settings.json"} ]; then
-        echo "the merger must be pointed at the real settings file on ${hostName}, got: '$settingsArg'" >&2
-        failed=1
-      fi
-
-      declaredPath=$(printf '%s' ${esc script} \
-        | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-        | head -1 | awk '{print $2}' || true)
-      if [ -z "$declaredPath" ]; then
-        echo 'the claudeSettings activation script passes no declared-settings file on ${hostName}' >&2
-        failed=1
-      elif ! diff -u "$declaredPath" "$declaredExpected" >/dev/null; then
-        echo 'the declared settings this repository renders drifted from the asserted values on ${hostName}' >&2
-        failed=1
-      fi
-
-      if [ ${esc (lib.boolToString claudeSettingsTargeted)} != "false" ]; then
-        echo 'Home Manager must not target ~/.claude/settings.json on ${hostName}; Claude Code owns it' >&2
-        failed=1
-      fi
+      ${lib.concatMapStringsSep "\n" mergeChecks merges}
+      ${managedPresent}
     '';
-
-  declaredExpected = pkgs.writeText "claude-expected-settings.json" (
-    builtins.toJSON {
-      set = settingsTier;
-      remove = [ ];
-    }
-  );
 in
 pkgs.runCommand "claude-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x
   ${configurations.guard}
   failed=0
-  declaredExpected=${declaredExpected}
 
   ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
 
