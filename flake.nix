@@ -206,6 +206,15 @@
             [ "$fail" = 0 ] || exit 1
           '';
 
+          # Runs `assertUser` over every Home Manager user environment the flake
+          # builds for this architecture, NixOS and non-NixOS hosts alike.
+          forEveryUser = assertUser: ''
+            ${configurations.userGuard}
+            fail=0
+            ${pkgs.lib.concatMapStrings assertUser configurations.userEntries}
+            [ "$fail" = 0 ] || exit 1
+          '';
+
           # A configuration whose user went missing reports each package as
           # absent inside the builder rather than aborting evaluation.
           userPackagesOf = entry: entry.user.home.packages or [ ];
@@ -622,19 +631,20 @@
                         fi
                       '';
                   dotzshenv = files.".zshenv".text or "";
+                  zshenv = "${entry.user.home.homeDirectory or "/nonexistent"}/.config/zsh/.zshenv";
                 in
                 ''
                   ${assertSource ".config/zsh/.zpreztorc" "zstyle ':prezto:load' pmodule"}
                   ${assertSource ".config/zsh/.zshenv" "runcoms/zshenv"}
                   ${assertSource ".config/zsh/.zshrc" "runcoms/zshrc"}
-                  if ! printf '%s\n' ${pkgs.lib.escapeShellArg dotzshenv} | grep -q "source /home/h82/.config/zsh/.zshenv"; then
-                    echo '.zshenv does not source /home/h82/.config/zsh/.zshenv on ${entry.name}' >&2
+                  if ! printf '%s\n' ${pkgs.lib.escapeShellArg dotzshenv} | grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"}; then
+                    echo ${pkgs.lib.escapeShellArg ".zshenv does not source ${zshenv} on ${entry.name}"} >&2
                     fail=1
                   fi
                 '';
             in
             pkgs.runCommand "zsh-prezto-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-              ${forEveryConfiguration assertConfiguration}
+              ${forEveryUser assertConfiguration}
               touch $out
             '';
           ghostty-font =
@@ -748,7 +758,7 @@
             in
             pkgs.runCommand "gpg-agent-no-cache-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
               set -x
-              ${forEveryConfiguration assertConfiguration}
+              ${forEveryUser assertConfiguration}
               touch $out
             '';
           yubikey-manager-shell =
@@ -953,6 +963,7 @@
               touch $out
             '';
           bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
+          linux-host-secrets = import ./tests/linux-host-secrets.nix { inherit pkgs self; };
           github-workflow-conventions =
             pkgs.runCommand "github-workflow-conventions-tests"
               {

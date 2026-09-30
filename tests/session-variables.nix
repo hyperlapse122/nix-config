@@ -9,8 +9,8 @@
   source, and ~/.config/environment.d/10-home-manager.conf that the systemd
   user manager reads.
 
-  Verifies, on every configuration `tests/lib/configurations.nix` yields,
-  production and bootstrap alike:
+  Verifies, on every Home Manager user `tests/lib/configurations.nix` yields
+  (NixOS and non-NixOS hosts, production and bootstrap alike):
   - the h82 Home Manager generation exists.
   - environment.d/10-home-manager.conf is materialized in the generation's
     home-files, so a disabled or retargeted entry fails here rather than
@@ -76,10 +76,10 @@ let
 in
 pkgs.runCommand "session-variables-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
-  ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ "$failed" != 0 ]; then
     exit 1

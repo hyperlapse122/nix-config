@@ -4,10 +4,11 @@
     import ./tests/host-name-guard.nix { inherit pkgs self; }
 
   Fails when a host name appears in the repository's code: `flake.nix`,
-  `modules/`, `home/`, `tests/`, `scripts/`, `packages/`, and
-  `.github/workflows/`. Host names come from the directories under `hosts/`,
-  so the list is never written out here. `hosts/`, `secrets/`, `docs/`, and
-  the top-level prose files are not scanned.
+  `lib/`, `modules/`, `home/`, `tests/`, `scripts/`, `packages/`, and
+  `.github/workflows/`. Host names come from the directories under `hosts/`
+  and the fixture hosts under `tests/fixtures/hosts/`, so the list is never
+  written out here. `hosts/`, `secrets/`, `docs/`, and the top-level prose
+  files are not scanned.
 
   The search is a case-insensitive fixed-string match on the full host name,
   so prose such as "the ThinkPad's" stays legal. The builder lists every
@@ -18,10 +19,15 @@
 let
   inherit (pkgs) lib;
 
-  hostNames = import ./lib/directories.nix { inherit lib; } ../hosts;
+  directoriesIn = import ./lib/directories.nix { inherit lib; };
+
+  # Fixture hosts stand in for real ones in checks, so their names stay out of
+  # code for the same reason.
+  hostNames = directoriesIn ../hosts ++ directoriesIn ./fixtures/hosts;
 
   scannedPaths = [
     "flake.nix"
+    "lib"
     "modules"
     "home"
     "tests"
