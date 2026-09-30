@@ -16,10 +16,11 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/mise-release"
 
 MUSL_HEX = "e331f3fa3c360c63e996ef70bc183ce178cb16d21f8bf4926c61cf6fa6b9fafd"
+ARM64_MUSL_HEX = "ef349bbbcf3526865c551dc3dc317d354d63b26553855014db51caf7a063c7d2"
 GLIBC_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
 
 
-def shasums(version, musl_hex=MUSL_HEX, include_musl=True):
+def shasums(version, musl_hex=MUSL_HEX, include_musl=True, include_arm64_musl=True):
     """Build a SHASUMS256.txt body shaped like upstream's release asset."""
     lines = [
         f"09ea631d6f3e7031d63606a0892dc4c796f9fb57f493bc45937f9f7113c88216  ./mise-v{version}-linux-x64",
@@ -27,10 +28,12 @@ def shasums(version, musl_hex=MUSL_HEX, include_musl=True):
         f"45e8f07235640ca52dd168933d6e369435f1af9e486ee70997bc15f0fac22987  ./mise-v{version}-linux-x64-musl.tar.xz",
         f"3e17995959d92d46d638a481134421ba6c9b1695e22a032761a01acbf45b2d7a  ./mise-v{version}-linux-x64-musl.tar.zst",
         f"{GLIBC_HEX}  ./mise-v{version}-linux-x64.tar.gz",
-        f"ef349bbbcf3526865c551dc3dc317d354d63b26553855014db51caf7a063c7d2  ./mise-v{version}-linux-arm64-musl.tar.gz",
+        f"a1d0c6e83f027327d8461063f4ac58a6b7c7a23b5c5d5e9d6c0d4d2c1e7f3a90  ./mise-v{version}-linux-arm64-musl.tar.xz",
     ]
     if include_musl:
         lines.insert(2, f"{musl_hex}  ./mise-v{version}-linux-x64-musl.tar.gz")
+    if include_arm64_musl:
+        lines.append(f"{ARM64_MUSL_HEX}  ./mise-v{version}-linux-arm64-musl.tar.gz")
     return "\n".join(lines) + "\n"
 
 
@@ -71,18 +74,41 @@ class MiseReleaseTestCase(unittest.TestCase):
         return subprocess.run(args, capture_output=True, text=True, env=env)
 
     def write_pin(self, version):
+        entry = {"sha256": "0" * 64, "hash": sri("0" * 64)}
         self.output.write_text(
-            json.dumps({"version": version, "sha256": "0" * 64, "hash": sri("0" * 64)})
+            json.dumps(
+                {
+                    "version": version,
+                    "systems": {
+                        "x86_64-linux": {"asset": "linux-x64-musl", **entry},
+                        "aarch64-linux": {"asset": "linux-arm64-musl", **entry},
+                    },
+                }
+            )
         )
 
-    def test_writes_version_and_musl_tarball_hash_when_newer(self):
+    def test_writes_version_and_a_musl_tarball_hash_for_both_systems(self):
         self.write_pin("2026.9.14")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)
         self.assertEqual(
             json.loads(self.output.read_text()),
-            {"version": "2026.9.15", "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
+            {
+                "version": "2026.9.15",
+                "systems": {
+                    "x86_64-linux": {
+                        "asset": "linux-x64-musl",
+                        "sha256": MUSL_HEX,
+                        "hash": sri(MUSL_HEX),
+                    },
+                    "aarch64-linux": {
+                        "asset": "linux-arm64-musl",
+                        "sha256": ARM64_MUSL_HEX,
+                        "hash": sri(ARM64_MUSL_HEX),
+                    },
+                },
+            },
         )
 
     def test_writes_a_pin_when_none_exists(self):
@@ -127,6 +153,17 @@ class MiseReleaseTestCase(unittest.TestCase):
         self.assertIn("linux-x64-musl.tar.gz", result.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_refuses_a_release_without_the_arm64_musl_tarball(self):
+        self.write_pin("2026.9.14")
+        before = self.output.read_bytes()
+        result = self.run_release(
+            body=shasums("2026.9.15", include_arm64_musl=False),
+            extra_args=["-o", str(self.output)],
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("linux-arm64-musl.tar.gz", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
+
     def test_refuses_a_malformed_checksum(self):
         result = self.run_release(body=shasums("2026.9.15", musl_hex="abc123"))
         self.assertEqual(result.returncode, 1)
@@ -144,7 +181,9 @@ class MiseReleaseTestCase(unittest.TestCase):
     def test_dry_run_prints_json_and_writes_nothing(self):
         result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["hash"], sri(MUSL_HEX))
+        systems = json.loads(result.stdout)["systems"]
+        self.assertEqual(systems["x86_64-linux"]["hash"], sri(MUSL_HEX))
+        self.assertEqual(systems["aarch64-linux"]["hash"], sri(ARM64_MUSL_HEX))
         self.assertFalse(self.output.exists())
 
     def test_empty_fetch_command_fails(self):

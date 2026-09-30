@@ -1,4 +1,9 @@
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   androidSdk = import ../../../packages/android-sdk.nix { inherit pkgs; };
   # A stable path in front of the store SDK, so ANDROID_HOME, ~/.androidrc,
@@ -15,7 +20,9 @@ let
     ANDROID_NDK_HOME = "${sdkRoot}/ndk/${androidSdk.repo.latest.ndk}";
   };
 in
-{
+# The SDK's tools are x86_64 binaries even though the SDK evaluates on
+# aarch64, so the whole module is inert on other architectures.
+lib.mkIf pkgs.stdenv.hostPlatform.isx86_64 {
   xdg.dataFile."android-sdk".source = androidSdk.sdkRoot;
 
   home.sessionVariables = androidSessionVariables;

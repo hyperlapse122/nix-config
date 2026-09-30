@@ -4,7 +4,7 @@
 Fetches the plaintext "latest" version pointer, then that version's manifest
 JSON, and writes or checks the manifest pin file nixpkgs' claude-code
 derivation consumes directly via its `manifest` override argument. Refuses to
-write a manifest that is missing the target platform's entry, or a version
+write a manifest that is missing a target platform's entry, or a version
 that is not strictly newer than the one already pinned, so neither an
 incomplete release nor a downgrade ever reaches the pin file.
 """
@@ -20,10 +20,10 @@ import sys
 DEFAULT_BASE_URL = "https://downloads.claude.ai/claude-code-releases"
 DEFAULT_FETCH = "curl -s"
 
-# This flake builds only for x86_64-linux; nixpkgs' claude-code derivation
-# looks up the manifest by Node-style platform-arch key, which for that
-# system is "linux-x64" (confirmed against a cached build's fetch URL).
-TARGET_PLATFORM = "linux-x64"
+# nixpkgs' claude-code derivation looks up the manifest by Node-style
+# platform-arch key: "linux-x64" for x86_64-linux (confirmed against a cached
+# build's fetch URL) and "linux-arm64" for aarch64-linux.
+TARGET_PLATFORMS = ("linux-x64", "linux-arm64")
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
 
@@ -73,20 +73,23 @@ def fetch_manifest(base_url, version):
     return manifest
 
 
-def require_target_platform(manifest, version):
-    """Refuse a manifest missing the platform entry nixpkgs' package will look up."""
+def require_target_platforms(manifest, version):
+    """Refuse a manifest missing a platform entry nixpkgs' package will look up."""
     platforms = manifest.get("platforms")
-    if not isinstance(platforms, dict) or TARGET_PLATFORM not in platforms:
-        raise Failure(
-            f"manifest for {version} is missing the {TARGET_PLATFORM!r} platform "
-            "entry; refusing to write an incomplete pin"
-        )
-    entry = platforms[TARGET_PLATFORM]
-    if not isinstance(entry, dict) or not entry.get("binary") or not entry.get("checksum"):
-        raise Failure(
-            f"manifest for {version}'s {TARGET_PLATFORM!r} entry is missing "
-            "'binary' or 'checksum'; refusing to write an incomplete pin"
-        )
+    if not isinstance(platforms, dict):
+        platforms = {}
+    for platform in TARGET_PLATFORMS:
+        if platform not in platforms:
+            raise Failure(
+                f"manifest for {version} is missing the {platform!r} platform "
+                "entry; refusing to write an incomplete pin"
+            )
+        entry = platforms[platform]
+        if not isinstance(entry, dict) or not entry.get("binary") or not entry.get("checksum"):
+            raise Failure(
+                f"manifest for {version}'s {platform!r} entry is missing "
+                "'binary' or 'checksum'; refusing to write an incomplete pin"
+            )
 
 
 def version_tuple(version):
@@ -142,7 +145,7 @@ def main(argv=None):
                     return 0
 
         manifest = fetch_manifest(args.base_url, version)
-        require_target_platform(manifest, version)
+        require_target_platforms(manifest, version)
 
         out_json = json.dumps(manifest, indent=2) + "\n"
 
