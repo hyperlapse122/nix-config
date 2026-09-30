@@ -13,7 +13,7 @@ execution: code
 
 - **Objective:** On every host, user `h82` and the scripts and agents running as `h82` can find and stop processes and see which process holds a file or port, with `pkill`, `pgrep`, and `lsof` on PATH regardless of what NixOS ships by default.
 - **Means:** add `lsof` and `procps` to the shell-utilities package list (KTD1), and prove them in the existing check (KTD2).
-- **Authority:** this plan, then `AGENTS.md`, then existing patterns in `home/h82/shell/utilities.nix` and `tests/shell-utilities.nix`. Issue of record: https://github.com/hyperlapse122/nix-config/issues/134.
+- **Authority:** this plan, then `AGENTS.md`, then existing patterns in `home/h82/shell/utilities.nix` and `tests/shell-utilities.nix`. Issue of record: [#134](https://github.com/hyperlapse122/nix-config/issues/134).
 - **Stop conditions:** stop if adding `procps` or `lsof` causes a `home.path` collision that breaks any `nixosConfigurations` build, or if `pkgs.procps` no longer ships `bin/pkill`.
 - **Execution profile:** one list edit plus assertions in an existing check; `ce-work` finishes it and the LFG pipeline ships it.
 
