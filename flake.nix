@@ -888,6 +888,11 @@
                   ${./.gitignore}
                 touch $out
               '';
+          update-dependencies-verify-status = pkgs.runCommand "update-dependencies-verify-status-tests" { } ''
+            bash ${./tests/update-dependencies-verify-status.sh} \
+              ${./.github/workflows/update-dependencies.yml}
+            touch $out
+          '';
           ci-workflow-docs-skip =
             pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''

@@ -94,10 +94,11 @@ jobs:
         id: verify
         run: |
           set +e
+          # $? after a pipeline is tee's status; PIPESTATUS[0] is nix's.
           nix fmt -- --ci 2>&1 | tee fmt.log
-          FMT_EXIT=$?
+          FMT_EXIT=${PIPESTATUS[0]}
           nix flake check --print-build-logs 2>&1 | tee check.log
-          CHECK_EXIT=$?
+          CHECK_EXIT=${PIPESTATUS[0]}
           set -e
 
           if [ "$FMT_EXIT" -eq 0 ] && [ "$CHECK_EXIT" -eq 0 ]; then
