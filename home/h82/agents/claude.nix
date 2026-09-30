@@ -39,9 +39,8 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
-    # The advisor must be at least as capable as the main model.  `fable` as
-    # advisor bills to usage credits and needs a one-time consent in Claude
-    # Code (`/model fable`) before it activates.
+    # The advisor must be at least as capable as the `opus[1m]` main model,
+    # which `fable` is.
     advisorModel = "fable";
   };
 
