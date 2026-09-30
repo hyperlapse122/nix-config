@@ -1,4 +1,4 @@
-{ ... }:
+{ lib, hostKind, ... }:
 {
   imports = [
     ./android.nix
@@ -9,6 +9,7 @@
     ./rust.nix
     ./swift.nix
     ./tool-environment.nix
-    ./vscodium.nix
-  ];
+  ]
+  # VSCodium is a desktop application; non-NixOS hosts get no desktop.
+  ++ lib.optionals (hostKind == "nixos") [ ./vscodium.nix ];
 }
