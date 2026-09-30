@@ -33,25 +33,25 @@ in
   # installer's copy and keeps it as nix.conf.system-manager-backup. The
   # upstream module drops the installer's build-users-group, so it is set here
   # to keep builds running as the unprivileged nixbld users.
+  imports = [ ../shared/nix-settings.nix ];
   nix.enable = true;
-  nix.settings = {
-    experimental-features = [
-      "nix-command"
-      "flakes"
-    ];
-    auto-optimise-store = true;
-    build-users-group = "nixbld";
-  };
+  nix.settings.build-users-group = "nixbld";
 
   # pcscd runs as root with no socket-activation dependency on a distribution
   # package: the unit and socket are written here, and the preflight in `nr`
   # refuses to run while a distribution pcscd unit exists alongside them.
+  # This pcsclite has no polkit, so the socket itself is the access boundary:
+  # only the host account's private group reaches the card, as a desktop
+  # session's polkit rule would allow on the distribution or on NixOS. The
+  # preflight in `nr` checks that the group exists.
   systemd.sockets.pcscd = {
     description = "PC/SC Smart Card Daemon Activation Socket";
     wantedBy = [ "multi-user.target" ];
     socketConfig = {
       ListenStream = "/run/pcscd/pcscd.comm";
-      SocketMode = "0666";
+      SocketMode = "0660";
+      SocketUser = "root";
+      SocketGroup = config.my.user.name;
       RemoveOnStop = true;
     };
   };

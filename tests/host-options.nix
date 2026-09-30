@@ -24,40 +24,10 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
-  # Option paths under `my` that the user must see exactly as the system does.
-  shared = [
-    [ "bootstrap" ]
-    [ "hostName" ]
-    [ "kind" ]
-    [
-      "user"
-      "name"
-    ]
-    [
-      "user"
-      "home"
-    ]
-    [
-      "laptop"
-      "enable"
-    ]
-    [
-      "keyd"
-      "enable"
-    ]
-    [
-      "fingerprint"
-      "enable"
-    ]
-    [
-      "thunderbolt"
-      "enable"
-    ]
-    [
-      "nuphyGem80"
-      "enable"
-    ]
-  ];
+  # Every option modules/shared/host.nix declares: the user must see each one
+  # exactly as the system does. Derived from the declarations, so a new trait
+  # is compared the day it is added.
+  shared = (import ../lib/host-facts.nix { inherit lib; }).paths;
 
   valueOf = config: path: builtins.toJSON (lib.attrByPath ([ "my" ] ++ path) null config);
 

@@ -54,47 +54,24 @@
 
       # Each directory under hosts/ is a host, named by the directory. One that
       # holds host.nix is a non-NixOS host; every other one is a NixOS host.
-      hostNames = import ./tests/lib/directories.nix { inherit lib; } ./hosts;
-      isLinuxHost = hostName: builtins.pathExists (./hosts + "/${hostName}/host.nix");
-      nixosHostNames = lib.filter (hostName: !isLinuxHost hostName) hostNames;
+      hosts = import ./lib/hosts.nix { inherit lib; } ./hosts;
 
       # Both variants of every non-NixOS host, keyed by output name.
       mkLinuxHost = import ./lib/linux-host.nix { inherit inputs; };
       linuxHosts = lib.listToAttrs (
-        lib.concatMap (
-          hostName:
-          map
-            (bootstrap: {
-              name = if bootstrap then "${hostName}-bootstrap" else hostName;
-              value = mkLinuxHost {
-                inherit hostName bootstrap;
-                dir = ./hosts + "/${hostName}";
-              };
-            })
-            [
-              false
-              true
-            ]
-        ) (lib.filter isLinuxHost hostNames)
+        lib.concatMap (hosts.withVariants (
+          hostName: bootstrap:
+          mkLinuxHost {
+            inherit hostName bootstrap;
+            dir = ./hosts + "/${hostName}";
+          }
+        )) hosts.linux
       );
 
       # The non-NixOS fixture hosts build on their own architecture, so each
       # system's checks carry the fixtures of that system.
       linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
-      fixtureChecksFor =
-        fixtureSystem:
-        lib.listToAttrs (
-          lib.concatMap (entry: [
-            {
-              name = "non-nixos-home-${entry.name}";
-              value = entry.host.home.activationPackage;
-            }
-            {
-              name = "non-nixos-system-${entry.name}";
-              value = entry.host.systemManager;
-            }
-          ]) (lib.filter (entry: entry.host.system == fixtureSystem) linuxFixtures)
-        );
+      fixtureChecksFor = import ./tests/lib/fixture-checks.nix { inherit lib linuxFixtures; };
     in
     {
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
@@ -103,81 +80,12 @@
 
       nixosConfigurations =
         let
-          mkHost =
-            { hostName, bootstrap }:
-            nixpkgs.lib.nixosSystem {
-              inherit system;
-              specialArgs = { inherit inputs; };
-              modules = [
-                inputs.disko.nixosModules.disko
-                inputs.home-manager.nixosModules.home-manager
-                inputs.sops-nix.nixosModules.sops
-                inputs.lanzaboote.nixosModules.lanzaboote
-                # The host directory precedes the profile so list-valued
-                # options keep the merge order they had when each host
-                # imported the profile itself.
-                ./hosts/${hostName}
-                ./modules/nixos/profile.nix
-                (
-                  { config, ... }:
-                  {
-                    networking.hostName = hostName;
-                    my.hostName = hostName;
-                    my.bootstrap = bootstrap;
-                    home-manager.useGlobalPkgs = true;
-                    home-manager.useUserPackages = true;
-                    # specialArgs reaches NixOS modules only; the agent-plugin
-                    # registry needs the pinned plugin source, which is an input.
-                    # programs._1password-gui.package carries apply = pkg.override
-                    # { polkitPolicyOwners }, so the desktop autostart takes the
-                    # system's package rather than pkgs._1password-gui.
-                    home-manager.extraSpecialArgs = {
-                      inherit inputs;
-                      hostKind = "nixos";
-                      onePasswordGui = config.programs._1password-gui.package;
-                    };
-                    # The user sees the same host facts and traits as the system.
-                    home-manager.sharedModules = [
-                      ./modules/shared/host.nix
-                      {
-                        my = {
-                          inherit (config.my)
-                            bootstrap
-                            hostName
-                            kind
-                            user
-                            ;
-                          laptop.enable = config.my.laptop.enable;
-                          keyd.enable = config.my.keyd.enable;
-                          fingerprint.enable = config.my.fingerprint.enable;
-                          thunderbolt.enable = config.my.thunderbolt.enable;
-                          nuphyGem80.enable = config.my.nuphyGem80.enable;
-                        };
-                      }
-                    ];
-                    home-manager.users.h82 = import ./home/h82;
-                  }
-                )
-              ];
-            };
+          mkHost = import ./lib/nixos-host.nix { inherit inputs; };
         in
-        nixpkgs.lib.listToAttrs (
-          nixpkgs.lib.concatMap (hostName: [
-            {
-              name = hostName;
-              value = mkHost {
-                inherit hostName;
-                bootstrap = false;
-              };
-            }
-            {
-              name = "${hostName}-bootstrap";
-              value = mkHost {
-                inherit hostName;
-                bootstrap = true;
-              };
-            }
-          ]) nixosHostNames
+        lib.listToAttrs (
+          lib.concatMap (hosts.withVariants (
+            hostName: bootstrap: mkHost { inherit hostName bootstrap; }
+          )) hosts.nixos
         );
       packages.${system} = {
         disko = inputs.disko.packages.${system}.disko;
@@ -194,7 +102,10 @@
       };
       checks.${system} =
         let
-          configurations = import ./tests/lib/configurations.nix { inherit pkgs self; };
+          configurations = import ./tests/lib/configurations.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
 
           # Runs `assertConfiguration` over every configuration the flake builds.
           # Each per-configuration fragment records a failure in `fail` instead of
@@ -604,7 +515,10 @@
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
-          session-variables = import ./tests/session-variables.nix { inherit pkgs self; };
+          session-variables = import ./tests/session-variables.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           zsh-prezto =
             let
               assertConfiguration =
@@ -1008,25 +922,7 @@
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
-          install-user-age-identity =
-            pkgs.runCommand "install-user-age-identity-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/install-user-age-identity} scripts/install-user-age-identity
-                cp ${./tests/test_install_user_age_identity.py} tests/test_install_user_age_identity.py
-                python tests/test_install_user_age_identity.py
-                touch $out
-              '';
-          nr-linux = pkgs.runCommand "nr-linux-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-            mkdir -p scripts tests
-            cp ${./scripts/nr-linux} scripts/nr-linux
-            cp ${./tests/nr-linux.sh} tests/nr-linux.sh
-            chmod +x scripts/nr-linux
-            patchShebangs scripts/nr-linux
-            bash tests/nr-linux.sh scripts/nr-linux
-            touch $out
-          '';
+          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; }) install-user-age-identity nr-linux;
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests

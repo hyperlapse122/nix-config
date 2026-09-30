@@ -40,4 +40,14 @@ pkgs.runCommand "fake-non-nixos-secrets"
     cp ssh_key.pub $out/ssh.pub
     key="$(cat ssh_key)" yq -n '.ssh_private_key = strenv(key) + "\n"' > ssh.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml ssh.yaml > $out/ssh.yaml
+
+    # Failure fixtures: the same SSH key encrypted to the other identity only,
+    # tokens whose github_token publish-cli-auth rejects, and an SSH key field
+    # that is not a private key.
+    other=$(age-keygen -y $out/other-key.txt)
+    sops --encrypt --age "$other" --input-type yaml --output-type yaml ssh.yaml > $out/ssh-other.yaml
+    printf 'github_token: FAKE-CANARY has spaces\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\n' > bad-tokens.yaml
+    sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-tokens.yaml > $out/tokens-invalid.yaml
+    printf 'ssh_private_key: not a key\n' > bad-ssh.yaml
+    sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-ssh.yaml > $out/ssh-invalid.yaml
   ''

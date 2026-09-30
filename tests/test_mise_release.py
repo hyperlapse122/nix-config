@@ -164,6 +164,17 @@ class MiseReleaseTestCase(unittest.TestCase):
         self.assertIn("linux-arm64-musl.tar.gz", result.stderr)
         self.assertEqual(self.output.read_bytes(), before)
 
+    def test_refuses_architectures_on_different_versions(self):
+        self.write_pin("2026.9.14")
+        before = self.output.read_bytes()
+        body = shasums("2026.9.15", include_arm64_musl=False) + (
+            f"{ARM64_MUSL_HEX}  ./mise-v2026.9.16-linux-arm64-musl.tar.gz\n"
+        )
+        result = self.run_release(body=body, extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("more than one version", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
+
     def test_refuses_a_malformed_checksum(self):
         result = self.run_release(body=shasums("2026.9.15", musl_hex="abc123"))
         self.assertEqual(result.returncode, 1)

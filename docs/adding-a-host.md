@@ -252,6 +252,7 @@ The steps below run on the target machine, in order. The Ubuntu and Debian comma
 
    - The account has subordinate uid and gid ranges. Ubuntu's `useradd` usually assigns them. Otherwise run `sudo usermod --add-subuids 100000-165535 <account>` and `sudo usermod --add-subgids 100000-165535 <account>`.
    - `newuidmap` and `newgidmap` are setuid: `sudo apt install uidmap`.
+   - The account has a private group of the same name, which the flake's pcscd socket is restricted to. Ubuntu's `useradd` creates one. Otherwise run `sudo groupadd <account>` and `sudo usermod -aG <account> <account>`.
    - The distribution's pcscd is not installed, because it would conflict with the flake's: `sudo apt remove pcscd`.
    - `/etc/shells` lists the managed zsh: `echo $HOME/.nix-profile/bin/zsh | sudo tee -a /etc/shells`.
 

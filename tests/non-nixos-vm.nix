@@ -13,11 +13,13 @@
   non-default uid, passwordless sudo, the managed zsh in /etc/shells,
   subordinate id ranges, the uidmap helpers, and a Nix daemon. Then:
 
-  - bootstrap applies without an identity: pcscd's socket is active, the host
+  - bootstrap applies without an identity: pcscd's socket is active and open
+    only to the account's group, the managed zsh exists, the host
     marker names the bootstrap variant, and system-manager's profile points
     at the active system layer;
   - production without an identity stops before anything is published, both
-    in nr's preflight and in the Home Manager activation itself;
+    in nr's preflight and in the Home Manager activation itself, and leaves
+    the Home Manager generation where bootstrap put it;
   - an identity that is not a recipient stops production the same way, and
     no token reaches the output;
   - after the identity is installed with install-user-age-identity,
@@ -92,13 +94,7 @@ let
     "${home}/.ssh/id_ed25519_nix_config"
   ];
 
-  distributionOwned = [
-    "/etc/passwd"
-    "/etc/group"
-    "/etc/subuid"
-    "/etc/subgid"
-    "/etc/shells"
-  ];
+  distributionOwned = map (name: "/etc/${name}") (import ./lib/distribution-owned.nix);
 
   test = vmTest.ubuntu."24_04" {
     memorySize = 3072;
@@ -147,9 +143,19 @@ let
               status, _ = vm.execute(f"test -e {path}")
               assert status != 0, f"{step} published {path}"
 
+      def assert_generation_unchanged(step):
+          current = vm.succeed(${builtins.toJSON (asUser "readlink -f ${home}/.local/state/home-manager/gcroots/current-home")})
+          assert current == generation, f"{step} switched the Home Manager generation to {current}"
+
       # --- bootstrap, before any identity exists -----------------------------
       vm.succeed(${builtins.toJSON (nrSwitch bootstrap)})
       vm.wait_for_unit("pcscd.socket")
+      # Plain pcsclite has no polkit, so the socket is the access boundary.
+      socket = vm.succeed("stat -c '%a %U %G' /run/pcscd/pcscd.comm").split()
+      assert socket == ["660", "root", "${user}"], f"pcscd socket is {socket}"
+      vm.succeed(${builtins.toJSON (asUser "test -x ${home}/.nix-profile/bin/zsh")})
+      # The generation the refused production applies below must leave in place.
+      generation = vm.succeed(${builtins.toJSON (asUser "readlink -f ${home}/.local/state/home-manager/gcroots/current-home")})
       vm.succeed("grep -qx 'variant=bootstrap' /etc/nix-config-host")
       vm.succeed("grep -qx 'host=${hostName}' /etc/nix-config-host")
       vm.succeed(
@@ -165,6 +171,7 @@ let
       out = vm.fail(${builtins.toJSON (asUser "${homeOut production}/activate 2>&1")})
       assert "no age identity" in out, out
       assert_nothing_published("production without an identity")
+      assert_generation_unchanged("production without an identity")
 
       # --- an identity that is not a recipient ----------------------------------
       vm.succeed(${builtins.toJSON (asUser "install -d -m 700 ${home}/.config/nix-config/age && install -m 600 ${secrets}/other-key.txt ${home}/.config/nix-config/age/key.txt")})
@@ -172,6 +179,7 @@ let
       assert "not a recipient" in out, out
       assert "FAKE-CANARY" not in out, "a token reached the output"
       assert_nothing_published("production with a foreign identity")
+      assert_generation_unchanged("production with a foreign identity")
 
       # --- the right identity, installed the documented way -------------------
       vm.succeed(${builtins.toJSON (asUser "rm ${home}/.config/nix-config/age/key.txt && ${installer}/bin/install-user-age-identity --recipient $(cat ${secrets}/recipient.txt) < ${secrets}/key.txt")})

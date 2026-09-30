@@ -15,7 +15,7 @@ lib.mkMerge [
   (lib.mkIf (config.my.kind == "linux") {
     home.file.".ssh/config".text = ''
       Host *
-        IdentityFile ~/.ssh/id_ed25519_nix_config
+        IdentityFile ${config.my.secrets.sshKey}
     '';
   })
 ]

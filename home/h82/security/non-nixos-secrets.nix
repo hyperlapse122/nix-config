@@ -23,9 +23,6 @@ let
   cfg = config.my.secrets;
   inherit (config.my) hostName;
   accounts = import ../../../modules/shared/cli-accounts.nix;
-  # Where host-secrets publishes the decrypted tokens; the credential helper
-  # needs the literal path at build time.
-  stateDir = "${config.home.homeDirectory}/.local/state/cli-auth";
 
   gpgTools = import ../../../packages/gpg-tools.nix { inherit pkgs; };
   hostSecrets = "${import ../../../packages/host-secrets.nix { inherit pkgs; }}/bin/host-secrets";
@@ -40,6 +37,10 @@ let
     (storePath cfg.tokensFile)
     "--ssh"
     (storePath cfg.sshKeyFile)
+    "--state-dir"
+    cfg.stateDir
+    "--ssh-key"
+    cfg.sshKey
     "--github-user"
     accounts.github
     "--gitlab-user"
@@ -50,23 +51,9 @@ let
 
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    routingTable = {
-      "ghcr.io" = {
-        username = accounts.github;
-        secret = "${stateDir}/github_token";
-      };
-      "registry.gitlab.com" = {
-        username = accounts.gitlab;
-        secret = "${stateDir}/gitlab_token";
-      };
-      "registry.jpi.app" = {
-        username = accounts.jpi;
-        secret = "${stateDir}/jpi_token";
-      };
-      "docker.io" = {
-        username = accounts.docker;
-        secret = "${stateDir}/docker_token";
-      };
+    routingTable = import ../../../modules/shared/cli-registries.nix {
+      dir = cfg.stateDir;
+      users = accounts;
     };
   };
 
@@ -88,6 +75,18 @@ in
         in
         if builtins.pathExists file then file else null;
       description = "Encrypted YAML holding this host's SSH private key as ssh_private_key.";
+    };
+    sshKey = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.my.user.home}/.ssh/id_ed25519_nix_config";
+      readOnly = true;
+      description = "Where host-secrets installs this host's SSH private key; ~/.ssh/config names it.";
+    };
+    stateDir = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.my.user.home}/.local/state/cli-auth";
+      readOnly = true;
+      description = "Where host-secrets publishes the decrypted tokens: the user-mode counterpart of /run/secrets/cli-auth, read by the credential helper and the Tokscale wrapper.";
     };
   };
 

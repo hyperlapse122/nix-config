@@ -2,6 +2,8 @@
   config,
   pkgs,
   lib,
+  # The system's programs._1password-gui.package, passed in by mkHost:
+  # pkgs._1password-gui is a different derivation that ships no polkit policy.
   onePasswordGui,
   ...
 }:
@@ -16,10 +18,6 @@ let
     Restart=on-failure
     RestartSec=5s
   '';
-
-  # The system's programs._1password-gui.package, passed in by mkHost:
-  # pkgs._1password-gui is a different derivation that ships no polkit policy.
-  onePassword = onePasswordGui;
 in
 lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite
@@ -31,7 +29,7 @@ lib.mkIf (!config.my.bootstrap) {
       [Desktop Entry]
       Type=Application
       Name=1Password
-      Exec=${onePassword}/bin/1password --silent
+      Exec=${onePasswordGui}/bin/1password --silent
       Hidden=false
       NoDisplay=true
       X-KDE-autostart-phase=2

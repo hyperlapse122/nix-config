@@ -6,11 +6,14 @@
 #   recorded recipient alone, read from the encrypted file itself: a rule in
 #   .sops.yaml only applies when a file is created or re-keyed, so the file is
 #   the authority on who can decrypt it.
-# - the host's recipient is in the tokens.yaml rule, so production can decrypt
-#   the tokens it publishes.
-# - the recipient is in no other rule, so a non-NixOS host, whose identity
-#   rests on the distribution's disk encryption, never decrypts the Wi-Fi or
-#   Tailscale material only NixOS hosts use.
+# - the host's recipient is in the tokens.yaml rule and among the recipients
+#   secrets/tokens.yaml is actually encrypted to, so production can decrypt
+#   the tokens it publishes. The rule alone is not enough: a recipient added to
+#   it without `sops updatekeys` passes the rule and fails at the first apply.
+# - the recipient is in neither the rule nor the encrypted file of wifi.yaml
+#   and tailscale.yaml, so a non-NixOS host, whose identity rests on the
+#   distribution's disk encryption, never decrypts the Wi-Fi or Tailscale
+#   material only NixOS hosts use.
 #
 # usage: linux-host-secrets.sh ROOT
 set -euo pipefail
@@ -27,6 +30,14 @@ fail() {
 # names FILE.
 rule_recipients() {
   yq -r ".creation_rules[] | select(.path_regex | test(\"$1\")) | .age" "$root/.sops.yaml" | tr ',' '\n' | sed '/^$/d'
+}
+
+# The age recipients secrets/NAME.yaml is encrypted to, read from the file;
+# nothing when the file does not exist.
+file_recipients() {
+  local file=$root/secrets/$1.yaml
+  [[ -f $file ]] || return 0
+  yq -r '.sops.age[].recipient' "$file"
 }
 
 checked=0
@@ -55,9 +66,15 @@ for dir in "$root"/hosts/*/; do
   if ! rule_recipients 'tokens' | grep -qxF -- "$recipient"; then
     fail "$host: its recipient is not in the tokens.yaml rule of .sops.yaml"
   fi
+  if ! file_recipients tokens | grep -qxF -- "$recipient"; then
+    fail "$host: secrets/tokens.yaml is not encrypted to its recipient; run sops updatekeys secrets/tokens.yaml"
+  fi
   for other in wifi tailscale; do
     if rule_recipients "$other" | grep -qxF -- "$recipient"; then
       fail "$host: its recipient is in the $other.yaml rule of .sops.yaml; non-NixOS hosts must not decrypt it"
+    fi
+    if file_recipients "$other" | grep -qxF -- "$recipient"; then
+      fail "$host: secrets/$other.yaml is encrypted to its recipient; non-NixOS hosts must not decrypt it"
     fi
   done
 done

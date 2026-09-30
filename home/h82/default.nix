@@ -10,8 +10,8 @@ let
   # module, so the NixOS package list keeps its order and its store path. The
   # gate is the hostKind special argument: an import conditional on `config`
   # would recurse.
-  desktop = hostKind == "nixos";
-  gui = lib.optionals desktop;
+  nixos = hostKind == "nixos";
+  gui = lib.optionals nixos;
 in
 {
   imports = [
@@ -62,7 +62,7 @@ in
         let
           nixTools = import ../../packages/nix-tools.nix { inherit pkgs; };
         in
-        if hostKind == "nixos" then nixTools.nr else nixTools.nrLinux
+        if nixos then nixTools.nr else nixTools.nrLinux
       )
     ]
     ++ gui [ (import ../../packages/orca.nix { inherit pkgs; }) ];

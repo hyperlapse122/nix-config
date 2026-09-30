@@ -146,7 +146,7 @@ This plan covers the shared foundation and non-NixOS Linux hosts. The areas belo
 **Deferred to Implementation**
 
 - Can nix-vm-test share the host's `/nix/store` with the Ubuntu guest, or must closures be copied in over ssh? This decides U9's copy step; either route satisfies R17.
-- The exact udev rule source for YubiKey access on the non-NixOS system layer. NixOS gets it from `modules/nixos/hardware/yubikey.nix`, and U4 reuses the same packages' rule files.
+- Resolved in implementation: no udev rules file is written. pcscd runs as root, and FIDO access comes from the distribution's systemd `60-fido-id` and `70-uaccess` rules, the mechanism `modules/nixos/hardware/yubikey.nix` names as load-bearing on NixOS.
 - Does system-manager restart the installer-owned `nix-daemon` after it replaces `nix.conf`? If not, `nr-linux` must restart it, because the daemon reads the file only at startup.
 - Does nix-vm-test's Ubuntu 24.04 image ship `uidmap`? If not, U9's offline guest setup must supply it, because KTD7's preflight blocks even the bootstrap apply without it.
 
@@ -350,7 +350,7 @@ U1 → U2 → U3 lays the shared foundation. U4, U5, U6, and U8 can start once U
   - Create `modules/system-manager/default.nix`.
   - Test: `tests/non-nixos-outputs.nix`.
 - **Approach:**
-  1. Write pcscd socket and service units from `pcsclite`, with `PCSCLITE_HP_DROPDIR` set to a `buildEnv` of `ccid`'s drivers, following the NixOS `services.pcscd` module. Add a udev rules file from the same packages `modules/nixos/hardware/yubikey.nix` uses.
+  1. Write pcscd socket and service units from `pcsclite`, with `PCSCLITE_HP_DROPDIR` set to a `buildEnv` of `ccid`'s drivers, following the NixOS `services.pcscd` module. The socket is `0660` and owned by the account's private group, because this `pcsclite` has no polkit.
   2. Set `nix.settings` to match the NixOS base settings plus `build-users-group = nixbld`, with `replaceExisting` on `/etc/nix/nix.conf`.
   3. Write `/etc/nix-config-host`.
   4. Leave userborn disabled.
@@ -427,7 +427,7 @@ U1 → U2 → U3 lays the shared foundation. U4, U5, U6, and U8 can start once U
   3. Build both outputs as the user, unless `NR_SYSTEM_OUT` and `NR_HOME_OUT` supply prebuilt store paths.
   4. Through `sudo`, register the system closure in system-manager's profile and activate it. Then run the Home Manager activation.
   5. Print the `chsh` reminder when the login shell is not the Nix zsh.
-  6. Accept the same subcommands the existing aliases pass to `nr`.
+  6. Refuse `boot` and `test`, which need a bootloader generation, with a pointer to `nr switch`; the `nrb` and `nrt` aliases exist only on NixOS hosts.
 - **Test scenarios:**
   - With the marker absent and no `--host`, `nr` exits non-zero before building anything.
   - A missing subuid range, a non-setuid `newuidmap`, a present distro `pcscd` unit, or an `/etc/shells` without the profile zsh each stops `nr` with that item's fix-it message, and the system layer is not activated.

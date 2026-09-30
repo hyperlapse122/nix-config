@@ -1,7 +1,7 @@
 /*
   Check interface:
 
-    import ./tests/session-variables.nix { inherit pkgs self; }
+    import ./tests/session-variables.nix { inherit pkgs self fixtures; }
 
   Asserts that every configuration renders the Testcontainers, Turborepo, and
   telemetry opt-out session variables into both files that carry the h82
@@ -23,11 +23,15 @@
   builder collects every failure before it exits, so one red build names
   every affected configuration.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures,
+}:
 let
   inherit (pkgs) lib;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   expectedVariables = {
     TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED = "true";

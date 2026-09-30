@@ -12,6 +12,9 @@
   - with an identity that is not a recipient, `stage` fails the same way and
     prints no token;
   - an identity with the wrong mode or a symlinked identity is refused;
+  - an SSH file the identity cannot decrypt, a token publish-cli-auth
+    rejects, or an SSH field that is no private key fails stage and leaves no
+    plaintext behind;
   - with the right identity, `stage` then `publish` leave gh and glab
     configuration at 0600, the tokens at 0400 in ~/.local/state/cli-auth, and
     the SSH key at 0600 matching the encrypted one, with no staging left;
@@ -35,8 +38,15 @@ pkgs.runCommand "host-secrets-tests"
     fail() { echo "host-secrets: FAIL: $*" >&2; exit 1; }
     pass() { echo "host-secrets: ok - $*"; }
 
-    args=(--host fakehost --tokens ${secrets}/tokens.yaml --ssh ${secrets}/ssh.yaml \
-      --github-user gh-user --gitlab-user gl-user --jpi-user jpi-user)
+    # host-secrets with the fixture's arguments; TOKENS and SSH pick the
+    # encrypted files, and the paths follow the current HOME.
+    TOKENS=${secrets}/tokens.yaml
+    SSH=${secrets}/ssh.yaml
+    hs() {
+      host-secrets "$1" --host fakehost --tokens "$TOKENS" --ssh "$SSH" \
+        --state-dir "$HOME/.local/state/cli-auth" --ssh-key "$HOME/.ssh/id_ed25519_nix_config" \
+        --github-user gh-user --gitlab-user gl-user --jpi-user jpi-user
+    }
 
     fresh_home() {
       export HOME=$TMPDIR/home-$1
@@ -58,7 +68,7 @@ pkgs.runCommand "host-secrets-tests"
 
     # --- no identity -------------------------------------------------------
     fresh_home missing
-    if host-secrets stage "''${args[@]}" 2>err; then fail 'stage succeeded without an identity'; fi
+    if hs stage 2>err; then fail 'stage succeeded without an identity'; fi
     grep -q "$HOME/.config/nix-config/age/key.txt" err || fail "the missing identity path is not named: $(cat err)"
     grep -q 'recover-age-identity --user --host fakehost' err || fail "the recovery command is not named: $(cat err)"
     nothing_published 'no identity'
@@ -67,7 +77,7 @@ pkgs.runCommand "host-secrets-tests"
     # --- an identity that is not a recipient --------------------------------
     fresh_home stranger
     install_key ${secrets}/other-key.txt
-    if host-secrets stage "''${args[@]}" >out 2>err; then fail 'stage succeeded with a foreign identity'; fi
+    if hs stage >out 2>err; then fail 'stage succeeded with a foreign identity'; fi
     grep -q 'not a recipient' err || fail "the foreign identity is not explained: $(cat err)"
     if grep -q FAKE-CANARY out err; then fail 'a token reached the output'; fi
     nothing_published 'foreign identity'
@@ -77,20 +87,41 @@ pkgs.runCommand "host-secrets-tests"
     fresh_home loose
     install_key ${secrets}/key.txt
     chmod 644 "$HOME/.config/nix-config/age/key.txt"
-    if host-secrets stage "''${args[@]}" 2>err; then fail 'stage accepted a 0644 identity'; fi
+    if hs stage 2>err; then fail 'stage accepted a 0644 identity'; fi
     grep -q 'mode 0600' err || fail "the loose mode is not named: $(cat err)"
+    # A user-owned 0600 target passes every check but the symlink one.
     fresh_home linked
+    install -D -m 600 ${secrets}/key.txt "$TMPDIR/real-key.txt"
     mkdir -p "$HOME/.config/nix-config/age"
-    ln -s ${secrets}/key.txt "$HOME/.config/nix-config/age/key.txt"
-    if host-secrets stage "''${args[@]}" 2>/dev/null; then fail 'stage accepted a symlinked identity'; fi
+    ln -s "$TMPDIR/real-key.txt" "$HOME/.config/nix-config/age/key.txt"
+    if hs stage 2>err; then fail 'stage accepted a symlinked identity'; fi
+    grep -q 'no age identity' err || fail "the symlinked identity is not refused as such: $(cat err)"
     pass 'stage refuses a loose-mode or symlinked identity'
+
+    # --- failures after the first decrypt ------------------------------------
+    for case in ssh-other tokens-invalid ssh-invalid; do
+      fresh_home "$case"
+      install_key ${secrets}/key.txt
+      TOKENS=${secrets}/tokens.yaml SSH=${secrets}/ssh.yaml
+      case $case in
+        ssh-other) SSH=${secrets}/ssh-other.yaml expected='cannot decrypt the host SSH key' ;;
+        tokens-invalid) TOKENS=${secrets}/tokens-invalid.yaml expected='failed validation' ;;
+        ssh-invalid) SSH=${secrets}/ssh-invalid.yaml expected='not a valid private key' ;;
+      esac
+      if hs stage >out 2>err; then fail "stage succeeded with $case"; fi
+      grep -q "$expected" err || fail "$case is not explained: $(cat err)"
+      if grep -q FAKE-CANARY out err; then fail "$case: a token reached the output"; fi
+      nothing_published "$case"
+    done
+    TOKENS=${secrets}/tokens.yaml SSH=${secrets}/ssh.yaml
+    pass 'a failure after the first decrypt leaves no plaintext and prints no token'
 
     # --- the right identity --------------------------------------------------
     fresh_home valid
     install_key ${secrets}/key.txt
     for round in first second; do
-      host-secrets stage "''${args[@]}" 2>err || fail "$round stage failed: $(cat err)"
-      host-secrets publish "''${args[@]}" 2>err || fail "$round publish failed: $(cat err)"
+      hs stage 2>err || fail "$round stage failed: $(cat err)"
+      hs publish 2>err || fail "$round publish failed: $(cat err)"
       for file in .config/gh/hosts.yml .config/glab-cli/config.yml .ssh/id_ed25519_nix_config; do
         [ "$(stat -c %a "$HOME/$file")" = 600 ] || fail "$round: $file is not 0600"
       done
@@ -110,8 +141,8 @@ pkgs.runCommand "host-secrets-tests"
     install_key ${secrets}/key.txt
     mkdir -p "$HOME/.ssh"
     ln -s "$TMPDIR/elsewhere" "$HOME/.ssh/id_ed25519_nix_config"
-    host-secrets stage "''${args[@]}" || fail 'stage failed before the symlink case'
-    if host-secrets publish "''${args[@]}" 2>err; then fail 'publish wrote through a symlink'; fi
+    hs stage || fail 'stage failed before the symlink case'
+    if hs publish 2>err; then fail 'publish wrote through a symlink'; fi
     [ ! -e "$TMPDIR/elsewhere" ] || fail 'the symlink target was written'
     [ ! -e "$HOME/.local/state/.cli-auth-stage" ] || fail 'a refused publish left staging behind'
     pass 'publish refuses a symlinked SSH key path and cleans up'

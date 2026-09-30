@@ -23,6 +23,16 @@ let
     "x86_64-linux"
     "aarch64-linux"
   ];
+
+  # One nixpkgs per architecture, shared by every host and variant this
+  # function assembles.
+  pkgsFor = lib.genAttrs supportedSystems (
+    system:
+    import inputs.nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
+    }
+  );
 in
 {
   hostName,
@@ -43,15 +53,15 @@ let
     else
       meta.system;
 
-  pkgs = import inputs.nixpkgs {
-    inherit system;
-    config.allowUnfree = true;
-  };
+  pkgs = pkgsFor.${system};
+
+  # One binding for the kind: hostKind gates imports, which cannot read
+  # config without recursing, and my.kind carries it everywhere else.
+  kind = "linux";
 
   hostFacts = {
     my = {
-      inherit hostName bootstrap;
-      kind = "linux";
+      inherit hostName bootstrap kind;
     };
   };
 in
@@ -62,7 +72,7 @@ in
     inherit pkgs;
     extraSpecialArgs = {
       inherit inputs;
-      hostKind = "linux";
+      hostKind = kind;
     };
     modules = [
       ../modules/shared/host.nix

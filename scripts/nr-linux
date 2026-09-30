@@ -10,9 +10,9 @@ GIT="@GIT@"
 
 # Overridable so tests can point at fixtures instead of the real paths.
 ROOT=${NR_ROOT:-}
-MARKER=${NR_MARKER:-$ROOT/etc/nix-config-host}
-NEWUIDMAP=${NR_NEWUIDMAP:-$ROOT/usr/bin/newuidmap}
-NEWGIDMAP=${NR_NEWGIDMAP:-$ROOT/usr/bin/newgidmap}
+MARKER=$ROOT/etc/nix-config-host
+NEWUIDMAP=$ROOT/usr/bin/newuidmap
+NEWGIDMAP=$ROOT/usr/bin/newgidmap
 # Prebuilt store paths to activate instead of building from the flake, as the
 # VM check does with closures built on its host.
 SYSTEM_OUT=${NR_SYSTEM_OUT:-}
@@ -101,6 +101,9 @@ preflight() {
   grep -q "^$user:" "$ROOT/etc/subgid" 2>/dev/null ||
     die "$user has no subordinate gid range in /etc/subgid; add one with: sudo usermod --add-subgids 100000-165535 $user"
 
+  grep -q "^$user:" "$ROOT/etc/group" 2>/dev/null ||
+    die "$user has no private group of the same name, which the pcscd socket is restricted to; create it with: sudo groupadd $user && sudo usermod -aG $user $user"
+
   local unit
   for unit in "$ROOT/lib/systemd/system/pcscd.service" "$ROOT/usr/lib/systemd/system/pcscd.service"; do
     [[ ! -e $unit ]] ||
@@ -137,16 +140,23 @@ build() {
   # registry reference instead of a path.
   flake_dir=$(cd -- "$flake_dir" && pwd -P)
 
-  local system_cmd=(nix build --no-link --print-out-paths "$flake_dir#systemConfigs.$output")
-  local home_cmd=(nix build --no-link --print-out-paths "$flake_dir#homeConfigurations.$output.activationPackage")
+  # One invocation evaluates the flake once and builds both closures
+  # together; the out paths come back in installable order.
+  local build_cmd=(nix build --no-link --print-out-paths
+    "$flake_dir#systemConfigs.$output"
+    "$flake_dir#homeConfigurations.$output.activationPackage")
   if [[ -n $DRY_RUN ]]; then
-    printf '%s\n' "${system_cmd[*]}" "${home_cmd[*]}"
+    printf '%s\n' "${build_cmd[*]}"
     system_out='<system>'
     home_out='<home>'
     return
   fi
-  system_out=$("${system_cmd[@]}")
-  home_out=$("${home_cmd[@]}")
+  local built outs
+  built=$("${build_cmd[@]}")
+  mapfile -t outs <<<"$built"
+  [[ ${#outs[@]} -eq 2 ]] || die "nix build returned ${#outs[@]} paths for two outputs"
+  system_out=${outs[0]}
+  home_out=${outs[1]}
 }
 
 if [[ $subcommand == switch ]]; then
@@ -174,7 +184,9 @@ sudo -- "$system_out/bin/register-profile"
 sudo -- "$system_out/bin/activate"
 "$home_out/activate"
 
-login_shell=$(getent passwd "$user" | cut -d: -f7)
+# The apply already succeeded; an account the name service cannot resolve
+# (sssd, LDAP) only loses the reminder.
+login_shell=$(getent passwd "$user" | cut -d: -f7) || login_shell=
 if [[ $login_shell != "$zsh_path" ]]; then
   printf 'nr: your login shell is %s; switch to the managed zsh with: chsh -s %s\n' "$login_shell" "$zsh_path"
 fi

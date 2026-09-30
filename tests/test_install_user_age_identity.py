@@ -85,15 +85,31 @@ class InstallUserIdentityTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(list(real.iterdir()), [])
 
-    def test_refuses_empty_identity(self):
-        result = self.run_installer(b"")
+    def assert_refused_before_staging(self, result, message):
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn(message, result.stderr)
         self.assertFalse(self.target.exists())
+        parent = self.target.parent
+        if parent.exists():
+            self.assertEqual([p.name for p in parent.iterdir()], [])
+
+    def test_refuses_empty_identity(self):
+        self.assert_refused_before_staging(self.run_installer(b""), b"empty or too large")
+
+    def test_refuses_oversized_identity(self):
+        self.assert_refused_before_staging(self.run_installer(b"x" * 8193), b"empty or too large")
+
+    def test_refuses_identity_with_nul_bytes(self):
+        self.assert_refused_before_staging(self.run_installer(b"VALID\x00ID\n"), b"NUL bytes")
 
     def test_refuses_invalid_recipient_argument(self):
-        result = self.run_installer(b"VALID-ID\n", recipient="not-a-recipient")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(self.target.exists())
+        self.assert_refused_before_staging(
+            self.run_installer(b"VALID-ID\n", recipient="not-a-recipient"), b"expected recipient is invalid"
+        )
+
+    def test_mismatch_leaves_no_staged_file(self):
+        self.run_installer(b"OTHER-ID\n")
+        self.assertEqual([p.name for p in self.target.parent.iterdir()], [])
 
     def test_never_prints_the_identity(self):
         result = self.run_installer(b"OTHER-ID\n")

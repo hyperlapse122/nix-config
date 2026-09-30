@@ -28,22 +28,13 @@ let
   ];
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    routingTable = {
-      "ghcr.io" = {
-        username = cfg.githubUser;
-        secret = "/run/secrets/cli-auth/github_token";
-      };
-      "registry.gitlab.com" = {
-        username = cfg.gitlabUser;
-        secret = "/run/secrets/cli-auth/gitlab_token";
-      };
-      "registry.jpi.app" = {
-        username = cfg.jpiUser;
-        secret = "/run/secrets/cli-auth/jpi_token";
-      };
-      "docker.io" = {
-        username = cfg.dockerUser;
-        secret = "/run/secrets/cli-auth/docker_token";
+    routingTable = import ../../shared/cli-registries.nix {
+      dir = "/run/secrets/cli-auth";
+      users = {
+        github = cfg.githubUser;
+        gitlab = cfg.gitlabUser;
+        jpi = cfg.jpiUser;
+        docker = cfg.dockerUser;
       };
     };
   };

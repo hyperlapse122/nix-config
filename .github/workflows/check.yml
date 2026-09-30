@@ -99,13 +99,16 @@ jobs:
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
           # Non-NixOS outputs, each with the system it builds for, plus the
           # aarch64 fixture checks that nix flake check on x86_64 cannot build.
-          homes=$(nix eval --json .#homeConfigurations --apply \
-            'c: map (n: { attr = "homeConfigurations.${n}.activationPackage"; system = c.${n}.activationPackage.system; }) (builtins.attrNames c)')
-          systems=$(nix eval --json .#systemConfigs --apply \
-            'c: map (n: { attr = "systemConfigs.${n}"; system = c.${n}.system; }) (builtins.attrNames c)')
-          fixtures=$(nix eval --json .#checks.aarch64-linux --apply \
-            'c: map (n: { attr = "checks.aarch64-linux.${n}"; system = "aarch64-linux"; }) (builtins.attrNames c)')
-          linux_targets=$(jq -cn --argjson a "$homes" --argjson b "$systems" --argjson c "$fixtures" '$a + $b + $c')
+          # One evaluation of the flake lists all three.
+          linux_targets=$(nix eval --impure --json --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+              list = set: attrOf: systemOf:
+                map (n: { attr = attrOf n; system = systemOf set.${n}; }) (builtins.attrNames set);
+            in
+            list flake.homeConfigurations (n: "homeConfigurations.${n}.activationPackage") (h: h.activationPackage.system)
+            ++ list flake.systemConfigs (n: "systemConfigs.${n}") (s: s.system)
+            ++ list flake.checks.aarch64-linux (n: "checks.aarch64-linux.${n}") (_: "aarch64-linux")')
           echo "linux_targets=$linux_targets" >> "$GITHUB_OUTPUT"
 
   build:

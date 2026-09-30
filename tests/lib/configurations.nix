@@ -3,6 +3,9 @@
 
     configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
+  `fixtures` may also be passed (tests/lib/linux-fixtures.nix), so a caller
+  that already built the fixture hosts does not assemble them again.
+
   Turns `self.nixosConfigurations` into the one list every host-dependent check
   iterates, so a host added under hosts/ is covered the day it is added and no
   check names a host.
@@ -39,7 +42,13 @@
   every trait module, so each trait option exists on every configuration and a
   missing one is an evaluation error worth seeing.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  # tests/lib/linux-fixtures.nix. The flake passes the list it already built,
+  # so the fixtures are assembled once per evaluation.
+  fixtures ? import ./linux-fixtures.nix { inherit (self) inputs; },
+}:
 let
   inherit (pkgs) lib;
 
@@ -66,9 +75,7 @@ let
 
   # Only fixtures of the builder's architecture: a check interpolates their
   # store paths, and another architecture's paths cannot build here.
-  linuxFixtures = lib.filter (entry: entry.host.system == pkgs.stdenv.hostPlatform.system) (
-    import ./linux-fixtures.nix { inherit (self) inputs; }
-  );
+  linuxFixtures = lib.filter (entry: entry.host.system == pkgs.stdenv.hostPlatform.system) fixtures;
 
   userEntries =
     map (entry: {

@@ -1,4 +1,9 @@
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   programs.zsh = {
     enable = true;
@@ -28,9 +33,13 @@
 
     shellAliases = {
       nrs = "nr switch";
+      nrd = "nr build";
+    }
+    # boot and test need a bootloader generation, which only NixOS has; the
+    # non-NixOS nr refuses them.
+    // lib.optionalAttrs (config.my.kind == "nixos") {
       nrb = "nr boot";
       nrt = "nr test";
-      nrd = "nr build";
     };
 
     history = {

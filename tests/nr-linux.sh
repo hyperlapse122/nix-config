@@ -37,6 +37,7 @@ root=$scratch/root
 mkdir -p "$root/etc" "$root/usr/bin" "$root/lib/systemd/system"
 printf '%s:100000:65536\n' "$user" >"$root/etc/subuid"
 printf '%s:100000:65536\n' "$user" >"$root/etc/subgid"
+printf '%s:x:1001:\n' "$user" >"$root/etc/group"
 printf '/bin/sh\n%s/.nix-profile/bin/zsh\n' "$HOME" >"$root/etc/shells"
 printf 'host=fixturehost\nvariant=bootstrap\n' >"$root/etc/nix-config-host"
 touch "$root/usr/bin/newuidmap" "$root/usr/bin/newgidmap"
@@ -96,6 +97,11 @@ expect_refusal 'missing subgid range' 'usermod --add-subgids'
 mv "$scratch/subgid" "$root/etc/subgid"
 pass 'a missing subordinate id range stops nr before it builds'
 
+mv "$root/etc/group" "$scratch/group"
+expect_refusal 'missing private group' 'groupadd'
+mv "$scratch/group" "$root/etc/group"
+pass 'a missing private group, which the pcscd socket needs, stops nr before it builds'
+
 touch "$root/lib/systemd/system/pcscd.service"
 expect_refusal 'distribution pcscd' 'apt remove pcscd'
 rm "$root/lib/systemd/system/pcscd.service"
@@ -108,6 +114,11 @@ pass 'an unregistered managed zsh stops nr before it builds'
 
 expect_refusal 'production without an identity' 'recover-age-identity --user --host fixturehost'
 pass 'production without an identity stops nr before it builds'
+
+# Bootstrap needs no identity: without one it gets past that check and stops
+# only at the uidmap helpers, the last preflight item the sandbox cannot meet.
+expect_refusal 'bootstrap without an identity' 'apt install uidmap' --bootstrap
+pass 'bootstrap does not require an identity'
 
 touch "$HOME/.config/nix-config/age/key.txt"
 expect_refusal 'uidmap without setuid' 'apt install uidmap'

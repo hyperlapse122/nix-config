@@ -20,7 +20,7 @@ let
     # A non-NixOS host keeps its decrypted tokens in the user's state
     # directory instead (home/h82/security/non-nixos-secrets.nix).
     // lib.optionalAttrs (config.my.kind == "linux") {
-      tokenFile = "${config.my.user.home}/.local/state/cli-auth/tokscale_token";
+      tokenFile = "${config.my.secrets.stateDir}/tokscale_token";
     }
   );
 
