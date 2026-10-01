@@ -32,13 +32,14 @@ let
     drv: drv.config.rawTestDerivation.requiredSystemFeatures or (drv.requiredSystemFeatures or [ ]);
   isVmTest = drv: builtins.elem "nixos-test" (systemFeatures drv);
 
+  vmNames = lib.attrNames vmChecks;
   registered = lib.attrNames (lib.filterAttrs (_: isVmTest) checks);
-  undetected = lib.attrNames (lib.filterAttrs (_: drv: !isVmTest drv) vmChecks);
+  undetected = lib.filter (name: !isVmTest vmChecks.${name}) vmNames;
 in
 pkgs.runCommand "vm-checks-guard-tests" { } ''
   fail=0
 
-  if [ ${toString (lib.length (lib.attrNames vmChecks))} -eq 0 ]; then
+  if [ ${toString (lib.length vmNames)} -eq 0 ]; then
     echo "vm-checks-guard: tests/vm-checks.nix declares no VM test, so the detector proves nothing" >&2
     fail=1
   fi
