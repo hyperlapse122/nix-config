@@ -60,6 +60,11 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   doInstallCheck = true;
   nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
   versionCheckKeepEnvironment = [ "HOME" ];
+  # versionCheckHook runs only the CLI; run the host too, on every system the
+  # package builds for, so a broken host fails the build rather than Code Mode.
+  postInstallCheck = ''
+    $out/libexec/codex/codex-code-mode-host --help > /dev/null
+  '';
 
   meta = {
     description = "Lightweight coding agent that runs in your terminal";
