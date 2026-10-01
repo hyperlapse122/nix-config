@@ -19,6 +19,17 @@
       url = "github:nix-community/lanzaboote/v1.1.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Applies the system layer of a non-NixOS host: /etc files and systemd
+    # units on a distribution this flake does not own.
+    system-manager = {
+      url = "github:numtide/system-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Boots a foreign distribution's cloud image for the non-NixOS VM check.
+    nix-vm-test = {
+      url = "github:numtide/nix-vm-test";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # Pinned to a release tag rather than a branch, and the registry in
     # home/h82/agents/agent-plugins.nix records the revision that tag is expected to
     # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
@@ -39,58 +50,43 @@
         config.allowUnfree = true;
       };
       agentTools = import ./packages/agent-tools.nix { inherit pkgs; };
-      vmChecks = import ./tests/vm-checks.nix { inherit pkgs inputs; };
+      inherit (nixpkgs) lib;
+
+      # Each directory under hosts/ is a host, named by the directory. One that
+      # holds host.nix is a non-NixOS host; every other one is a NixOS host.
+      hosts = import ./lib/hosts.nix { inherit lib; } ./hosts;
+
+      # Both variants of every non-NixOS host, keyed by output name.
+      mkLinuxHost = import ./lib/linux-host.nix { inherit inputs; };
+      linuxHosts = lib.listToAttrs (
+        lib.concatMap (hosts.withVariants (
+          hostName: bootstrap:
+          mkLinuxHost {
+            inherit hostName bootstrap;
+            dir = ./hosts + "/${hostName}";
+          }
+        )) hosts.linux
+      );
+
+      # The non-NixOS fixture hosts build on their own architecture, so each
+      # system's checks carry the fixtures of that system.
+      linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
+      fixtureChecksFor = import ./tests/lib/fixture-checks.nix { inherit lib linuxFixtures; };
+      vmChecks = import ./tests/vm-checks.nix { inherit pkgs inputs linuxFixtures; };
     in
     {
+      homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
+      systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
+      checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+
       nixosConfigurations =
         let
-          mkHost =
-            { hostName, bootstrap }:
-            nixpkgs.lib.nixosSystem {
-              inherit system;
-              specialArgs = { inherit inputs; };
-              modules = [
-                inputs.disko.nixosModules.disko
-                inputs.home-manager.nixosModules.home-manager
-                inputs.sops-nix.nixosModules.sops
-                inputs.lanzaboote.nixosModules.lanzaboote
-                # The host directory precedes the profile so list-valued
-                # options keep the merge order they had when each host
-                # imported the profile itself.
-                ./hosts/${hostName}
-                ./modules/nixos/profile.nix
-                {
-                  networking.hostName = hostName;
-                  my.bootstrap = bootstrap;
-                  home-manager.useGlobalPkgs = true;
-                  home-manager.useUserPackages = true;
-                  # specialArgs reaches NixOS modules only; the agent-plugin
-                  # registry needs the pinned plugin source, which is an input.
-                  home-manager.extraSpecialArgs = { inherit inputs; };
-                  home-manager.users.h82 = import ./home/h82;
-                }
-              ];
-            };
-          # Each directory under hosts/ is a host, named by the directory.
-          hostNames = import ./tests/lib/directories.nix { inherit (nixpkgs) lib; } ./hosts;
+          mkHost = import ./lib/nixos-host.nix { inherit inputs; };
         in
-        nixpkgs.lib.listToAttrs (
-          nixpkgs.lib.concatMap (hostName: [
-            {
-              name = hostName;
-              value = mkHost {
-                inherit hostName;
-                bootstrap = false;
-              };
-            }
-            {
-              name = "${hostName}-bootstrap";
-              value = mkHost {
-                inherit hostName;
-                bootstrap = true;
-              };
-            }
-          ]) hostNames
+        lib.listToAttrs (
+          lib.concatMap (hosts.withVariants (
+            hostName: bootstrap: mkHost { inherit hostName bootstrap; }
+          )) hosts.nixos
         );
       packages.${system} = {
         disko = inputs.disko.packages.${system}.disko;
@@ -113,7 +109,10 @@
       };
       checks.${system} =
         let
-          configurations = import ./tests/lib/configurations.nix { inherit pkgs self; };
+          configurations = import ./tests/lib/configurations.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
 
           # Runs `assertConfiguration` over every configuration the flake builds.
           # Each per-configuration fragment records a failure in `fail` instead of
@@ -122,6 +121,15 @@
             ${configurations.guard}
             fail=0
             ${pkgs.lib.concatMapStrings assertConfiguration configurations.entries}
+            [ "$fail" = 0 ] || exit 1
+          '';
+
+          # Runs `assertUser` over every Home Manager user environment the flake
+          # builds for this architecture, NixOS and non-NixOS hosts alike.
+          forEveryUser = assertUser: ''
+            ${configurations.userGuard}
+            fail=0
+            ${pkgs.lib.concatMapStrings assertUser configurations.userEntries}
             [ "$fail" = 0 ] || exit 1
           '';
 
@@ -510,7 +518,10 @@
               '';
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
-          session-variables = import ./tests/session-variables.nix { inherit pkgs self; };
+          session-variables = import ./tests/session-variables.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           zsh-prezto =
             let
               assertConfiguration =
@@ -537,19 +548,20 @@
                         fi
                       '';
                   dotzshenv = files.".zshenv".text or "";
+                  zshenv = "${entry.user.home.homeDirectory or "/nonexistent"}/.config/zsh/.zshenv";
                 in
                 ''
                   ${assertSource ".config/zsh/.zpreztorc" "zstyle ':prezto:load' pmodule"}
                   ${assertSource ".config/zsh/.zshenv" "runcoms/zshenv"}
                   ${assertSource ".config/zsh/.zshrc" "runcoms/zshrc"}
-                  if ! printf '%s\n' ${pkgs.lib.escapeShellArg dotzshenv} | grep -q "source /home/h82/.config/zsh/.zshenv"; then
-                    echo '.zshenv does not source /home/h82/.config/zsh/.zshenv on ${entry.name}' >&2
+                  if ! printf '%s\n' ${pkgs.lib.escapeShellArg dotzshenv} | grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"}; then
+                    echo ${pkgs.lib.escapeShellArg ".zshenv does not source ${zshenv} on ${entry.name}"} >&2
                     fail=1
                   fi
                 '';
             in
             pkgs.runCommand "zsh-prezto-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-              ${forEveryConfiguration assertConfiguration}
+              ${forEveryUser assertConfiguration}
               touch $out
             '';
           ghostty-font =
@@ -663,7 +675,7 @@
             in
             pkgs.runCommand "gpg-agent-no-cache-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
               set -x
-              ${forEveryConfiguration assertConfiguration}
+              ${forEveryUser assertConfiguration}
               touch $out
             '';
           yubikey-manager-shell =
@@ -868,6 +880,7 @@
               touch $out
             '';
           bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
+          linux-host-secrets = import ./tests/linux-host-secrets.nix { inherit pkgs self; };
           github-workflow-conventions =
             pkgs.runCommand "github-workflow-conventions-tests"
               {
@@ -923,6 +936,9 @@
             # evaluates itself.
             checks = builtins.removeAttrs self.checks.${system} [ "vm-checks-guard" ];
           };
+          host-options = import ./tests/host-options.nix { inherit pkgs self; };
+          host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
+          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; }) install-user-age-identity nr-linux;
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests
@@ -987,7 +1003,12 @@
                   scripts/recover-age-identity scripts/prepare-age-identity
                 touch $out
               '';
-        };
+          non-nixos-outputs = import ./tests/non-nixos-outputs.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+        }
+        // fixtureChecksFor system;
       formatter.${system} = pkgs.nixfmt-tree;
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [

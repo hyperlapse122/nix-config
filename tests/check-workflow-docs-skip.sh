@@ -14,7 +14,9 @@
 #   needs hosts, so it may list `changes` among others (KTD9 in the
 #   host-generic composition plan).
 # - build reads its matrix from the hosts job's output, so the workflow
-#   never lists host names (R19).
+#   never lists host names (R19). build-linux does the same for the
+#   non-NixOS outputs and aarch64 fixture checks, and sends aarch64 targets
+#   to the ubuntu-24.04-arm runner so nothing is built under emulation.
 # - vm-check-names and vm-checks carry the same gate, so the NixOS VM tests
 #   that live outside `nix flake check` still run on every non-docs-only
 #   PR and on push. vm-checks reads its matrix from vm-check-names, so a
@@ -156,10 +158,41 @@ assert_matrix_from() {
   echo "check-workflow-docs-skip: ok - $job reads its matrix from the $producer job"
 }
 
+# assert_matrix_from_hosts <job> <output>: the job depends on the hosts job
+# and reads its matrix from that job's JSON output instead of a literal host
+# list (R19).
+assert_matrix_from_hosts() {
+  local job=$1 output=$2 block
+  block=$(job_block "$job" "$file")
+  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*hosts[[:space:]]*(,[^]]*)?\][[:space:]]*$'; then
+    fail "job '$job' does not list 'hosts' in needs: (R19/KTD9)"
+  fi
+  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*target:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.hosts\\.outputs\\.$output\\)[[:space:]]*\\}\\}[[:space:]]*\$"; then
+    fail "job '$job' matrix target is not fromJSON(needs.hosts.outputs.$output) (R19/KTD9)"
+  fi
+  echo "check-workflow-docs-skip: ok - $job reads its matrix from the hosts job (R19/KTD9)"
+}
+
+# assert_native_arm: build-linux sends aarch64 targets to the arm runner, so
+# no aarch64 output is ever built under emulation (KTD13 in the non-NixOS
+# hosts plan).
+assert_native_arm() {
+  local block expected
+  block=$(job_block build-linux "$file")
+  expected="runs-on: \${{ matrix.target.system == 'aarch64-linux' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}"
+  if ! printf '%s\n' "$block" | grep -qF -- "$expected"; then
+    fail "job 'build-linux' does not route aarch64 targets to ubuntu-24.04-arm (KTD13)"
+  fi
+  echo "check-workflow-docs-skip: ok - build-linux builds aarch64 targets on the arm runner (KTD13)"
+}
+
 assert_gated flake-check
 assert_gated hosts
 assert_gated build list
-assert_matrix_from build hosts targets target
+assert_gated build-linux list
+assert_matrix_from_hosts build targets
+assert_matrix_from_hosts build-linux linux_targets
+assert_native_arm
 assert_gated vm-check-names
 assert_gated vm-checks list
 assert_matrix_from vm-checks vm-check-names names name

@@ -1,5 +1,15 @@
 {
   "version": "2026.9.18",
-  "sha256": "f7530faed716ec24457609c0278618770a1b4b8f856b61686ac685c148e3ffd1",
-  "hash": "sha256-91MPrtcW7CRFdgnAJ4YYdwobS4+Fa2FoasaFwUjj/9E="
+  "systems": {
+    "x86_64-linux": {
+      "asset": "linux-x64-musl",
+      "sha256": "f7530faed716ec24457609c0278618770a1b4b8f856b61686ac685c148e3ffd1",
+      "hash": "sha256-91MPrtcW7CRFdgnAJ4YYdwobS4+Fa2FoasaFwUjj/9E="
+    },
+    "aarch64-linux": {
+      "asset": "linux-arm64-musl",
+      "sha256": "581eff012396884044ba97b9e30c446492d2ee40bbf78388eecc0fc17973856d",
+      "hash": "sha256-WB7/ASOWiEBEupe54wxEZJLS7kC794OI7swPwXlzhW0="
+    }
+  }
 }

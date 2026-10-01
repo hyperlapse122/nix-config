@@ -125,6 +125,32 @@ err=$(RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_INSTALLER=$scratch/absent-i
 [[ $err == *absent-installer* ]] || fail "a missing installer was not named: $err"
 pass 'a missing installer exits non-zero naming the path'
 
+# --- user mode, for a non-NixOS host ---------------------------------------
+# The identity goes to the invoking user's installer with no sudo anywhere, and
+# the host must be named because the distribution owns the running hostname.
+
+if "$recover_bin" --user >/dev/null 2>&1; then
+  fail '--user without --host should fail'
+fi
+err=$("$recover_bin" --user 2>&1 >/dev/null || true)
+[[ $err == *--host* ]] || fail "--user without --host does not name --host: $err"
+pass '--user without --host exits non-zero and names --host'
+
+out=$(RECOVER_AGE_DRY_RUN=1 RECOVER_AGE_USER_INSTALLER=/fake/install-user-age-identity \
+  "$recover_bin" --user --host testhost)
+[[ $out == *"| /fake/install-user-age-identity --recipient $fake_recipient" ]] ||
+  fail "user mode does not pipe to the user installer with the recorded recipient: $out"
+[[ $out != *sudo* ]] || fail "user mode crosses sudo: $out"
+pass 'user mode pipes gpg to the user installer and never to sudo'
+
+rm -f "$scratch/installed.log"
+RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_USER_INSTALLER=$pipe_stubs/installer \
+  PATH=$pipe_stubs:$PATH "$recover_bin" --user --host testhost >/dev/null 2>&1 ||
+  fail 'the user-mode pipeline did not succeed'
+grep -q 'DECRYPTED-IDENTITY' "$scratch/installed.log" ||
+  fail 'the identity did not reach the user installer on stdin'
+pass 'the executed user-mode pipeline sends the identity to the user installer'
+
 # ---------------------------------------------------------------------------
 # prepare-age-identity
 # ---------------------------------------------------------------------------

@@ -1,9 +1,5 @@
 { config, lib, ... }:
 {
-  options.my.laptop = {
-    enable = lib.mkEnableOption "the laptop lid-switch policy";
-  };
-
   # Fallback lid-switch policy: consulted only when no Plasma session holds
   # the systemd-logind handle-lid-switch inhibitor (Powerdevil normally does;
   # see home/h82/desktop/kde/power-lid.nix for the mechanism actually in

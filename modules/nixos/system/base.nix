@@ -1,10 +1,7 @@
 { config, pkgs, ... }:
 {
-  nix.settings.experimental-features = [
-    "nix-command"
-    "flakes"
-  ];
-  nix.settings.auto-optimise-store = true;
+  imports = [ ../../shared/nix-settings.nix ];
+
   nixpkgs.config.allowUnfree = true;
   networking.networkmanager.enable = true;
   time.timeZone = "Asia/Seoul";

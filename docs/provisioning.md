@@ -1,6 +1,6 @@
 # Authentication preparation and recovery
 
-Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. Routine configuration applies use the root-only age identity inside LUKS. 1Password supplies SSH keys; automatic account login is not configured.
+Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS hosts, routine configuration applies use the root-only age identity inside LUKS, and 1Password supplies SSH keys; automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host).
 
 ## Before erasing the existing OS
 
@@ -59,6 +59,32 @@ sudo nixos-rebuild switch --flake .#<host>
 
 Use the same command for later applies. It works with the YubiKey disconnected or Secret Service and 1Password locked. The gh/glab authentication files are user-owned regular files with mode 0600. The next apply restores their declared contents. Do not repeat manual `gh auth login` or `glab auth login` as follow-up steps.
 
+## Recover once on a non-NixOS host
+
+A non-NixOS host keeps its age identity in the user's home, not under `/var/lib/sops-nix`. Recover it once, after the bootstrap output is applied. [Adding a host](adding-a-host.md#first-setup-on-the-machine) gives the full first-setup order.
+
+The bootstrap user environment installs the public GPG key, the card tools, and `install-user-age-identity`, and the bootstrap system layer runs pcscd. With a YubiKey inserted, run the recovery helper from the clone in user mode. User mode needs `--host`, because the distribution owns the hostname:
+
+```sh
+./scripts/recover-age-identity --user --host <host>
+```
+
+GPG decrypts `secrets/bootstrap/<host>/age-key.asc` as the invoking user, and the helper pipes the result to `install-user-age-identity` instead of `sudo`. The installer checks that the identity derives the recipient in `secrets/bootstrap/<host>/recipient.txt`. Only then does it replace `~/.config/nix-config/age/key.txt` atomically, in a 0700 directory, with mode 0600 and owned by the user. An invalid identity leaves the existing file untouched. Nothing read from stdin is printed.
+
+Then apply the production output:
+
+```sh
+nr switch
+```
+
+Production activation checks the identity before it changes any link. When the identity is missing, has the wrong owner or mode, or cannot decrypt the secrets, the apply stops, names the file and the recovery command, and prints no secret. On success it publishes:
+
+- the tokens in `~/.local/state/cli-auth/` (directory 0700, files 0400);
+- the gh and glab configuration, through `publish-cli-auth`;
+- the host's SSH key at `~/.ssh/id_ed25519_nix_config` (mode 0600).
+
+Later applies need no card. The identity and the published files are plaintext on disk, so their protection rests on the distribution's disk encryption.
+
 ## Git signing and SSH
 
 Signing commits and tags requires a YubiKey carrying the signing subkey. Three cards carry it, and each card has its own User PIN, so a PIN disclosed from one card does not unlock the others. Automatic PIN entry therefore uses one Secret Service entry per card, with `service=gnupg-card-pin` and `username=<normalized card serial>`: three cards mean three entries. If no entry exists for that serial or the keyring is locked, normal pinentry prompts for the PIN. Automatic submission never repeats after a PIN error or a retry-limit warning, and a prompt whose serial cannot be read unambiguously is never answered, because offering one card's PIN to another would burn that card's retry counter.
@@ -79,6 +105,47 @@ Each card serial must match the value that `gpg --card-status` reports with that
 Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
 
 1Password, Kleopatra, Discord, and Telegram now start at login from `home/h82/desktop/kde/autostart.nix`, so none needs a manual launch. Home Manager owns `~/.config/autostart/1password.desktop`, `~/.config/autostart/kleopatra.desktop`, `~/.config/autostart/discord.desktop`, and `~/.config/autostart/telegram.desktop` and overwrites them on activation, which makes the apps' own "start at login" toggles inert. Leave Telegram's own toggle off: it writes a differently named entry that Home Manager does not own, so Telegram would be launched twice at login. Discord and Telegram also restart 5 seconds after a crash, through `~/.config/systemd/user/app-discord@autostart.service.d/restart.conf` and its Telegram equivalent. Those are drop-ins on the units `systemd-xdg-autostart-generator` creates from the desktop entries, so quitting either app normally still leaves it stopped. Change the module, not the desktop entries or drop-ins.
+
+## SSH key on a non-NixOS host
+
+A non-NixOS host has no desktop and so no 1Password agent. Each one has its own SSH key instead, stored encrypted in `secrets/hosts/<host>/ssh.yaml`. Production activation publishes it at `~/.ssh/id_ed25519_nix_config`, a name that never clobbers a key you made. `~/.ssh/config` names it with `IdentityFile ~/.ssh/id_ed25519_nix_config` and names no agent socket. [Adding a host](adding-a-host.md#create-the-host-ssh-key-file) creates the key.
+
+Registering the public key stays manual. After the first production apply, print it:
+
+```sh
+ssh-keygen -y -f ~/.ssh/id_ed25519_nix_config
+```
+
+Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_keys` on every server the host must reach. Register it as an authentication key only. Git signing still uses the YubiKey.
+
+## Compromise or decommission of a non-NixOS host
+
+Follow these steps when a non-NixOS host is lost, compromised, or retired. Its identity and SSH key are plaintext on its disk, so treat everything that host could decrypt as exposed.
+
+1. Revoke its SSH public key on GitHub and remove it from every server's `authorized_keys`.
+2. Remove the host's recipient from the `secrets/tokens.yaml` rule in `.sops.yaml`. On a machine that can still decrypt, re-encrypt the file to the remaining recipients, then replace its data key:
+
+   ```sh
+   nix develop
+   export SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt"
+   sops updatekeys -y secrets/tokens.yaml
+   sops rotate -i secrets/tokens.yaml
+   ```
+
+3. Rotate every token in `secrets/tokens.yaml` at its service. Write the new values into the file in the same shell, then clear the key command:
+
+   ```sh
+   sops secrets/tokens.yaml
+   unset SOPS_AGE_KEY_CMD
+   ```
+
+4. Delete `secrets/hosts/<host>/` and `secrets/bootstrap/<host>/`.
+
+Removing a recipient without rotating the tokens revokes nothing. Git history keeps the old ciphertext, and the host's identity still decrypts it.
+
+Keep steps 2 and 3 in this order. `sops secrets/tokens.yaml` encrypts to the recipients recorded in the file, not to `.sops.yaml`, so new tokens written first would still be encrypted to the removed host. `updatekeys` keeps the old data key, which the removed host can read from any earlier ciphertext in history; `sops rotate` replaces it.
+
+Also delete `hosts/<host>/` and the `secrets/hosts/<host>/ssh.yaml` rule in `.sops.yaml`. Otherwise `bootstrap-recipients` fails on a host without bootstrap material, and `.sops.yaml` keeps a rule for a file that no longer exists.
 
 ## FIDO credentials on a card
 
@@ -204,7 +271,7 @@ Removing every enrolled finger is a required step before a host with the `my.fin
 
 ## Container runtime and registry authentication
 
-Rootless Podman is configured declaratively in `modules/nixos/services/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`.
+Rootless Podman is configured declaratively in `modules/nixos/services/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`. A non-NixOS host gets no Podman from the flake, only the registry search, `auth.json`, and the credential helper. There the helper reads `~/.local/state/cli-auth/` instead, and `docker.io` pulls stay anonymous, because that host never publishes `docker_token`. A Podman you install there may also need the Ubuntu 24.04 AppArmor user-namespace setting in [adding a host](adding-a-host.md#first-setup-on-the-machine).
 
 Supported registries:
 

@@ -1,4 +1,4 @@
-# Checks every host's hosts/<host>/disko.nix against the invariants that
+# Checks every NixOS host's hosts/<host>/disko.nix against the invariants that
 # modules/nixos/system/boot.nix and the boot-layout VM test rely on:
 # - disk `main` carries a `luks` partition, whose partlabel `disk-main-luks`
 #   boot.nix unlocks, holding a LUKS2 container named `cryptroot`.
@@ -13,7 +13,9 @@
 # takes its disk from `diskOf`.
 { lib }:
 let
-  hostNames = import ./directories.nix { inherit lib; } ../../hosts;
+  # Only NixOS hosts have a disk layout; a non-NixOS host's distribution owns
+  # its disks.
+  hostNames = (import ../../lib/hosts.nix { inherit lib; } ../../hosts).nixos;
 
   diskOf =
     hostName:

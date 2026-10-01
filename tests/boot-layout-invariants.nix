@@ -3,7 +3,7 @@
 
     import ./tests/boot-layout-invariants.nix { inherit pkgs; }
 
-  Checks every host's hosts/<host>/disko.nix against the boot invariants in
+  Checks every NixOS host's hosts/<host>/disko.nix against the boot invariants in
   tests/lib/disko-invariants.nix, so a broken layout fails `nix flake check`
   without running the boot-layout VM test, which boots only the first host's
   layout. Every broken invariant on every host is listed from the builder

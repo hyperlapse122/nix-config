@@ -22,6 +22,11 @@ SAMPLE_MANIFEST = {
             "checksum": "27910e2ae704d8f2e8024897d8fdf1e7710807baf4f6982c0e3797c058315384",
             "size": 82761570,
         },
+        "linux-arm64": {
+            "binary": "claude.zst",
+            "checksum": "a4c1f1d6e3b0b9e5c0f7e2d8a1b6c3d9e4f5a0b1c2d3e4f5a6b7c8d9e0f1a2b3",
+            "size": 80653142,
+        },
     },
 }
 
@@ -135,6 +140,26 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         result = self.run_release(manifest_body=json.dumps(manifest))
         self.assertEqual(result.returncode, 1)
         self.assertIn("linux-x64", result.stderr)
+
+    def test_refuses_manifest_missing_linux_arm64(self):
+        manifest = {
+            "version": "2.1.280",
+            "platforms": {"linux-x64": SAMPLE_MANIFEST["platforms"]["linux-x64"]},
+        }
+        output_file = Path(self.tmp.name) / "manifest.json"
+        result = self.run_release(
+            manifest_body=json.dumps(manifest), extra_args=["-o", str(output_file)]
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("linux-arm64", result.stderr)
+        self.assertFalse(output_file.exists())
+
+    def test_refuses_linux_arm64_entry_without_a_checksum(self):
+        manifest = json.loads(json.dumps(SAMPLE_MANIFEST))
+        del manifest["platforms"]["linux-arm64"]["checksum"]
+        result = self.run_release(manifest_body=json.dumps(manifest))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("linux-arm64", result.stderr)
 
     def test_latest_fetch_error_fails(self):
         result = self.run_release(latest_status=2)
