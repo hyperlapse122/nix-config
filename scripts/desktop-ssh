@@ -30,6 +30,7 @@ REAL_SFTP = "@REAL_SFTP@"
 SYSTEMCTL = "@SYSTEMCTL@"
 MAX_FRAME = 262144
 MAX_IDENTITIES = 128
+MAX_CONNECTIONS = 128
 ENUM_TIMEOUT = 0.3
 SIGN_TIMEOUT = 120
 FAILURE = b"\x05"
@@ -316,6 +317,15 @@ def serve_connection(client, handler):
 
 
 def serve(path, handler_factory, ready=None):
+    slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+
+    def worker(client):
+        try:
+            serve_connection(client, handler_factory())
+        finally:
+            client.close()
+            slots.release()
+
     listener = socket.socket(socket.AF_UNIX)
     listener.bind(path)
     os.chmod(path, 0o600)
@@ -326,8 +336,14 @@ def serve(path, handler_factory, ready=None):
     try:
         while True:
             client, _ = listener.accept()
-            threading.Thread(target=serve_connection,
-                             args=(client, handler_factory()), daemon=True).start()
+            if not slots.acquire(blocking=False):
+                client.close()
+                continue
+            try:
+                threading.Thread(target=worker, args=(client,), daemon=True).start()
+            except (RuntimeError, OSError):
+                client.close()
+                slots.release()
     finally:
         listener.close()
         Path(path).unlink(missing_ok=True)
@@ -335,7 +351,7 @@ def serve(path, handler_factory, ready=None):
 
 def launch_ssh(config, arguments):
     # Explicit operator transport choices retain normal OpenSSH behavior.
-    for name, value in command_options(arguments, "Bb cDEeFIiJLlmOoPpQRSWw".replace(" ", "")):
+    for name, value in command_options(arguments, "BbcDEeFIiJLlmOoPpQRSWw"):
         if name == "o" and value.lower().replace("=", " ").split()[:1] == ["identityagent"]:
             os.execv(REAL_SSH, [REAL_SSH] + arguments)
     runtime = Path(f"/run/user/{os.getuid()}")
@@ -659,7 +675,7 @@ def main():
             else:
                 executable = REAL_SCP if command_name == "scp" else REAL_SFTP
                 args = sys.argv[1:]
-                valued = "DFiJloPSX" if command_name == "scp" else "Bb cDFiJloPR Ss".replace(" ", "")
+                valued = "DFiJloPSX" if command_name == "scp" else "BbcDFiJloPRSs"
                 if not any(name == "S" for name, value in command_options(args, valued)):
                     args = ["-S", str(Path(sys.argv[0]).absolute().with_name("ssh"))] + args
                 os.execv(executable, [executable] + args)
@@ -684,7 +700,6 @@ def main():
     wallet = None
     try:
         disable_core_dumps()
-        os.umask(0o077)
         if args.command != "provision":
             if args.command == "unlock" and (args.key_fd < 3 or
                     not stat.S_ISFIFO(os.fstat(args.key_fd).st_mode)):

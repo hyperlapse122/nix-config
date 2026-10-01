@@ -1,5 +1,6 @@
 import importlib.machinery
 import importlib.util
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
@@ -38,6 +39,90 @@ class MemoryWallet:
         if self.fail_write:
             raise desktop_ssh.DesktopSSHError("wallet write failed")
         self.entries[name] = value
+
+
+class ServingTests(unittest.TestCase):
+    def start_server(self, fail_first_start=False):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = str(Path(temporary.name) / "agent.sock")
+        ready, child_ready = socket.socketpair()
+
+        def child():
+            ready.close()
+            desktop_ssh.MAX_CONNECTIONS = 2
+            if fail_first_start:
+                original = threading.Thread.start
+                attempts = 0
+
+                def start(thread):
+                    nonlocal attempts
+                    attempts += 1
+                    if attempts == 1:
+                        raise RuntimeError("injected thread creation failure")
+                    return original(thread)
+                threading.Thread.start = start
+
+            class Handler:
+                def handle(self, payload):
+                    return b"\x0c" + struct.pack(">I", 0)
+
+            desktop_ssh.serve(path, Handler, child_ready)
+
+        process = multiprocessing.get_context("fork").Process(target=child)
+        process.start()
+        child_ready.close()
+
+        def stop():
+            process.terminate()
+            process.join(5)
+        self.addCleanup(stop)
+        ready.settimeout(5)
+        try:
+            self.assertEqual(ready.recv(1), b"1")
+        finally:
+            ready.close()
+        return path
+
+    def connect(self, path):
+        client = socket.socket(socket.AF_UNIX)
+        self.addCleanup(client.close)
+        client.settimeout(1)
+        client.connect(path)
+        return client
+
+    def request(self, client):
+        desktop_ssh.send(client, b"\x0b")
+        self.assertEqual(desktop_ssh.receive(client), b"\x0c\0\0\0\0")
+
+    def test_connection_overload_is_rejected_and_capacity_recovers(self):
+        path = self.start_server()
+        first, second = self.connect(path), self.connect(path)
+        self.request(first)
+        self.request(second)
+        overflow = self.connect(path)
+        with self.assertRaises((EOFError, OSError)):
+            self.request(overflow)
+        first.close()
+        deadline = time.monotonic() + 5
+        while True:
+            recovered = self.connect(path)
+            try:
+                self.request(recovered)
+                break
+            except (EOFError, OSError):
+                recovered.close()
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
+        self.request(second)
+
+    def test_thread_start_failure_does_not_stop_accepting_clients(self):
+        path = self.start_server(fail_first_start=True)
+        first = self.connect(path)
+        with self.assertRaises((EOFError, OSError)):
+            self.request(first)
+        self.request(self.connect(path))
 
 
 class CredentialACLTests(unittest.TestCase):
