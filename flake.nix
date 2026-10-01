@@ -191,6 +191,7 @@
           boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
           keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           agent-settings =
             let
               packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
