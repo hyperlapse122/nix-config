@@ -40,8 +40,11 @@ let
     authorized = Path("/tmp/desktop-ssh-authorized")
     def allow(key):
         authorized.write_bytes(helper.public_bytes(key.public_key()) + b"\n")
+    # Mirror the declared IdentityFile so a default fallback .pub cannot skip
+    # primary signing in the failure cases; the config case removes this override.
     common = ["-F", "/dev/null", "-oStrictHostKeyChecking=no",
               "-oUserKnownHostsFile=/dev/null", "-oBatchMode=yes",
+              "-oIdentityFile=" + str(public),
               "-oPreferredAuthentications=publickey"]
     ssh = "${desktopSSH}/bin/ssh"
     def run(arguments, **kwargs):
@@ -90,7 +93,8 @@ let
         authorized.write_bytes(helper.public_bytes(primary_key.public_key()) + b"\n" +
                                helper.public_bytes(fallback_key.public_key()) + b"\n")
         old_signs = sum(request[:1] == b"\x0d" for request in fallback.requests)
-        assert run([ssh] + common[2:] + ["root@localhost", "printf configured-primary"]) == "configured-primary"
+        configured = [option for option in common[2:] if not option.startswith("-oIdentityFile=")]
+        assert run([ssh] + configured + ["root@localhost", "printf configured-primary"]) == "configured-primary"
         assert sum(request[:1] == b"\x0d" for request in fallback.requests) == old_signs
         # The server rejects primary, then accepts fallback in the same invocation.
         # With MaxAuthTries=3, the accepted key is last after both rejected keys.
@@ -101,11 +105,14 @@ let
         # Server permits both: primary signing denial must still reach fallback.
         authorized.write_bytes(helper.public_bytes(primary_key.public_key()) + b"\n" +
                                helper.public_bytes(fallback_key.public_key()) + b"\n")
+        primary_signs = sum(request[:1] == b"\x0d" for request in primary.requests)
         assert remote("printf wallet-unavailable") == "wallet-unavailable"
+        assert sum(request[:1] == b"\x0d" for request in primary.requests) == primary_signs + 1
         primary.close()
         primary = lib.FakeAgent(primary_path, [primary_key], stall=True)
         started = time.monotonic()
         assert remote("printf stalled-primary-fallback") == "stalled-primary-fallback"
+        assert any(request[:1] == b"\x0d" for request in primary.requests), "primary was not attempted"
         assert time.monotonic() - started < 14, "primary starved fallback authentication"
         primary.close()
         assert remote("printf agent-unavailable") == "agent-unavailable"
