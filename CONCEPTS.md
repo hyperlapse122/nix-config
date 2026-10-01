@@ -4,7 +4,9 @@ Shared vocabulary for this repository. Each entry defines what a term means here
 
 ## Verification
 
-**Repository check** — an automated assertion that runs from the flake and needs nothing but a checkout: it evaluates or builds configuration and fails the build when the result is wrong. Repository checks prove what the configuration *generates*; they can never prove how the installed machine behaves.
+**Repository check** — an automated assertion that runs from the flake and needs nothing but a checkout (and, for a VM check, hardware virtualization): it evaluates or builds configuration and fails the build when the result is wrong. Repository checks prove what the configuration *generates*; they can never prove how the installed machine behaves.
+
+**VM check** — a repository check that boots one or more throwaway virtual machines to exercise behavior only a running system shows, such as a boot or a provisioning service. VM checks need hardware virtualization on the machine that builds them, so they are kept out of the everyday flake check and run on their own: each as a separate CI job, and before an automated dependency update may land. A VM check is still a repository check, so it still cannot stand in for a hardware check.
 
 **Hardware check** — a manual confirmation performed on the physical laptop after installation, recorded by the person who performed it. Hardware checks cover exactly what a repository check cannot reach: real devices, real firmware, real input. A passing build never substitutes for one, and results from the two are reported separately so neither is mistaken for the other.
 
