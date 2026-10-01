@@ -72,6 +72,7 @@
       # system's checks carry the fixtures of that system.
       linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
       fixtureChecksFor = import ./tests/lib/fixture-checks.nix { inherit lib linuxFixtures; };
+      vmChecks = import ./tests/vm-checks.nix { inherit pkgs inputs linuxFixtures; };
     in
     {
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
@@ -99,6 +100,12 @@
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
+      };
+      # VM tests live outside `checks` so `nix flake check` stays fast and needs
+      # no KVM. legacyPackages, unlike an unknown top-level output, draws no
+      # flake check warning, and `nix build .#vmChecks.<name>` resolves here.
+      legacyPackages.${system}.vmChecks = vmChecks // {
+        all = pkgs.linkFarm "vm-checks" vmChecks;
       };
       checks.${system} =
         let
@@ -188,7 +195,7 @@
                 python tests/restore-age-identity.py
                 touch $out
               '';
-          boot-layout = import ./tests/boot-layout.nix { inherit pkgs inputs; };
+          boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           agent-settings =
@@ -465,10 +472,7 @@
 
                 touch $out
               '';
-          auth-provisioning = import ./tests/auth-provisioning.nix { inherit pkgs inputs; };
-          wifi-provisioning = import ./tests/wifi-provisioning.nix { inherit pkgs inputs; };
           wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
-          tailscale-provisioning = import ./tests/tailscale-provisioning.nix { inherit pkgs inputs; };
           tailscale-single-router =
             let
               # Counted over production configurations: a bootstrap output never
@@ -513,7 +517,6 @@
                 touch $out
               '';
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
-          podman-registry-auth = import ./tests/podman-registry-auth.nix { inherit pkgs inputs; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
             inherit pkgs self;
@@ -901,6 +904,13 @@
                   ${./.gitignore}
                 touch $out
               '';
+          update-dependencies-verify-status =
+            pkgs.runCommand "update-dependencies-verify-status-tests" { nativeBuildInputs = [ pkgs.gawk ]; }
+              ''
+                bash ${./tests/update-dependencies-verify-status.sh} \
+                  ${./.github/workflows/update-dependencies.yml}
+                touch $out
+              '';
           ci-workflow-docs-skip =
             pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''
@@ -920,6 +930,12 @@
           thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
+          vm-checks-guard = import ./tests/vm-checks-guard.nix {
+            inherit pkgs vmChecks;
+            # removeAttrs does not force the removed value, so the guard never
+            # evaluates itself.
+            checks = builtins.removeAttrs self.checks.${system} [ "vm-checks-guard" ];
+          };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
           inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; }) install-user-age-identity nr-linux;
@@ -987,10 +1003,6 @@
                   scripts/recover-age-identity scripts/prepare-age-identity
                 touch $out
               '';
-          non-nixos-vm = import ./tests/non-nixos-vm.nix {
-            inherit pkgs inputs;
-            fixtures = linuxFixtures;
-          };
           non-nixos-outputs = import ./tests/non-nixos-outputs.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;

@@ -69,14 +69,64 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Make room for NixOS closures
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+      # The VM tests live outside `checks` and run in vm-checks, so this job
+      # needs no KVM.
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+        with:
+          extra_nix_config: |
+            system-features = big-parallel benchmark
+      - name: Evaluate and test
+        run: nix flake check --print-build-logs
+
+  vm-check-names:
+    needs: changes
+    # Same fail-open gate as flake-check, so the VM tests run on push to main
+    # and whenever the classifier did not complete.
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      names: ${{ steps.list.outputs.names }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+      - name: List VM checks
+        id: list
+        run: |
+          names=$(nix eval --json .#vmChecks --apply 'v: builtins.filter (n: n != "all") (builtins.attrNames v)')
+          # An empty matrix would skip vm-checks and leave the run green with
+          # no VM evidence.
+          if [ "$names" = "[]" ]; then
+            echo "no VM checks found under vmChecks" >&2
+            exit 1
+          fi
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+
+  vm-checks:
+    needs: [changes, vm-check-names]
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.vm-check-names.outputs.names) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Make room for NixOS closures
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
         with:
           extra_nix_config: |
             system-features = nixos-test benchmark big-parallel kvm
       - name: Enable KVM for the Nix builder
         run: sudo chmod 666 /dev/kvm
-      - name: Evaluate and test
-        run: nix flake check --print-build-logs
+      - name: Build VM check
+        # The name comes from the vmChecks attribute names, so it reaches the
+        # shell as data rather than being spliced into the script.
+        env:
+          NAME: ${{ matrix.name }}
+        run: nix build --no-link --print-build-logs ".#vmChecks.${NAME}"
 
   hosts:
     needs: changes

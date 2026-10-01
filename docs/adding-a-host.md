@@ -98,15 +98,17 @@ nix eval .#nixosConfigurations --apply builtins.attrNames
 ```sh
 nix fmt -- --ci
 nix flake check
+nix build --no-link .#vmChecks.all
 nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel
 nix build --no-link .#nixosConfigurations.<host>-bootstrap.config.system.build.toplevel
 ```
 
 Build every other output too before shipping, using the loop in [verification](verification.md#repository-checks). CI builds every output `nixosConfigurations` lists, so the new host joins its build matrix without a workflow change.
 
-Two checks fail when a step above was missed:
+Three checks fail when a step above was missed:
 
 - `bootstrap-recipients` (`tests/bootstrap-recipients.nix`) pairs `hosts/` with `secrets/bootstrap/`. It names the side that is missing when a host has no bootstrap material or bootstrap material has no host. It also fails when the recorded recipient does not appear in `.sops.yaml`. Run it alone with `nix build --no-link .#checks.x86_64-linux.bootstrap-recipients`.
+- `boot-layout-invariants` (`tests/boot-layout-invariants.nix`) checks the new host's `disko.nix` for the LUKS, ESP, btrfs, and swapfile layout that `boot.nix` relies on. The `boot-layout` VM test boots only the first host's layout, so this check is what covers the new one.
 - `host-name-guard` fails when the new name appears in one of the paths listed under [Choose the name](#choose-the-name). Rename the directory, or replace the reference in shared code with a trait.
 
 ## Install
