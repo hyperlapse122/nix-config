@@ -32,6 +32,7 @@ let
     {
       imports = [
         inputs.sops-nix.nixosModules.sops
+        ../modules/shared/host.nix
         ../modules/nixos/system/secrets.nix
         ../modules/nixos/services/tailscale.nix
       ];
@@ -108,8 +109,8 @@ pkgs.testers.nixosTest {
 
       client_up_flags = set(${builtins.toJSON nodes.client.services.tailscale.extraUpFlags})
       router_up_flags = set(${builtins.toJSON nodes.router.services.tailscale.extraUpFlags})
-      assert client_up_flags == {"--ssh", "--accept-routes"}, client_up_flags
-      assert router_up_flags == {"--ssh", "--accept-routes"}, router_up_flags
+      assert client_up_flags == {"--ssh", "--accept-routes", "--operator=${nodes.client.my.user.name}"}, client_up_flags
+      assert router_up_flags == {"--ssh", "--accept-routes", "--operator=${nodes.router.my.user.name}"}, router_up_flags
 
       # --- Runtime: an already-registered node still gets the declared prefs ---
       #

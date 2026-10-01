@@ -16,9 +16,22 @@
     line runs that configuration's programs._1password-gui.package with
     --silent.
   - The same for autostart/kleopatra.desktop with --daemon,
-    autostart/discord.desktop with --start-minimized, and
-    autostart/telegram.desktop with -startintray, each running the package
+    autostart/discord.desktop with --start-minimized,
+    autostart/telegram.desktop with -startintray,
+    autostart/claude-desktop.desktop with --startup, and
+    autostart/chatgpt.desktop with no argument, each running the package
     found in that configuration's user package list.
+  - Where services.tailscale.enable is true, the same for
+    autostart/tailscale-systray.desktop running that configuration's
+    services.tailscale.package with `systray`; where it is false, no entry
+    targets that file. One production configuration is re-evaluated with
+    services.tailscale.package swapped for a distinct derivation, and its entry
+    must follow the swap, because the default package equals pkgs.tailscale.
+  - Where services.tailscale.enable is true, the materialized
+    tailscaled-autoconnect and tailscaled-set units both run a script carrying
+    --operator=<my.user.name>. `tailscale up` refuses a command that leaves out
+    a stored non-default pref, so a set-only operator would break
+    re-authentication.
   - Every entry declares Type=Application and X-KDE-autostart-phase=2.
   - systemd/user/app-discord@autostart.service.d/restart.conf and the
     app-telegram equivalent are enabled and set Restart=on-failure and
@@ -66,6 +79,32 @@ let
     "discord"
     "telegram"
   ];
+
+  # A production configuration whose Tailscale package is a distinct
+  # derivation. Its store path is compared as text and never built.
+  swappedTailscale =
+    let
+      entry = lib.lists.findFirst (e: e.config.services.tailscale.enable) null configurations.production;
+    in
+    lib.mapNullable (
+      entry:
+      let
+        host = self.nixosConfigurations.${entry.name}.extendModules {
+          modules = [
+            {
+              services.tailscale.package = lib.mkForce (
+                pkgs.tailscale.overrideAttrs { env.DESKTOP_AUTOSTART_MARKER = "1"; }
+              );
+            }
+          ];
+        };
+      in
+      {
+        name = "${entry.name} with a swapped tailscale package";
+        package = host.config.services.tailscale.package;
+        user = host.config.home-manager.users.h82 or { };
+      }
+    ) entry;
   dropInName = app: "systemd/user/app-${app}@autostart.service.d/restart.conf";
   unitName = app: "systemd/user/app-${app}@autostart.service";
 
@@ -74,6 +113,9 @@ let
     "autostart/kleopatra.desktop"
     "autostart/discord.desktop"
     "autostart/telegram.desktop"
+    "autostart/claude-desktop.desktop"
+    "autostart/chatgpt.desktop"
+    "autostart/tailscale-systray.desktop"
   ];
 
   assertCli = entry: ''
@@ -95,11 +137,19 @@ let
       kleopatraPackage = userPackage "kleopatra";
       discordPackage = userPackage "discord";
       telegramPackage = userPackage "telegram-desktop";
+      claudePackage = userPackage "claude-desktop";
+      chatgptPackage = userPackage "chatgpt";
+      tailscaleEnabled = entry.config.services.tailscale.enable;
+      tailscalePackage = entry.config.services.tailscale.package;
+      operatorFlag = "--operator=${entry.config.my.user.name}";
 
       onePasswordEntry = entryFor user "autostart/1password.desktop";
       kleopatraEntry = entryFor user "autostart/kleopatra.desktop";
       discordEntry = entryFor user "autostart/discord.desktop";
       telegramEntry = entryFor user "autostart/telegram.desktop";
+      claudeEntry = entryFor user "autostart/claude-desktop.desktop";
+      chatgptEntry = entryFor user "autostart/chatgpt.desktop";
+      tailscaleEntry = entryFor user "autostart/tailscale-systray.desktop";
 
       missing = name: fail "no Home Manager autostart entry targets ${name} on ${host}";
 
@@ -151,6 +201,41 @@ let
         "Exec=${telegramPackage}/bin/Telegram -startintray"
       );
 
+      claudeExec = lib.optionalString (claudeEntry != null && claudePackage != null) (
+        "Exec=${claudePackage}/bin/claude-desktop --startup"
+      );
+
+      chatgptExec = lib.optionalString (chatgptEntry != null && chatgptPackage != null) (
+        "Exec=${chatgptPackage}/bin/chatgpt"
+      );
+
+      tailscaleExec = lib.optionalString (tailscaleEntry != null) (
+        "Exec=${tailscalePackage}/bin/tailscale systray"
+      );
+
+      # Read the script each materialized unit runs, not the flag options.
+      operatorChecks =
+        lib.concatMapStrings
+          (
+            unit:
+            let
+              unitDir = entry.config.systemd.units."${unit}.service".unit or null;
+            in
+            if unitDir == null then
+              fail "no ${unit}.service unit is materialized on ${host}"
+            else
+              ''
+                script=$(sed -n 's/^ExecStart=\([^[:space:]]*\).*/\1/p' ${unitDir}/${unit}.service)
+                if [ -z "$script" ] || ! grep -qF -- ${lib.escapeShellArg operatorFlag} "$script"; then
+                  ${fail "${unit}.service does not run tailscale with ${operatorFlag} on ${host}"}
+                fi
+              ''
+          )
+          [
+            "tailscaled-autoconnect"
+            "tailscaled-set"
+          ];
+
       dropInChecks = lib.concatMapStrings (
         app:
         let
@@ -194,6 +279,27 @@ let
       ${lib.optionalString (telegramEntry == null) (missing "autostart/telegram.desktop")}
       ${present "Telegram" telegramEntry telegramExec}
 
+      ${packageAbsent "claude-desktop" claudePackage}
+      ${lib.optionalString (claudeEntry == null) (missing "autostart/claude-desktop.desktop")}
+      ${present "Claude Desktop" claudeEntry claudeExec}
+
+      ${packageAbsent "chatgpt" chatgptPackage}
+      ${lib.optionalString (chatgptEntry == null) (missing "autostart/chatgpt.desktop")}
+      ${present "ChatGPT" chatgptEntry chatgptExec}
+
+      ${
+        if tailscaleEnabled then
+          ''
+            ${lib.optionalString (tailscaleEntry == null) (missing "autostart/tailscale-systray.desktop")}
+            ${present "the Tailscale tray" tailscaleEntry tailscaleExec}
+            ${operatorChecks}
+          ''
+        else
+          lib.optionalString (tailscaleEntry != null) (
+            fail "autostart/tailscale-systray.desktop is declared on ${host}, which does not run tailscaled"
+          )
+      }
+
       # The chat clients restart after a crash through drop-ins on the units
       # systemd-xdg-autostart-generator creates, never through a full unit.
       ${dropInChecks}
@@ -201,6 +307,25 @@ let
 
   # A bootstrap configuration declares none of them, so first-boot key recovery
   # is not competing with a card-touching UI server.
+  # The swapped package is a different store path from pkgs.tailscale, so an
+  # entry that hardcodes pkgs.tailscale no longer matches.
+  assertSwappedTailscale =
+    if swappedTailscale == null then
+      fail "no production configuration enables services.tailscale, so the tray's package source is unchecked"
+    else
+      let
+        entry = entryFor swappedTailscale.user "autostart/tailscale-systray.desktop";
+        expected = builtins.unsafeDiscardStringContext "Exec=${swappedTailscale.package}/bin/tailscale systray";
+        follows =
+          entry != null
+          && lib.elem expected (
+            lib.splitString "\n" (builtins.unsafeDiscardStringContext (entry.text or ""))
+          );
+      in
+      lib.optionalString (!follows) (
+        fail "the tailscale tray entry on ${swappedTailscale.name} does not run services.tailscale.package"
+      );
+
   assertBootstrap =
     entry:
     lib.concatMapStrings (name: fail "${name} leaked onto the bootstrap configuration ${entry.name}") (
@@ -215,6 +340,7 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
   ${lib.concatMapStringsSep "\n" assertCli configurations.entries}
   ${lib.concatMapStringsSep "\n" assertProduction configurations.production}
   ${lib.concatMapStringsSep "\n" assertBootstrap configurations.bootstraps}
+  ${assertSwappedTailscale}
 
   if [ "$failed" != 0 ]; then
     exit 1

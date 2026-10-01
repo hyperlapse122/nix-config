@@ -8,9 +8,14 @@ let
   cfg = config.my.tailscale;
   available = cfg.sopsFile != null;
   tailscalePkg = config.services.tailscale.package;
+  # The operator lets the user's tray change prefs without sudo. It sits in the
+  # up flags too: `tailscale up` refuses to run without a stored non-default
+  # pref such as the operator, so a set-only operator would break autoconnect's
+  # re-authentication.
   nodeFlags = [
     "--ssh"
     "--accept-routes"
+    "--operator=${config.my.user.name}"
   ];
   routeLabels = [
     "lan_10"

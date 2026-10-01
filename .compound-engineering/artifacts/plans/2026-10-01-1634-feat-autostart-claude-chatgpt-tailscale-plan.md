@@ -79,7 +79,7 @@ Documentation
 - `tests/tailscale-provisioning.nix:29-37,109-112` — test nodes import only sops-nix, `secrets.nix`, and `tailscale.nix`, and the test asserts `extraUpFlags` as an exact set.
 - nixpkgs `tailscaled-autoconnect` runs `tailscale up --auth-key ... ${extraUpFlags}` on `NeedsLogin|NeedsMachineAuth|Stopped`.
 - nixpkgs `nixos/modules/services/networking/tailscale.nix` — `tailscaled-set` runs `tailscale set ${extraSetFlags}`.
-- https://tailscale.com/docs/features/client/linux-systray — `tailscale systray`; KDE Plasma is supported through StatusNotifierItem; the tray must not run as root.
+- <https://tailscale.com/docs/features/client/linux-systray> — `tailscale systray`; KDE Plasma is supported through StatusNotifierItem; the tray must not run as root.
 
 ---
 

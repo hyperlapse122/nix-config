@@ -44,6 +44,10 @@ lib.nixosSystem {
           inherit inputs;
           hostKind = kind;
           onePasswordGui = config.programs._1password-gui.package;
+          # The tray must match the running daemon, and has no daemon to talk
+          # to where tailscaled is off.
+          tailscalePackage =
+            if config.services.tailscale.enable then config.services.tailscale.package else null;
         };
         # The user sees the same host facts and traits as the system.
         home-manager.sharedModules = [
