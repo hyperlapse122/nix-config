@@ -199,7 +199,7 @@ Only the scalar settings above are declared, plus the Orca skills below. Permiss
 
 ### Codex
 
-Codex is pinned to OpenAI's prebuilt static musl release (`packages/codex.nix`, `packages/codex-release.json`), and the hourly dependency workflow bumps the pin with `codex-release`. Its wrapper puts `bubblewrap` and `ripgrep` on `PATH` for the Linux sandbox and search, and passes `-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start`, so Codex never updates itself or installs a background daemon copy, under any `CODEX_HOME`.
+Codex is pinned to OpenAI's prebuilt static musl releases for `x86_64-linux` and `aarch64-linux` (`packages/codex.nix`, `packages/codex-release.json`), and the hourly dependency workflow bumps the pin with `codex-release`. Its wrapper puts `bubblewrap` and `ripgrep` on `PATH` for the Linux sandbox and search, and passes `-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start`, so Codex never updates itself or installs a background daemon copy, under any `CODEX_HOME`.
 
 Codex owns `~/.codex/config.toml` and rewrites it itself: trusting a project and `codex plugin add` both write there. Activation runs the same `agent-settings` merger as Claude Code, in its `--format toml` mode, which keeps every comment and table it does not own. The declared set is `check_for_update_on_startup`, `features.in_app_updates`, `features.daemon_auto_start`, and `features.memories`, all `false`. Model, reasoning effort, sandbox and approval policy, trusted projects, and sign-in stay yours. A declared key returns to its declared value only on a rebuild that produces a new Home Manager generation, as for Claude Code. A malformed `config.toml` makes the merge refuse and fails the rebuild without touching the file. To stop declaring a key, move it to `retiredKeys` in `home/h82/agents/codex.nix`.
 
@@ -209,7 +209,7 @@ Orca starts Codex with its own `CODEX_HOME` (`~/.config/orca/codex-runtime-home/
 
 ### ChatGPT desktop app
 
-The ChatGPT app is repackaged from the `.deb` in OpenAI's APT pool (`packages/chatgpt.nix`, `packages/chatgpt-version.json`), and the hourly workflow bumps the pin with `chatgpt-release`. The package's maintainer scripts only register an APT source and an AppArmor profile, so they are not run. The wrapper passes no display-backend flag: upstream marks native Wayland experimental, so the app runs on its X11 default through the XWayland that the Plasma session already provides.
+The ChatGPT app is x86_64-only and installed on NixOS hosts only, with the other desktop applications. It is repackaged from the `.deb` in OpenAI's APT pool (`packages/chatgpt.nix`, `packages/chatgpt-version.json`), and the hourly workflow bumps the pin with `chatgpt-release`. The package's maintainer scripts only register an APT source and an AppArmor profile, so they are not run. The wrapper passes no display-backend flag: upstream marks native Wayland experimental, so the app runs on its X11 default through the XWayland that the Plasma session already provides.
 
 ### Shared agent instructions
 

@@ -16,7 +16,9 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/codex-release"
 
 TARGET = "codex-x86_64-unknown-linux-musl.tar.gz"
+ARM_TARGET = "codex-aarch64-unknown-linux-musl.tar.gz"
 MUSL_HEX = "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb"
+ARM_HEX = "cd5f307b3fcd6080773e684b86c3114a67d4f1c61dc447be09876b552eb4bea7"
 GNU_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
 
 
@@ -28,13 +30,16 @@ def asset(name, hex_digest):
     }
 
 
-def release(version, musl_digest=None, musl_count=1, prerelease=False, tag=None):
+def release(version, musl_digest=None, musl_count=1, prerelease=False, tag=None,
+            arm_count=1):
     """Build a latest-release body shaped like GitHub's REST API response."""
     assets = [
         asset("codex-x86_64-unknown-linux-gnu.tar.gz", GNU_HEX),
-        asset("codex-aarch64-unknown-linux-musl.tar.gz", GNU_HEX),
+        asset("codex-aarch64-unknown-linux-gnu.tar.gz", GNU_HEX),
         asset("codex-x86_64-unknown-linux-musl.zst", GNU_HEX),
     ]
+    for _ in range(arm_count):
+        assets.append(asset(ARM_TARGET, ARM_HEX))
     for _ in range(musl_count):
         entry = asset(TARGET, MUSL_HEX)
         if musl_digest is not None:
@@ -97,15 +102,27 @@ class CodexReleaseTestCase(unittest.TestCase):
         self.assertIn(needle, result.stderr)
         self.assertFalse(self.output.exists())
 
-    def test_writes_version_and_musl_digest_when_newer(self):
+    def test_writes_version_and_each_musl_digest_when_newer(self):
         self.write_pin("0.159.2")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)
         self.assertEqual(
             json.loads(self.output.read_text()),
-            {"version": "0.159.3", "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
+            {
+                "version": "0.159.3",
+                "platforms": {
+                    "x86_64-linux": {"asset": TARGET, "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
+                    "aarch64-linux": {"asset": ARM_TARGET, "sha256": ARM_HEX, "hash": sri(ARM_HEX)},
+                },
+            },
         )
+
+    def test_refuses_a_release_without_the_aarch64_musl_asset(self):
+        result = self.run_release(
+            body=release("0.159.3", arm_count=0), extra_args=["-o", str(self.output)]
+        )
+        self.assert_refused(result, ARM_TARGET)
 
     def test_writes_a_pin_when_none_exists(self):
         result = self.run_release(extra_args=["-o", str(self.output)])
@@ -193,7 +210,9 @@ class CodexReleaseTestCase(unittest.TestCase):
     def test_dry_run_prints_json_and_writes_nothing(self):
         result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["hash"], sri(MUSL_HEX))
+        self.assertEqual(
+            json.loads(result.stdout)["platforms"]["x86_64-linux"]["hash"], sri(MUSL_HEX)
+        )
         self.assertFalse(self.output.exists())
 
     def test_empty_fetch_command_fails(self):

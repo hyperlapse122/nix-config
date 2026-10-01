@@ -2,12 +2,12 @@
 """Resolve the newest upstream Codex CLI release from GitHub's release API.
 
 Fetches openai/codex's latest GitHub release, reads the version from its
-rust-v tag and the sha256 digest GitHub records for the static
-x86_64-unknown-linux-musl tarball, and writes or checks the pin file
-packages/codex.nix consumes. Refuses to write a pin for a prerelease, a
-release missing that tarball or its digest, or a version that is not strictly
-newer than the one already pinned, so neither an incomplete release nor a
-downgrade ever reaches the pin file.
+rust-v tag and the sha256 digest GitHub records for the static musl tarball
+of each supported system, and writes or checks the pin file packages/codex.nix
+consumes. Refuses to write a pin for a prerelease, a release missing any of
+those tarballs or their digests, or a version that is not strictly newer than
+the one already pinned, so neither an incomplete release nor a downgrade ever
+reaches the pin file.
 """
 
 import argparse
@@ -22,9 +22,12 @@ import sys
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/openai/codex/releases/latest"
 DEFAULT_FETCH = "curl -sfL"
 
-# This flake builds only for x86_64-linux. The musl build is statically
-# linked, so it runs on NixOS without patching.
-TARGET_ASSET = "codex-x86_64-unknown-linux-musl.tar.gz"
+# Every system a host in this flake can be. The musl builds are statically
+# linked, so they run on NixOS and other distributions without patching.
+TARGET_ASSETS = {
+    "x86_64-linux": "codex-x86_64-unknown-linux-musl.tar.gz",
+    "aarch64-linux": "codex-aarch64-unknown-linux-musl.tar.gz",
+}
 TAG_PREFIX = "rust-v"
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
@@ -61,7 +64,7 @@ def hex_to_sri(sha256_hex):
 
 
 def parse_release(body):
-    """Return the pin for the musl tarball of one GitHub release object."""
+    """Return the pin for each system's musl tarball in one GitHub release object."""
     try:
         data = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -79,20 +82,22 @@ def parse_release(body):
         raise Failure(f"release version is not a plain version string: {version!r}")
 
     assets = data.get("assets")
-    matches = [
-        a for a in assets if isinstance(a, dict) and a.get("name") == TARGET_ASSET
-    ] if isinstance(assets, list) else []
-    if len(matches) != 1:
-        raise Failure(
-            f"release {tag} lists {len(matches)} {TARGET_ASSET} assets, "
-            "expected exactly one; refusing to write an incomplete pin"
-        )
-    digest = matches[0].get("digest")
-    match = DIGEST_PATTERN.match(digest) if isinstance(digest, str) else None
-    if not match:
-        raise Failure(f"invalid sha256 digest for {TARGET_ASSET} in {tag}: {digest!r}")
-    sha256_hex = match.group(1).lower()
-    return {"version": version, "sha256": sha256_hex, "hash": hex_to_sri(sha256_hex)}
+    assets = assets if isinstance(assets, list) else []
+    platforms = {}
+    for system, name in TARGET_ASSETS.items():
+        matches = [a for a in assets if isinstance(a, dict) and a.get("name") == name]
+        if len(matches) != 1:
+            raise Failure(
+                f"release {tag} lists {len(matches)} {name} assets, "
+                "expected exactly one; refusing to write an incomplete pin"
+            )
+        digest = matches[0].get("digest")
+        match = DIGEST_PATTERN.match(digest) if isinstance(digest, str) else None
+        if not match:
+            raise Failure(f"invalid sha256 digest for {name} in {tag}: {digest!r}")
+        sha256_hex = match.group(1).lower()
+        platforms[system] = {"asset": name, "sha256": sha256_hex, "hash": hex_to_sri(sha256_hex)}
+    return {"version": version, "platforms": platforms}
 
 
 def version_tuple(version):

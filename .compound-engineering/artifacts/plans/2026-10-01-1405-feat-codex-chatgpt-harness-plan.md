@@ -106,7 +106,7 @@ The ChatGPT Linux app is now published for Debian-family systems with a versione
 
 - Sign-in credentials for Codex and ChatGPT are created interactively by the user on first launch, not provisioned through sops.
 - ChatGPT's Computer Use is out of scope; upstream does not offer it on Linux.
-- No ARM64 builds; every host is `x86_64-linux`.
+- The ChatGPT app is x86_64-only and installed on NixOS hosts only, behind the desktop gate. Codex is pinned for both `x86_64-linux` and `aarch64-linux`, because non-NixOS hosts (added on main while this work was in flight) build the same user environment on either system.
 - The Gemini and Antigravity harness configuration is not changed beyond what the shared tool extensions require.
 - Installing plugins through the ChatGPT app's own plugin UI is not managed declaratively.
 - Codex sessions that Orca launches use Orca's own runtime home (`CODEX_HOME=~/.config/orca/codex-runtime-home/home`, which Orca sets in every terminal it opens). Orca owns that home and rewrites its `config.toml`, so this work does not write the declared set, instructions, or plugin into it. Update suppression still reaches those sessions through the wrapper's flags (KTD9). Evidence that Orca forwards nothing from `~/.codex` would make this a follow-up decision for the user.
