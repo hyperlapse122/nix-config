@@ -88,7 +88,7 @@ The flake.lock update to nixpkgs `b4fd65b` (2026-09-29) broke the MS-7D91 system
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | Layout matches `nixfmt-tree` |
 | Flake checks | `nix flake check` | R4 |
 | All hosts build | The `nixosConfigurations` build loop in `AGENTS.md`, for production and bootstrap outputs | R1, R4 |
