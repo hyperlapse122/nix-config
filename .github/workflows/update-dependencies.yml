@@ -100,10 +100,9 @@ jobs:
           FMT_EXIT=${PIPESTATUS[0]}
           nix flake check --print-build-logs 2>&1 | tee check.log
           CHECK_EXIT=${PIPESTATUS[0]}
-          # The VM tests live outside `nix flake check`. Their log goes into
-          # check.log, which .gitignore already keeps out of the push step's
-          # catch-all commit.
-          nix build --no-link --print-build-logs .#vmChecks.all 2>&1 | tee -a check.log
+          # The VM tests live outside `nix flake check`. Their own log keeps a
+          # flake check failure from being pushed out of the tail below.
+          nix build --no-link --print-build-logs .#vmChecks.all 2>&1 | tee vm-check.log
           VM_EXIT=${PIPESTATUS[0]}
           set -e
 
@@ -115,9 +114,18 @@ jobs:
             echo "Verification failed (fmt: $FMT_EXIT, check: $CHECK_EXIT, vm checks: $VM_EXIT)."
             {
               echo "### Verification Failure Details"
-              echo '```text'
-              tail -n 50 check.log
-              echo '```'
+              if [ "$CHECK_EXIT" -ne 0 ]; then
+                echo "#### nix flake check"
+                echo '```text'
+                tail -n 50 check.log
+                echo '```'
+              fi
+              if [ "$VM_EXIT" -ne 0 ]; then
+                echo "#### NixOS VM tests"
+                echo '```text'
+                tail -n 50 vm-check.log
+                echo '```'
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -194,8 +202,13 @@ jobs:
             echo "The hourly dependency update job detected changes to flake inputs or packages, but pre-push verification failed."
             echo ""
             echo "### Failure Logs"
+            echo "#### nix flake check"
             echo '```text'
-            cat check.log | tail -n 80
+            tail -n 80 check.log
+            echo '```'
+            echo "#### NixOS VM tests"
+            echo '```text'
+            tail -n 80 vm-check.log
             echo '```'
             echo ""
             echo "Claude Code Action has been dispatched to reconcile breakages on this branch. Once status checks pass, this PR will be merged automatically."

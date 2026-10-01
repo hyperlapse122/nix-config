@@ -7,7 +7,7 @@
 # <gitignore> is the repository's real .gitignore, copied into the sandboxed
 # clone rather than reconstructed here -- a hand-written fixture would prove
 # only that git honors *some* .gitignore, not that this repo's real one lists
-# fmt.log/check.log. Passing the real file as a derivation input also makes
+# fmt.log/check.log/vm-check.log. Passing the real file as a derivation input also makes
 # Nix rebuild this check whenever .gitignore changes.
 #
 # Extracts the literal script of the "Push verified updates directly to main"
@@ -26,7 +26,7 @@
 # Two scenarios exercise that ordering:
 # - origin/main unchanged since checkout: the step must still succeed (this
 #   is the exact case that failed every run in production). This scenario
-#   also leaves fmt.log/check.log untracked in the clone, the way the real
+#   also leaves fmt.log/check.log/vm-check.log untracked in the clone, the way the real
 #   "Verify updates" step does, to prove the catch-all `git add -A` commit
 #   never sweeps them into main now that this ordering fix makes that commit
 #   reachable for the first time.
@@ -99,6 +99,7 @@ read -r origin clone <<<"$(setup_clone same)"
 printf 'changed\n' >>"$clone/tracked.txt"
 printf 'nix fmt output\n' >"$clone/fmt.log"
 printf 'nix flake check output\n' >"$clone/check.log"
+printf 'nix build vmChecks output\n' >"$clone/vm-check.log"
 if ! run_push_step "$clone"; then
   fail 'the push step failed against an unchanged origin/main (dirty-tree rebase regression)'
 fi
@@ -106,9 +107,9 @@ pushed=$("$git_bin" --git-dir "$origin" log -1 --format=%s main)
 [[ $pushed == "chore(deps): update dependencies" ]] ||
   fail "origin/main does not carry the pushed commit: $pushed"
 tracked=$("$git_bin" --git-dir "$origin" ls-tree -r --name-only main)
-[[ $tracked != *"fmt.log"* && $tracked != *"check.log"* ]] ||
+[[ $tracked != *"fmt.log"* && $tracked != *"check.log"* && $tracked != *"vm-check.log"* ]] ||
   fail "verification logs were committed to main: $tracked"
-pass 'succeeds, pushes, and never commits the verify step'\''s fmt.log/check.log'
+pass 'succeeds, pushes, and never commits the verify step'\''s fmt.log/check.log/vm-check.log'
 
 # --- origin/main advanced with an unrelated commit: must rebase and push both
 read -r origin clone <<<"$(setup_clone diverged)"
