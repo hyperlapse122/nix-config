@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ lib, ... }:
 {
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   boot.initrd.availableKernelModules = [
@@ -24,7 +24,4 @@
     powerManagement.enable = false;
   };
   hardware.nvidia-container-toolkit.enable = true;
-  environment.systemPackages = with pkgs; [
-    cudaPackages.cudatoolkit
-  ];
 }
