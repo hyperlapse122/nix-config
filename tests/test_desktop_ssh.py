@@ -3,6 +3,11 @@ import importlib.util
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
+import os
+import socket
+import struct
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -10,7 +15,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts/desktop-ssh"
+SCRIPT = Path(os.environ.get("DESKTOP_SSH_SCRIPT",
+                            str(Path(__file__).resolve().parents[1] / "scripts/desktop-ssh")))
 loader = importlib.machinery.SourceFileLoader("desktop_ssh", str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 desktop_ssh = importlib.util.module_from_spec(spec)
@@ -178,6 +184,246 @@ class ProvisionTests(unittest.TestCase):
             with self.assertRaises(desktop_ssh.DesktopSSHError) as error:
                 desktop_ssh.KWallet()
         self.assertNotIn(leaked_value, str(error.exception))
+
+
+class FakeAgent:
+    """A real Unix protocol endpoint, with distinct identities and recorded requests."""
+    def __init__(self, path, keys, stall=False, deny=False):
+        self.keys = keys
+        self.path = str(path)
+        self.stall = stall
+        self.deny = deny
+        self.reject_binding = False
+        self.requests = []
+        self.connections = []
+        self.peer_pids = []
+        self.listener = socket.socket(socket.AF_UNIX)
+        self.listener.bind(self.path)
+        self.listener.listen()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self):
+        try:
+            while True:
+                client, _ = self.listener.accept()
+                self.connections.append(client)
+                self.peer_pids.append(struct.unpack("3i", client.getsockopt(
+                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))[0])
+                threading.Thread(target=self.client, args=(client,), daemon=True).start()
+        except OSError:
+            pass
+
+    def client(self, client):
+        try:
+            while True:
+                payload = desktop_ssh.receive(client)
+                self.requests.append(payload)
+                if self.stall:
+                    time.sleep(1)
+                    continue
+                if payload == b"\x0b":
+                    reply = desktop_ssh.identity_response([
+                        (desktop_ssh.identity_blob(key.public_key()), b"fake")
+                        for key in self.keys])
+                elif payload[:1] == b"\x0d" and not self.deny:
+                    packet = desktop_ssh.Packet(payload[1:])
+                    blob, data, flags = packet.string(), packet.string(), packet.uint()
+                    packet.end()
+                    selected = next((key for key in self.keys if
+                                     desktop_ssh.identity_blob(key.public_key()) == blob), None)
+                    reply = b"\x0e" + desktop_ssh.ssh_string(
+                        desktop_ssh.ssh_string(b"ssh-ed25519") +
+                        desktop_ssh.ssh_string(selected.sign(data))) if selected else b"\x05"
+                elif payload[:1] == b"\x1b":
+                    reply = b"\x1c" if self.reject_binding else b"\x06"
+                else:
+                    reply = b"\x05"
+                desktop_ssh.send(client, reply)
+        except (OSError, EOFError, ValueError):
+            pass
+
+    def close(self):
+        try:
+            self.listener.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.listener.close()
+        for client in self.connections:
+            try:
+                client.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            client.close()
+        Path(self.path).unlink(missing_ok=True)
+
+
+class ProtocolTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.primary_key = Ed25519PrivateKey.generate()
+        self.fallback_key = Ed25519PrivateKey.generate()
+        self.public = self.root / "primary.pub"
+        self.public.write_bytes(desktop_ssh.public_bytes(self.primary_key.public_key()))
+        self.config = {"public_key": str(self.public), "key_file": str(self.root / "protected"),
+                       "primary_socket": str(self.root / "primary.sock"),
+                       "fallback_socket": str(self.root / "fallback.sock")}
+        self.proxy = desktop_ssh.Composite(self.config)
+        self.addCleanup(self.proxy.close)
+
+    def backend(self, name, keys, **kwargs):
+        backend = FakeAgent(self.config[name + "_socket"], keys, **kwargs)
+        self.addCleanup(backend.close)
+        return backend
+
+    def sign(self, blob, data=b"proof", flags=0):
+        return b"\x0d" + desktop_ssh.ssh_string(blob) + desktop_ssh.ssh_string(data) + struct.pack(">I", flags)
+
+    def verify_signature(self, key, response):
+        self.assertEqual(response[:1], b"\x0e")
+        outer = desktop_ssh.Packet(response[1:])
+        inner = desktop_ssh.Packet(outer.string())
+        outer.end()
+        self.assertEqual(inner.string(), b"ssh-ed25519")
+        key.public_key().verify(inner.string(), b"proof")
+        inner.end()
+
+    def test_primary_first_deduplicated_and_flags_preserved(self):
+        primary = self.backend("primary", [self.primary_key])
+        fallback = self.backend("fallback", [self.primary_key, self.fallback_key, self.fallback_key])
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertEqual([blob for blob, _ in items], [desktop_ssh.identity_blob(key.public_key())
+                         for key in (self.primary_key, self.fallback_key)])
+        self.verify_signature(self.primary_key, self.proxy.handle(self.sign(items[0][0])))
+        payload = self.sign(items[1][0], flags=4)
+        self.verify_signature(self.fallback_key, self.proxy.handle(payload))
+        self.assertEqual(fallback.requests[-1], payload)
+        self.assertEqual(primary.requests[-1], self.sign(items[0][0]))
+
+    def test_unavailable_or_stalled_fallback_does_not_block_primary(self):
+        self.backend("primary", [self.primary_key])
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.verify_signature(self.primary_key, self.proxy.handle(self.sign(items[0][0])))
+        self.proxy.close()
+        self.proxy = desktop_ssh.Composite(self.config)
+        self.addCleanup(self.proxy.close)
+        self.backend("fallback", [self.fallback_key], stall=True)
+        start = time.monotonic()
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertLess(time.monotonic() - start, 0.8)
+        self.verify_signature(self.primary_key, self.proxy.handle(self.sign(items[0][0])))
+
+    def test_primary_failure_allows_same_connection_fallback(self):
+        self.backend("primary", [self.primary_key], deny=True)
+        self.backend("fallback", [self.fallback_key])
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertEqual(self.proxy.handle(self.sign(items[0][0])), b"\x05")
+        self.verify_signature(self.fallback_key, self.proxy.handle(self.sign(items[1][0])))
+
+    def test_missing_primary_metadata_still_allows_fallback(self):
+        self.backend("fallback", [self.fallback_key])
+        self.public.unlink()
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertEqual(len(items), 1)
+        self.verify_signature(self.fallback_key, self.proxy.handle(self.sign(items[0][0])))
+
+    def test_primary_unlock_uses_an_inherited_pipe_not_stdout(self):
+        self.config["config_path"] = "/fake/config.json"
+        agent = desktop_ssh.Primary(self.config)
+        def unlock(arguments, **kwargs):
+            self.assertEqual(kwargs["stdout"], desktop_ssh.subprocess.DEVNULL)
+            self.assertIn("--key-fd", arguments)
+            fd = int(arguments[-1])
+            self.assertEqual(kwargs["pass_fds"], (fd,))
+            os.write(fd, self.primary_key.private_bytes(
+                serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+                serialization.NoEncryption()))
+            return desktop_ssh.subprocess.CompletedProcess(arguments, 0)
+        with patch.object(desktop_ssh.subprocess, "run", side_effect=unlock):
+            key = agent.load(self.primary_key.public_key())
+        self.assertEqual(desktop_ssh.public_bytes(key.public_key()),
+                         desktop_ssh.public_bytes(self.primary_key.public_key()))
+
+    def test_binding_and_sign_share_backend_connection(self):
+        fallback = self.backend("fallback", [self.fallback_key])
+        binding = b"\x1b" + desktop_ssh.ssh_string(b"session-bind@openssh.com") + b"".join(
+            desktop_ssh.ssh_string(item) for item in (b"host", b"session", b"signature")) + b"\x00"
+        self.assertEqual(self.proxy.handle(binding), b"\x06")
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.proxy.handle(self.sign(items[1][0]))
+        self.assertEqual(len(fallback.connections), 1)
+        self.assertEqual(fallback.requests[0], binding)
+        other = desktop_ssh.Composite(self.config)
+        self.addCleanup(other.close)
+        other.handle(b"\x0b")
+        self.assertEqual(len(fallback.connections), 2)
+
+    def test_unsupported_binding_is_honest_without_hiding_unconstrained_keys(self):
+        fallback = self.backend("fallback", [self.fallback_key])
+        fallback.reject_binding = True
+        binding = b"\x1b" + desktop_ssh.ssh_string(b"session-bind@openssh.com") + b"".join(
+            desktop_ssh.ssh_string(item) for item in (b"host", b"session", b"signature")) + b"\x00"
+        self.assertEqual(self.proxy.handle(binding), b"\x1c")
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.verify_signature(self.fallback_key, self.proxy.handle(self.sign(items[1][0])))
+
+    def test_dead_backend_is_not_reconnected_without_its_session_binding(self):
+        self.backend("fallback", [self.fallback_key])
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.proxy.fallback.close()
+        with patch.object(desktop_ssh.socket, "socket") as reconnect:
+            self.assertEqual(self.proxy.handle(self.sign(items[1][0])), b"\x05")
+            reconnect.assert_not_called()
+
+    def test_oversized_fallback_selection_is_not_silently_truncated(self):
+        self.backend("fallback", [self.fallback_key] * (desktop_ssh.MAX_IDENTITIES + 1))
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertEqual(items[0][0], desktop_ssh.identity_blob(self.primary_key.public_key()))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(self.proxy.handle(self.sign(desktop_ssh.identity_blob(
+            self.fallback_key.public_key()))), b"\x05")
+
+    def test_unknown_mutation_extensions_and_malformed_packets(self):
+        self.backend("fallback", [self.fallback_key])
+        self.proxy.handle(b"\x0b")
+        self.assertEqual(self.proxy.handle(self.sign(b"unknown")), b"\x05")
+        for command in (17, 18, 19, 22, 23, 25):
+            self.assertEqual(self.proxy.handle(bytes([command])), b"\x05")
+        self.assertEqual(self.proxy.handle(b"\x1b" + desktop_ssh.ssh_string(b"unknown")), b"\x1c")
+        with self.assertRaises(ValueError):
+            self.proxy.handle(b"\x0d" + struct.pack(">I", 100) + b"short")
+        with self.assertRaises(ValueError):
+            self.proxy.handle(self.sign(b"unknown") + b"trailing")
+        one, two = socket.socketpair()
+        self.addCleanup(one.close)
+        self.addCleanup(two.close)
+        one.sendall(struct.pack(">I", desktop_ssh.MAX_FRAME + 1))
+        with self.assertRaises(ValueError):
+            desktop_ssh.receive(two)
+
+    def test_primary_caches_key_but_invalidates_rotated_metadata(self):
+        self.config["key_file"] = str(self.root / "missing")
+        agent = desktop_ssh.Primary(self.config)
+        blob = desktop_ssh.identity_blob(self.primary_key.public_key())
+        with patch.object(agent, "load", return_value=self.primary_key) as load:
+            self.verify_signature(self.primary_key, agent.handle(self.sign(blob)))
+            self.verify_signature(self.primary_key, agent.handle(self.sign(blob)))
+            self.assertEqual(load.call_count, 1)
+            Path(self.config["key_file"]).write_bytes(b"replacement-protected-key")
+            Path(self.config["key_file"]).chmod(0o600)
+            self.verify_signature(self.primary_key, agent.handle(self.sign(blob)))
+            self.assertEqual(load.call_count, 2)
+            self.assertEqual(agent.handle(self.sign(blob, flags=2)), b"\x05")
+            self.public.write_bytes(desktop_ssh.public_bytes(self.fallback_key.public_key()))
+            self.assertEqual(agent.handle(self.sign(blob)), b"\x05")
+            self.assertIsNone(agent.key)
+
+    def test_transport_options_stop_at_remote_operands(self):
+        self.assertEqual(list(desktop_ssh.command_options(
+            ["-vv", "-lroot", "-o", "IdentityAgent=none", "host", "-oIdentityAgent=evil"],
+            "lo")), [("v", ""), ("v", ""), ("l", "root"), ("o", "IdentityAgent=none")])
+        self.assertEqual(list(desktop_ssh.command_options(["source", "-Sother"], "S")), [])
 
 
 if __name__ == "__main__":

@@ -17,7 +17,14 @@ pkgs.stdenvNoCC.mkDerivation {
     runHook preInstall
     install -Dm755 "$src" "$out/bin/desktop-ssh"
     substituteInPlace "$out/bin/desktop-ssh" \
-      --replace-fail '#!/usr/bin/env python3' '#!${python}/bin/python3'
+      --replace-fail '#!/usr/bin/env python3' '#!${python}/bin/python3' \
+      --replace-fail '@REAL_SSH@' '${pkgs.openssh}/bin/ssh' \
+      --replace-fail '@REAL_SCP@' '${pkgs.openssh}/bin/scp' \
+      --replace-fail '@REAL_SFTP@' '${pkgs.openssh}/bin/sftp' \
+      --replace-fail '@SYSTEMCTL@' '${pkgs.systemd}/bin/systemctl'
+    for tool in ssh scp sftp; do
+      ln -s desktop-ssh "$out/bin/$tool"
+    done
     runHook postInstall
   '';
 }
