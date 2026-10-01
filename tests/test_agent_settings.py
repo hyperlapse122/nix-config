@@ -850,7 +850,7 @@ class TomlTests(unittest.TestCase):
     def test_does_not_mutate_the_read_document(self):
         current = tomlkit.parse(TOML_EXISTING)
         assign, retire, paths, owned = merger.declaration(self.declared, fmt='toml')
-        merger.apply(current, assign, retire, paths, owned, fmt='toml')
+        merger.apply(current, assign, retire, paths, owned)
         self.assertEqual(tomlkit.dumps(current), TOML_EXISTING)
 
     def test_process_merges_toml(self):

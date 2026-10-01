@@ -104,8 +104,12 @@ def link_version(base, segment, source, dry_run):
     return destination
 
 
-def listing(harness, argv, what):
-    """The entries of one of the agent's JSON listings."""
+def listing(harness, argv, what, key):
+    """The entries of one of the agent's JSON listings.
+
+    `key` names the field an agent that wraps its listings in an object keeps
+    the entries under.
+    """
     code, output = run([harness.cli] + argv, False)
     if code != 0:
         raise Failure('{} failed: {}'.format(what, output or 'no output'))
@@ -113,26 +117,34 @@ def listing(harness, argv, what):
         parsed = json.loads(output)
     except ValueError as exc:
         raise Failure('{} did not return JSON: {}'.format(what, exc))
-    return harness.entries(parsed, what)
+    return harness.entries(parsed, what, key)
 
 
 def registrations(harness, dry_run):
     if dry_run:
         return []
-    return listing(harness, ['plugin', 'marketplace', 'list', '--json'], 'marketplace list')
+    return listing(harness, ['plugin', 'marketplace', 'list', '--json'], 'marketplace list',
+                   'marketplaces')
 
 
 def installed(harness):
-    return listing(harness, ['plugin', 'list', '--json'], 'plugin list')
+    return listing(harness, ['plugin', 'list', '--json'], 'plugin list', 'installed')
 
 
-class Claude:
-    marketplace_manifest = '.claude-plugin/marketplace.json'
-    plugin_manifest = '.claude-plugin/plugin.json'
-    plugin_key = 'id'
+class Harness:
+    """What every agent adapter shares: its CLI and the marketplace removal."""
 
     def __init__(self, cli):
         self.cli = cli
+
+    def remove_marketplace(self, name, dry_run):
+        require([self.cli, 'plugin', 'marketplace', 'remove', name], dry_run, 'marketplace remove')
+
+
+class Claude(Harness):
+    marketplace_manifest = '.claude-plugin/marketplace.json'
+    plugin_manifest = '.claude-plugin/plugin.json'
+    plugin_key = 'id'
 
     @staticmethod
     def recorded_source(entry):
@@ -143,7 +155,7 @@ class Claude:
                 return str(value)
         return ''
 
-    def entries(self, parsed, what):
+    def entries(self, parsed, what, key):
         return parsed if isinstance(parsed, list) else []
 
     def add_marketplace(self, path, dry_run):
@@ -152,9 +164,6 @@ class Claude:
             dry_run,
             'marketplace add',
         )
-
-    def remove_marketplace(self, name, dry_run):
-        require([self.cli, 'plugin', 'marketplace', 'remove', name], dry_run, 'marketplace remove')
 
     def remove_plugin(self, plugin_id, dry_run):
         require(
@@ -185,20 +194,15 @@ class Claude:
         if code != 0 and ALREADY_ENABLED not in output.lower():
             raise Failure('plugin enable failed: {}'.format(output or 'no output'))
 
-    def restore(self, previous, plugin_id):
+    def restore(self, previous, plugin_id, marketplace):
         # Only the marketplace: install and enable run again on every activation.
         self.add_marketplace(previous, False)
 
 
-class Codex:
+class Codex(Harness):
     marketplace_manifest = '.agents/plugins/marketplace.json'
     plugin_manifest = '.codex-plugin/plugin.json'
     plugin_key = 'pluginId'
-    # Codex wraps each listing in an object, keyed by what it lists.
-    listing_keys = {'marketplace list': 'marketplaces', 'plugin list': 'installed'}
-
-    def __init__(self, cli):
-        self.cli = cli
 
     @staticmethod
     def recorded_source(entry):
@@ -207,10 +211,10 @@ class Codex:
             return str(source.get('source') or '')
         return str(entry.get('root') or '')
 
-    def entries(self, parsed, what):
-        # The JSON shapes are not a stable contract. Reading an unexpected one as
-        # empty would re-add the plugin on every run, so it stops the run instead.
-        key = self.listing_keys[what]
+    def entries(self, parsed, what, key):
+        # Codex wraps each listing in an object, keyed by what it lists. The JSON
+        # shapes are not a stable contract. Reading an unexpected one as empty
+        # would re-add the plugin on every run, so it stops the run instead.
         value = parsed.get(key) if isinstance(parsed, dict) else None
         if not isinstance(value, list):
             raise Failure('{} returned an unexpected shape; expected an object with a '
@@ -220,9 +224,6 @@ class Codex:
     def add_marketplace(self, path, dry_run):
         require([self.cli, 'plugin', 'marketplace', 'add', path, '--json'], dry_run,
                 'marketplace add')
-
-    def remove_marketplace(self, name, dry_run):
-        require([self.cli, 'plugin', 'marketplace', 'remove', name], dry_run, 'marketplace remove')
 
     def add_plugin(self, plugin_id, dry_run):
         require([self.cli, 'plugin', 'add', plugin_id, '--json'], dry_run, 'plugin add')
@@ -242,8 +243,20 @@ class Codex:
         if dry_run or find(installed(self), plugin_id, key=self.plugin_key) is None:
             self.add_plugin(plugin_id, dry_run)
 
-    def restore(self, previous, plugin_id):
-        self.add_marketplace(previous, False)
+    def restore(self, previous, plugin_id, marketplace):
+        # A plugin still installed came from the new version, so it is removed
+        # and added again from the previous marketplace. Codex refuses to add
+        # a name already registered from another source, so a half-registered
+        # new marketplace is removed first; one still at the previous source
+        # is kept.
+        if find(installed(self), plugin_id, key=self.plugin_key) is not None:
+            self.remove_plugin(plugin_id, False)
+        entry = find(registrations(self, False), marketplace)
+        if entry is not None and self.recorded_source(entry) != previous:
+            self.remove_marketplace(marketplace, False)
+            entry = None
+        if entry is None:
+            self.add_marketplace(previous, False)
         self.add_plugin(plugin_id, False)
 
 
@@ -367,9 +380,10 @@ def main(argv=None):
             # deterministic prologue keeps `enable`'s already-enabled message the
             # only tolerated non-zero outcome.
             if existing is not None:
-                recorded = harness.recorded_source(existing)
+                # Recorded before unregistering, so a failure partway through
+                # still restores what was there.
+                previous = harness.recorded_source(existing)
                 harness.unregister(args.marketplace, plugin_id, args.dry_run)
-                previous = recorded
             harness.add_marketplace(str(destination), args.dry_run)
 
         harness.ensure_plugin(plugin_id, args.dry_run)
@@ -412,7 +426,7 @@ def main(argv=None):
             # Put the agent back where it was so a failed bump leaves a working
             # plugin rather than no registration at all.
             try:
-                harness.restore(previous, plugin_id)
+                harness.restore(previous, plugin_id, args.marketplace)
             except Failure as restore_exc:
                 print(
                     'agent-plugin-sync: could not restore the previous marketplace '

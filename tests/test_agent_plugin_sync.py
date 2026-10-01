@@ -99,6 +99,8 @@ sys.exit(0)
 FAKE_CODEX_CLI = '''import json, os, sys
 state = os.environ['FAKE_STATE']
 fail_on = os.environ.get('FAKE_FAIL_ON', '')
+# Fails only the first matching call, so a retry inside the restore succeeds.
+fail_once = os.environ.get('FAKE_FAIL_ONCE', '')
 sticky = os.environ.get('FAKE_STICKY_SOURCE', '')
 list_shaped = os.environ.get('FAKE_LIST_SHAPED', '')
 
@@ -123,6 +125,12 @@ if fail_on and joined.startswith(fail_on):
     print('fake failure for ' + fail_on, file=sys.stderr)
     sys.exit(3)
 
+if fail_once and joined.startswith(fail_once) and not data.get('failed_once'):
+    data['failed_once'] = True
+    save()
+    print('fake failure for ' + fail_once, file=sys.stderr)
+    sys.exit(3)
+
 if argv[:3] == ['plugin', 'marketplace', 'list']:
     if list_shaped == 'markets':
         reply(data['markets'])
@@ -143,6 +151,13 @@ if argv[:3] == ['plugin', 'marketplace', 'add']:
         root = sticky
         data['sticky_used'] = True
     name = 'compound-engineering-plugin'
+    # Codex 0.159.3 refuses a name already registered from another source.
+    for market in data['markets']:
+        if market['name'] == name and market['root'] != root:
+            print("Error: marketplace '{}' is already added from a different source; "
+                  'remove it before adding this source'.format(name), file=sys.stderr)
+            save()
+            sys.exit(1)
     data['markets'] = [m for m in data['markets'] if m['name'] != name]
     data['markets'].append({
         'name': name,
@@ -612,6 +627,39 @@ class CodexSyncTestCase(CodexCase):
         self.assertEqual([m['root'] for m in state['markets']], [previous])
         self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
 
+    def test_failed_marketplace_remove_on_bump_restores_the_plugin(self):
+        self.converge()
+        previous = os.path.realpath(self.base / 'v3.28.0')
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source,
+            env={'FAKE_FAIL_ON': 'plugin marketplace remove'},
+        )
+        self.assertEqual(result.returncode, 1)
+
+        # The plugin was removed before the marketplace removal failed, so the
+        # restore brings it back on the marketplace that is still registered.
+        state = self.read_state()
+        self.assertEqual([m['root'] for m in state['markets']], [previous])
+        self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
+
+    def test_failed_plugin_add_on_bump_restores_the_previous_version(self):
+        self.converge()
+        previous = os.path.realpath(self.base / 'v3.28.0')
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source, env={'FAKE_FAIL_ONCE': 'plugin add'}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn('could not restore', result.stderr)
+
+        # The new marketplace was already registered under the same name, which
+        # Codex refuses to add over, so the restore removes it first.
+        state = self.read_state()
+        self.assertEqual([m['root'] for m in state['markets']], [previous])
+        self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
     def test_list_shaped_marketplace_listing_is_refused(self):
         self.converge()
         result = self.run_sync(env={'FAKE_LIST_SHAPED': 'markets'})
@@ -645,6 +693,19 @@ CODEX_RETIRED_MARKET = {
     'root': '/old',
     'marketplaceSource': {'sourceType': 'local', 'source': '/old'},
 }
+
+
+class CodexRecordedSourceTestCase(unittest.TestCase):
+    def test_root_is_the_recorded_source(self):
+        entry = {'root': '/store/a', 'marketplaceSource': {'source': '/store/b'}}
+        self.assertEqual(sync.Codex.recorded_source(entry), '/store/a')
+
+    def test_falls_back_to_the_marketplace_source(self):
+        entry = {'root': '', 'marketplaceSource': {'source': '/store/b'}}
+        self.assertEqual(sync.Codex.recorded_source(entry), '/store/b')
+
+    def test_an_entry_with_neither_records_nothing(self):
+        self.assertEqual(sync.Codex.recorded_source({}), '')
 
 
 class CodexRetireTestCase(CodexCase):

@@ -134,6 +134,10 @@
           # absent inside the builder rather than aborting evaluation.
           userPackagesOf = entry: entry.user.home.packages or [ ];
 
+          # The user package with this pname, or null when none is installed.
+          userPackageOf =
+            pname: entry: pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+
           # Every store-path interpolation stays inside an optionalString guard so
           # that removing the package fails inside the builder with the message
           # below, rather than aborting evaluation with a null coercion error.
@@ -145,7 +149,7 @@
             }:
             entry:
             let
-              package = pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+              package = userPackageOf pname entry;
             in
             ''
               ${pkgs.lib.optionalString (package == null) ''
@@ -198,8 +202,9 @@
           codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           agent-settings =
             let
-              inherit (import ./packages/agent-tools.nix { inherit pkgs; }) agentSettingsPython;
-              packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
+              tools = import ./packages/agent-tools.nix { inherit pkgs; };
+              inherit (tools) agentSettingsPython;
+              packaged = tools.agentSettings;
             in
             pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ agentSettingsPython ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
@@ -814,7 +819,7 @@
                 let
                   service = entry.user.systemd.user.services.orca-settings-reconcile or null;
                   activation = entry.user.home.activation.orcaSettings or null;
-                  package = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null (userPackagesOf entry);
+                  package = userPackageOf "orca-ide" entry;
                   dockerHost = entry.user.home.sessionVariables.DOCKER_HOST or "";
                   fakeRuntimeDir = "/run/user/4242";
                 in
@@ -895,11 +900,13 @@
               # No version-pin comparison: the package reads its version from the
               # pin file, so that assertion could only ever hold. The wrapper is
               # read for an ozone flag because upstream marks Wayland
-              # experimental; the app must stay on its X11 default (R6).
+              # experimental; the app must stay on its X11 default. The
+              # bundled static binaries are run, because a patched one still
+              # exists and is executable.
               assertConfiguration =
                 entry:
                 let
-                  chatgptPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "chatgpt") null (userPackagesOf entry);
+                  chatgptPkg = userPackageOf "chatgpt" entry;
                 in
                 ''
                   ${assertUserPackage {
@@ -912,6 +919,21 @@
                       echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
                       fail=1
                     fi
+                    # The bundled Codex sandboxes with bwrap, which NixOS has nowhere
+                    # else on PATH.
+                    if ! grep -qF -- '-bubblewrap-' ${chatgptPkg}/bin/chatgpt; then
+                      echo 'the chatgpt wrapper on ${entry.name} puts no bubblewrap on PATH' >&2
+                      fail=1
+                    fi
+                    # Run, not just inspect: autoPatchelf adding a runpath to these
+                    # static-pie binaries leaves them segfaulting while every file
+                    # still exists.
+                    for binary in codex rg; do
+                      if ! HOME="$TMPDIR" ${chatgptPkg}/lib/chatgpt/resources/$binary --version > /dev/null 2>&1; then
+                        echo "the bundled $binary in chatgpt on ${entry.name} does not run" >&2
+                        fail=1
+                      fi
+                    done
                   ''}
                 '';
             in
@@ -935,9 +957,7 @@
               assertConfiguration =
                 entry:
                 let
-                  claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-code") null (
-                    userPackagesOf entry
-                  );
+                  claudePkg = userPackageOf "claude-code" entry;
                   versionMismatch =
                     pkgs.lib.optionalString (claudePkg != null && claudePkg.version != pinnedVersion)
                       ''
@@ -976,7 +996,7 @@
               assertConfiguration =
                 entry:
                 let
-                  codexPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "codex") null (userPackagesOf entry);
+                  codexPkg = userPackageOf "codex" entry;
                   versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
                     echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
                     fail=1

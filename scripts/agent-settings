@@ -54,6 +54,9 @@ import tomlkit
 # needs told about rather than one worth spinning on.
 ATTEMPTS = 3
 
+# Syntaxes the settings file may be in. The declaration is always JSON.
+FORMATS = ('json', 'toml')
+
 
 def check_directory(path):
     """Refuse a symlinked parent without touching anything.
@@ -171,18 +174,17 @@ def nested_paths(entries, assign, retire, declared):
     return paths
 
 
-def apply(current, assign, retire, paths, owned=None, fmt='json'):
+def apply(current, assign, retire, paths, owned=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
-    Each object along a path is copied before it is changed.  The caller skips
-    the write when the result equals what it read, and editing the read
-    objects in place would make that comparison true every time.
-
-    A TOML document is deep-copied whole and edited in place instead: copying
-    a tomlkit table into a plain dict drops its comments and layout.
+    The whole document is deep-copied and the copy edited in place.  The
+    caller skips the write when the result equals what it read, and editing
+    the read objects would make that comparison true every time.  Editing in
+    place, rather than rebuilding each table as a plain dict, keeps a tomlkit
+    document's comments and layout; a plain dict assigned into it becomes a
+    table.
     """
-    toml = fmt == 'toml'
-    merged = copy.deepcopy(current) if toml else dict(current)
+    merged = copy.deepcopy(current)
     merged.update(assign)
     # A copy, so a later edit to the result never reaches the declaration.
     merged.update(copy.deepcopy(owned or {}))
@@ -192,14 +194,12 @@ def apply(current, assign, retire, paths, owned=None, fmt='json'):
         node = merged
         for depth, key in enumerate(path[:-1]):
             if key not in node:
-                node[key] = tomlkit.table() if toml else {}
+                node[key] = {}
             elif not isinstance(node[key], dict):
                 # Replacing it would discard whatever the owner stored there,
                 # so refuse and let the rebuild report it.
                 raise ValueError('{} is not an object, so {} cannot be set'.format(
                     describe(path[:depth + 1]), describe(path)))
-            elif not toml:
-                node[key] = dict(node[key])
             node = node[key]
         node[path[-1]] = value
     return merged
@@ -301,12 +301,12 @@ def merge(settings, declared, fmt='json'):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read(settings), assign, retire, paths, owned, fmt)
+    apply(read(settings), assign, retire, paths, owned)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read(settings)
-        merged = apply(current, assign, retire, paths, owned, fmt)
+        merged = apply(current, assign, retire, paths, owned)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)
@@ -325,7 +325,7 @@ def main(argv=None):
     parser.add_argument('--settings', required=True, type=Path)
     parser.add_argument('--declared', required=True, type=Path)
     parser.add_argument('--label', default='Agent', help='agent name used in failure messages')
-    parser.add_argument('--format', default='json', choices=['json', 'toml'], dest='fmt',
+    parser.add_argument('--format', default='json', choices=FORMATS, dest='fmt',
                         help='syntax of the settings file; the declaration is always JSON')
     args = parser.parse_args(argv)
     if os.geteuid() == 0:

@@ -83,11 +83,12 @@ let
           found = lib.lists.findFirst (p: (p.pname or "") == pname) null (userConfig.home.packages or [ ]);
         in
         if found == null then "" else "${found}/bin/${executable}";
+      claudeCli = packagePath "claude-code" "claude";
       harnessChecks = [
         {
           name = "claude";
           pname = "claude-code";
-          expectedCli = packagePath "claude-code" "claude";
+          expectedCli = claudeCli;
         }
         {
           name = "codex";
@@ -244,6 +245,18 @@ let
         fi
         if grep -vF -- '--retire' <<< "$retiredBlocks" | grep -q .; then
           echo 'the agentPlugins activation script still syncs the retired ${retiredName} on ${hostName}' >&2
+          failed=1
+        fi
+        # orca-orchestration was a Claude Code plugin: retiring it against any
+        # other agent would leave it registered, its hooks still firing.
+        retiredHarnessArg=$(argValue "$retiredBlocks" harness)
+        if [ "$retiredHarnessArg" != claude ]; then
+          echo "the ${retiredName} retirement must run against claude on ${hostName}, got: '$retiredHarnessArg'" >&2
+          failed=1
+        fi
+        retiredCliArg=$(argValue "$retiredBlocks" cli)
+        if [ -z ${esc claudeCli} ] || [ "$retiredCliArg" != ${esc claudeCli} ]; then
+          echo "the ${retiredName} retirement must use the claude-code package's CLI on ${hostName}, got: '$retiredCliArg'" >&2
           failed=1
         fi
         retiredBaseArg=$(argValue "$retiredBlocks" base)

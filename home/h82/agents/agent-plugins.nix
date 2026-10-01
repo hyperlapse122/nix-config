@@ -93,6 +93,22 @@ let
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
 
+  # Every harness row of a source shares one version-keyed link under
+  # baseDir. Rows with different exclusions would each re-point it at their
+  # own pruned tree, and Claude Code, which records the link path, would read
+  # whichever ran last. Differing exclusions stop evaluation until the base
+  # is split per harness.
+  divergentExclusions = lib.filter (
+    name:
+    lib.length (
+      lib.unique (
+        map (row: sources.${name}.exclude.${row.harness} or [ ]) (
+          lib.filter (row: row.name == name) checkedMembership
+        )
+      )
+    ) > 1
+  ) (lib.attrNames sources);
+
   # A source's segment is its tag without the train prefix, the same version
   # the materialized path is keyed by.
   segmentOf = spec: lib.removePrefix spec.tagPrefix spec.tag;
@@ -175,10 +191,15 @@ let
     fi
   '';
 
-  syncScript = lib.concatStringsSep "\n" (
-    map (row: withDryRun (syncInvocation row)) checkedMembership
-    ++ map (row: withDryRun (retireInvocation row)) retired
-  );
+  syncScript =
+    lib.throwIf (divergentExclusions != [ ])
+      "agent-plugins: harnesses of ${lib.concatStringsSep ", " divergentExclusions} exclude different paths but share one link"
+      (
+        lib.concatStringsSep "\n" (
+          map (row: withDryRun (syncInvocation row)) checkedMembership
+          ++ map (row: withDryRun (retireInvocation row)) retired
+        )
+      );
 in
 {
   # Exposed so tests/agent-plugins.nix can compare the recorded expectation

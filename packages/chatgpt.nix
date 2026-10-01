@@ -1,6 +1,7 @@
 { pkgs }:
 
 let
+  inherit (pkgs) lib;
   source = builtins.fromJSON (builtins.readFile ./chatgpt-version.json);
 in
 pkgs.stdenv.mkDerivation {
@@ -16,6 +17,7 @@ pkgs.stdenv.mkDerivation {
     pkgs.dpkg
     pkgs.autoPatchelfHook
     pkgs.makeWrapper
+    pkgs.file
   ];
 
   buildInputs = [
@@ -58,7 +60,7 @@ pkgs.stdenv.mkDerivation {
     pkgs.libxshmfence
   ];
 
-  appendRunpaths = pkgs.lib.makeLibraryPath [
+  appendRunpaths = lib.makeLibraryPath [
     pkgs.libGL
     pkgs.libpulseaudio
   ];
@@ -85,25 +87,56 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p $out/{bin,share,lib}
     cp -r usr/share/* $out/share/
-    cp -r usr/lib/chatgpt $out/lib/
-
     # Native module prebuilds ship for every platform; keep only glibc x86_64.
-    find $out/lib/chatgpt -type d -path '*/prebuilds/*' -prune ! -name '*linux-x64' -exec rm -rf {} +
-    find $out/lib/chatgpt -path '*/prebuilds/*' -name '*musl*' -exec rm -rf {} +
+    # Pruned in the unpacked tree, which is then moved rather than copied.
+    find usr/lib/chatgpt -type d -path '*/prebuilds/*' -prune ! -name '*linux-x64' -exec rm -rf {} +
+    find usr/lib/chatgpt -path '*/prebuilds/*' -name '*musl*' -exec rm -rf {} +
 
-    # Upstream's display backend is kept: no ozone flags (R6).
+    # autoPatchelf skips only ET_EXEC static binaries. The bundled Codex, rg,
+    # and code-mode host are static-pie (ET_DYN with no interpreter), so it
+    # would add the runpath below and leave them segfaulting. Set every
+    # static-pie file aside here and put it back after autoPatchelf in
+    # postFixup; a static binary a later release adds is covered too.
+    (cd usr/lib/chatgpt && find . -type f -print0 | while IFS= read -r -d "" file; do
+      if file -b "$file" | grep -q 'static-pie linked'; then
+        install -Dm755 "$file" "$TMPDIR/static-pie/$file"
+      fi
+    done)
+    mv usr/lib/chatgpt $out/lib/
+
+    # No ozone flags: upstream marks native Wayland experimental, so the app
+    # keeps its X11 default. bubblewrap and ripgrep are what the bundled Codex
+    # sandboxes and searches with, as in packages/codex.nix; the .deb ships
+    # no bwrap of its own and NixOS has none on PATH.
     makeWrapper $out/lib/chatgpt/ChatGPT $out/bin/chatgpt \
       --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
       --prefix XDG_DATA_DIRS : "${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}" \
-      --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.xdg-utils ]}"
+      --suffix PATH : "${
+        lib.makeBinPath [
+          pkgs.xdg-utils
+          pkgs.bubblewrap
+          pkgs.ripgrep
+        ]
+      }"
 
     runHook postInstall
   '';
 
-  meta = with pkgs.lib; {
+  # postFixup runs before the postFixupHooks array the hook registers itself
+  # in, so restoring there would precede the patching. The hook is disabled
+  # and run here instead, ahead of the restore.
+  dontAutoPatchelf = true;
+  postFixup = ''
+    autoPatchelf -- "$out"
+    (cd "$TMPDIR/static-pie" && find . -type f -print0 | while IFS= read -r -d "" file; do
+      install -Dm755 "$file" "$out/lib/chatgpt/$file"
+    done)
+  '';
+
+  meta = {
     description = "ChatGPT for Linux";
     homepage = "https://chatgpt.com";
-    license = licenses.unfree;
+    license = lib.licenses.unfree;
     platforms = [ "x86_64-linux" ];
     mainProgram = "chatgpt";
   };
