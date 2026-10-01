@@ -28,14 +28,17 @@ creation_rules:
     age: <comma-separated recipients of every host that shares this file>
   - path_regex: secrets/tailscale\.yaml$
     age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/hosts/<host>/ssh\.yaml$
+    age: <that one non-NixOS host's recipient>
 ```
 
 Only a host whose recipient appears in a file's rule can decrypt it.
-`secrets/tokens.yaml`, `secrets/wifi.yaml`, and `secrets/tailscale.yaml`
-currently list every host's recipient, so any host can decrypt any of them.
-Adding a new host's bootstrap material does not by itself give it access to
-an existing file: add its recipient to the file's rule and re-encrypt the
-file with `sops updatekeys`, or split the rule per host.
+`secrets/tokens.yaml` lists every host's recipient.  `secrets/wifi.yaml` and
+`secrets/tailscale.yaml` list only the NixOS hosts' recipients; the
+`linux-host-secrets` check fails when a non-NixOS host's recipient appears in
+either rule.  Adding a new host's bootstrap material does not by itself give
+it access to an existing file: add its recipient to the file's rule and
+re-encrypt the file with `sops updatekeys`, or split the rule per host.
 
 The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
 of string fields (the service usernames are public configuration and are not
@@ -54,6 +57,10 @@ keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
 
+A non-NixOS host has no `my.cliAuth` options. Its production apply always
+decrypts `github_token`, `gitlab_token`, `jpi_token`, and `tokscale_token`,
+and stops when any of them is missing. It never decrypts `docker_token`.
+
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
 
@@ -68,6 +75,24 @@ wifi:
     ssid: <network SSID>
     psk: <network passphrase>
 ```
+
+Each non-NixOS host has its own encrypted SSH key document,
+`secrets/hosts/<host>/ssh.yaml`.  It holds one key, `ssh_private_key`, whose
+value is the OpenSSH private key as a YAML block scalar:
+
+```yaml
+ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  <key lines>
+  -----END OPENSSH PRIVATE KEY-----
+```
+
+Its `.sops.yaml` rule lists that host's recipient and no other, so a leaked
+host exposes only its own key.  The `linux-host-secrets` check reads the
+recipients from the encrypted file itself and fails when it lists any other.
+Production activation publishes the key at `~/.ssh/id_ed25519_nix_config`
+with mode 0600.  [Adding a host](../docs/adding-a-host.md#create-the-host-ssh-key-file)
+shows how to generate and encrypt it.
 
 Keep each encrypted document at its path above; do not pass SSID, PSK, or
 token values as command arguments or print decrypted output when populating
@@ -104,3 +129,25 @@ atomically replaces `/var/lib/sops-nix/key.txt` (root:root, mode 0600). The
 temporary plaintext exists only briefly on the encrypted runtime filesystem;
 it is never put in the Nix store, argv, or logs. The recipient is public, so
 passing it as an argument is safe; the age identity itself remains on stdin.
+
+A non-NixOS host keeps its identity in the user's home instead.  Run the
+helper in user mode, which requires `--host` because the distribution owns
+the hostname:
+
+```sh
+./scripts/recover-age-identity --user --host <host>
+```
+
+It pipes the decrypted identity to `install-user-age-identity`, which the
+bootstrap output puts on `PATH`, instead of crossing sudo.  The installer
+checks the same public recipient, then atomically replaces
+`~/.config/nix-config/age/key.txt`, owned by the user with mode 0600, in a
+0700 directory.  Production applies decrypt with that file and need no card.
+Its protection rests on the distribution's disk encryption.
+
+When a non-NixOS host is lost, compromised, or retired, follow
+[compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
+Removing its recipient without rotating every token in `secrets/tokens.yaml`
+revokes nothing, because git history keeps the old ciphertext.  Remove the
+recipient and rotate the file's data key before writing the new tokens, or
+the new values are still encrypted to the removed host.

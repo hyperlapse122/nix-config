@@ -1,7 +1,10 @@
 {
+  config,
   pkgs,
   lib,
-  osConfig,
+  # The system's programs._1password-gui.package, passed in by mkHost:
+  # pkgs._1password-gui is a different derivation that ships no polkit policy.
+  onePasswordGui,
   ...
 }:
 
@@ -15,12 +18,8 @@ let
     Restart=on-failure
     RestartSec=5s
   '';
-
-  # programs._1password-gui.package carries apply = pkg.override { polkitPolicyOwners },
-  # so pkgs._1password-gui is a different derivation that ships no polkit policy.
-  onePassword = osConfig.programs._1password-gui.package;
 in
-lib.mkIf (!osConfig.my.bootstrap) {
+lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite
   # these paths from their own "start at login" settings, and a backup extension
   # only clears the first collision.
@@ -30,7 +29,7 @@ lib.mkIf (!osConfig.my.bootstrap) {
       [Desktop Entry]
       Type=Application
       Name=1Password
-      Exec=${onePassword}/bin/1password --silent
+      Exec=${onePasswordGui}/bin/1password --silent
       Hidden=false
       NoDisplay=true
       X-KDE-autostart-phase=2

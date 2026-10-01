@@ -1,9 +1,5 @@
 { config, lib, ... }:
 {
-  options.my.thunderbolt = {
-    enable = lib.mkEnableOption "Thunderbolt device authorization through bolt";
-  };
-
   # The ThinkPad's Thunderbolt domain runs at security level `user`, so the
   # kernel keeps a new device such as the Apple Studio Display unauthorized --
   # its camera, speakers, and microphones stay unusable -- until bolt authorizes

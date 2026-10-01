@@ -43,10 +43,6 @@ let
   withheld = greeterReachable ++ credentialMutating;
 in
 {
-  options.my.fingerprint = {
-    enable = lib.mkEnableOption "fingerprint authentication for the lock screen, polkit and sudo";
-  };
-
   # The bootstrap output carries no enrolled prints and no user secrets, so the
   # factor stays off there even on a host that declares the reader.
   config = lib.mkIf (cfg.enable && !(config.my.bootstrap or false)) {

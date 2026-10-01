@@ -8,7 +8,6 @@ let
 in
 {
   options.my.keyd = {
-    enable = lib.mkEnableOption "the keyd remap of the internal keyboard";
     ids = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "0001:0001" ];

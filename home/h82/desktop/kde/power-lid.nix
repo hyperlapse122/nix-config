@@ -1,14 +1,14 @@
 {
+  config,
   pkgs,
   lib,
-  osConfig,
   ...
 }:
 
 let
   kwrite = "${pkgs.kdePackages.kconfig}/bin/kwriteconfig6";
 in
-lib.mkIf osConfig.my.laptop.enable {
+lib.mkIf config.my.laptop.enable {
   # Powerdevil -- not systemd-logind -- decides lid-switch behavior while a
   # Plasma session is running: it takes an unconditional block-mode
   # systemd-logind inhibitor over handle-lid-switch the moment its D-Bus

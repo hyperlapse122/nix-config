@@ -3,6 +3,9 @@
 let
   inherit (pkgs) lib;
   source = builtins.fromJSON (builtins.readFile ./mise-release.json);
+  system = pkgs.stdenv.hostPlatform.system;
+  asset =
+    source.systems.${system} or (throw "packages/mise-release.json pins no mise asset for ${system}");
 in
 pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "mise";
@@ -10,8 +13,8 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
 
   # The musl build is statically linked, so it runs on NixOS unpatched.
   src = pkgs.fetchurl {
-    url = "https://github.com/jdx/mise/releases/download/v${finalAttrs.version}/mise-v${finalAttrs.version}-linux-x64-musl.tar.gz";
-    inherit (source) hash;
+    url = "https://github.com/jdx/mise/releases/download/v${finalAttrs.version}/mise-v${finalAttrs.version}-${asset.asset}.tar.gz";
+    inherit (asset) hash;
   };
 
   nativeBuildInputs = [
@@ -48,7 +51,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     homepage = "https://mise.jdx.dev";
     license = lib.licenses.mit;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
-    platforms = [ "x86_64-linux" ];
+    platforms = builtins.attrNames source.systems;
     mainProgram = "mise";
   };
 })

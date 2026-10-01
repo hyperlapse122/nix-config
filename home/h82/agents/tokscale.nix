@@ -1,6 +1,5 @@
 {
   config,
-  osConfig,
   pkgs,
   lib,
   ...
@@ -13,10 +12,17 @@ let
   # The wrapper reads /run/secrets/cli-auth/tokscale_token at run time. Hosts
   # that do not opt in through my.cliAuth.enableTokscaleToken, bootstrap
   # included, have no such file and run Tokscale unauthenticated.
-  wrapper = import ../../../packages/tokscale.nix {
-    inherit pkgs;
-    inherit (osConfig.networking) hostName;
-  };
+  wrapper = import ../../../packages/tokscale.nix (
+    {
+      inherit pkgs;
+      inherit (config.my) hostName;
+    }
+    # A non-NixOS host keeps its decrypted tokens in the user's state
+    # directory instead (home/h82/security/non-nixos-secrets.nix).
+    // lib.optionalAttrs (config.my.kind == "linux") {
+      tokenFile = "${config.my.secrets.stateDir}/tokscale_token";
+    }
+  );
 
   # Tokscale owns ~/.config/tokscale/settings.json and rewrites it from its TUI,
   # so activation assigns these keys and leaves every other key, including

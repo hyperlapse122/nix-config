@@ -2,11 +2,12 @@
 """Resolve the newest upstream mise release from its published SHASUMS256.txt.
 
 Fetches the SHASUMS256.txt asset of jdx/mise's latest GitHub release, reads
-the version and checksum of the static linux-x64-musl tarball from it, and
-writes or checks the pin file packages/mise.nix consumes. Refuses to write a
-pin for a release missing that tarball, or a version that is not strictly
-newer than the one already pinned, so neither an incomplete release nor a
-downgrade ever reaches the pin file.
+the version and the checksums of the static linux-x64-musl and
+linux-arm64-musl tarballs from it, and writes or checks the pin file
+packages/mise.nix consumes. Refuses to write a pin for a release missing
+either tarball, or a version that is not strictly newer than the one already
+pinned, so neither an incomplete release nor a downgrade ever reaches the pin
+file.
 """
 
 import argparse
@@ -24,9 +25,12 @@ import sys
 DEFAULT_SOURCE_URL = "https://github.com/jdx/mise/releases/latest/download/SHASUMS256.txt"
 DEFAULT_FETCH = "curl -sfL"
 
-# This flake builds only for x86_64-linux. The musl build is statically
-# linked, so it runs on NixOS without patching.
-TARGET_ASSET = re.compile(r"^(\S+)\s+\./mise-v(\S+)-linux-x64-musl\.tar\.gz$")
+# The Nix system each pinned asset serves. The musl builds are statically
+# linked, so they run on NixOS without patching.
+TARGET_ASSETS = {
+    "x86_64-linux": "linux-x64-musl",
+    "aarch64-linux": "linux-arm64-musl",
+}
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
 SHA256_HEX_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -61,21 +65,34 @@ def hex_to_sri(sha256_hex):
     return "sha256-" + base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
 
 
-def parse_shasums(content):
-    """Return the pin for the linux-x64-musl tarball listed in SHASUMS256.txt."""
-    matches = [m for m in map(TARGET_ASSET.match, content.splitlines()) if m]
+def parse_asset(content, asset):
+    """Return the version and hex checksum of one tarball listed in SHASUMS256.txt."""
+    pattern = re.compile(rf"^(\S+)\s+\./mise-v(\S+)-{re.escape(asset)}\.tar\.gz$")
+    matches = [m for m in map(pattern.match, content.splitlines()) if m]
     if len(matches) != 1:
         raise Failure(
-            f"SHASUMS256.txt lists {len(matches)} linux-x64-musl.tar.gz entries, "
+            f"SHASUMS256.txt lists {len(matches)} {asset}.tar.gz entries, "
             "expected exactly one; refusing to write an incomplete pin"
         )
     sha256_hex, version = matches[0].groups()
     if not VERSION_PATTERN.match(version):
         raise Failure(f"release version is not a plain version string: {version!r}")
     if not SHA256_HEX_PATTERN.match(sha256_hex):
-        raise Failure(f"invalid sha256 hex string for {version}: {sha256_hex!r}")
-    sha256_hex = sha256_hex.lower()
-    return {"version": version, "sha256": sha256_hex, "hash": hex_to_sri(sha256_hex)}
+        raise Failure(f"invalid sha256 hex string for {asset} {version}: {sha256_hex!r}")
+    return version, sha256_hex.lower()
+
+
+def parse_shasums(content):
+    """Return the pin for every target tarball listed in SHASUMS256.txt."""
+    versions = set()
+    systems = {}
+    for system, asset in TARGET_ASSETS.items():
+        version, sha256_hex = parse_asset(content, asset)
+        versions.add(version)
+        systems[system] = {"asset": asset, "sha256": sha256_hex, "hash": hex_to_sri(sha256_hex)}
+    if len(versions) != 1:
+        raise Failure(f"SHASUMS256.txt lists more than one version: {sorted(versions)}")
+    return {"version": versions.pop(), "systems": systems}
 
 
 def version_tuple(version):

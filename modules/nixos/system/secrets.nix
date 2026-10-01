@@ -6,11 +6,9 @@
 }:
 let
   cfg = config.my.cliAuth;
+  accounts = import ../../shared/cli-accounts.nix;
   available = cfg.sopsFile != null;
-  publisher = pkgs.writeScriptBin "publish-cli-auth" ''
-    #!${pkgs.python3}/bin/python3
-    ${builtins.readFile ../../../scripts/publish-cli-auth}
-  '';
+  publisher = import ../../../packages/publish-cli-auth.nix { inherit pkgs; };
   publishCommand = lib.escapeShellArgs [
     "${pkgs.util-linux}/bin/runuser"
     "-u"
@@ -30,22 +28,13 @@ let
   ];
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    routingTable = {
-      "ghcr.io" = {
-        username = cfg.githubUser;
-        secret = "/run/secrets/cli-auth/github_token";
-      };
-      "registry.gitlab.com" = {
-        username = cfg.gitlabUser;
-        secret = "/run/secrets/cli-auth/gitlab_token";
-      };
-      "registry.jpi.app" = {
-        username = cfg.jpiUser;
-        secret = "/run/secrets/cli-auth/jpi_token";
-      };
-      "docker.io" = {
-        username = cfg.dockerUser;
-        secret = "/run/secrets/cli-auth/docker_token";
+    routingTable = import ../../shared/cli-registries.nix {
+      dir = "/run/secrets/cli-auth";
+      users = {
+        github = cfg.githubUser;
+        gitlab = cfg.gitlabUser;
+        jpi = cfg.jpiUser;
+        docker = cfg.dockerUser;
       };
     };
   };
@@ -66,19 +55,19 @@ in
     };
     githubUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse122";
+      default = accounts.github;
     };
     gitlabUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse";
+      default = accounts.gitlab;
     };
     jpiUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse";
+      default = accounts.jpi;
     };
     dockerUser = lib.mkOption {
       type = lib.types.str;
-      default = "hyperlapse122";
+      default = accounts.docker;
     };
     enableDockerToken = lib.mkOption {
       type = lib.types.bool;

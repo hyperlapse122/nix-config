@@ -32,7 +32,9 @@ let
   };
   bootModule = ../modules/nixos/system/boot.nix;
 
-  hostNames = import ./lib/directories.nix { inherit lib; } ../hosts;
+  # Only NixOS hosts have a disk layout; a non-NixOS host's distribution owns
+  # its disks.
+  hostNames = (import ../lib/hosts.nix { inherit lib; } ../hosts).nixos;
   diskOf =
     hostName:
     let
