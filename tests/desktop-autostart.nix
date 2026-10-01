@@ -28,10 +28,11 @@
     services.tailscale.package swapped for a distinct derivation, and its entry
     must follow the swap, because the default package equals pkgs.tailscale.
   - Where services.tailscale.enable is true, the materialized
-    tailscaled-autoconnect and tailscaled-set units both run a script carrying
-    --operator=<my.user.name>. `tailscale up` refuses a command that leaves out
-    a stored non-default pref, so a set-only operator would break
-    re-authentication.
+    tailscaled-autoconnect unit runs `tailscale up` with
+    --operator=<my.user.name> and --reset, and tailscaled-set runs
+    `tailscale set` with the operator. `tailscale up` refuses a command that
+    leaves out a stored non-default pref, so a set-only operator, or an exit
+    node chosen from the tray, would break re-authentication.
   - Every entry declares Type=Application and X-KDE-autostart-phase=2.
   - systemd/user/app-discord@autostart.service.d/restart.conf and the
     app-telegram equivalent are enabled and set Restart=on-failure and
@@ -88,8 +89,8 @@ let
     in
     lib.mapNullable (
       entry:
-      let
-        host = self.nixosConfigurations.${entry.name}.extendModules {
+      configurations.entryOf "${entry.name} with a swapped tailscale package" (
+        self.nixosConfigurations.${entry.name}.extendModules {
           modules = [
             {
               services.tailscale.package = lib.mkForce (
@@ -97,14 +98,10 @@ let
               );
             }
           ];
-        };
-      in
-      {
-        name = "${entry.name} with a swapped tailscale package";
-        package = host.config.services.tailscale.package;
-        user = host.config.home-manager.users.h82 or { };
-      }
+        }
+      )
     ) entry;
+
   dropInName = app: "systemd/user/app-${app}@autostart.service.d/restart.conf";
   unitName = app: "systemd/user/app-${app}@autostart.service";
 
@@ -217,7 +214,11 @@ let
       operatorChecks =
         lib.concatMapStrings
           (
-            unit:
+            {
+              unit,
+              subcommand,
+              flags,
+            }:
             let
               unitDir = entry.config.systemd.units."${unit}.service".unit or null;
             in
@@ -225,15 +226,32 @@ let
               fail "no ${unit}.service unit is materialized on ${host}"
             else
               ''
-                script=$(sed -n 's/^ExecStart=\([^[:space:]]*\).*/\1/p' ${unitDir}/${unit}.service)
-                if [ -z "$script" ] || ! grep -qF -- ${lib.escapeShellArg operatorFlag} "$script"; then
-                  ${fail "${unit}.service does not run tailscale with ${operatorFlag} on ${host}"}
-                fi
+                script=$(sed -n 's/^ExecStart=\([^[:space:]]*\).*/\1/p' ${unitDir}/${unit}.service 2>/dev/null || true)
+                # Only the line that runs the tailscale subcommand counts.
+                command=$([ -n "$script" ] && grep -E '(^|[/[:space:]])tailscale ${subcommand} ' "$script" || true)
+                ${lib.concatMapStrings (flag: ''
+                  if ! printf '%s\n' "$command" | grep -qF -- ${lib.escapeShellArg flag}; then
+                    ${fail "${unit}.service does not run tailscale ${subcommand} with ${flag} on ${host}"}
+                  fi
+                '') flags}
               ''
           )
           [
-            "tailscaled-autoconnect"
-            "tailscaled-set"
+            # --reset keeps autoconnect's up from refusing over prefs the tray
+            # changed, such as an exit node.
+            {
+              unit = "tailscaled-autoconnect";
+              subcommand = "up";
+              flags = [
+                operatorFlag
+                "--reset"
+              ];
+            }
+            {
+              unit = "tailscaled-set";
+              subcommand = "set";
+              flags = [ operatorFlag ];
+            }
           ];
 
       dropInChecks = lib.concatMapStrings (
@@ -305,8 +323,6 @@ let
       ${dropInChecks}
     '';
 
-  # A bootstrap configuration declares none of them, so first-boot key recovery
-  # is not competing with a card-touching UI server.
   # The swapped package is a different store path from pkgs.tailscale, so an
   # entry that hardcodes pkgs.tailscale no longer matches.
   assertSwappedTailscale =
@@ -315,7 +331,7 @@ let
     else
       let
         entry = entryFor swappedTailscale.user "autostart/tailscale-systray.desktop";
-        expected = builtins.unsafeDiscardStringContext "Exec=${swappedTailscale.package}/bin/tailscale systray";
+        expected = builtins.unsafeDiscardStringContext "Exec=${swappedTailscale.config.services.tailscale.package}/bin/tailscale systray";
         follows =
           entry != null
           && lib.elem expected (
@@ -326,6 +342,8 @@ let
         fail "the tailscale tray entry on ${swappedTailscale.name} does not run services.tailscale.package"
       );
 
+  # A bootstrap configuration declares none of them, so first-boot key recovery
+  # is not competing with a card-touching UI server.
   assertBootstrap =
     entry:
     lib.concatMapStrings (name: fail "${name} leaked onto the bootstrap configuration ${entry.name}") (

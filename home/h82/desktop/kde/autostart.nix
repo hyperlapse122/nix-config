@@ -15,16 +15,17 @@ let
   # names each unit app-<desktop file id>@autostart.service and sets Restart=no.
   # A drop-in is the only way to change that: a full unit under
   # systemd.user.services would shadow the generated one, ExecStart included.
-  # The same imports home/h82/default.nix installs, so Exec names the installed
-  # store path.
-  claudeDesktop = import ../../../../packages/claude-desktop.nix { inherit pkgs; };
-  chatgpt = import ../../../../packages/chatgpt.nix { inherit pkgs; };
-
   restartOnFailure = ''
     [Service]
     Restart=on-failure
     RestartSec=5s
   '';
+
+  # Read from the installed package list, so Exec always names what
+  # home/h82/default.nix installs.
+  installed = pname: lib.findFirst (p: (p.pname or "") == pname) null config.home.packages;
+  claudeDesktop = installed "claude-desktop";
+  chatgpt = installed "chatgpt";
 in
 lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite

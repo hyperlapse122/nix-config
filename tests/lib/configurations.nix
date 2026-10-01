@@ -16,6 +16,8 @@
     removed user fails inside the builder rather than during evaluation).
     Checks identify a bootstrap output by `bootstrap`, never by the output
     name, because both outputs of a host share one `networking.hostName`.
+  - `entryOf name host`: the same entry shape for any evaluated host, such as
+    one re-evaluated with `extendModules`.
   - `production` and `bootstraps`: `entries` split by `bootstrap`.
   - `guard`: a script fragment that fails the builder when `entries` is empty
     or holds no bootstrap output. Every check splices it before its per-entry
@@ -89,7 +91,12 @@ let
     }) linuxFixtures;
 in
 {
-  inherit entries production userEntries;
+  inherit
+    entries
+    entryOf
+    production
+    userEntries
+    ;
 
   userGuard =
     let

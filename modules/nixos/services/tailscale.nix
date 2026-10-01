@@ -8,10 +8,10 @@ let
   cfg = config.my.tailscale;
   available = cfg.sopsFile != null;
   tailscalePkg = config.services.tailscale.package;
-  # The operator lets the user's tray change prefs without sudo. It sits in the
-  # up flags too: `tailscale up` refuses to run without a stored non-default
-  # pref such as the operator, so a set-only operator would break autoconnect's
-  # re-authentication.
+  # The operator lets the user's tray change prefs without sudo. `tailscale up`
+  # refuses to run while a stored non-default pref is missing from its flags,
+  # so the operator sits in the up flags too, and autoconnect's up adds --reset
+  # (below) for prefs the tray changed, such as an exit node.
   nodeFlags = [
     "--ssh"
     "--accept-routes"
@@ -57,7 +57,7 @@ in
         services.tailscale = {
           enable = true;
           openFirewall = true;
-          extraUpFlags = nodeFlags;
+          extraUpFlags = nodeFlags ++ [ "--reset" ];
           # tailscaled-autoconnect applies extraUpFlags only while the node
           # needs login; extraSetFlags runs `tailscale set` on every tailscaled
           # start, so an already-registered node gets the same prefs.
