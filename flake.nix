@@ -1012,6 +1012,20 @@
                       fi
                     done
                   '';
+                  # Codex looks for codex-code-mode-host beside the binary the
+                  # wrapper execs, never on PATH, so the host is found from that
+                  # exec target. It is run, not just inspected, as the chatgpt
+                  # check does for its bundled binaries.
+                  codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
+                    target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
+                    if [ -z "$target" ]; then
+                      echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
+                      fail=1
+                    elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
+                      echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
+                      fail=1
+                    fi
+                  '';
                 in
                 ''
                   ${assertUserPackage {
@@ -1021,6 +1035,7 @@
                   } entry}
                   ${versionMismatch}
                   ${flagsMissing}
+                  ${codeModeHostMissing}
                 '';
             in
             pkgs.runCommand "codex-tests" { } ''

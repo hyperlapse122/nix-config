@@ -2,14 +2,28 @@
   "version": "0.159.3",
   "platforms": {
     "x86_64-linux": {
-      "asset": "codex-x86_64-unknown-linux-musl.tar.gz",
-      "sha256": "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb",
-      "hash": "sha256-tIyhstaxv0K5ROAsPZN8iY4kZRkWaEzcNf3t8xspG8s="
+      "codex": {
+        "asset": "codex-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb",
+        "hash": "sha256-tIyhstaxv0K5ROAsPZN8iY4kZRkWaEzcNf3t8xspG8s="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "0f58dd9848c717382e5223e39c1fc8f43a8f4a8cbe20d7af0c0dee0ef3abd438",
+        "hash": "sha256-D1jdmEjHFzguUiPjnB/I9DqPSoy+INevDA3uDvOr1Dg="
+      }
     },
     "aarch64-linux": {
-      "asset": "codex-aarch64-unknown-linux-musl.tar.gz",
-      "sha256": "cd5f307b3fcd6080773e684b86c3114a67d4f1c61dc447be09876b552eb4bea7",
-      "hash": "sha256-zV8wez/NYIB3PmhLhsMRSmfU8cYdxEe+CYdrVS60vqc="
+      "codex": {
+        "asset": "codex-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "cd5f307b3fcd6080773e684b86c3114a67d4f1c61dc447be09876b552eb4bea7",
+        "hash": "sha256-zV8wez/NYIB3PmhLhsMRSmfU8cYdxEe+CYdrVS60vqc="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "7cbb47c472c2dc115abfeebf52ff11bf66eb364bf8f5d14659742615919b8e6f",
+        "hash": "sha256-fLtHxHLC3BFav+6/Uv8Rv2brNkv49dFGWXQmFZGbjm8="
+      }
     }
   }
 }
