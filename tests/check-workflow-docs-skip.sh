@@ -15,6 +15,10 @@
 #   host-generic composition plan).
 # - build reads its matrix from the hosts job's output, so the workflow
 #   never lists host names (R19).
+# - vm-check-names and vm-checks carry the same gate, so the NixOS VM tests
+#   that live outside `nix flake check` still run on every non-docs-only
+#   PR and on push. vm-checks reads its matrix from vm-check-names, so a
+#   VM test added to tests/vm-checks.nix joins CI without a workflow edit.
 # - markdown-lint declares the complementary condition: it runs only on
 #   a genuine docs_only:true PR, the one case flake-check's own
 #   `nix flake check` does not already build it, so it is exercised
@@ -137,24 +141,28 @@ assert_docs_only_only() {
   echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
 }
 
-# assert_matrix_from_hosts: build depends on the hosts job and reads its
-# matrix from that job's JSON output instead of a literal host list (R19).
-assert_matrix_from_hosts() {
-  local block
-  block=$(job_block build "$file")
-  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*hosts[[:space:]]*(,[^]]*)?\][[:space:]]*$'; then
-    fail "job 'build' does not list 'hosts' in needs: (R19/KTD9)"
+# assert_matrix_from <job> <producer> <output> <key>: the job lists the
+# producer in needs: and reads its matrix <key> from that job's JSON output
+# instead of a literal list.
+assert_matrix_from() {
+  local job=$1 producer=$2 output=$3 key=$4 block
+  block=$(job_block "$job" "$file")
+  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*${producer}[[:space:]]*(,[^]]*)?\][[:space:]]*$"; then
+    fail "job '$job' does not list '$producer' in needs:"
   fi
-  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*target:[[:space:]]*\$\{\{[[:space:]]*fromJSON\(needs\.hosts\.outputs\.targets\)[[:space:]]*\}\}[[:space:]]*$'; then
-    fail "job 'build' matrix target is not fromJSON(needs.hosts.outputs.targets) (R19/KTD9)"
+  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*${key}:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.${producer}\\.outputs\\.${output}\\)[[:space:]]*\\}\\}[[:space:]]*$"; then
+    fail "job '$job' matrix $key is not fromJSON(needs.$producer.outputs.$output)"
   fi
-  echo "check-workflow-docs-skip: ok - build reads its matrix from the hosts job (R19/KTD9)"
+  echo "check-workflow-docs-skip: ok - $job reads its matrix from the $producer job"
 }
 
 assert_gated flake-check
 assert_gated hosts
 assert_gated build list
-assert_matrix_from_hosts
+assert_matrix_from build hosts targets target
+assert_gated vm-check-names
+assert_gated vm-checks list
+assert_matrix_from vm-checks vm-check-names names name
 assert_unconditional fmt
 assert_docs_only_only markdown-lint
 
