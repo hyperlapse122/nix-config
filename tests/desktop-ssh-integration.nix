@@ -103,6 +103,11 @@ let
                                helper.public_bytes(fallback_key.public_key()) + b"\n")
         assert remote("printf wallet-unavailable") == "wallet-unavailable"
         primary.close()
+        primary = lib.FakeAgent(primary_path, [primary_key], stall=True)
+        started = time.monotonic()
+        assert remote("printf stalled-primary-fallback") == "stalled-primary-fallback"
+        assert time.monotonic() - started < 14, "primary starved fallback authentication"
+        primary.close()
         assert remote("printf agent-unavailable") == "agent-unavailable"
         # Failed remote operations execute once, with no post-login fallback retry.
         result = subprocess.run([ssh] + common + ["root@localhost",
@@ -148,6 +153,7 @@ pkgs.testers.nixosTest {
     services.openssh = {
       enable = true;
       settings = {
+        LoginGraceTime = 15;
         PermitRootLogin = "prohibit-password";
         PasswordAuthentication = false;
         AuthorizedKeysFile = "/tmp/desktop-ssh-authorized";

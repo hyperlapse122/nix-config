@@ -33,6 +33,9 @@ let
     DBusGMainLoop(set_as_default=True)
     store = Path("/home/alice/wallet.json")
     class Wallet(dbus.service.Object):
+        @dbus.service.method("org.kde.KWallet", in_signature="s", out_signature="b")
+        def isOpen(self, wallet):
+            return not Path("/home/alice/wallet-locked").exists()
         @dbus.service.method("org.kde.KWallet", in_signature="sxs", out_signature="i")
         def open(self, wallet, window, app):
             return -1 if Path("/home/alice/wallet-locked").exists() else 1
@@ -224,6 +227,9 @@ pkgs.testers.nixosTest {
     machine.fail(user("systemctl --no-ask-password start desktop-ssh-provision.service"))
     machine.fail("test -e /home/alice/.ssh/id_ed25519_nix_config")
     machine.succeed(user("rm /home/alice/wallet-locked"))
+    # This caller has no PAM/logind session of its own; the account's active
+    # local graphical session authorizes this fixed service operation.
+    machine.succeed(user("sh -c 'test -z \"$XDG_SESSION_ID\"'"))
     try:
         machine.succeed(user("systemctl --no-ask-password start desktop-ssh-provision.service"))
     except Exception:

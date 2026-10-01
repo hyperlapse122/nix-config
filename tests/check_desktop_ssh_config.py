@@ -1,8 +1,11 @@
 """Inspect public source metadata and the files Home Manager/systemd materialize."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
+import shlex
+import subprocess
 import sys
 
 from cryptography.hazmat.primitives import serialization
@@ -50,7 +53,7 @@ def sources(root):
     return errors
 
 
-def configuration(entry):
+def configuration(entry, root):
     errors = []
     def require(condition, message):
         if not condition:
@@ -81,11 +84,29 @@ def configuration(entry):
     if json_path.is_file():
         try:
             config = json.loads(json_path.read_text())
+            effective = subprocess.run(
+                ["ssh", "-G", "-F", str(config_path), "desktop-ssh-check.invalid"],
+                check=True, capture_output=True, text=True, timeout=5).stdout
+            options = [line.split(None, 1) for line in effective.splitlines() if " " in line]
+            require([value for name, value in options if name == "identityfile"] == [config.get("public_key")],
+                    "SSH public identity differs from agent metadata")
+            require([value for name, value in options if name == "identityagent"] ==
+                    [f"/run/user/{os.getuid()}/desktop-ssh/agent.sock"], "incorrect effective primary IdentityAgent")
             require(config.get("key_file") == entry["home"] + "/.ssh/id_ed25519_nix_config", "incorrect working key")
             require(config.get("fallback_socket") == entry["home"] + "/.1password/agent.sock", "incorrect fallback socket")
             require(Path(config.get("public_key", "")).is_file(), "missing public metadata")
-        except (ValueError, TypeError):
+            actual = serialization.load_ssh_public_key(Path(config["public_key"]).read_bytes())
+            declared = serialization.load_ssh_public_key(
+                (root / "secrets/hosts" / entry["hostName"] / "ssh.pub").read_bytes())
+            require(isinstance(actual, Ed25519PublicKey) and
+                    actual.public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH) ==
+                    declared.public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH),
+                    "agent public identity differs from this host's declared key")
+        except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
             require(False, "invalid desktop configuration")
+            config = {}
+    else:
+        config = {}
     for tool in ("ssh", "scp", "sftp"):
         executable = Path(entry["path"]) / "bin" / tool if entry["path"] else Path("/absent-tool")
         require(executable.is_file() and executable.resolve() == Path(entry["package"]) / "bin/desktop-ssh", f"{tool} does not select packaged launcher")
@@ -104,6 +125,15 @@ def configuration(entry):
         for fragment in ("User=" + entry["user"], "LoadCredential=", "%d/source", "LimitCORE=0"):
             require(fragment in unit, "provisioning unit missing " + fragment)
         require(re.search(r"^ExecStart=.*?/bin/desktop-ssh[ '\"]+provision(?: |['\"])", unit, re.M), "provisioning unit does not run packaged provisioner")
+        start = re.search(r"^ExecStart=(.+)$", unit, re.M)
+        try:
+            arguments = shlex.split(start[1]) if start else []
+        except ValueError:
+            arguments = []
+        for option, field in (("--public-key", "public_key"), ("--key-file", "key_file")):
+            index = arguments.index(option) if arguments.count(option) == 1 else len(arguments)
+            require(index + 1 < len(arguments) and arguments[index + 1] == config.get(field),
+                    "provisioning " + option + " differs from agent metadata")
         installed_targets = list(system_path.parent.glob("*.wants/desktop-ssh-provision.service"))
         installed_targets += list(system_path.parent.glob("*.requires/desktop-ssh-provision.service"))
         require(not installed_targets, "provisioning attempts boot-time wallet access through target installation")
@@ -118,7 +148,7 @@ if __name__ == "__main__":
     failures = sources(args.root)
     if args.entries is not None:
         for entry in json.loads(args.entries.read_text()):
-            failures.extend(configuration(entry))
+            failures.extend(configuration(entry, args.root))
     if failures:
         print("\n".join("desktop-ssh: " + failure for failure in failures), file=sys.stderr)
         sys.exit(1)

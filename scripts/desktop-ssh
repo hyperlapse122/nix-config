@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import os
 import json
+import select
 import signal
 import socket
 import struct
@@ -33,6 +34,8 @@ MAX_IDENTITIES = 128
 MAX_CONNECTIONS = 128
 ENUM_TIMEOUT = 0.3
 SIGN_TIMEOUT = 120
+PRIMARY_SIGN_TIMEOUT = 10
+UNLOCK_TIMEOUT = 8
 FAILURE = b"\x05"
 
 
@@ -194,7 +197,7 @@ class Composite:
             backend = self.routes.get(blob)
             if backend is None:
                 return FAILURE
-            reply = backend.request(payload, SIGN_TIMEOUT)
+            reply = backend.request(payload, PRIMARY_SIGN_TIMEOUT if backend is self.primary else SIGN_TIMEOUT)
             if reply[:1] != b"\x0e":
                 return FAILURE
             checked = Packet(reply[1:])
@@ -231,6 +234,8 @@ class Primary:
         self.key = None
         self.state = None
         self.lock = threading.Lock()
+        self.generation = 0
+        self.failed_state = None
 
     def key_state(self):
         declared = read_public_key(self.config["public_key"])
@@ -250,7 +255,7 @@ class Primary:
                  self.config["config_path"], "--parent-pid", str(os.getpid()),
                  "--key-fd", str(write_fd)],
                 pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                timeout=SIGN_TIMEOUT - 2)
+                timeout=UNLOCK_TIMEOUT)
             if result.returncode != 0:
                 raise DesktopSSHError("primary SSH key unavailable; unlock kdewallet and retry provisioning")
             os.close(write_fd)
@@ -266,7 +271,7 @@ class Primary:
             if write_fd is not None:
                 os.close(write_fd)
 
-    def handle(self, payload):
+    def handle(self, payload, client_alive=lambda: True):
         if payload == b"\x0b":
             blob = identity_blob(read_public_key(self.config["public_key"]))
             return identity_response([(blob, b"nix-config host key")])
@@ -275,24 +280,47 @@ class Primary:
         packet = Packet(payload[1:])
         requested, data, flags = packet.string(), packet.string(), packet.uint()
         packet.end()
+        generation = self.generation
         with self.lock:
+            if not client_alive():
+                return FAILURE
             declared, state = self.key_state()
             if state != self.state:
                 self.key = None
             if requested != identity_blob(declared) or flags != 0:
                 return FAILURE
             if self.key is None:
-                self.key = self.load()
+                # Waiters inherit the attempt they observed before taking the
+                # lock. A new request can retry immediately, without a cooldown.
+                if generation != self.generation and state == self.failed_state:
+                    raise DesktopSSHError("primary SSH unlock failed; unlock kdewallet and retry SSH")
+                try:
+                    self.key = self.load()
+                except DesktopSSHError:
+                    self.failed_state = state
+                    raise
+                finally:
+                    self.generation += 1
                 declared, state = self.key_state()
                 if identity_blob(self.key.public_key()) != identity_blob(declared):
                     self.key = None
                     raise DesktopSSHError("SSH key changed during unlock; retry SSH")
                 self.state = state
+                self.failed_state = None
             signature = self.key.sign(data)
         return b"\x0e" + ssh_string(ssh_string(b"ssh-ed25519") + ssh_string(signature))
 
 
 def serve_connection(client, handler):
+    def client_alive():
+        try:
+            if not select.select([client], [], [], 0)[0]:
+                return True
+            return client.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT) != b""
+        except BlockingIOError:
+            return True
+        except OSError:
+            return False
     try:
         peer_pid, peer_uid, _ = struct.unpack("3i", client.getsockopt(
             socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")))
@@ -302,7 +330,7 @@ def serve_connection(client, handler):
         while True:
             payload = receive(client)
             try:
-                reply = handler.handle(payload)
+                reply = handler.handle(payload, client_alive) if isinstance(handler, Primary) else handler.handle(payload)
             except (ValueError, DesktopSSHError) as error:
                 if isinstance(error, DesktopSSHError):
                     print(f"desktop-ssh: {error}", file=sys.stderr, flush=True)
@@ -503,6 +531,8 @@ class KWallet:
             self.interface = dbus.Interface(
                 bus.get_object("org.kde.kwalletd6", "/modules/kwalletd6"),
                 "org.kde.KWallet")
+            if not self.interface.isOpen(dbus.String("kdewallet")):
+                raise DesktopSSHError("unlock kdewallet in KWallet Manager, then retry SSH")
             self.handle = int(self.interface.open("kdewallet", dbus.Int64(0), self.APP,
                                                   timeout=90))
             if self.handle < 0:
@@ -584,19 +614,27 @@ def _read_working(directory, name):
         return data
 
 
+class WorkingKeyUnavailable(DesktopSSHError):
+    pass
+
+
 def load_working_key(key_file, declared_public, wallet):
     """Read and decrypt an existing working key; never publish or fall back here."""
     password = wallet.read(fingerprint(declared_public))
     if password is None:
-        raise DesktopSSHError("SSH password missing from KWallet; retry provisioning")
+        raise WorkingKeyUnavailable("SSH password missing from KWallet; retry provisioning")
     try:
-        key = serialization.load_ssh_private_key(read_private_file(key_file), password.encode())
+        protected = read_private_file(key_file)
+    except DesktopSSHError as error:
+        raise WorkingKeyUnavailable(str(error)) from None
+    try:
+        key = serialization.load_ssh_private_key(protected, password.encode())
         if (not isinstance(key, Ed25519PrivateKey)
                 or public_bytes(key.public_key()) != public_bytes(declared_public)):
             raise ValueError()
         return key
     except (ValueError, TypeError):
-        raise DesktopSSHError("protected SSH key and wallet entry do not match; retry provisioning") from None
+        raise WorkingKeyUnavailable("protected SSH key and wallet entry do not match; retry provisioning") from None
 
 
 def provision(source, public_key, key_file, wallet):
@@ -724,10 +762,10 @@ def main():
                 serve(path, lambda: primary)
                 return 0
             declared = read_public_key(config["public_key"])
+            wallet = KWallet()
             try:
-                wallet = KWallet()
                 key = load_working_key(config["key_file"], declared, wallet)
-            except DesktopSSHError:
+            except WorkingKeyUnavailable:
                 if wallet is not None:
                     wallet.close()
                     wallet = None

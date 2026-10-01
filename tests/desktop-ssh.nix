@@ -15,6 +15,7 @@ let
     path = toString (entry.user.home.path or "");
     home = entry.user.home.homeDirectory or "";
     user = entry.user.home.username or "";
+    hostName = entry.user.my.hostName or "";
     legacyKey = entry.user.my.secrets.sshKey or "";
     package = toString package;
     fallbackConfig = builtins.readFile ../config/1password/agent.toml;
@@ -27,10 +28,17 @@ let
         "";
   }) configurations.userEntries;
 in
-pkgs.runCommand "desktop-ssh-tests" { nativeBuildInputs = [ python ]; } ''
-  ${configurations.userGuard}
-  python ${./check_desktop_ssh_config.py} --root ${../.} --entries ${pkgs.writeText "desktop-ssh-entries.json" (builtins.toJSON entries)}
-  export DESKTOP_SSH_SCRIPT=${package}/bin/desktop-ssh
-  python ${./test_desktop_ssh.py}
-  touch $out
-''
+pkgs.runCommand "desktop-ssh-tests"
+  {
+    nativeBuildInputs = [
+      python
+      pkgs.openssh
+    ];
+  }
+  ''
+    ${configurations.userGuard}
+    python ${./check_desktop_ssh_config.py} --root ${../.} --entries ${pkgs.writeText "desktop-ssh-entries.json" (builtins.toJSON entries)}
+    export DESKTOP_SSH_SCRIPT=${package}/bin/desktop-ssh
+    python ${./test_desktop_ssh.py}
+    touch $out
+  ''

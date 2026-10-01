@@ -334,11 +334,12 @@ class ProvisionTests(unittest.TestCase):
 
 class FakeAgent:
     """A real Unix protocol endpoint, with distinct identities and recorded requests."""
-    def __init__(self, path, keys, stall=False, deny=False):
+    def __init__(self, path, keys, stall=False, deny=False, delay=0):
         self.keys = keys
         self.path = str(path)
         self.stall = stall
         self.deny = deny
+        self.delay = delay
         self.reject_binding = False
         self.requests = []
         self.connections = []
@@ -364,6 +365,7 @@ class FakeAgent:
             while True:
                 payload = desktop_ssh.receive(client)
                 self.requests.append(payload)
+                time.sleep(self.delay)
                 if self.stall:
                     time.sleep(1)
                     continue
@@ -490,6 +492,73 @@ class ProtocolTests(unittest.TestCase):
             key = agent.load()
         self.assertEqual(desktop_ssh.public_bytes(key.public_key()),
                          desktop_ssh.public_bytes(self.primary_key.public_key()))
+
+    def test_responsive_delayed_fallback_remains_available(self):
+        self.backend("fallback", [self.fallback_key], delay=.1)
+        items = desktop_ssh.identities(self.proxy.handle(b"\x0b"))
+        self.assertEqual(len(items), 2)
+        self.verify_signature(self.fallback_key, self.proxy.handle(self.sign(items[1][0])))
+
+    def test_locked_native_wallet_does_not_open_or_read_failure_reprovision(self):
+        import dbus
+        from unittest.mock import Mock
+        interface = Mock()
+        interface.isOpen.return_value = False
+        with patch.object(dbus.bus, "BusConnection"), patch.object(dbus, "Interface", return_value=interface):
+            with self.assertRaises(desktop_ssh.DesktopSSHError):
+                desktop_ssh.KWallet()
+        interface.open.assert_not_called()
+        wallet = Mock()
+        wallet.read.side_effect = desktop_ssh.DesktopSSHError("native read failed")
+        with self.assertRaises(desktop_ssh.DesktopSSHError) as error:
+            desktop_ssh.load_working_key("/missing", self.primary_key.public_key(), wallet)
+        self.assertNotIsInstance(error.exception, desktop_ssh.WorkingKeyUnavailable)
+
+    def test_failed_unlock_is_shared_by_waiters_but_fresh_request_retries(self):
+        self.config["key_file"] = str(self.root / "missing")
+        agent = desktop_ssh.Primary(self.config)
+        payload = self.sign(desktop_ssh.identity_blob(self.primary_key.public_key()))
+        entered, release = threading.Event(), threading.Event()
+        attempts = []
+        def fail():
+            attempts.append(1)
+            entered.set()
+            release.wait(5)
+            raise desktop_ssh.DesktopSSHError("fake failure")
+        def request():
+            with self.assertRaises(desktop_ssh.DesktopSSHError):
+                agent.handle(payload)
+        with patch.object(agent, "load", side_effect=fail):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                first = pool.submit(request)
+                self.assertTrue(entered.wait(2))
+                waiting = [pool.submit(request) for _ in range(3)]
+                time.sleep(.1)
+                release.set()
+                for future in [first] + waiting:
+                    future.result(3)
+            self.assertEqual(len(attempts), 1)
+            request()
+            self.assertEqual(len(attempts), 2)
+
+    def test_disconnected_queued_signer_never_unlocks(self):
+        self.config["key_file"] = str(self.root / "missing")
+        agent = desktop_ssh.Primary(self.config)
+        client, server = socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(server.close)
+        agent.lock.acquire()
+        worker = threading.Thread(target=desktop_ssh.serve_connection,
+                                  args=(server, agent))
+        with patch.object(agent, "load", side_effect=desktop_ssh.DesktopSSHError("fake")) as load:
+            worker.start()
+            desktop_ssh.send(client, self.sign(desktop_ssh.identity_blob(self.primary_key.public_key())))
+            time.sleep(.1)
+            client.close()
+            agent.lock.release()
+            worker.join(2)
+            self.assertFalse(worker.is_alive())
+            load.assert_not_called()
 
     def test_binding_and_sign_share_backend_connection(self):
         fallback = self.backend("fallback", [self.fallback_key])
