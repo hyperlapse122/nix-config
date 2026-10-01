@@ -1,7 +1,11 @@
 { pkgs }:
 let
   desktopSSH = import ../packages/desktop-ssh.nix { inherit pkgs; };
-  python = pkgs.python3.withPackages (ps: [ ps.cryptography ps.bcrypt ps.dbus-python ]);
+  python = pkgs.python3.withPackages (ps: [
+    ps.cryptography
+    ps.bcrypt
+    ps.dbus-python
+  ]);
   library = pkgs.writeText "desktop-ssh-test-library.py" (builtins.readFile ./test_desktop_ssh.py);
   runner = pkgs.writeText "desktop-ssh-openssh-integration.py" ''
     import importlib.util
@@ -151,7 +155,10 @@ pkgs.testers.nixosTest {
         MaxAuthTries = 3;
       };
     };
-    environment.systemPackages = [ desktopSSH pkgs.git ];
+    environment.systemPackages = [
+      desktopSSH
+      pkgs.git
+    ];
     virtualisation.memorySize = 1024;
   };
   testScript = ''

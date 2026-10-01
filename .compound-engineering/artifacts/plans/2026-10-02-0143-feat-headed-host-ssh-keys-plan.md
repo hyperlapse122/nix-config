@@ -106,7 +106,6 @@ Local key encryption protects a separately exposed working key file. It does not
 
 The existing non-NixOS implementation provides a host-specific SOPS pattern, but currently publishes an unprotected working key. It is a reference for source management, not an implementation of R3–R5.
 
-
 ### Sources and Research
 
 - `home/h82/security/ssh.nix`: current split between the NixOS 1Password agent and non-NixOS host keys.

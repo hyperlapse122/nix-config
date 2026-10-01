@@ -40,6 +40,67 @@ class MemoryWallet:
         self.entries[name] = value
 
 
+class CredentialACLTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "credential"
+        self.path.write_bytes(b"fake-credential-source")
+        self.path.chmod(0o400)
+        self.info = list(self.path.stat())
+        self.info[0] = (self.info[0] & ~0o777) | 0o440
+        self.info[4] = 0
+        self.entries = [(1, 4, 0xffffffff), (2, 4, os.getuid()),
+                        (4, 0, 0xffffffff), (16, 4, 0xffffffff), (32, 0, 0xffffffff)]
+
+    def acl(self, entries=None, version=2):
+        return struct.pack("<I", version) + b"".join(
+            struct.pack("<HHI", *entry) for entry in (entries if entries is not None else self.entries))
+
+    def read(self, acl, source=True, info=None):
+        def read_acl(fd, name):
+            self.assertIsInstance(fd, int)
+            self.assertEqual(name, "system.posix_acl_access")
+            if acl is None:
+                raise OSError("no ACL")
+            return acl
+        with patch.object(desktop_ssh.os, "fstat", return_value=os.stat_result(info or self.info)), \
+                patch.object(desktop_ssh.os, "getxattr", side_effect=read_acl):
+            return desktop_ssh.read_private_file(self.path, source=source)
+
+    def test_systemd_root_credential_acl_accepts_only_service_user_read(self):
+        self.assertEqual(self.read(self.acl()), b"fake-credential-source")
+
+    def test_credential_acl_rejects_every_extra_reader_or_writer(self):
+        altered = [None, b"", self.acl(version=1), self.acl() + b"trailing",
+                   self.acl(self.entries + [(2, 4, os.getuid() + 1)]),
+                   self.acl(self.entries + [(8, 4, 42)]),
+                   self.acl(self.entries + [self.entries[1]])]
+        for index in range(len(self.entries)):
+            changed = list(self.entries)
+            tag, perm, ident = changed[index]
+            changed[index] = (tag, 6 if perm else 4, ident)
+            altered.append(self.acl(changed))
+        changed = list(self.entries)
+        changed[1] = (2, 4, os.getuid() + 1)
+        altered.append(self.acl(changed))
+        for acl in altered:
+            with self.subTest(acl=acl), self.assertRaises(desktop_ssh.DesktopSSHError):
+                self.read(acl)
+
+    def test_acl_exception_never_applies_to_working_or_user_owned_files(self):
+        with self.assertRaises(desktop_ssh.DesktopSSHError):
+            self.read(self.acl(), source=False)
+        user_owned = list(self.info)
+        user_owned[4] = os.getuid()
+        with self.assertRaises(desktop_ssh.DesktopSSHError):
+            self.read(self.acl(), info=user_owned)
+        linked = list(self.info)
+        linked[3] = 2
+        with self.assertRaises(desktop_ssh.DesktopSSHError):
+            self.read(self.acl(), info=linked)
+
+
 class ProvisionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir=Path.cwd())
@@ -341,7 +402,7 @@ class ProtocolTests(unittest.TestCase):
                 serialization.NoEncryption()))
             return desktop_ssh.subprocess.CompletedProcess(arguments, 0)
         with patch.object(desktop_ssh.subprocess, "run", side_effect=unlock):
-            key = agent.load(self.primary_key.public_key())
+            key = agent.load()
         self.assertEqual(desktop_ssh.public_bytes(key.public_key()),
                          desktop_ssh.public_bytes(self.primary_key.public_key()))
 

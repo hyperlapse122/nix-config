@@ -239,7 +239,7 @@ class Primary:
             protected = b""
         return declared, hashlib.sha256(public_bytes(declared) + protected).digest()
 
-    def load(self, declared):
+    def load(self):
         # A fresh process avoids forking the agent's threaded Python/D-Bus state.
         # The raw key crosses only an anonymous pipe, never argv or a disk file.
         read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
@@ -281,7 +281,7 @@ class Primary:
             if requested != identity_blob(declared) or flags != 0:
                 return FAILURE
             if self.key is None:
-                self.key = self.load(declared)
+                self.key = self.load()
                 declared, state = self.key_state()
                 if identity_blob(self.key.public_key()) != identity_blob(declared):
                     self.key = None
@@ -416,13 +416,14 @@ def public_bytes(key):
 
 
 def fingerprint(key):
-    blob = base64.b64decode(public_bytes(key).split()[1], validate=True)
+    blob = identity_blob(key)
     return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
 
 
 def read_public_key(path):
     try:
-        data = Path(path).read_bytes()
+        with Path(path).open("rb") as stream:
+            data = stream.read(16385)
         if len(data) > 16384:
             raise ValueError()
         key = serialization.load_ssh_public_key(data)
@@ -441,12 +442,28 @@ def _check_private_file(info, owner=None):
         raise DesktopSSHError("SSH state must be an owned private regular file (mode 0600 or 0400)")
 
 
+def _check_credential_acl(fd, info):
+    # LoadCredential uses root ownership with an ACL for precisely the service UID.
+    # Its group mode bits are the ACL mask, not permission for the owning group.
+    expected = [(1, 4, 0xffffffff), (2, 4, os.getuid()),
+                (4, 0, 0xffffffff), (16, 4, 0xffffffff), (32, 0, 0xffffffff)]
+    acl = os.getxattr(fd, "system.posix_acl_access")
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1
+            or len(acl) != 4 + 8 * len(expected)
+            or struct.unpack("<I", acl[:4])[0] != 2
+            or list(struct.iter_unpack("<HHI", acl[4:])) != expected):
+        raise DesktopSSHError("SSH recovery credential ACL must grant read access only to root and the service user")
+
+
 def read_private_file(path, source=False):
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
         with os.fdopen(fd, "rb") as stream:
             info = os.fstat(stream.fileno())
-            _check_private_file(info, info.st_uid if source and info.st_uid == 0 else None)
+            if source and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o440:
+                _check_credential_acl(stream.fileno(), info)
+            else:
+                _check_private_file(info, info.st_uid if source and info.st_uid == 0 else None)
             data = stream.read(65537)
             if len(data) > 65536:
                 raise DesktopSSHError("SSH key exceeds the supported size")
