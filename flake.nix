@@ -94,6 +94,8 @@
         agent-plugin-release = agentTools.agentPluginRelease;
         claude-desktop-release = agentTools.claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
+        chatgpt-release = agentTools.chatgptRelease;
+        chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
@@ -350,6 +352,16 @@
                 cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
                 cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
                 python tests/test_claude_desktop_release.py
+                touch $out
+              '';
+          chatgpt-release =
+            pkgs.runCommand "chatgpt-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/chatgpt-release} scripts/chatgpt-release
+                cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
+                python tests/test_chatgpt_release.py
                 touch $out
               '';
           claude-code-release =
@@ -874,6 +886,36 @@
                 '';
             in
             pkgs.runCommand "claude-desktop-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          chatgpt =
+            let
+              # No version-pin comparison: the package reads its version from the
+              # pin file, so that assertion could only ever hold. The wrapper is
+              # read for an ozone flag because upstream marks Wayland
+              # experimental; the app must stay on its X11 default (R6).
+              assertConfiguration =
+                entry:
+                let
+                  chatgptPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "chatgpt") null (userPackagesOf entry);
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "chatgpt";
+                    executables = [ "chatgpt" ];
+                    desktopEntries = [ "chatgpt.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (chatgptPkg != null) ''
+                    if grep -q -- 'ozone' ${chatgptPkg}/bin/chatgpt; then
+                      echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
+                      fail=1
+                    fi
+                  ''}
+                '';
+            in
+            pkgs.runCommand "chatgpt-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out

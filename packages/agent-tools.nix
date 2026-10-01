@@ -55,6 +55,11 @@ let
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
+  # Resolves the latest ChatGPT desktop release from OpenAI's APT repository.
+  # Its network call goes through an overridable command so the sandboxed
+  # repository check can drive it with fixtures.
+  chatgptRelease = pythonHelper "chatgpt-release" ../scripts/chatgpt-release;
+
   # Resolves the latest claude-code release manifest from Anthropic's own
   # release endpoints. Its network calls go through an overridable command so
   # the sandboxed repository check can drive it with fixtures.
@@ -85,6 +90,7 @@ in
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
+    chatgptRelease
     claudeCodeRelease
     miseRelease
     codexRelease
