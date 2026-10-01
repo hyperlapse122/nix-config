@@ -32,6 +32,7 @@ let
     {
       imports = [
         inputs.sops-nix.nixosModules.sops
+        ../modules/shared/host.nix
         ../modules/nixos/system/secrets.nix
         ../modules/nixos/services/tailscale.nix
       ];
@@ -108,8 +109,8 @@ pkgs.testers.nixosTest {
 
       client_up_flags = set(${builtins.toJSON nodes.client.services.tailscale.extraUpFlags})
       router_up_flags = set(${builtins.toJSON nodes.router.services.tailscale.extraUpFlags})
-      assert client_up_flags == {"--ssh", "--accept-routes"}, client_up_flags
-      assert router_up_flags == {"--ssh", "--accept-routes"}, router_up_flags
+      assert client_up_flags == {"--ssh", "--accept-routes", "--operator=${nodes.client.my.user.name}", "--reset"}, client_up_flags
+      assert router_up_flags == {"--ssh", "--accept-routes", "--operator=${nodes.router.my.user.name}", "--reset"}, router_up_flags
 
       # --- Runtime: an already-registered node still gets the declared prefs ---
       #
@@ -117,13 +118,18 @@ pkgs.testers.nixosTest {
       # were declared (autoconnect skips extraUpFlags then), then confirm
       # tailscaled-set restores them.
       prefs_query = "tailscale debug prefs | jq -r '[.RouteAll, .RunSSH] | @tsv'"
+      operator_query = "tailscale debug prefs | jq -r '.OperatorUser // empty'"
+      operators = {client: "${nodes.client.my.user.name}", router: "${nodes.router.my.user.name}"}
       for machine in [client, router]:
           machine.wait_for_unit("tailscaled.service")
-          machine.succeed("tailscale set --accept-routes=false --ssh=false")
+          machine.succeed("tailscale set --accept-routes=false --ssh=false --operator=")
           assert machine.succeed(prefs_query).split() == ["false", "false"]
+          assert machine.succeed(operator_query).strip() == ""
           machine.succeed("systemctl start tailscaled-set.service")
           prefs = machine.succeed(prefs_query).split()
           assert prefs == ["true", "true"], f"{machine.name}: [RouteAll, RunSSH] is {prefs} after tailscaled-set"
+          operator = machine.succeed(operator_query).strip()
+          assert operator == operators[machine], f"{machine.name}: OperatorUser is {operator!r} after tailscaled-set"
           assert "tailscaled.service" in machine.succeed(
               "systemctl show -p WantedBy --value tailscaled-set.service"
           ).split()

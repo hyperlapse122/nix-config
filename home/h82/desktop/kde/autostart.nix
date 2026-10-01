@@ -5,6 +5,8 @@
   # The system's programs._1password-gui.package, passed in by mkHost:
   # pkgs._1password-gui is a different derivation that ships no polkit policy.
   onePasswordGui,
+  # The system's services.tailscale.package, or null where tailscaled is off.
+  tailscalePackage,
   ...
 }:
 
@@ -18,6 +20,12 @@ let
     Restart=on-failure
     RestartSec=5s
   '';
+
+  # Read from the installed package list, so Exec always names what
+  # home/h82/default.nix installs.
+  installed = pname: lib.findFirst (p: (p.pname or "") == pname) null config.home.packages;
+  claudeDesktop = installed "claude-desktop";
+  chatgpt = installed "chatgpt";
 in
 lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite
@@ -69,6 +77,47 @@ lib.mkIf (!config.my.bootstrap) {
       Type=Application
       Name=Telegram
       Exec=${pkgs.telegram-desktop}/bin/Telegram -startintray
+      Hidden=false
+      NoDisplay=true
+      X-KDE-autostart-phase=2
+    '';
+  };
+
+  # --startup keeps the main window closed; Claude opens it from the tray.
+  xdg.configFile."autostart/claude-desktop.desktop" = {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Claude
+      Exec=${claudeDesktop}/bin/claude-desktop --startup
+      Hidden=false
+      NoDisplay=true
+      X-KDE-autostart-phase=2
+    '';
+  };
+
+  # ChatGPT has no hidden-start argument, so it opens its window at login.
+  xdg.configFile."autostart/chatgpt.desktop" = {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=ChatGPT
+      Exec=${chatgpt}/bin/chatgpt
+      Hidden=false
+      NoDisplay=true
+      X-KDE-autostart-phase=2
+    '';
+  };
+
+  xdg.configFile."autostart/tailscale-systray.desktop" = lib.mkIf (tailscalePackage != null) {
+    force = true;
+    text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Tailscale
+      Exec=${tailscalePackage}/bin/tailscale systray
       Hidden=false
       NoDisplay=true
       X-KDE-autostart-phase=2
