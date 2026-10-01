@@ -7,6 +7,13 @@ let
   # Missing on a system the pin does not cover; meta.platforms then refuses
   # the package by name rather than failing on a missing attribute.
   platform = source.platforms.${system} or source.platforms.x86_64-linux;
+  fetchAsset =
+    version: pin:
+    pkgs.fetchurl {
+      url = "https://github.com/openai/codex/releases/download/rust-v${version}/${pin.asset}";
+      inherit (pin) hash;
+    };
+  binaryOf = pin: lib.removeSuffix ".tar.gz" pin.asset;
 in
 pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "codex";
@@ -14,12 +21,12 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
 
   # The musl builds are statically linked, so they run on NixOS and other
   # distributions unpatched.
-  src = pkgs.fetchurl {
-    url = "https://github.com/openai/codex/releases/download/rust-v${finalAttrs.version}/${platform.asset}";
-    inherit (platform) hash;
-  };
+  srcs = [
+    (fetchAsset finalAttrs.version platform.codex)
+    (fetchAsset finalAttrs.version platform.codeModeHost)
+  ];
 
-  # The tarball holds the bare binary with no top-level directory.
+  # Each tarball holds one bare binary with no top-level directory.
   sourceRoot = ".";
 
   nativeBuildInputs = [
@@ -31,10 +38,13 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   # its terminals, whose config.toml never receives the declared settings.
   # daemon_auto_start would install and update a background copy of Codex
   # outside the store; nixpkgs patches it off, which a prebuilt pin cannot.
+  # Codex spawns codex-code-mode-host from beside its own executable, never
+  # from PATH, so the host sits next to the real binary, not in bin/.
   installPhase = ''
     runHook preInstall
 
-    install -Dm755 ${lib.removeSuffix ".tar.gz" platform.asset} $out/libexec/codex/codex
+    install -Dm755 ${binaryOf platform.codex} $out/libexec/codex/codex
+    install -Dm755 ${binaryOf platform.codeModeHost} $out/libexec/codex/codex-code-mode-host
     makeWrapper $out/libexec/codex/codex $out/bin/codex \
       --prefix PATH : ${
         lib.makeBinPath [

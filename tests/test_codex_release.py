@@ -17,9 +17,13 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/codex-release"
 
 TARGET = "codex-x86_64-unknown-linux-musl.tar.gz"
 ARM_TARGET = "codex-aarch64-unknown-linux-musl.tar.gz"
+HOST_TARGET = "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz"
+ARM_HOST_TARGET = "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz"
 MUSL_HEX = "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb"
 ARM_HEX = "cd5f307b3fcd6080773e684b86c3114a67d4f1c61dc447be09876b552eb4bea7"
 GNU_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
+HOST_HEX = "0f58dd9848c717382e5223e39c1fc8f43a8f4a8cbe20d7af0c0dee0ef3abd438"
+ARM_HOST_HEX = "7cbb47c472c2dc115abfeebf52ff11bf66eb364bf8f5d14659742615919b8e6f"
 
 
 def asset(name, hex_digest):
@@ -31,13 +35,21 @@ def asset(name, hex_digest):
 
 
 def release(version, musl_digest=None, musl_count=1, prerelease=False, tag=None,
-            arm_count=1):
-    """Build a latest-release body shaped like GitHub's REST API response."""
+            arm_count=1, host_count=1, arm_host_count=1):
+    """Build a latest-release body shaped like GitHub's REST API response.
+
+    The x86_64 codex tarball comes last, so a test can edit assets[-1].
+    """
     assets = [
         asset("codex-x86_64-unknown-linux-gnu.tar.gz", GNU_HEX),
         asset("codex-aarch64-unknown-linux-gnu.tar.gz", GNU_HEX),
         asset("codex-x86_64-unknown-linux-musl.zst", GNU_HEX),
+        asset("codex-code-mode-host-x86_64-unknown-linux-gnu.tar.gz", GNU_HEX),
     ]
+    for _ in range(host_count):
+        assets.append(asset(HOST_TARGET, HOST_HEX))
+    for _ in range(arm_host_count):
+        assets.append(asset(ARM_HOST_TARGET, ARM_HOST_HEX))
     for _ in range(arm_count):
         assets.append(asset(ARM_TARGET, ARM_HEX))
     for _ in range(musl_count):
@@ -112,8 +124,22 @@ class CodexReleaseTestCase(unittest.TestCase):
             {
                 "version": "0.159.3",
                 "platforms": {
-                    "x86_64-linux": {"asset": TARGET, "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
-                    "aarch64-linux": {"asset": ARM_TARGET, "sha256": ARM_HEX, "hash": sri(ARM_HEX)},
+                    "x86_64-linux": {
+                        "codex": {"asset": TARGET, "sha256": MUSL_HEX, "hash": sri(MUSL_HEX)},
+                        "codeModeHost": {
+                            "asset": HOST_TARGET,
+                            "sha256": HOST_HEX,
+                            "hash": sri(HOST_HEX),
+                        },
+                    },
+                    "aarch64-linux": {
+                        "codex": {"asset": ARM_TARGET, "sha256": ARM_HEX, "hash": sri(ARM_HEX)},
+                        "codeModeHost": {
+                            "asset": ARM_HOST_TARGET,
+                            "sha256": ARM_HOST_HEX,
+                            "hash": sri(ARM_HOST_HEX),
+                        },
+                    },
                 },
             },
         )
@@ -123,6 +149,17 @@ class CodexReleaseTestCase(unittest.TestCase):
             body=release("0.159.3", arm_count=0), extra_args=["-o", str(self.output)]
         )
         self.assert_refused(result, ARM_TARGET)
+
+    def test_refuses_a_release_without_a_code_mode_host_asset(self):
+        for kwargs, needle in [
+            ({"host_count": 0}, HOST_TARGET),
+            ({"arm_host_count": 0}, ARM_HOST_TARGET),
+        ]:
+            with self.subTest(missing=needle):
+                result = self.run_release(
+                    body=release("0.159.3", **kwargs), extra_args=["-o", str(self.output)]
+                )
+                self.assert_refused(result, needle)
 
     def test_writes_a_pin_when_none_exists(self):
         result = self.run_release(extra_args=["-o", str(self.output)])
@@ -211,7 +248,8 @@ class CodexReleaseTestCase(unittest.TestCase):
         result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            json.loads(result.stdout)["platforms"]["x86_64-linux"]["hash"], sri(MUSL_HEX)
+            json.loads(result.stdout)["platforms"]["x86_64-linux"]["codex"]["hash"],
+            sri(MUSL_HEX),
         )
         self.assertFalse(self.output.exists())
 
