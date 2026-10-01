@@ -196,9 +196,10 @@
           codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           agent-settings =
             let
+              inherit (import ./packages/agent-tools.nix { inherit pkgs; }) agentSettingsPython;
               packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
             in
-            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ agentSettingsPython ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${./scripts/agent-settings} scripts/agent-settings
@@ -279,6 +280,35 @@
               assert merged['orca-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'orca-hook', 'timeout': 10}]}, merged
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
+
+              # TOML mode through the packaged binary, which proves the built
+              # interpreter carries tomlkit: a comment and a table the merge does
+              # not own must survive, and the declared leaves start divergent.
+              mkdir -p home/.codex
+              printf '# keep me\ncheck_for_update_on_startup = true\n\n[features]\nmemories = true\n\n[plugins."x"]\nenabled = true\n' \
+                > home/.codex/config.toml
+              printf '{"setPaths":[{"path":["check_for_update_on_startup"],"value":false},{"path":["features","memories"],"value":false},{"path":["features","daemon_auto_start"],"value":false}]}\n' \
+                > codex.json
+              env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"
+              grep -qxF '# keep me' home/.codex/config.toml
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import tomllib
+              merged = tomllib.load(open('home/.codex/config.toml', 'rb'))
+              assert merged == {'check_for_update_on_startup': False, 'features': {'memories': False, 'daemon_auto_start': False}, 'plugins': {'x': {'enabled': True}}}, merged
+              PY
+
+              # Malformed TOML must fail the process and leave the file alone.
+              printf 'model = "unterminated\n' > home/.codex/config.toml
+              if env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                  --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"; then
+                echo "packaged merger accepted malformed TOML" >&2
+                exit 1
+              fi
+              if [ "$(cat home/.codex/config.toml)" != 'model = "unterminated' ]; then
+                echo "refused TOML merge still rewrote the settings file" >&2
+                exit 1
+              fi
 
               touch $out
             '';

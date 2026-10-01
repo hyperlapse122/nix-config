@@ -20,15 +20,15 @@ let
       meta.mainProgram = name;
     };
 
-  # The same shape for a Ruby helper: patchShebangs resolves `ruby` to the
-  # interpreter wrapped with the helper's gems.
-  rubyHelper =
-    name: src: ruby:
+  # The same shape for a helper that needs libraries: patchShebangs resolves
+  # the interpreter to the one wrapped with the helper's packages.
+  helperWith =
+    name: src: interpreter:
     pkgs.stdenvNoCC.mkDerivation {
       pname = name;
       version = "1";
       dontUnpack = true;
-      nativeBuildInputs = [ ruby ];
+      nativeBuildInputs = [ interpreter ];
       installPhase = ''
         install -Dm755 ${src} $out/bin/${name}
         patchShebangs $out/bin/${name}
@@ -36,7 +36,11 @@ let
       meta.mainProgram = name;
     };
 
-  agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
+  # tomlkit is what lets the TOML mode rewrite a file such as Codex's
+  # config.toml without dropping the comments and tables it does not own. The
+  # flake check runs the source copy of the tests under this same interpreter.
+  agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
+  agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
 
   # Runs from home activation, where PATH carries neither home.packages nor
   # the login shell's session variables, so the module hands it the agent CLI
@@ -70,13 +74,14 @@ let
   # call goes through an overridable command for the same reason. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
   # nokogiri.
-  androidSdkRelease = rubyHelper "android-sdk-release" ../scripts/android-sdk-release (
+  androidSdkRelease = helperWith "android-sdk-release" ../scripts/android-sdk-release (
     pkgs.ruby.withPackages (ps: [ ps.nokogiri ])
   );
 in
 {
   inherit
     agentSettings
+    agentSettingsPython
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
