@@ -119,8 +119,8 @@ The ChatGPT Linux app is now published for Debian-family systems with a versione
 
 ### Sources / Research
 
-- Codex CLI install docs: https://learn.chatgpt.com/docs/codex/cli?surface=cli#getting-started
-- ChatGPT Linux app docs: https://learn.chatgpt.com/docs/linux/linux-app
+- Codex CLI install docs: <https://learn.chatgpt.com/docs/codex/cli?surface=cli#getting-started>
+- ChatGPT Linux app docs: <https://learn.chatgpt.com/docs/linux/linux-app>
 - ChatGPT APT index: `https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages`, which lists `chatgpt` 26.928.31416 with a SHA256 and a `pool/main/c/chatgpt/` filename.
 - Codex upstream releases: `openai/codex` on GitHub, latest `rust-v0.159.3` at the time of writing.
 - Compound Engineering's Codex install path: the plugin repository's `README.md` ("Codex CLI" section) and its `.codex-plugin` manifest.
@@ -426,7 +426,7 @@ flowchart TB
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | Nix layout unchanged by the formatter |
 | Checks | `nix flake check` | Unit tests for both resolvers, `agent-settings`, and `agent-plugin-sync`; the `codex`, `chatgpt`, `codex-settings`, `agent-instructions`, `agent-plugins`, `orca-skills`, `update-dependencies-push-order`, and `host-name-guard` checks |
 | Builds | `nix build --no-link .#nixosConfigurations.<name>.config.system.build.toplevel` for every name from `nix eval .#nixosConfigurations --apply builtins.attrNames` | All production and bootstrap outputs build with both packages |
