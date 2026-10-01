@@ -17,6 +17,12 @@ let
       name = "Antigravity";
       target = ".gemini/config/AGENTS.md";
     };
+    # Codex's default home. Orca-launched sessions use Orca's own CODEX_HOME
+    # and never see this file.
+    codex = {
+      name = "Codex";
+      target = ".codex/AGENTS.md";
+    };
   };
 
   # Rendered with gomplate, whose templates are Go text/template. A missing
@@ -41,7 +47,7 @@ let
     '';
 in
 {
-  # Plain store links: neither harness rewrites these files, unlike the
+  # Plain store links: no harness rewrites these files, unlike the
   # settings files claude.nix and gemini.nix merge at activation.
   home.file = lib.mapAttrs' (
     id: harness:

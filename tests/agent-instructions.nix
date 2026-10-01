@@ -28,7 +28,7 @@
     fallback, so any of those sentences dropped or moved into one harness's
     branch fails.
   - it names every native tool its harness template maps, and none of the
-    other harness's, so a branch keyed on the wrong id, or swapped targets,
+    other harnesses', so a branch keyed on the wrong id, or swapped targets,
     fail.
   - no template action (`{{`, `}}`) or `<no value>` survives in it, which is
     what gomplate prints for a missing key when `--missing-key error` is lost.
@@ -86,20 +86,37 @@ let
     "`run_command`"
   ];
 
+  codexTools = [
+    "`apply_patch`"
+    "`view_image`"
+    "`web_search`"
+    "`request_user_input`"
+    "`spawn_agent`"
+    "`update_plan`"
+    "`exec_command`"
+  ];
+
   harnesses = [
     {
       name = "Claude Code";
       sharedSentence = "Use the tools Claude Code provides natively before reaching for a shell equivalent.";
       target = ".claude/CLAUDE.md";
       present = claudeTools;
-      absent = antigravityTools;
+      absent = antigravityTools ++ codexTools;
     }
     {
       name = "Antigravity";
       sharedSentence = "Use the tools Antigravity provides natively before reaching for a shell equivalent.";
       target = ".gemini/config/AGENTS.md";
       present = antigravityTools;
-      absent = claudeTools;
+      absent = claudeTools ++ codexTools;
+    }
+    {
+      name = "Codex";
+      sharedSentence = "Use the tools Codex provides natively before reaching for a shell equivalent.";
+      target = ".codex/AGENTS.md";
+      present = codexTools;
+      absent = claudeTools ++ antigravityTools;
     }
   ];
 
