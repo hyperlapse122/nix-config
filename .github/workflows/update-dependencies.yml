@@ -94,18 +94,25 @@ jobs:
         id: verify
         run: |
           set +e
+          # The step runs without pipefail, so $? after a pipe is tee's
+          # status; PIPESTATUS[0] is the command's own.
           nix fmt -- --ci 2>&1 | tee fmt.log
-          FMT_EXIT=$?
+          FMT_EXIT=${PIPESTATUS[0]}
           nix flake check --print-build-logs 2>&1 | tee check.log
-          CHECK_EXIT=$?
+          CHECK_EXIT=${PIPESTATUS[0]}
+          # The VM tests live outside `nix flake check`. Their log goes into
+          # check.log, which .gitignore already keeps out of the push step's
+          # catch-all commit.
+          nix build --no-link --print-build-logs .#vmChecks.all 2>&1 | tee -a check.log
+          VM_EXIT=${PIPESTATUS[0]}
           set -e
 
-          if [ "$FMT_EXIT" -eq 0 ] && [ "$CHECK_EXIT" -eq 0 ]; then
+          if [ "$FMT_EXIT" -eq 0 ] && [ "$CHECK_EXIT" -eq 0 ] && [ "$VM_EXIT" -eq 0 ]; then
             echo "status=success" >> "$GITHUB_OUTPUT"
             echo "All verification checks passed."
           else
             echo "status=failure" >> "$GITHUB_OUTPUT"
-            echo "Verification failed (fmt: $FMT_EXIT, check: $CHECK_EXIT)."
+            echo "Verification failed (fmt: $FMT_EXIT, check: $CHECK_EXIT, vm checks: $VM_EXIT)."
             {
               echo "### Verification Failure Details"
               echo '```text'
@@ -212,8 +219,8 @@ jobs:
           claude_args: >-
             --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake check:*),Bash(nix flake metadata:*),Bash(sleep:*)"
           prompt: |
-            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci` or `nix flake check`).
-            Please inspect the changes and error log, fix the configuration or expression issues so that `nix fmt -- --ci` and `nix flake check` pass, and push the fix commit to this branch.
+            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci`, `nix flake check`, or the NixOS VM tests built by `nix build --no-link .#vmChecks.all`).
+            Please inspect the changes and error log, fix the configuration or expression issues so that `nix fmt -- --ci`, `nix flake check`, and `nix build --no-link .#vmChecks.all` pass, and push the fix commit to this branch.
 
       - name: Enable auto-merge on reconciliation PR
         if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
