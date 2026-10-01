@@ -48,7 +48,7 @@ let
 in
 {
   # Plain store links: no harness rewrites these files, unlike the
-  # settings files claude.nix and gemini.nix merge at activation.
+  # settings files claude.nix, codex.nix, and gemini.nix merge at activation.
   home.file = lib.mapAttrs' (
     id: harness:
     lib.nameValuePair "agent-instructions-${id}" {
