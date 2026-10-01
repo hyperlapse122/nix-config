@@ -1,6 +1,6 @@
 # Authentication preparation and recovery
 
-Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS hosts, routine configuration applies use the root-only age identity inside LUKS, and 1Password supplies SSH keys; automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host).
+Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS desktops, routine configuration applies use the root-only age identity inside LUKS. SSH prefers the host's own key, unlocked through KWallet, and automatically falls back to selected 1Password keys. Automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host).
 
 ## Before erasing the existing OS
 
@@ -102,11 +102,31 @@ unset card_serial
 
 Each card serial must match the value that `gpg --card-status` reports with that card inserted. Routine rebuilds work without any of these registrations.
 
-Sign in to the 1Password app once and enable the SSH agent under Settings > Developer. The repository deploys `IdentityAgent ~/.1password/agent.sock` and the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves SSH requests. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
+Sign in to the 1Password app once and enable the SSH agent under Settings > Developer for fallback destinations. The repository preserves the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves fallback SSH requests. Bootstrap configurations still use `IdentityAgent ~/.1password/agent.sock` directly; production desktops use the host-first path described below. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
 
 1Password, Kleopatra, Discord, and Telegram now start at login from `home/h82/desktop/kde/autostart.nix`, so none needs a manual launch. Home Manager owns `~/.config/autostart/1password.desktop`, `~/.config/autostart/kleopatra.desktop`, `~/.config/autostart/discord.desktop`, and `~/.config/autostart/telegram.desktop` and overwrites them on activation, which makes the apps' own "start at login" toggles inert. Leave Telegram's own toggle off: it writes a differently named entry that Home Manager does not own, so Telegram would be launched twice at login. Discord and Telegram also restart 5 seconds after a crash, through `~/.config/systemd/user/app-discord@autostart.service.d/restart.conf` and its Telegram equivalent. Those are drop-ins on the units `systemd-xdg-autostart-generator` creates from the desktop entries, so quitting either app normally still leaves it stopped. Claude Desktop and ChatGPT also start at login, through `~/.config/autostart/claude-desktop.desktop` and `~/.config/autostart/chatgpt.desktop`. Claude starts with `--startup`, so only its tray icon appears; ChatGPT has no hidden start and opens its window. The Tailscale tray, `tailscale systray`, starts from `~/.config/autostart/tailscale-systray.desktop` on every host that runs `tailscaled`. Change the module, not the desktop entries or drop-ins.
 
 The user is the Tailscale operator (`--operator=h82` in both the `tailscale up` and `tailscale set` flags), so the tray and `tailscale` commands change settings without sudo. That right extends to every process running as the user: any of them can change preferences, the exit node, or `tailscale serve` without a password, and a serve configuration persists across restarts because `tailscaled-set` reasserts only the declared flags. Check `tailscale serve status` when auditing a host. A Disconnect from the tray lasts until the next boot, when `tailscaled-autoconnect` brings the node back up with `tailscale up --reset`, which also clears an exit node chosen from the tray.
+
+## SSH key on a NixOS desktop
+
+Each production NixOS desktop declares `secrets/hosts/<host>/ssh.yaml` and its matching public key, `secrets/hosts/<host>/ssh.pub`. [Adding a host](adding-a-host.md#create-the-desktop-ssh-key-source) describes source creation. Register the public `.pub` file as an authentication key on GitHub and every server the host must reach. Keep the existing 1Password keys registered until the host key has been tested on those destinations. Registration and later revocation are operator actions; applying this configuration changes no external account.
+
+Log in through SDDM with the account password. In KWallet Manager, use a wallet named `kdewallet` whose password matches the login password for automatic login unlock. A wallet with another password or a failed PAM unlock must be unlocked manually. The repository does not set the wallet password. From the configured user's active local Plasma session, provision the working key:
+
+```sh
+systemctl --no-ask-password start desktop-ssh-provision.service
+systemctl --user status desktop-ssh-agent.service
+stat -c '%a %n' ~/.ssh ~/.ssh/id_ed25519_nix_config
+```
+
+Expect directory mode 0700 and key mode 0600. The fixed system service receives the root-only decrypted source through systemd credentials, generates a random passphrase, stores it in `kdewallet` under folder `nix-config SSH` and the public key's SHA256 fingerprint, and atomically publishes the encrypted working key. It reuses a valid key/wallet pair. Ordinary system applies do not require the wallet to be unlocked. SSH also requests provisioning automatically if the working key or wallet entry is missing.
+
+The user profile installs `ssh`, `scp`, and `sftp` launchers; ordinary Git over SSH uses the same `ssh` from PATH. Each SSH invocation combines the graphical-session primary agent with the selected 1Password agent identities, offering the host key first. When the host key is accepted and usable, 1Password may remain locked or stopped. If the server rejects it or local signing fails, the same authentication exchange tries selected 1Password keys with its own unlock and approval requirements. Neither path retries an established session or reruns a remote command. A server's authentication-attempt limit must allow the primary key and the offered fallback set.
+
+The primary agent socket is `/run/user/<uid>/desktop-ssh/agent.sock`; configuration is `~/.config/desktop-ssh/config.json`. Loaded primary keys are reused until graphical logout, including while the screen or wallet is locked. Logout stops the managed agent and clears its loaded key. The provisioning service rejects tty, headless, inactive-seat, and other-user requests. This does not add headless SSH key management. An explicit SSH `IdentityAgent` override or scp/sftp `-S` transport override selects the operator's own path. Tools that bypass the installed launchers do not receive automatic fallback.
+
+If both authentication paths fail, unlock KWallet or 1Password as appropriate and inspect `journalctl --user -u desktop-ssh-agent.service` and `journalctl -u desktop-ssh-provision.service`. Do not print the decrypted source or wallet passphrase. See [desktop SSH recovery](recovery.md#restore-or-rotate-a-desktop-ssh-key) and the [manual desktop checks](verification.md#desktop-ssh-checks).
 
 ## SSH key on a non-NixOS host
 
@@ -165,7 +185,7 @@ Device access needs no setup. systemd tags any inserted security key and hands i
 
 ## Verify after applying
 
-Check each CLI's authentication status and test Git HTTPS access to the required hosts. Keep tokens out of status output and debug logs. Verify GPG signing in a temporary Git repository. Verify SSH with an actual selected key while 1Password is signed in and unlocked.
+Check each CLI's authentication status and test Git HTTPS access to the required hosts. Keep tokens out of status output and debug logs. Verify GPG signing in a temporary Git repository. On a NixOS desktop, verify both the host key with 1Password stopped and a fallback-only destination with 1Password approval; record the [desktop SSH checks](verification.md#desktop-ssh-checks) separately from repository tests.
 
 ## Coding agent harness configuration
 
