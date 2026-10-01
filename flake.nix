@@ -95,10 +95,14 @@
         agent-plugin-release = agentTools.agentPluginRelease;
         claude-desktop-release = agentTools.claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
+        chatgpt-release = agentTools.chatgptRelease;
+        chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
+        codex-release = agentTools.codexRelease;
+        codex = import ./packages/codex.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
@@ -137,6 +141,10 @@
           # absent inside the builder rather than aborting evaluation.
           userPackagesOf = entry: entry.user.home.packages or [ ];
 
+          # The user package with this pname, or null when none is installed.
+          userPackageOf =
+            pname: entry: pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+
           # Every store-path interpolation stays inside an optionalString guard so
           # that removing the package fails inside the builder with the message
           # below, rather than aborting evaluation with a null coercion error.
@@ -148,7 +156,7 @@
             }:
             entry:
             let
-              package = pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+              package = userPackageOf pname entry;
             in
             ''
               ${pkgs.lib.optionalString (package == null) ''
@@ -198,11 +206,14 @@
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           agent-settings =
             let
-              packaged = (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettings;
+              tools = import ./packages/agent-tools.nix { inherit pkgs; };
+              inherit (tools) agentSettingsPython;
+              packaged = tools.agentSettings;
             in
-            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ agentSettingsPython ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${./scripts/agent-settings} scripts/agent-settings
@@ -284,6 +295,35 @@
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
 
+              # TOML mode through the packaged binary, which proves the built
+              # interpreter carries tomlkit: a comment and a table the merge does
+              # not own must survive, and the declared leaves start divergent.
+              mkdir -p home/.codex
+              printf '# keep me\ncheck_for_update_on_startup = true\n\n[features]\nmemories = true\n\n[plugins."x"]\nenabled = true\n' \
+                > home/.codex/config.toml
+              printf '{"setPaths":[{"path":["check_for_update_on_startup"],"value":false},{"path":["features","memories"],"value":false},{"path":["features","daemon_auto_start"],"value":false}]}\n' \
+                > codex.json
+              env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"
+              grep -qxF '# keep me' home/.codex/config.toml
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import tomllib
+              merged = tomllib.load(open('home/.codex/config.toml', 'rb'))
+              assert merged == {'check_for_update_on_startup': False, 'features': {'memories': False, 'daemon_auto_start': False}, 'plugins': {'x': {'enabled': True}}}, merged
+              PY
+
+              # Malformed TOML must fail the process and leave the file alone.
+              printf 'model = "unterminated\n' > home/.codex/config.toml
+              if env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                  --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"; then
+                echo "packaged merger accepted malformed TOML" >&2
+                exit 1
+              fi
+              if [ "$(cat home/.codex/config.toml)" != 'model = "unterminated' ]; then
+                echo "refused TOML merge still rewrote the settings file" >&2
+                exit 1
+              fi
+
               touch $out
             '';
           gemini = import ./tests/gemini.nix { inherit pkgs self; };
@@ -326,6 +366,16 @@
                 python tests/test_claude_desktop_release.py
                 touch $out
               '';
+          chatgpt-release =
+            pkgs.runCommand "chatgpt-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/chatgpt-release} scripts/chatgpt-release
+                cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
+                python tests/test_chatgpt_release.py
+                touch $out
+              '';
           claude-code-release =
             pkgs.runCommand "claude-code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -342,6 +392,14 @@
             cp ${./scripts/mise-release} scripts/mise-release
             cp ${./tests/test_mise_release.py} tests/test_mise_release.py
             python tests/test_mise_release.py
+            touch $out
+          '';
+          codex-release = pkgs.runCommand "codex-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            mkdir -p scripts tests
+            cp ${./scripts/codex-release} scripts/codex-release
+            cp ${./tests/test_codex_release.py} tests/test_codex_release.py
+            python tests/test_codex_release.py
             touch $out
           '';
           # Drives the packaged helper, so a package that lost nokogiri from its
@@ -764,7 +822,7 @@
                 let
                   service = entry.user.systemd.user.services.orca-settings-reconcile or null;
                   activation = entry.user.home.activation.orcaSettings or null;
-                  package = pkgs.lib.lists.findFirst (p: (p.pname or "") == "orca-ide") null (userPackagesOf entry);
+                  package = userPackageOf "orca-ide" entry;
                   dockerHost = entry.user.home.sessionVariables.DOCKER_HOST or "";
                   fakeRuntimeDir = "/run/user/4242";
                 in
@@ -840,6 +898,53 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
+          chatgpt =
+            let
+              # No version-pin comparison: the package reads its version from the
+              # pin file, so that assertion could only ever hold. The wrapper is
+              # read for an ozone flag because upstream marks Wayland
+              # experimental; the app must stay on its X11 default. The
+              # bundled static binaries are run, because a patched one still
+              # exists and is executable.
+              assertConfiguration =
+                entry:
+                let
+                  chatgptPkg = userPackageOf "chatgpt" entry;
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "chatgpt";
+                    executables = [ "chatgpt" ];
+                    desktopEntries = [ "chatgpt.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (chatgptPkg != null) ''
+                    if grep -q -- 'ozone' ${chatgptPkg}/bin/chatgpt; then
+                      echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
+                      fail=1
+                    fi
+                    # The bundled Codex sandboxes with bwrap, which NixOS has nowhere
+                    # else on PATH.
+                    if ! grep -qF -- '-bubblewrap-' ${chatgptPkg}/bin/chatgpt; then
+                      echo 'the chatgpt wrapper on ${entry.name} puts no bubblewrap on PATH' >&2
+                      fail=1
+                    fi
+                    # Run, not just inspect: autoPatchelf adding a runpath to these
+                    # static-pie binaries leaves them segfaulting while every file
+                    # still exists.
+                    for binary in codex rg; do
+                      if ! HOME="$TMPDIR" ${chatgptPkg}/lib/chatgpt/resources/$binary --version > /dev/null 2>&1; then
+                        echo "the bundled $binary in chatgpt on ${entry.name} does not run" >&2
+                        fail=1
+                      fi
+                    done
+                  ''}
+                '';
+            in
+            pkgs.runCommand "chatgpt-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
           claude-code =
             let
               # Presence and an executable bin/claude alone would stay green even if
@@ -855,9 +960,7 @@
               assertConfiguration =
                 entry:
                 let
-                  claudePkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "claude-code") null (
-                    userPackagesOf entry
-                  );
+                  claudePkg = userPackageOf "claude-code" entry;
                   versionMismatch =
                     pkgs.lib.optionalString (claudePkg != null && claudePkg.version != pinnedVersion)
                       ''
@@ -875,6 +978,52 @@
                 '';
             in
             pkgs.runCommand "claude-code-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          codex =
+            let
+              # The version attribute is compared with the pin for the reason
+              # given on the claude-code check: versionCheckHook already proves
+              # the binary reports that attribute. The wrapper flags are read
+              # from the installed bin/codex itself, because they are what keep
+              # Codex from updating itself under Orca's CODEX_HOME, which never
+              # receives the declared config.toml keys.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
+              wrapperFlags = [
+                "-c check_for_update_on_startup=false"
+                "--disable in_app_updates"
+                "--disable daemon_auto_start"
+              ];
+              assertConfiguration =
+                entry:
+                let
+                  codexPkg = userPackageOf "codex" entry;
+                  versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
+                    echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  flagsMissing = pkgs.lib.optionalString (codexPkg != null) ''
+                    for flag in ${pkgs.lib.escapeShellArgs wrapperFlags}; do
+                      if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
+                        echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
+                        fail=1
+                      fi
+                    done
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "codex";
+                    executables = [ "codex" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${flagsMissing}
+                '';
+            in
+            pkgs.runCommand "codex-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out

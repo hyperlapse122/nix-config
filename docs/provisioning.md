@@ -167,7 +167,7 @@ Check each CLI's authentication status and test Git HTTPS access to the required
 
 ## Coding agent harness configuration
 
-Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `home/h82/agents/claude.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/agents/gemini.nix`; their user-level instruction files come from `home/h82/agents/instructions/`.
+Coding-agent harnesses (`claude-code`, `codex`, and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`. Claude Code is configured in `home/h82/agents/claude.nix`; Codex is configured in `home/h82/agents/codex.nix`; the Gemini and Antigravity CLIs are configured in `home/h82/agents/gemini.nix`; their user-level instruction files come from `home/h82/agents/instructions/`.
 
 ### Which tier owns which setting
 
@@ -197,9 +197,23 @@ The `opus[1m]` value starts every session on the 1M-context variant of the `opus
 
 Only the scalar settings above are declared, plus the Orca skills below. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, other skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
 
+### Codex
+
+Codex is pinned to OpenAI's prebuilt static musl releases for `x86_64-linux` and `aarch64-linux` (`packages/codex.nix`, `packages/codex-release.json`), and the hourly dependency workflow bumps the pin with `codex-release`. Its wrapper puts `bubblewrap` and `ripgrep` on `PATH` for the Linux sandbox and search, and passes `-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start`, so Codex never updates itself or installs a background daemon copy, under any `CODEX_HOME`.
+
+Codex owns `~/.codex/config.toml` and rewrites it itself: trusting a project and `codex plugin add` both write there. Activation runs the same `agent-settings` merger as Claude Code, in its `--format toml` mode, which keeps every comment and table it does not own. The declared set is `check_for_update_on_startup`, `features.in_app_updates`, `features.daemon_auto_start`, and `features.memories`, all `false`. Model, reasoning effort, sandbox and approval policy, trusted projects, and sign-in stay yours. A declared key returns to its declared value only on a rebuild that produces a new Home Manager generation, as for Claude Code. A malformed `config.toml` makes the merge refuse and fails the rebuild without touching the file. To stop declaring a key, move it to `retiredKeys` in `home/h82/agents/codex.nix`.
+
+The compound-engineering plugin reaches Codex through `agent-plugin-sync --harness codex`, which registers the pinned source as a local marketplace and runs `codex plugin add`. Codex records the resolved store path, not the version-keyed link, so a version bump removes and re-adds both the marketplace and the plugin.
+
+Orca starts Codex with its own `CODEX_HOME` (`~/.config/orca/codex-runtime-home/home`). That home never receives `~/.codex/config.toml`, `~/.codex/AGENTS.md`, or the plugin, so only the wrapper's update flags apply to Codex sessions Orca launches.
+
+### ChatGPT desktop app
+
+The ChatGPT app is x86_64-only and installed on NixOS hosts only, with the other desktop applications. It is repackaged from the `.deb` in OpenAI's APT pool (`packages/chatgpt.nix`, `packages/chatgpt-version.json`), and the hourly workflow bumps the pin with `chatgpt-release`. The package's maintainer scripts only register an APT source and an AppArmor profile, so they are not run. The wrapper passes no display-backend flag: upstream marks native Wayland experimental, so the app runs on its X11 default through the XWayland that the Plasma session already provides.
+
 ### Shared agent instructions
 
-`home/h82/agents/instructions/` renders one user-level instruction file per harness from the single template `instructions.md.tmpl`, using [gomplate](https://docs.gomplate.ca/), whose templates are Go `text/template`. The outputs are `~/.claude/CLAUDE.md` for Claude Code and `~/.gemini/config/AGENTS.md` for the Antigravity CLI. Each render passes the harness as the `harness` context (`.harness.id` and `.harness.name`). The template's first part is shared and tells the agent to prefer its harness's native tools over shell equivalents. It then branches with `{{ if eq .harness.id "claude-code" }}` and `{{ else if eq .harness.id "antigravity" }}` into a table that maps each task to that harness's native tool. Rendering runs at build time with `--missing-key error`, and the template's final `else` calls `fail`, so a missing context key or a harness id without a branch fails the build.
+`home/h82/agents/instructions/` renders one user-level instruction file per harness from the single template `instructions.md.tmpl`, using [gomplate](https://docs.gomplate.ca/), whose templates are Go `text/template`. The outputs are `~/.claude/CLAUDE.md` for Claude Code, `~/.codex/AGENTS.md` for Codex, and `~/.gemini/config/AGENTS.md` for the Antigravity CLI. Each render passes the harness as the `harness` context (`.harness.id` and `.harness.name`). The template's first part is shared and tells the agent to prefer its harness's native tools over shell equivalents. It then branches with `{{ if eq .harness.id "claude-code" }}`, `{{ else if eq .harness.id "antigravity" }}`, and `{{ else if eq .harness.id "codex" }}` into a table that maps each task to that harness's native tool. Rendering runs at build time with `--missing-key error`, and the template's final `else` calls `fail`, so a missing context key or a harness id without a branch fails the build.
 
 The Antigravity CLI also loads `~/.gemini/GEMINI.md` as a global rule, but the Gemini CLI reads the same file, so its Antigravity tool names would reach a different harness. Neither harness rewrites its instruction file, so both are Home Manager store links. To add a harness, add an entry with its `name` and `target` to `harnesses` in `default.nix`, then add a branch for its id to the template. The `agent-instructions` check reads the materialized file on every host and fails when it is missing, disabled, lacks the shared guidance, omits one of its harness's tools, names the other harness's tools, or keeps a template action or `<no value>`.
 

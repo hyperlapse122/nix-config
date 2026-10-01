@@ -81,6 +81,12 @@ jobs:
           # 6. Update mise
           nix run .#mise-release -- --output packages/mise-release.json
 
+          # 7. Update Codex
+          nix run .#codex-release -- --output packages/codex-release.json
+
+          # 8. Update the ChatGPT app
+          nix run .#chatgpt-release -- --output packages/chatgpt-version.json
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -144,6 +150,18 @@ jobs:
             NEW_VER=$(jq -r .version packages/claude-code-manifest.json)
             git add packages/claude-code-manifest.json
             git commit -m "chore(packages): bump claude-code to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/codex-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/codex-release.json)
+            git add packages/codex-release.json
+            git commit -m "chore(packages): bump codex to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then
+            NEW_VER=$(jq -r .version packages/chatgpt-version.json)
+            git add packages/chatgpt-version.json
+            git commit -m "chore(packages): bump chatgpt to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/mise-release.json)" ]; then

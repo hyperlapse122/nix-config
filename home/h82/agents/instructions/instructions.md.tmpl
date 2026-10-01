@@ -41,6 +41,18 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 
 - There is no dedicated search tool, so search the tree with `grep` and `find` through `run_command`.
 - Read a file with `view_file` before changing it with `replace_file_content` or `write_to_file`.
+{{- else if eq .harness.id "codex" }}
+| Change part of an existing file | `apply_patch` | `sed -i`, `awk`, `perl -i` |
+| Create or fully rewrite a file | `apply_patch` | heredocs, `echo >`, `tee` |
+| Look at an image | `view_image` | opening it in another program |
+| Search the web | `web_search` | `curl` against a search engine |
+| Ask the user to choose | `request_user_input` | an open question at the end of a turn |
+| Delegate parallel or broad work | `spawn_agent` | nested `codex exec` invocations |
+| Track a multi-step task | `update_plan` | a checklist in a reply |
+| Run builds, tests, `git`, searches, and file reads | `exec_command` | — |
+
+- Codex has no file-reading tool, so read files through `exec_command` with `sed -n` or `rg`. That is the one exception to the rule against reading with shell commands.
+- Read a file before changing it with `apply_patch`.
 {{- else }}
 {{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
 {{- end }}

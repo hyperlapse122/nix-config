@@ -51,6 +51,8 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  # `.agents/skills` is the shared user-level root the pinned Codex binary
+  # reads, so this entry is what delivers Orca skills to Codex.
   roots = [
     ".claude/skills"
     ".gemini/config/skills"

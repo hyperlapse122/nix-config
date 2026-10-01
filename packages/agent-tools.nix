@@ -20,15 +20,15 @@ let
       meta.mainProgram = name;
     };
 
-  # The same shape for a Ruby helper: patchShebangs resolves `ruby` to the
-  # interpreter wrapped with the helper's gems.
-  rubyHelper =
-    name: src: ruby:
+  # The same shape for a helper that needs libraries: patchShebangs resolves
+  # the interpreter to the one wrapped with the helper's packages.
+  helperWith =
+    name: src: interpreter:
     pkgs.stdenvNoCC.mkDerivation {
       pname = name;
       version = "1";
       dontUnpack = true;
-      nativeBuildInputs = [ ruby ];
+      nativeBuildInputs = [ interpreter ];
       installPhase = ''
         install -Dm755 ${src} $out/bin/${name}
         patchShebangs $out/bin/${name}
@@ -36,7 +36,11 @@ let
       meta.mainProgram = name;
     };
 
-  agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
+  # tomlkit is what lets the TOML mode rewrite a file such as Codex's
+  # config.toml without dropping the comments and tables it does not own. The
+  # flake check runs the source copy of the tests under this same interpreter.
+  agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
+  agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
 
   # Runs from home activation, where PATH carries neither home.packages nor
   # the login shell's session variables, so the module hands it the agent CLI
@@ -51,6 +55,11 @@ let
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
+  # Resolves the latest ChatGPT desktop release from OpenAI's APT repository.
+  # Its network call goes through an overridable command so the sandboxed
+  # repository check can drive it with fixtures.
+  chatgptRelease = pythonHelper "chatgpt-release" ../scripts/chatgpt-release;
+
   # Resolves the latest claude-code release manifest from Anthropic's own
   # release endpoints. Its network calls go through an overridable command so
   # the sandboxed repository check can drive it with fixtures.
@@ -61,22 +70,30 @@ let
   # command so the sandboxed repository check can drive it with fixtures.
   miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
 
+  # Resolves the latest Codex release and its musl asset digest from the
+  # GitHub releases API. Its network call goes through an overridable command
+  # so the sandboxed repository check can drive it with fixtures.
+  codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
+
   # Pins the Android SDK packages from Google's repository XML. Its network
   # call goes through an overridable command for the same reason. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
   # nokogiri.
-  androidSdkRelease = rubyHelper "android-sdk-release" ../scripts/android-sdk-release (
+  androidSdkRelease = helperWith "android-sdk-release" ../scripts/android-sdk-release (
     pkgs.ruby.withPackages (ps: [ ps.nokogiri ])
   );
 in
 {
   inherit
     agentSettings
+    agentSettingsPython
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
+    chatgptRelease
     claudeCodeRelease
     miseRelease
+    codexRelease
     androidSdkRelease
     ;
 }

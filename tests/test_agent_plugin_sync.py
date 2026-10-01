@@ -6,6 +6,7 @@ and what the run left on the filesystem -- none of which a repository check
 over evaluated configuration can reach.
 """
 
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -93,14 +94,119 @@ sys.exit(0)
 '''
 
 
+# Codex wraps both listings in objects and has no install, update or enable.
+# Any verb it does not have exits non-zero, so a Claude-only step fails the run.
+FAKE_CODEX_CLI = '''import json, os, sys
+state = os.environ['FAKE_STATE']
+fail_on = os.environ.get('FAKE_FAIL_ON', '')
+# Fails only the first matching call, so a retry inside the restore succeeds.
+fail_once = os.environ.get('FAKE_FAIL_ONCE', '')
+sticky = os.environ.get('FAKE_STICKY_SOURCE', '')
+list_shaped = os.environ.get('FAKE_LIST_SHAPED', '')
+
+with open(state) as handle:
+    data = json.load(handle)
+
+argv = sys.argv[1:]
+data['calls'].append(argv)
+joined = ' '.join(argv)
+
+def save():
+    with open(state, 'w') as handle:
+        json.dump(data, handle)
+
+def reply(value):
+    save()
+    print(json.dumps(value))
+    sys.exit(0)
+
+if fail_on and joined.startswith(fail_on):
+    save()
+    print('fake failure for ' + fail_on, file=sys.stderr)
+    sys.exit(3)
+
+if fail_once and joined.startswith(fail_once) and not data.get('failed_once'):
+    data['failed_once'] = True
+    save()
+    print('fake failure for ' + fail_once, file=sys.stderr)
+    sys.exit(3)
+
+if argv[:3] == ['plugin', 'marketplace', 'list']:
+    if list_shaped == 'markets':
+        reply(data['markets'])
+    reply({'marketplaces': data['markets']})
+
+if argv[:2] == ['plugin', 'list']:
+    if list_shaped == 'plugins':
+        reply(data['plugins'])
+    reply({'installed': data['plugins'], 'available': []})
+
+if argv[:3] == ['plugin', 'marketplace', 'add']:
+    # Codex 0.159.3 resolves a symlinked local source and records the target
+    # (the store path), not the version-keyed link it was handed. `sticky`
+    # models one `add` that records something else entirely; the restore's
+    # later `add` records what it is handed, resolved the same way.
+    root = os.path.realpath(argv[3])
+    if sticky and not data.get('sticky_used'):
+        root = sticky
+        data['sticky_used'] = True
+    name = 'compound-engineering-plugin'
+    # Codex 0.159.3 refuses a name already registered from another source.
+    for market in data['markets']:
+        if market['name'] == name and market['root'] != root:
+            print("Error: marketplace '{}' is already added from a different source; "
+                  'remove it before adding this source'.format(name), file=sys.stderr)
+            save()
+            sys.exit(1)
+    data['markets'] = [m for m in data['markets'] if m['name'] != name]
+    data['markets'].append({
+        'name': name,
+        'root': root,
+        'marketplaceSource': {'sourceType': 'local', 'source': root},
+    })
+    reply({'marketplaceName': name, 'installedRoot': root, 'alreadyAdded': False})
+
+if argv[:3] == ['plugin', 'marketplace', 'remove']:
+    data['markets'] = [m for m in data['markets'] if m['name'] != argv[3]]
+    save()
+    sys.exit(0)
+
+if argv[:2] == ['plugin', 'add']:
+    plugin, market = argv[2].split('@')
+    if not any(m['name'] == market for m in data['markets']):
+        save()
+        print('marketplace not found: ' + market, file=sys.stderr)
+        sys.exit(1)
+    data['plugins'] = [p for p in data['plugins'] if p['pluginId'] != argv[2]]
+    data['plugins'].append({
+        'pluginId': argv[2], 'name': plugin, 'marketplaceName': market,
+        'installed': True, 'enabled': True,
+    })
+    reply({'pluginId': argv[2], 'name': plugin, 'marketplaceName': market})
+
+if argv[:2] == ['plugin', 'remove']:
+    data['plugins'] = [p for p in data['plugins'] if p['pluginId'] != argv[2]]
+    reply({'pluginId': argv[2]})
+
+save()
+print('unknown command: ' + joined, file=sys.stderr)
+sys.exit(2)
+'''
+
+
 class FakeCliCase(unittest.TestCase):
+    harness = 'claude'
+    fake = FAKE_CLI
+    marketplace_manifest = '.claude-plugin/marketplace.json'
+    plugin_manifest = '.claude-plugin/plugin.json'
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
 
-        self.cli = self.root / 'fake-claude'
-        self.cli.write_text('#!{}\n{}'.format(sys.executable, FAKE_CLI))
+        self.cli = self.root / ('fake-' + self.harness)
+        self.cli.write_text('#!{}\n{}'.format(sys.executable, self.fake))
         self.cli.chmod(0o755)
 
         self.state = self.root / 'state.json'
@@ -118,18 +224,23 @@ class FakeCliCase(unittest.TestCase):
         return json.loads(self.state.read_text())
 
     def make_source(self, version, command=None):
-        src = self.root / ('src-' + version)
-        (src / '.claude-plugin').mkdir(parents=True, exist_ok=True)
+        # Named like a store path, whose name never carries the version, so a
+        # recorded link target cannot match the segment by accident.
+        src = self.root / '{}-source'.format(hashlib.sha256(version.encode()).hexdigest()[:32])
         marketplace = {
             'name': 'compound-engineering-plugin',
             'plugins': [{'name': 'compound-engineering', 'source': './'}],
         }
         if command:
             marketplace['plugins'][0]['command'] = command
-        (src / '.claude-plugin' / 'marketplace.json').write_text(json.dumps(marketplace))
-        (src / '.claude-plugin' / 'plugin.json').write_text(
-            json.dumps({'name': 'compound-engineering', 'version': version.lstrip('v')})
-        )
+        plugin = {'name': 'compound-engineering', 'version': version.lstrip('v')}
+        for relative, content in (
+            (self.marketplace_manifest, marketplace),
+            (self.plugin_manifest, plugin),
+        ):
+            path = src / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(content))
         return src
 
     def invoke(self, args, env=None):
@@ -142,7 +253,7 @@ class FakeCliCase(unittest.TestCase):
 
     def run_sync(self, segment='v3.28.0', source=None, env=None, extra=None):
         return self.invoke([
-            '--claude', str(self.cli),
+            '--harness', self.harness, '--cli', str(self.cli),
             '--source', str(source or self.source),
             '--base', str(self.base),
             '--segment', segment,
@@ -349,7 +460,7 @@ class RetireTestCase(FakeCliCase):
     def run_retire(self, env=None, extra=None):
         return self.invoke([
             '--retire',
-            '--claude', str(self.cli),
+            '--harness', self.harness, '--cli', str(self.cli),
             '--base', str(self.retired_base),
             '--plugin', 'retired-plugin',
             '--marketplace', 'retired-market',
@@ -423,10 +534,214 @@ class RetireTestCase(FakeCliCase):
 
     def test_sync_still_requires_source_and_segment(self):
         result = self.invoke(
-            ['--claude', str(self.cli), '--base', str(self.base), '--plugin', 'p', '--marketplace', 'm']
+            ['--harness', 'claude', '--cli', str(self.cli), '--base', str(self.base), '--plugin', 'p', '--marketplace', 'm']
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn('--source', result.stderr)
+
+
+CE_ID = 'compound-engineering@compound-engineering-plugin'
+
+
+class CodexCase(FakeCliCase):
+    harness = 'codex'
+    fake = FAKE_CODEX_CLI
+    marketplace_manifest = '.agents/plugins/marketplace.json'
+    plugin_manifest = '.codex-plugin/plugin.json'
+
+    def converge(self):
+        """Run once and carry the resulting registry into a fresh call log."""
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = self.read_state()
+        self.reset_state(state['markets'], state['plugins'])
+
+    def adds_and_removes(self):
+        """Every call other than a listing."""
+        return [
+            verb for verb in self.verbs()
+            if not verb.startswith(('plugin list', 'plugin marketplace list'))
+        ]
+
+
+class CodexSyncTestCase(CodexCase):
+    def test_fresh_home_adds_the_marketplace_then_the_plugin(self):
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        link = self.base / 'v3.28.0'
+        self.assertEqual(os.readlink(link), str(self.source))
+        calls = self.read_state()['calls']
+        market_add = calls.index(['plugin', 'marketplace', 'add', str(link), '--json'])
+        plugin_add = calls.index(['plugin', 'add', CE_ID, '--json'])
+        self.assertLess(market_add, plugin_add)
+        self.assertEqual(self.read_state()['plugins'][0]['pluginId'], CE_ID)
+
+    def test_converged_rerun_adds_and_removes_nothing(self):
+        self.converge()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.adds_and_removes(), [])
+
+    def test_plugin_removed_by_hand_comes_back_without_touching_the_marketplace(self):
+        self.converge()
+        self.reset_state(self.read_state()['markets'], [])
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.assertEqual(self.adds_and_removes(), ['plugin add ' + CE_ID])
+
+    def test_bump_removes_both_then_adds_both_at_the_new_dir(self):
+        self.converge()
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        self.assertEqual(self.adds_and_removes(), [
+            'plugin remove ' + CE_ID,
+            'plugin marketplace remove',
+            'plugin marketplace add',
+            'plugin add ' + CE_ID,
+        ])
+        # Codex records the link's target, the version's source tree.
+        self.assertEqual(self.read_state()['markets'][0]['root'], str(new_source.resolve()))
+        self.assertTrue((self.base / 'v3.29.0').is_symlink())
+        self.assertFalse((self.base / 'v3.28.0').exists())
+
+    def test_readback_mismatch_restores_marketplace_and_plugin(self):
+        self.converge()
+        # The restore re-adds what Codex had recorded: the resolved source tree.
+        previous = os.path.realpath(self.base / 'v3.28.0')
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source, env={'FAKE_STICKY_SOURCE': '/elsewhere'}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('refusing to prune', result.stderr)
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+        calls = self.read_state()['calls']
+        self.assertEqual(calls[-2:], [
+            ['plugin', 'marketplace', 'add', previous, '--json'],
+            ['plugin', 'add', CE_ID, '--json'],
+        ])
+        state = self.read_state()
+        self.assertEqual([m['root'] for m in state['markets']], [previous])
+        self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
+
+    def test_failed_marketplace_remove_on_bump_restores_the_plugin(self):
+        self.converge()
+        previous = os.path.realpath(self.base / 'v3.28.0')
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source,
+            env={'FAKE_FAIL_ON': 'plugin marketplace remove'},
+        )
+        self.assertEqual(result.returncode, 1)
+
+        # The plugin was removed before the marketplace removal failed, so the
+        # restore brings it back on the marketplace that is still registered.
+        state = self.read_state()
+        self.assertEqual([m['root'] for m in state['markets']], [previous])
+        self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
+
+    def test_failed_plugin_add_on_bump_restores_the_previous_version(self):
+        self.converge()
+        previous = os.path.realpath(self.base / 'v3.28.0')
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source, env={'FAKE_FAIL_ONCE': 'plugin add'}
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn('could not restore', result.stderr)
+
+        # The new marketplace was already registered under the same name, which
+        # Codex refuses to add over, so the restore removes it first.
+        state = self.read_state()
+        self.assertEqual([m['root'] for m in state['markets']], [previous])
+        self.assertEqual([p['pluginId'] for p in state['plugins']], [CE_ID])
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_list_shaped_marketplace_listing_is_refused(self):
+        self.converge()
+        result = self.run_sync(env={'FAKE_LIST_SHAPED': 'markets'})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('marketplace list', result.stderr)
+        self.assertEqual(self.adds_and_removes(), [])
+
+    def test_list_shaped_plugin_listing_is_refused(self):
+        self.converge()
+        result = self.run_sync(env={'FAKE_LIST_SHAPED': 'plugins'})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('plugin list', result.stderr)
+        self.assertEqual(self.adds_and_removes(), [])
+
+    def test_reads_the_codex_plugin_manifest(self):
+        (self.source / '.codex-plugin' / 'plugin.json').unlink()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('.codex-plugin/plugin.json', result.stderr)
+        self.assertEqual(self.read_state()['calls'], [])
+
+    def test_dry_run_touches_nothing(self):
+        result = self.run_sync(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.base.exists())
+        self.assertEqual(self.read_state()['calls'], [])
+
+
+CODEX_RETIRED_MARKET = {
+    'name': 'retired-market',
+    'root': '/old',
+    'marketplaceSource': {'sourceType': 'local', 'source': '/old'},
+}
+
+
+class CodexRecordedSourceTestCase(unittest.TestCase):
+    def test_root_is_the_recorded_source(self):
+        entry = {'root': '/store/a', 'marketplaceSource': {'source': '/store/b'}}
+        self.assertEqual(sync.Codex.recorded_source(entry), '/store/a')
+
+    def test_falls_back_to_the_marketplace_source(self):
+        entry = {'root': '', 'marketplaceSource': {'source': '/store/b'}}
+        self.assertEqual(sync.Codex.recorded_source(entry), '/store/b')
+
+    def test_an_entry_with_neither_records_nothing(self):
+        self.assertEqual(sync.Codex.recorded_source({}), '')
+
+
+class CodexRetireTestCase(CodexCase):
+    def setUp(self):
+        super().setUp()
+        self.retired_base = self.root / 'agent-plugins' / 'retired-plugin'
+        self.retired_base.mkdir(parents=True)
+        (self.retired_base / '0.0.0-abc').symlink_to(self.source)
+
+    def run_retire(self):
+        return self.invoke([
+            '--retire',
+            '--harness', 'codex', '--cli', str(self.cli),
+            '--base', str(self.retired_base),
+            '--plugin', 'retired-plugin',
+            '--marketplace', 'retired-market',
+        ])
+
+    def test_retire_removes_listed_plugin_then_marketplace_and_the_base(self):
+        self.reset_state([CODEX_RETIRED_MARKET], [{'pluginId': RETIRED_ID}])
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.adds_and_removes(), [
+            'plugin remove ' + RETIRED_ID,
+            'plugin marketplace remove',
+        ])
+        state = self.read_state()
+        self.assertEqual(state['markets'], [])
+        self.assertEqual(state['plugins'], [])
+        self.assertFalse(self.retired_base.exists())
+
+    def test_unlisted_retire_makes_no_remove_call(self):
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.adds_and_removes(), [])
+        self.assertFalse(self.retired_base.exists())
 
 
 if __name__ == '__main__':

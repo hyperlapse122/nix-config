@@ -13,6 +13,12 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
+--format toml merges into a TOML file instead, such as Codex's config.toml,
+with the same semantics.  The declaration stays JSON.  The file is edited in
+place through tomlkit, so the user's comments and the tables the declaration
+does not name keep their bytes.  TOML has no null, so a declared null is
+refused before anything is touched.
+
 The declared document is a JSON object with up to four fields:
 
   set       {name: scalar}          top-level keys to assign
@@ -40,11 +46,16 @@ from pathlib import Path
 import sys
 import tempfile
 
+import tomlkit
+
 # The settings file has another writer, so the merge is a compare-and-swap
 # rather than a plain read-modify-write.  A couple of retries is enough: each
 # one costs a read, and a file changing faster than that is a problem the user
 # needs told about rather than one worth spinning on.
 ATTEMPTS = 3
+
+# Syntaxes the settings file may be in. The declaration is always JSON.
+FORMATS = ('json', 'toml')
 
 
 def check_directory(path):
@@ -77,7 +88,15 @@ def describe(path):
     return json.dumps(path, ensure_ascii=False)
 
 
-def declaration(declared):
+def holds_null(value):
+    if isinstance(value, dict):
+        return any(holds_null(item) for item in value.values())
+    if isinstance(value, list):
+        return any(holds_null(item) for item in value)
+    return value is None
+
+
+def declaration(declared, fmt='json'):
     """Parse the rendered declaration into (assign, retire, paths, owned).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
@@ -119,6 +138,11 @@ def declaration(declared):
     through = sorted({path[0] for path, _ in paths if path[0] in owned})
     if through:
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
+    if fmt == 'toml':
+        nulls = sorted({describe([name]) for name, value in {**assign, **owned}.items() if holds_null(value)}
+                       | {describe(path) for path, value in paths if value is None})
+        if nulls:
+            raise ValueError('TOML cannot hold a declared null: {}'.format(', '.join(nulls)))
     return assign, retire, paths, owned
 
 
@@ -153,11 +177,14 @@ def nested_paths(entries, assign, retire, declared):
 def apply(current, assign, retire, paths, owned=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
-    Each object along a path is copied before it is changed.  The caller skips
-    the write when the result equals what it read, and editing the read
-    objects in place would make that comparison true every time.
+    The whole document is deep-copied and the copy edited in place.  The
+    caller skips the write when the result equals what it read, and editing
+    the read objects would make that comparison true every time.  Editing in
+    place, rather than rebuilding each table as a plain dict, keeps a tomlkit
+    document's comments and layout; a plain dict assigned into it becomes a
+    table.
     """
-    merged = dict(current)
+    merged = copy.deepcopy(current)
     merged.update(assign)
     # A copy, so a later edit to the result never reaches the declaration.
     merged.update(copy.deepcopy(owned or {}))
@@ -167,16 +194,13 @@ def apply(current, assign, retire, paths, owned=None):
         node = merged
         for depth, key in enumerate(path[:-1]):
             if key not in node:
-                child = {}
-            elif isinstance(node[key], dict):
-                child = dict(node[key])
-            else:
+                node[key] = {}
+            elif not isinstance(node[key], dict):
                 # Replacing it would discard whatever the owner stored there,
                 # so refuse and let the rebuild report it.
                 raise ValueError('{} is not an object, so {} cannot be set'.format(
                     describe(path[:depth + 1]), describe(path)))
-            node[key] = child
-            node = child
+            node = node[key]
         node[path[-1]] = value
     return merged
 
@@ -190,13 +214,14 @@ def snapshot(settings):
     return (state.st_dev, state.st_ino, state.st_mtime_ns, state.st_size)
 
 
-def read_settings(settings):
+def read_text(settings):
+    """Return the file's text, or None when it does not exist."""
     # O_NOFOLLOW refuses a symlinked path in the same syscall that opens it, so
     # there is no window between deciding the path is safe and reading it.
     try:
         descriptor = os.open(settings, os.O_RDONLY | os.O_NOFOLLOW)
     except FileNotFoundError:
-        return {}
+        return None
     except OSError as error:
         if error.errno in (errno.ELOOP, errno.EMLINK):
             raise ValueError('settings file is a symlink: {}'.format(settings))
@@ -206,7 +231,13 @@ def read_settings(settings):
     # content -- likely here, where the interface language is Korean, and where
     # a declared path can carry any name the user typed.
     with os.fdopen(descriptor, 'r', encoding='utf-8') as stream:
-        text = stream.read()
+        return stream.read()
+
+
+def read_settings(settings):
+    text = read_text(settings)
+    if text is None:
+        return {}
     try:
         current = json.loads(text)
     except json.JSONDecodeError:
@@ -216,11 +247,27 @@ def read_settings(settings):
     return current
 
 
-def swap(settings, merged, before):
-    """Write `merged` only if the file still looks like `before`."""
+def read_toml_settings(settings):
+    # A TOML document is always a table, so there is no "not an object" case.
+    text = read_text(settings)
+    if text is None:
+        return tomlkit.document()
+    try:
+        return tomlkit.parse(text)
+    except tomlkit.exceptions.ParseError:
+        raise ValueError('settings file is not valid TOML: {}'.format(settings))
+
+
+def serialize(merged, fmt):
+    if fmt == 'toml':
+        return tomlkit.dumps(merged)
     # ensure_ascii=False keeps the agent's non-ASCII text as the bytes it wrote
     # instead of rewriting it to \uXXXX escapes on every activation.
-    text = json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
+    return json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
+
+
+def swap(settings, text, before):
+    """Write `text` only if the file still looks like `before`."""
     descriptor, temporary = tempfile.mkstemp(prefix='.settings-', dir=settings.parent)
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
@@ -242,8 +289,11 @@ def swap(settings, merged, before):
             Path(temporary).unlink(missing_ok=True)
 
 
-def merge(settings, declared):
-    assign, retire, paths, owned = declaration(declared)
+def merge(settings, declared, fmt='json'):
+    assign, retire, paths, owned = declaration(declared, fmt)
+    # Looked up per call rather than bound at import, so a test that patches
+    # either reader reaches this merge.
+    read = read_toml_settings if fmt == 'toml' else read_settings
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -251,11 +301,11 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read_settings(settings), assign, retire, paths, owned)
+    apply(read(settings), assign, retire, paths, owned)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
-        current = read_settings(settings)
+        current = read(settings)
         merged = apply(current, assign, retire, paths, owned)
         if merged == current and before is not None:
             try:
@@ -265,7 +315,7 @@ def merge(settings, declared):
                 # Removed between the snapshot and here; fall through and let
                 # the next attempt recreate it rather than failing activation.
                 continue
-        if swap(settings, merged, before):
+        if swap(settings, serialize(merged, fmt), before):
             return
     raise ValueError('settings file kept changing while merging: {}'.format(settings))
 
@@ -275,11 +325,13 @@ def main(argv=None):
     parser.add_argument('--settings', required=True, type=Path)
     parser.add_argument('--declared', required=True, type=Path)
     parser.add_argument('--label', default='Agent', help='agent name used in failure messages')
+    parser.add_argument('--format', default='json', choices=FORMATS, dest='fmt',
+                        help='syntax of the settings file; the declaration is always JSON')
     args = parser.parse_args(argv)
     if os.geteuid() == 0:
         parser.error('must run as the destination user, not root')
     try:
-        merge(args.settings, args.declared)
+        merge(args.settings, args.declared, args.fmt)
     except (OSError, ValueError) as error:
         print('{} settings merge failed: {}'.format(args.label, error), file=sys.stderr)
         return 1

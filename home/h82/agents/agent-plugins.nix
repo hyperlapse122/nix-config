@@ -10,9 +10,10 @@ let
     (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentPluginSync
   }/bin/agent-plugin-sync";
 
-  # Single source of truth with home/h82/default.nix's package list, so this
-  # command's --claude flag can never drift onto a different claude-code build.
+  # Single source of truth with home/h82/default.nix's package list, so each
+  # command's --cli flag can never drift onto a different agent build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
+  codex = import ../../../packages/codex.nix { inherit pkgs; };
 
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
@@ -39,6 +40,7 @@ let
       # because one harness can misclassify a tree another accepts.
       exclude = {
         claude = [ ];
+        codex = [ ];
       };
     };
   };
@@ -50,9 +52,28 @@ let
       name = "compound-engineering";
       harness = "claude";
     }
+    {
+      name = "compound-engineering";
+      harness = "codex";
+    }
   ];
 
-  knownHarnesses = [ "claude" ];
+  # The CLI each harness is driven through, and the environment it runs with.
+  # Activation carries neither home.packages on PATH nor
+  # home.sessionVariables, so Claude Code's declared tier is exported around
+  # it; Codex's update overrides travel inside its wrapper instead.
+  harnesses = {
+    claude = {
+      cli = "${claudeCode}/bin/claude";
+      env = claudeEnv;
+    };
+    codex = {
+      cli = "${codex}/bin/codex";
+      env = "";
+    };
+  };
+
+  knownHarnesses = lib.attrNames harnesses;
 
   badHarness = lib.filter (row: !(lib.elem row.harness knownHarnesses)) membership;
   badName = lib.filter (row: !(sources ? ${row.name})) membership;
@@ -71,6 +92,22 @@ let
       );
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
+
+  # Every harness row of a source shares one version-keyed link under
+  # baseDir. Rows with different exclusions would each re-point it at their
+  # own pruned tree, and Claude Code, which records the link path, would read
+  # whichever ran last. Differing exclusions stop evaluation until the base
+  # is split per harness.
+  divergentExclusions = lib.filter (
+    name:
+    lib.length (
+      lib.unique (
+        map (row: sources.${name}.exclude.${row.harness} or [ ]) (
+          lib.filter (row: row.name == name) checkedMembership
+        )
+      )
+    ) > 1
+  ) (lib.attrNames sources);
 
   # A source's segment is its tag without the train prefix, the same version
   # the materialized path is keyed by.
@@ -103,16 +140,16 @@ let
     key: "${key}=${lib.escapeShellArg (toString config.home.sessionVariables.${key})}"
   ) (lib.filter (key: config.home.sessionVariables ? ${key}) claudeEnvKeys);
 
-  claudeRows = lib.filter (row: row.harness == "claude") checkedMembership;
-
   syncInvocation =
     row:
     let
       spec = sources.${row.name};
+      harness = harnesses.${row.harness};
     in
     ''
-      env ${claudeEnv} ${syncTool} \
-        --claude ${claudeCode}/bin/claude \
+      env ${harness.env} ${syncTool} \
+        --harness ${row.harness} \
+        --cli ${harness.cli} \
         --source ${treeFor row.name spec row.harness} \
         --base ${lib.escapeShellArg "${baseDir}/${row.name}"} \
         --segment ${lib.escapeShellArg (segmentOf spec)} \
@@ -120,24 +157,31 @@ let
         --marketplace ${lib.escapeShellArg spec.marketplace}'';
 
   # Plugins this repository used to install and has since dropped. Removing a
-  # row from `sources` alone leaves the plugin registered with Claude Code, and
+  # row from `sources` alone leaves the plugin registered with its agent, and
   # its hooks keep firing, on every machine that ran an earlier generation.
   # Move it here instead, and delete the entry once every host has rebuilt
   # past it.
   retired = [
     {
       name = "orca-orchestration";
+      harness = "claude";
       plugin = "orca-orchestration";
       marketplace = "orca-orchestration";
     }
   ];
 
-  retireInvocation = row: ''
-    env ${claudeEnv} ${syncTool} --retire \
-      --claude ${claudeCode}/bin/claude \
-      --base ${lib.escapeShellArg "${baseDir}/${row.name}"} \
-      --plugin ${lib.escapeShellArg row.plugin} \
-      --marketplace ${lib.escapeShellArg row.marketplace}'';
+  retireInvocation =
+    row:
+    let
+      harness = harnesses.${row.harness};
+    in
+    ''
+      env ${harness.env} ${syncTool} --retire \
+        --harness ${row.harness} \
+        --cli ${harness.cli} \
+        --base ${lib.escapeShellArg "${baseDir}/${row.name}"} \
+        --plugin ${lib.escapeShellArg row.plugin} \
+        --marketplace ${lib.escapeShellArg row.marketplace}'';
 
   withDryRun = invocation: ''
     if [[ -v DRY_RUN ]]; then
@@ -147,10 +191,15 @@ let
     fi
   '';
 
-  syncScript = lib.concatStringsSep "\n" (
-    map (row: withDryRun (syncInvocation row)) claudeRows
-    ++ map (row: withDryRun (retireInvocation row)) retired
-  );
+  syncScript =
+    lib.throwIf (divergentExclusions != [ ])
+      "agent-plugins: harnesses of ${lib.concatStringsSep ", " divergentExclusions} exclude different paths but share one link"
+      (
+        lib.concatStringsSep "\n" (
+          map (row: withDryRun (syncInvocation row)) checkedMembership
+          ++ map (row: withDryRun (retireInvocation row)) retired
+        )
+      );
 in
 {
   # Exposed so tests/agent-plugins.nix can compare the recorded expectation
