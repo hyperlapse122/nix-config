@@ -49,7 +49,7 @@ The relevant operations are `os.Mkdir` and `os.MkdirAll` in [the pinned SOPS ins
 When hardening an upstream service that creates files for other users, inspect its directory creation modes and exercise a real unprivileged consumer. The authentication VM failed with the override and passed after its removal:
 
 ```sh
-nix build --no-link .#checks.x86_64-linux.auth-provisioning
+nix build --no-link .#vmChecks.auth-provisioning
 ```
 
 `tests/auth-provisioning.nix` covers real decryption, user publication, repeated switches, missing/corrupt local keys, and recovery through the packaged installer. Its switch support is explicitly enabled and VM GRUB updates are disabled, so missing commands or unrelated bootloader errors cannot masquerade as expected authentication failures. Physical YubiKey and laptop boot checks remain separate.

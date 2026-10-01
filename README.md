@@ -36,6 +36,7 @@ Each `<host>-bootstrap` output can be installed without private keys or tokens. 
 
 ```sh
 nix flake check
+nix build --no-link .#vmChecks.all  # NixOS VM tests; needs /dev/kvm
 nix eval .#nixosConfigurations --apply builtins.attrNames
 for host in $(nix eval --raw .#nixosConfigurations --apply 'c: toString (builtins.attrNames c)'); do
   nix build --no-link ".#nixosConfigurations.$host.config.system.build.toplevel"

@@ -19,11 +19,13 @@ The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-
 - `nix develop`: enter the development shell.
 - `nix fmt`: format Nix files with `nixfmt-tree`.
 - `nix fmt -- --ci`: check formatting without edits.
-- `nix flake check`: run declared checks.
+- `nix flake check`: run declared checks. NixOS VM tests are not among them.
+- `nix build --no-link .#vmChecks.all`: build every NixOS VM test; needs `/dev/kvm`. Build one with `.#vmChecks.<name>`.
 
-Before shipping, run `nix flake check` and build every output under `nixosConfigurations`, production and bootstrap. List them, then build each:
+Before shipping, run `nix flake check`, build the VM tests, and build every output under `nixosConfigurations`, production and bootstrap. List them, then build each:
 
 ```sh
+nix build --no-link .#vmChecks.all
 nix eval .#nixosConfigurations --apply builtins.attrNames
 for host in $(nix eval --raw .#nixosConfigurations --apply 'c: toString (builtins.attrNames c)'); do
   nix build --no-link ".#nixosConfigurations.$host.config.system.build.toplevel"
@@ -38,7 +40,7 @@ Use two-space Nix indentation and let `nix fmt` control layout. Keep each module
 
 ## Testing guidelines
 
-Add regression checks beside related tests and register new checks in `flake.nix`. Use fake tokens, PINs, and test keys. VM checks require Linux with `/dev/kvm` access and disposable disks. Report hardware verification separately from VM evidence; follow `docs/verification.md`.
+Add regression checks beside related tests and register new checks in `flake.nix`. Register a NixOS VM test in `tests/vm-checks.nix`, not under `checks`, so `nix flake check` stays fast; the `vm-checks-guard` check fails otherwise, and CI builds each VM test in its own `vm-checks` job. Use fake tokens, PINs, and test keys. VM checks require Linux with `/dev/kvm` access and disposable disks. Report hardware verification separately from VM evidence; follow `docs/verification.md`.
 
 ## Commit and pull request guidelines
 
