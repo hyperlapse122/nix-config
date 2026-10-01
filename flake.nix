@@ -187,6 +187,7 @@
                 python tests/restore-age-identity.py
                 touch $out
               '';
+          boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           agent-settings =
