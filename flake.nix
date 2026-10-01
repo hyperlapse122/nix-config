@@ -98,6 +98,8 @@
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
+        codex-release = agentTools.codexRelease;
+        codex = import ./packages/codex.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       checks.${system} =
@@ -336,6 +338,14 @@
             cp ${./scripts/mise-release} scripts/mise-release
             cp ${./tests/test_mise_release.py} tests/test_mise_release.py
             python tests/test_mise_release.py
+            touch $out
+          '';
+          codex-release = pkgs.runCommand "codex-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            mkdir -p scripts tests
+            cp ${./scripts/codex-release} scripts/codex-release
+            cp ${./tests/test_codex_release.py} tests/test_codex_release.py
+            python tests/test_codex_release.py
             touch $out
           '';
           # Drives the packaged helper, so a package that lost nokogiri from its
@@ -873,6 +883,52 @@
                 '';
             in
             pkgs.runCommand "claude-code-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          codex =
+            let
+              # The version attribute is compared with the pin for the reason
+              # given on the claude-code check: versionCheckHook already proves
+              # the binary reports that attribute. The wrapper flags are read
+              # from the installed bin/codex itself, because they are what keep
+              # Codex from updating itself under Orca's CODEX_HOME, which never
+              # receives the declared config.toml keys.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
+              wrapperFlags = [
+                "-c check_for_update_on_startup=false"
+                "--disable in_app_updates"
+                "--disable daemon_auto_start"
+              ];
+              assertConfiguration =
+                entry:
+                let
+                  codexPkg = pkgs.lib.lists.findFirst (p: (p.pname or "") == "codex") null (userPackagesOf entry);
+                  versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
+                    echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  flagsMissing = pkgs.lib.optionalString (codexPkg != null) ''
+                    for flag in ${pkgs.lib.escapeShellArgs wrapperFlags}; do
+                      if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
+                        echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
+                        fail=1
+                      fi
+                    done
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "codex";
+                    executables = [ "codex" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${flagsMissing}
+                '';
+            in
+            pkgs.runCommand "codex-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out

@@ -61,6 +61,11 @@ let
   # command so the sandboxed repository check can drive it with fixtures.
   miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
 
+  # Resolves the latest Codex release and its musl asset digest from the
+  # GitHub releases API. Its network call goes through an overridable command
+  # so the sandboxed repository check can drive it with fixtures.
+  codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
+
   # Pins the Android SDK packages from Google's repository XML. Its network
   # call goes through an overridable command for the same reason. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
@@ -77,6 +82,7 @@ in
     claudeDesktopRelease
     claudeCodeRelease
     miseRelease
+    codexRelease
     androidSdkRelease
     ;
 }
