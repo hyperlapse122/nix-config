@@ -75,12 +75,26 @@ let
 
       registry = userConfig.my.agentPlugins.${pluginName} or null;
 
-      # Compared against below so the --claude flag can never silently drift
-      # onto a different build than the one actually installed for the user.
-      claudeCodePkg = lib.lists.findFirst (p: (p.pname or "") == "claude-code") null (
-        userConfig.home.packages
-      );
-      expectedClaudePath = if claudeCodePkg == null then "" else "${claudeCodePkg}/bin/claude";
+      # Compared against below so each harness's --cli flag can never silently
+      # drift onto a different build than the one installed for the user.
+      packagePath =
+        pname: executable:
+        let
+          found = lib.lists.findFirst (p: (p.pname or "") == pname) null (userConfig.home.packages or [ ]);
+        in
+        if found == null then "" else "${found}/bin/${executable}";
+      harnessChecks = [
+        {
+          name = "claude";
+          pname = "claude-code";
+          expectedCli = packagePath "claude-code" "claude";
+        }
+        {
+          name = "codex";
+          pname = "codex";
+          expectedCli = packagePath "codex" "codex";
+        }
+      ];
 
       activation = userConfig.home.activation.agentPlugins or null;
       script = if activation == null then "" else (activation.data or "");
@@ -161,44 +175,48 @@ let
           failed=1
         fi
 
-        # The activation unit carries no session variables, so the declared
-        # environment tier has to be exported around the agent CLI.
-        if ! grep -qF 'DISABLE_AUTOUPDATER=' <<< ${esc script}; then
-          echo 'the agentPlugins activation script must export the declared DISABLE_AUTOUPDATER on ${hostName}' >&2
-          failed=1
-        fi
-
-        # Read the flags the helper is actually invoked with, not merely whether
-        # the script mentions a path somewhere: a script naming the right source
-        # in a comment and handing the helper a different one would pass.
-        sourceArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" source)
-        if [ "$sourceArg" != ${esc pinnedSource} ]; then
-          echo "the helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
-          failed=1
-        fi
-
-        segmentArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" segment)
-        if [ "$segmentArg" != ${
-          esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
-        } ]; then
-          echo "the helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
-          failed=1
-        fi
-
-        claudeArg=$(argValue "$(blockFor ${esc script} ${esc pluginName})" claude)
-        case "$claudeArg" in
-          /nix/store/*/bin/claude) ;;
-          *)
-            echo "the agent CLI must be named by store path on ${hostName}, got: '$claudeArg'" >&2
+        # Each harness's invocation is read separately: with a Claude and a
+        # Codex row for the same plugin, a block chosen by plugin name alone
+        # would check whichever came first and let the other drift.
+        ${lib.concatMapStrings (harness: ''
+          block=$(blockForHarness ${esc script} ${esc pluginName} ${esc harness.name})
+          if [ -z "$block" ]; then
+            echo "the agentPlugins activation script never syncs ${pluginName} for ${harness.name} on ${hostName}" >&2
             failed=1
-            ;;
-        esac
+          fi
 
-        if [ -z ${esc expectedClaudePath} ]; then
-          echo 'missing claude-code in user packages on ${hostName}' >&2
-          failed=1
-        elif [ "$claudeArg" != ${esc expectedClaudePath} ]; then
-          echo "the agent CLI's store path must match the claude-code package in home.packages on ${hostName}, got: '$claudeArg'" >&2
+          # Read the flags the helper is actually invoked with, not merely
+          # whether the script mentions a path somewhere: a script naming the
+          # right source in a comment and handing the helper a different one
+          # would pass.
+          sourceArg=$(argValue "$block" source)
+          if [ "$sourceArg" != ${esc pinnedSource} ]; then
+            echo "the ${harness.name} helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
+            failed=1
+          fi
+
+          segmentArg=$(argValue "$block" segment)
+          if [ "$segmentArg" != ${
+            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
+          } ]; then
+            echo "the ${harness.name} helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
+            failed=1
+          fi
+
+          cliArg=$(argValue "$block" cli)
+          if [ -z ${esc harness.expectedCli} ]; then
+            echo 'missing ${harness.pname} in user packages on ${hostName}' >&2
+            failed=1
+          elif [ "$cliArg" != ${esc harness.expectedCli} ]; then
+            echo "the ${harness.name} CLI's store path must match the ${harness.pname} package in home.packages on ${hostName}, got: '$cliArg'" >&2
+            failed=1
+          fi
+        '') harnessChecks}
+
+        # The activation unit carries no session variables, so Claude Code's
+        # declared environment tier has to be exported around its CLI.
+        if ! grep -qF 'DISABLE_AUTOUPDATER=' <<< "$(blockForHarness ${esc script} ${esc pluginName} claude)"; then
+          echo 'the Claude plugin sync must export the declared DISABLE_AUTOUPDATER on ${hostName}' >&2
           failed=1
         fi
       '';
@@ -266,8 +284,8 @@ pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } 
     printf '%s' "$1" | tr '\n' ' ' | sed 's|/bin/agent-plugin-sync|\n&|g' \
       | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" || true
   }
-  blockFor() {
-    blocksFor "$1" "$2" | head -1 || true
+  blockForHarness() {
+    blocksFor "$1" "$2" | grep -E -- "--harness[[:space:]]+'?$3'?([[:space:]]|$)" | head -1 || true
   }
 
   if [ -z ${esc lockedRev} ]; then
