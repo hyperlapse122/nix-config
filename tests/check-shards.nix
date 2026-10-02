@@ -5,7 +5,7 @@
 
   Splits the flake's checks into the shards CI builds, one job per shard,
   in the `check-shards` matrix of .github/workflows/check.yml. flake.nix
-  exposes the result as `legacyPackages.x86_64-linux.checkShards`, so
+  exposes the result as `legacyPackages.<system>.checkShards`, so
   `nix build .#checkShards.<name>` builds one shard locally.
 
   - `hosts` holds `hostClosureChecks`: the checks whose closure carries a

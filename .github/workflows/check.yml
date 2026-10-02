@@ -67,16 +67,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Make room for NixOS closures
-        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
-      # The VM tests live outside `checks` and run in vm-checks, so this job
-      # needs no KVM.
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
-        with:
-          extra_nix_config: |
-            system-features = big-parallel benchmark
-      # The checks are built in check-shards; this job evaluates every output
-      # once, so an evaluation error reports here without waiting on builds.
+      # The checks are built in check-shards and the VM tests in vm-checks;
+      # this job evaluates every output once, so an evaluation error reports
+      # here without waiting on builds, and it needs no disk cleanup or KVM.
       - name: Evaluate
         run: nix flake check --no-build
 
