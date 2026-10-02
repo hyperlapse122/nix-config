@@ -51,7 +51,7 @@ Use two-space Nix indentation and let `nix fmt` control layout. Keep each module
 
 ## Testing guidelines
 
-Add regression checks beside related tests and register new checks in `flake.nix`. Register a NixOS VM test in `tests/vm-checks.nix`, not under `checks`, so `nix flake check` stays fast; the `vm-checks-guard` check fails otherwise, and CI builds each VM test in its own `vm-checks` job. Use fake tokens, PINs, and test keys. VM checks require Linux with `/dev/kvm` access and disposable disks. Report hardware verification separately from VM evidence; follow `docs/verification.md`.
+Add regression checks beside related tests and register new checks in `flake.nix`. Register a NixOS VM test in `tests/vm-checks.nix`, not under `checks`, so `nix flake check` stays fast; the `vm-checks-guard` check fails otherwise, and CI builds each VM test in its own `vm-checks` job. CI's `flake-check` job only evaluates (`nix flake check --no-build`); the `check-shards` jobs build the checks, one per entry of `checkShards` from `tests/check-shards.nix`, and `check-shards-guard` fails when a check is in no shard. Add a check that reads a host generation to `hostClosureChecks` in `flake.nix` so it builds in the `hosts` shard; reproduce a shard with `nix build --no-link .#checkShards.<name>`. Use fake tokens, PINs, and test keys. VM checks require Linux with `/dev/kvm` access and disposable disks. Report hardware verification separately from VM evidence; follow `docs/verification.md`.
 
 ## Commit and pull request guidelines
 

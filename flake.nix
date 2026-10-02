@@ -73,6 +73,30 @@
       linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
       fixtureChecksFor = import ./tests/lib/fixture-checks.nix { inherit lib linuxFixtures; };
       vmChecks = import ./tests/vm-checks.nix { inherit pkgs inputs linuxFixtures; };
+      checkShards = import ./tests/check-shards.nix {
+        inherit pkgs;
+        checks = self.checks.${system};
+        # The checks whose closure carries a host generation, found by
+        # sweeping each check's .drv closure for a NixOS system-path or a Home
+        # Manager or system-manager generation. The fixture checks are listed
+        # through fixtureChecksFor because their names embed a fixture host.
+        hostClosureChecks = [
+          "agent-browser-deps"
+          "desktop-ssh"
+          "iphone-restore"
+          "kde-dark-theme"
+          "keyd-remap"
+          "nix-cleanup"
+          "non-nixos-outputs"
+          "printing"
+          "proton-vpn"
+          "thunderbolt"
+          "user-avatar"
+          "yubikey-fido"
+        ]
+        ++ lib.attrNames (fixtureChecksFor system);
+        lightCount = 3;
+      };
     in
     {
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
@@ -108,8 +132,13 @@
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
       # no KVM. legacyPackages, unlike an unknown top-level output, draws no
       # flake check warning, and `nix build .#vmChecks.<name>` resolves here.
-      legacyPackages.${system}.vmChecks = vmChecks // {
-        all = pkgs.linkFarm "vm-checks" vmChecks;
+      legacyPackages.${system} = {
+        vmChecks = vmChecks // {
+          all = pkgs.linkFarm "vm-checks" vmChecks;
+        };
+        # CI builds the checks one shard per job; `nix flake check` still
+        # builds them all at once.
+        checkShards = checkShards.shards;
       };
       checks.${system} =
         let
@@ -1104,6 +1133,12 @@
             # removeAttrs does not force the removed value, so the guard never
             # evaluates itself.
             checks = builtins.removeAttrs self.checks.${system} [ "vm-checks-guard" ];
+          };
+          check-shards-guard = import ./tests/check-shards-guard.nix {
+            inherit pkgs;
+            # attrNames forces no check, so the guard never evaluates itself.
+            checkNames = builtins.attrNames self.checks.${system};
+            inherit (checkShards) members;
           };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };

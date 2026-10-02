@@ -17,14 +17,19 @@
 #   never lists host names (R19). build-linux does the same for the
 #   non-NixOS outputs and aarch64 fixture checks, and sends aarch64 targets
 #   to the ubuntu-24.04-arm runner so nothing is built under emulation.
+# - check-shard-names and check-shards carry the same gate, so every flake
+#   check still builds on every non-docs-only PR and on push now that
+#   flake-check only evaluates. check-shards reads its matrix from
+#   check-shard-names, so a check added to `checks` joins CI without a
+#   workflow edit. Both listers fail on an empty name list.
 # - vm-check-names and vm-checks carry the same gate, so the NixOS VM tests
 #   that live outside `nix flake check` still run on every non-docs-only
 #   PR and on push. vm-checks reads its matrix from vm-check-names, so a
 #   VM test added to tests/vm-checks.nix joins CI without a workflow edit.
 # - markdown-lint declares the complementary condition: it runs only on
-#   a genuine docs_only:true PR, the one case flake-check's own
-#   `nix flake check` does not already build it, so it is exercised
-#   exactly once per event instead of twice on ordinary PRs and push.
+#   a genuine docs_only:true PR, the one case no check-shards entry
+#   already builds it, so it is exercised exactly once per event instead
+#   of twice on ordinary PRs and push.
 # - fmt carries no such conditional -- it always runs.
 #
 # Each assertion fails inside an explicit if/exit branch, never a
@@ -173,6 +178,43 @@ assert_matrix_from_hosts() {
   echo "check-workflow-docs-skip: ok - $job reads its matrix from the hosts job (R19/KTD9)"
 }
 
+# assert_empty_list_fails <job>: the lister fails on an empty name list,
+# because an empty matrix skips its consumer and leaves the run green with
+# no evidence. The test, its failure exit, and the output write must appear
+# in that order, so a lister that publishes before checking does not pass.
+assert_empty_list_fails() {
+  local job=$1 block
+  block=$(job_block "$job" "$file" | grep -vE '^[[:space:]]*#')
+  if ! printf '%s\n' "$block" | awk '
+    /^[[:space:]]*if \[ "\$names" = "\[\]" \]; then[[:space:]]*$/ { if (!seen_if) seen_if = NR }
+    seen_if && !seen_exit && NR > seen_if && /^[[:space:]]*exit 1[[:space:]]*$/ { seen_exit = NR }
+    !seen_exit && /GITHUB_OUTPUT/ { early = 1 }
+    seen_exit && NR > seen_exit && /names=\$names.*GITHUB_OUTPUT/ { ok = 1 }
+    END { exit !(ok && !early) }
+  '; then
+    fail "job '$job' does not fail on an empty name list before publishing it"
+  fi
+  echo "check-workflow-docs-skip: ok - $job fails on an empty name list"
+}
+
+# assert_ifd_realised_before_no_build: flake-check runs `nix flake check
+# --no-build`, which refuses to build import-from-derivation sources, so a
+# plain `nix eval` of the checks' drvPaths must run first. Without it the
+# job fails on a fresh runner while passing on any machine whose store
+# already holds those sources.
+assert_ifd_realised_before_no_build() {
+  local block
+  block=$(job_block flake-check "$file" | grep -vE '^[[:space:]]*#')
+  if ! printf '%s\n' "$block" | awk '
+    /^[[:space:]]*(run:[[:space:]]*)?nix eval .*\.#checks\.x86_64-linux .*drvPath/ { if (!seen_eval) seen_eval = NR }
+    /^[[:space:]]*(run:[[:space:]]*)?nix flake check --no-build/ { if (seen_eval && NR > seen_eval) ok = 1; else early = 1 }
+    END { exit !(ok && !early) }
+  '; then
+    fail "job 'flake-check' does not realise the checks' drvPaths before nix flake check --no-build"
+  fi
+  echo "check-workflow-docs-skip: ok - flake-check realises import-from-derivation sources before --no-build"
+}
+
 # assert_native_arm: build-linux sends aarch64 targets to the arm runner, so
 # no aarch64 output is ever built under emulation (KTD13 in the non-NixOS
 # hosts plan).
@@ -187,14 +229,20 @@ assert_native_arm() {
 }
 
 assert_gated flake-check
+assert_ifd_realised_before_no_build
 assert_gated hosts
 assert_gated build list
 assert_gated build-linux list
 assert_matrix_from_hosts build targets
 assert_matrix_from_hosts build-linux linux_targets
 assert_native_arm
+assert_gated check-shard-names
+assert_gated check-shards list
+assert_empty_list_fails check-shard-names
+assert_matrix_from check-shards check-shard-names names name
 assert_gated vm-check-names
 assert_gated vm-checks list
+assert_empty_list_fails vm-check-names
 assert_matrix_from vm-checks vm-check-names names name
 assert_unconditional fmt
 assert_docs_only_only markdown-lint
