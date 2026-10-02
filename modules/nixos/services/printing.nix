@@ -18,8 +18,11 @@ let
     # A queue that already points at the URI is left alone: recreating it
     # queries the printer, which fails while the printer is off.
     if [ "$(lpstat -v ${label} 2>/dev/null)" != "device for ${label}: $uri" ]; then
-      lpadmin -p ${label} -E -v "$uri" -m everywhere -D "$info"
+      lpadmin -p ${label} -E -v "$uri" -m everywhere
     fi
+    # Setting the description does not query the printer, so a changed
+    # description reaches an existing queue even while the printer is off.
+    lpadmin -p ${label} -D "$info"
   '';
 in
 {
@@ -108,10 +111,11 @@ in
         systemd.services.ensure-printers = {
           description = "Create the CUPS queues declared in secrets/printers.yaml";
           wantedBy = [ "multi-user.target" ];
-          wants = [
-            "sops-install-secrets.service"
-            "network-online.target"
-          ];
+          # Ordering alone: sops-install-secrets is wanted by sysinit.target
+          # and sysinit-reactivation.target. Wanting it here would re-run it,
+          # and its CLI auth publish, on every 5-minute retry, because it
+          # does not remain active after it exits.
+          wants = [ "network-online.target" ];
           requires = [ "cups.socket" ];
           after = [
             "sops-install-secrets.service"

@@ -12,7 +12,8 @@
   `my.printing.queues`.
 
   On a configuration that enables the trait:
-  - cups.socket listens and sockets.target wants it, so a masked unit fails.
+  - cups.socket keeps a listener after its drop-ins, so a masked unit or an
+    empty ListenStream= reset fails, and sockets.target wants it.
   - avahi-daemon.service runs avahi-daemon and multi-user.target wants it.
   - no unit runs cups-browsed.
   - the hosts line of nsswitch.conf carries mdns4_minimal, before resolve
@@ -28,9 +29,14 @@
   resolved.conf keeps its mDNS default.
 
   On a production configuration that declares printer queues:
-  - ensure-printers.service is wanted by multi-user.target, reads the rendered
-    sops template, creates each queue with `-m everywhere`, and its script
-    carries no literal ipp:// or ipps:// URI, so a device URI rendered into the
+  - ensure-printers.service is wanted by multi-user.target and reads the
+    rendered sops template, whose keys carry each declared label's
+    <LABEL>_URI and <LABEL>_INFO.
+  - its script assigns each label's uri and info only from those variables,
+    creates the queue from "$uri" with `-m everywhere`, sets its description
+    from "$info" on every run, and passes lpadmin no other -v or -D value.
+  - the unit, its script, and the template carry no literal URI of any
+    scheme and no IPv4 address, so a device URI or address rendered into the
     Nix store fails.
   On every other configuration, including bootstrap outputs, no
   ensure-printers.service exists. At least one production configuration must
@@ -57,13 +63,18 @@ let
     failed=1
   '';
 
-  units = config: config.environment.etc."systemd/system".source or null;
+  # An /etc entry that is disabled or retargeted is not materialised at its
+  # path, so it counts as missing even though its source still evaluates.
   etcFile =
     config: name:
     let
       entry = config.environment.etc.${name} or null;
     in
-    if entry == null then null else entry.source;
+    if entry == null || !(entry.enable or true) || (entry.target or name) != name then
+      null
+    else
+      entry.source;
+  units = config: etcFile config "systemd/system";
 
   # cupsd serves filters from the tree its ServerBin names; CUPS_DATADIR points
   # at share/cups inside the same tree.
@@ -97,7 +108,7 @@ let
     in
     lib.concatStringsSep "\n" [
       (withTree entry (tree: ''
-        if ! grep -q '^ListenStream=' ${esc "${tree}/cups.socket"}; then
+        if ! socketListens ${esc "${tree}/cups.socket"}; then
           ${fail "${name}: the materialised cups.socket is missing, masked, or listens nowhere"}
         fi
         if [ ! -e ${esc "${tree}/sockets.target.wants/cups.socket"} ]; then
@@ -166,7 +177,7 @@ let
     in
     lib.concatStringsSep "\n" [
       (withTree entry (tree: ''
-        if grep -qs '^ListenStream=' ${esc "${tree}/cups.socket"}; then
+        if socketListens ${esc "${tree}/cups.socket"}; then
           ${fail "${name}: my.printing.enable is off but cups.socket listens"}
         fi
         if grep -qs '^ExecStart=.*/avahi-daemon ' ${esc "${tree}/avahi-daemon.service"}; then
@@ -185,22 +196,67 @@ let
       '')
     ];
 
+  # Any URI scheme, or a dotted-quad IPv4 address not embedded in a longer
+  # dotted version string.
+  leakPattern = "[A-Za-z][A-Za-z0-9+.-]*://|(^|[^0-9.])([0-9]{1,3}[.]){3}[0-9]{1,3}([^0-9.]|$)";
+
   assertQueued =
     entry:
+    let
+      inherit (entry) config name;
+      template = config.sops.templates."printers.env".file or null;
+
+      assertLabel =
+        label:
+        let
+          env = lib.toUpper label;
+        in
+        ''
+          if ! grep -qxF ${esc ("uri=$" + env + "_URI")} "$script" || ! grep -qxF ${esc ("info=$" + env + "_INFO")} "$script"; then
+            ${fail "${name}: the ensure-printers script does not read the ${label} queue's uri and info from ${env}_URI and ${env}_INFO"}
+          fi
+          if ! grep -qE ${esc "^[[:space:]]*lpadmin -p ${label} -E -v \"\\$uri\" -m everywhere$"} "$script"; then
+            ${fail "${name}: the ensure-printers script does not create the ${label} queue from \"$uri\" with -m everywhere"}
+          fi
+          if ! grep -qxF ${esc "lpadmin -p ${label} -D \"$info\""} "$script"; then
+            ${fail "${name}: the ensure-printers script does not set the ${label} queue's description from \"$info\" on every run"}
+          fi
+          ${lib.optionalString (template != null) ''
+            if ! grep -q ${esc "^${env}_URI="} ${esc template} || ! grep -q ${esc "^${env}_INFO="} ${esc template}; then
+              ${fail "${name}: the printers.env template defines no ${env}_URI or ${env}_INFO for the ${label} queue"}
+            fi
+          ''}
+        '';
+    in
     withTree entry (tree: ''
       unit=${esc "${tree}/ensure-printers.service"}
       if [ ! -e ${esc "${tree}/multi-user.target.wants/ensure-printers.service"} ]; then
-        ${fail "${entry.name}: queues are declared but multi-user.target does not want ensure-printers.service"}
+        ${fail "${name}: queues are declared but multi-user.target does not want ensure-printers.service"}
       fi
       if ! grep -qx 'EnvironmentFile=/run/secrets/rendered/printers.env' "$unit"; then
-        ${fail "${entry.name}: ensure-printers.service is missing, masked, or does not read the rendered printers.env"}
+        ${fail "${name}: ensure-printers.service is missing, masked, or does not read the rendered printers.env"}
       fi
+      ${lib.optionalString (template == null) (
+        fail "${name}: queues are declared but no printers.env template is rendered"
+      )}
       script=$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$unit")
-      if [ -z "$script" ] || ! grep -q -- '-m everywhere' "$script"; then
-        ${fail "${entry.name}: ensure-printers.service does not create queues with -m everywhere"}
+      if [ -z "$script" ]; then
+        ${fail "${name}: ensure-printers.service runs no script"}
+        script=/dev/null
       fi
-      if [ -n "$script" ] && grep -qE 'ipps?://' "$script" "$unit"; then
-        ${fail "${entry.name}: ensure-printers.service carries a literal device URI in the Nix store"}
+      ${lib.concatMapStrings assertLabel config.my.printing.queues}
+      # The pipeline tails read all their input rather than use -q, so an
+      # early exit cannot SIGPIPE the producer and fail the pipe under pipefail.
+      if grep -E '^[[:space:]]*(uri|info)=' "$script" | grep -vxE '[[:space:]]*(uri=[$][A-Z0-9_]+_URI|info=[$][A-Z0-9_]+_INFO)' >/dev/null; then
+        ${fail "${name}: the ensure-printers script assigns uri or info from something other than the rendered environment"}
+      fi
+      if grep -E '(^|[[:space:]])lpadmin ' "$script" | grep -oE -- ' -[vD] [^ ]+' | grep -vxE -- ' -v "[$]uri"| -D "[$]info"' >/dev/null; then
+        ${fail "${name}: the ensure-printers script passes lpadmin a device URI or description other than \"$uri\" or \"$info\""}
+      fi
+      if grep -qE ${esc leakPattern} "$script" "$unit" ${
+        lib.optionalString (template != null) (esc template)
+      }; then
+        ${fail "${name}: ensure-printers.service, its script, or the printers.env template carries a literal URI or IPv4 address in the Nix store"}
       fi
     '');
 
@@ -224,6 +280,18 @@ let
 in
 pkgs.runCommand "printing-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
+  # Succeeds when the socket unit keeps a listener after its drop-ins, which
+  # systemd applies in name order; an empty ListenStream= resets every earlier
+  # one. A missing or masked unit has none.
+  socketListens() {
+    [ -s "$1" ] || return 1
+    {
+      cat "$1"
+      for dropIn in "$1".d/*.conf; do
+        if [ -e "$dropIn" ]; then cat "$dropIn"; fi
+      done
+    } | awk '/^ListenStream=$/ { n = 0; next } /^ListenStream=/ { n++ } END { exit n == 0 }'
+  }
   ${configurations.guard}
   ${printing.guard}
   ${resolvedGuard}
