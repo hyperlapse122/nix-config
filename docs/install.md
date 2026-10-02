@@ -107,7 +107,7 @@ sudo systemd-cryptenroll /dev/disk/by-partlabel/disk-main-luks \
 
 If the system previously had a separate pcrlock configuration, consult the current systemd manual and the `--tpm2-pcrlock` option to avoid applying an automatically discovered policy file. This repository does not generate a pcrlock policy.
 
-Reboot to verify automatic unlocking, then confirm that you can also boot with the recovery passphrase. PCR7 binds to the Secure Boot policy; it does not guarantee the integrity of a particular kernel or root data. Retaining Microsoft certificates also trusts other boot paths signed by those certificates.
+Reboot to verify automatic unlocking, then confirm that you can also boot with the recovery passphrase. On the production output the passphrase prompt appears on the boot splash, and the boot menu opens only while Space is held at power-on. PCR7 binds to the Secure Boot policy; it does not guarantee the integrity of a particular kernel or root data. Retaining Microsoft certificates also trusts other boot paths signed by those certificates.
 
 After enrollment, encrypt and back up the LUKS header and `/var/lib/sbctl` to external media. A header backup contains the key slots from the time of the backup, so treat old backups as sensitive too. Follow the [recovery guide](recovery.md) and [verification checklist](verification.md).
 
@@ -134,5 +134,5 @@ MSI MS-7D91 desktop workstation with Intel i7-13700F and NVIDIA GeForce RTX 3060
 - `sudo dmidecode -s system-product-name` reports `MS-7D91`.
 - `hosts/MS-7D91/disko.nix` identifies the Samsung 980 PRO 1TB NVMe as `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNF0WB26038A`.
 - The secondary 2TB HDD, `/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1`, is not touched by disko and is mounted read-write at `/mnt/data` with `nofail`.
-- `hosts/MS-7D91/hardware.nix` selects the NVIDIA driver.
+- `hosts/MS-7D91/hardware.nix` selects the NVIDIA driver. With modesetting on, the production output also loads it in the initrd for the boot splash.
 - In MSI Click BIOS, enter Setup Mode through the Secure Boot settings.
