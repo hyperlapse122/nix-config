@@ -5,7 +5,8 @@
 
   Asserts that the udev rules each host actually builds carry the device-access
   rules for the NuPhy Gem80 keyboard, the STM32 ROM DFU bootloader, and the
-  Sennheiser BTD 600/700 dongles, and the rules that hide the DualSense
+  Sennheiser BTD 600/700 dongles, and Apple iOS devices in DFU and recovery
+  mode, and the rules that hide the DualSense
   controller touchpad from libinput. Every assertion reads the materialised rules
   directory (`environment.etc."udev/rules.d"`), never the option lists it is
   derived from. `services.udev.extraRules` lands in 99-local.rules while
@@ -27,6 +28,9 @@
   Verifies:
   - every configuration carries each Sennheiser BTD rule line verbatim,
     each in a file that sorts after the last file carrying the USB default.
+  - every configuration carries the Apple DFU and recovery-mode `uaccess` rule
+    line verbatim, in a file that sorts before the first file carrying the
+    uaccess builtin.
   - every configuration carries both DualSense touchpad rule lines
     verbatim. libinput reads LIBINPUT_IGNORE_DEVICE from the udev database, so
     no file order constrains them.
@@ -76,6 +80,8 @@ let
     ''SUBSYSTEM=="usb", ATTR{idVendor}=="3542", ATTR{idProduct}=="3001", MODE="0666"''
     ''SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3542", ATTRS{idProduct}=="3001", MODE="0666"''
   ];
+
+  appleRecoveryRule = ''SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", ATTR{idProduct}=="122[27]|128[0-3]", TAG+="uaccess"'';
 
   dualsenseRules = [
     ''ACTION=="add|change", ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
@@ -158,6 +164,7 @@ let
       for line in ${escapeShellArgs btdRules}; do
         check_rule_order "$host" "$dir" "$usb_default_file" "$line" after
       done
+      check_rule_order "$host" "$dir" "$builtin_file" ${esc appleRecoveryRule} before
       for line in ${escapeShellArgs dualsenseRules}; do
         if [ -z "$(files_with_line "$dir" "$line")" ]; then
           fail "$host: no udev rules file carries: $line"

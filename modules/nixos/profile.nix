@@ -26,6 +26,7 @@
     ./hardware/nuphy-gem80.nix
     ./hardware/sennheiser-btd.nix
     ./hardware/dualsense.nix
+    ./hardware/iphone-restore.nix
     ./hardware/bluetooth-audio.nix
     ./hardware/thunderbolt.nix
     ./hardware/laptop.nix

@@ -201,3 +201,19 @@ Git signing remains on the existing OpenPGP/YubiKey identity throughout restorat
 ## Replace tokens or the age identity
 
 To change tokens, edit the SOPS-encrypted token file and rebuild. If the local age identity was exposed, generate a new identity and re-encrypt all ciphertext for the new recipient. Update the bootstrap ciphertext and local identity together. Historical ciphertext remains in the repository, so revoke and reissue potentially exposed service tokens through their providers.
+
+## Restore an iPhone or iPad from an IPSW file
+
+Every NixOS host ships `idevicerestore`, `irecovery`, and libimobiledevice and runs `usbmuxd`. A udev rule gives the logged-in user the device in DFU and recovery mode, so no `sudo` is needed. Put the device in DFU mode, connect it over USB, and confirm the mode:
+
+```sh
+irecovery -q
+```
+
+Then restore from a local IPSW file:
+
+```sh
+idevicerestore -e <file>.ipsw
+```
+
+`-e` erases the device. Leave it out to update and keep data. Do not add `-l`: it ignores the file and downloads the latest signed firmware. `--ipsw-info <file>.ipsw` prints what the file holds without touching the device. idevicerestore still asks Apple's signing server to sign the restore, so the host needs network access and the build in the IPSW must still be signed. When the device reboots into restore mode it reaches idevicerestore through `usbmuxd`, so check `systemctl status usbmuxd` if the restore stalls at that point.
