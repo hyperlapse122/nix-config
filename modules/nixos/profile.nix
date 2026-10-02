@@ -19,6 +19,7 @@
     ./services/proton-vpn.nix
     ./services/resolved.nix
     ./system/secrets.nix
+    ./system/desktop-ssh.nix
     ./wifi.nix
     ./hardware/yubikey.nix
     ./hardware/nuphy-gem80.nix

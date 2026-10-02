@@ -21,6 +21,8 @@
 {
   boot-layout = import ./boot-layout.nix { inherit pkgs inputs; };
   auth-provisioning = import ./auth-provisioning.nix { inherit pkgs inputs; };
+  desktop-ssh-integration = import ./desktop-ssh-integration.nix { inherit pkgs; };
+  desktop-ssh-session = import ./desktop-ssh-session.nix { inherit pkgs inputs; };
   wifi-provisioning = import ./wifi-provisioning.nix { inherit pkgs inputs; };
   tailscale-provisioning = import ./tailscale-provisioning.nix { inherit pkgs inputs; };
   podman-registry-auth = import ./podman-registry-auth.nix { inherit pkgs inputs; };

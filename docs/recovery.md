@@ -165,6 +165,39 @@ Clear the lost card's Secret Service entry, and register the replacement under i
 
 Losing the offline backup is the different failure. The cards still in hand are then the last cards, because no further card can ever be provisioned. Treat that as a key loss in slow motion: while a working card remains, generate a replacement key, re-encrypt the bootstrap ciphertext and the external media backups for it, update the fingerprint in this repository and the verification keys on the relevant services, and revoke the old key.
 
+## Restore or rotate a desktop SSH key
+
+On a production NixOS desktop, loss of the encrypted working key or its KWallet entry is recoverable from `secrets/hosts/<host>/ssh.yaml`. Keep its matching `ssh.pub` unchanged. After reinstalling, recover the age identity using [provisioning](provisioning.md#recover-once-on-the-installed-nixos), apply production, and log in locally through SDDM. Unlock `kdewallet`, then run as the configured user:
+
+```sh
+systemctl --no-ask-password start desktop-ssh-provision.service
+systemctl --user status desktop-ssh-agent.service
+```
+
+The service recreates a protected key with the same public identity, so existing remote registrations continue to work. A missing wallet entry gets a new random passphrase; a valid existing pair is preserved. A failed wallet write/readback or key publication preserves the previous working pair. A stopped or failed primary agent can be restarted with `systemctl --user restart desktop-ssh-agent.service` from the active graphical session. A locked wallet requires a manual unlock before an uncached primary key can be used; selected 1Password keys remain available as fallback.
+
+For intentional rotation, first record the old public fingerprint and every destination where it is registered. From the development shell, select a private directory for the replacement ciphertext and public metadata:
+
+```sh
+umask 077
+export DESKTOP_SSH_OUTPUT=$(mktemp -d /run/user/"$(id -u)"/desktop-ssh-rotation.XXXXXX)
+```
+
+Run the complete [desktop source creation recipe](adding-a-host.md#create-the-desktop-ssh-key-source) with this variable set and `<host>` replaced. Its overwrite checks now cover the empty staging directory, and the existing repository pair stays untouched. The recipe removes its temporary plaintext before returning. Register `$DESKTOP_SSH_OUTPUT/ssh.pub` on the destinations, then deliberately replace both repository files:
+
+```sh
+cp "$DESKTOP_SSH_OUTPUT/ssh.yaml" secrets/hosts/<host>/ssh.yaml
+cp "$DESKTOP_SSH_OUTPUT/ssh.pub" secrets/hosts/<host>/ssh.pub
+rm -rf -- "$DESKTOP_SSH_OUTPUT"
+unset DESKTOP_SSH_OUTPUT
+```
+
+Review and stage both changes, run the checks, and apply production on the target. Provision the replacement through the fixed service above and verify access with 1Password stopped before revoking the old key on every destination. The new fingerprint selects a separate wallet entry; remove the old entry only after migration succeeds.
+
+For a lost, compromised, or retired desktop, revoke its public SSH key remotely even if the working copy was passphrase-protected. Root holding the host's age identity can decrypt the recovery source, and a compromised user session may read an unlocked wallet or use a loaded key. Per-host recipients prevent ordinary hosts from decrypting each other's sources, but the existing recovery cards can recover all host age identities. Git history retains old ciphertext: removing a recipient or deleting a source does not revoke an already exposed key. Rotate every potentially exposed shared token and follow the age-identity replacement process below. Retiring the host also removes its host directory, bootstrap material, SSH source/public metadata, and corresponding SOPS rules.
+
+Git signing remains on the existing OpenPGP/YubiKey identity throughout restoration and rotation. Non-NixOS hosts retain their existing [SSH provisioning](provisioning.md#ssh-key-on-a-non-nixos-host) and [decommission procedure](provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
+
 ## Replace tokens or the age identity
 
 To change tokens, edit the SOPS-encrypted token file and rebuild. If the local age identity was exposed, generate a new identity and re-encrypt all ciphertext for the new recipient. Update the bootstrap ciphertext and local identity together. Historical ciphertext remains in the repository, so revoke and reissue potentially exposed service tokens through their providers.

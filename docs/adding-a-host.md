@@ -1,6 +1,6 @@
 # Adding a host
 
-A host is a directory under `hosts/`. `flake.nix` reads that directory and builds two outputs for each entry: `<host>` for production and `<host>-bootstrap` for the first installation. Adding a machine does not touch `flake.nix`, `modules/`, `home/`, or `tests/`. It needs a host directory, bootstrap age material, and the new recipient in `.sops.yaml`.
+A host is a directory under `hosts/`. `flake.nix` reads that directory and builds two outputs for each entry: `<host>` for production and `<host>-bootstrap` for the first installation. Adding a machine does not touch `flake.nix`, `modules/`, `home/`, or `tests/`. It needs a host directory, bootstrap age material, a host SSH key source, and the new recipient in `.sops.yaml`.
 
 Replace `<host>` in every command below with the new directory name.
 
@@ -77,12 +77,53 @@ sops updatekeys -y secrets/tailscale.yaml
 unset SOPS_AGE_KEY_CMD
 ```
 
+## Create the desktop SSH key source
+
+Each NixOS desktop needs a unique Ed25519 SSH authentication key. Add an exact creation rule for its recovery source to `.sops.yaml`, using only the recipient recorded for this host:
+
+```yaml
+  - path_regex: ^secrets/hosts/<host>/ssh\.yaml$
+    age: <the value from secrets/bootstrap/<host>/recipient.txt>
+```
+
+Generate the passphrase-free recovery key in a private runtime directory and encrypt it before copying anything secret into the checkout. Run this in a subshell from the development shell, with shell tracing disabled. It refuses to overwrite an existing source or public key in the output directory and removes temporary plaintext on exit. Output defaults to `secrets/hosts/<host>`; `DESKTOP_SSH_OUTPUT` can select a separate directory for rotation. The SOPS rule always uses the canonical host path. Replace `<host>` before running it:
+
+```sh
+nix develop
+(
+  set -eu
+  umask 077
+  desktop_ssh_output=${DESKTOP_SSH_OUTPUT:-secrets/hosts/<host>}
+  test ! -e "$desktop_ssh_output/ssh.yaml"
+  test ! -L "$desktop_ssh_output/ssh.yaml"
+  test ! -e "$desktop_ssh_output/ssh.pub"
+  test ! -L "$desktop_ssh_output/ssh.pub"
+  desktop_ssh_tmp=$(mktemp -d /run/user/"$(id -u)"/desktop-ssh-source.XXXXXX)
+  trap 'rm -rf -- "$desktop_ssh_tmp"' EXIT
+  trap 'exit 1' HUP INT TERM
+  ssh-keygen -q -t ed25519 -N '' -C '<host> nix-config' -f "$desktop_ssh_tmp/id_ed25519"
+  { printf 'ssh_private_key: |\n'; sed 's/^/  /' "$desktop_ssh_tmp/id_ed25519"; } > "$desktop_ssh_tmp/ssh.yaml"
+  sops --encrypt --filename-override secrets/hosts/<host>/ssh.yaml \
+    --input-type yaml --output-type yaml \
+    "$desktop_ssh_tmp/ssh.yaml" > "$desktop_ssh_tmp/encrypted.yaml"
+  mkdir -p "$desktop_ssh_output"
+  cp "$desktop_ssh_tmp/encrypted.yaml" "$desktop_ssh_output/ssh.yaml"
+  cp "$desktop_ssh_tmp/id_ed25519.pub" "$desktop_ssh_output/ssh.pub"
+  ssh-keygen -lf "$desktop_ssh_output/ssh.pub"
+  grep 'recipient:' "$desktop_ssh_output/ssh.yaml"
+)
+```
+
+The recipient output must contain exactly this host's recipient. `ssh.pub` is public metadata for the encrypted source; keep the two files together. Never evaluate or build with temporary plaintext in the checkout. The `desktop-ssh-sources` check verifies encrypted fields, host-only recipients, valid public metadata, and distinct desktop public identities. Source/public correspondence is checked when the real source is provisioned on the target; builds do not decrypt it.
+
+After installation, [desktop provisioning](provisioning.md#ssh-key-on-a-nixos-desktop) creates the passphrase-protected working key through KWallet. Register `ssh.pub` on the required destinations; creating the repository files does not register the key.
+
 ## Stage the new files
 
 A flake sees only files that Git tracks. Until the new files are staged, `flake.nix` does not see `hosts/<host>`, and the checks do not see its bootstrap material:
 
 ```sh
-git add hosts/<host> secrets/bootstrap/<host> .sops.yaml
+git add hosts/<host> secrets/bootstrap/<host> secrets/hosts/<host> .sops.yaml
 ```
 
 The re-encrypted `secrets/*.yaml` files are already tracked, so the flake sees their new contents without staging. Stage them with the rest before committing.
@@ -105,11 +146,12 @@ nix build --no-link .#nixosConfigurations.<host>-bootstrap.config.system.build.t
 
 Build every other output too before shipping, using the loop in [verification](verification.md#repository-checks). CI builds every output `nixosConfigurations` lists, so the new host joins its build matrix without a workflow change.
 
-Three checks fail when a step above was missed:
+These checks fail when a step above was missed:
 
 - `bootstrap-recipients` (`tests/bootstrap-recipients.nix`) pairs `hosts/` with `secrets/bootstrap/`. It names the side that is missing when a host has no bootstrap material or bootstrap material has no host. It also fails when the recorded recipient does not appear in `.sops.yaml`. Run it alone with `nix build --no-link .#checks.x86_64-linux.bootstrap-recipients`.
 - `boot-layout-invariants` (`tests/boot-layout-invariants.nix`) checks the new host's `disko.nix` for the LUKS, ESP, btrfs, and swapfile layout that `boot.nix` relies on. The `boot-layout` VM test boots only the first host's layout, so this check is what covers the new one.
 - `host-name-guard` fails when the new name appears in one of the paths listed under [Choose the name](#choose-the-name). Rename the directory, or replace the reference in shared code with a trait.
+- `desktop-ssh-sources` fails when a NixOS host lacks its encrypted SSH source or matching public metadata, lists another recipient, or duplicates another desktop's public identity. `desktop-ssh` checks the materialized production services, launchers, and configuration, and their absence from bootstrap and non-NixOS outputs.
 
 ## Install
 
