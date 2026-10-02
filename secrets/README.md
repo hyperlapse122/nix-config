@@ -30,8 +30,8 @@ creation_rules:
     age: <comma-separated recipients of every host that shares this file>
   - path_regex: secrets/printers\.yaml$
     age: <comma-separated recipients of every host that declares a printer queue>
-  - path_regex: secrets/hosts/<host>/ssh\.yaml$
-    age: <that one non-NixOS host's recipient>
+  - path_regex: ^secrets/hosts/<host>/ssh\.yaml$
+    age: <that one host's recipient>
 ```
 
 Only a host whose recipient appears in a file's rule can decrypt it.
@@ -92,7 +92,7 @@ printers:
     info: <description shown in print dialogs>
 ```
 
-Each non-NixOS host has its own encrypted SSH key document,
+Each host has its own encrypted SSH key document,
 `secrets/hosts/<host>/ssh.yaml`.  It holds one key, `ssh_private_key`, whose
 value is the OpenSSH private key as a YAML block scalar:
 
@@ -103,12 +103,32 @@ ssh_private_key: |
   -----END OPENSSH PRIVATE KEY-----
 ```
 
-Its `.sops.yaml` rule lists that host's recipient and no other, so a leaked
-host exposes only its own key.  The `linux-host-secrets` check reads the
-recipients from the encrypted file itself and fails when it lists any other.
-Production activation publishes the key at `~/.ssh/id_ed25519_nix_config`
-with mode 0600.  [Adding a host](../docs/adding-a-host.md#create-the-host-ssh-key-file)
-shows how to generate and encrypt it.
+Its `.sops.yaml` rule lists that host's recipient and no other. A leaked host
+age identity cannot decrypt another host's SSH source, but the shared recovery
+cards can recover every host identity. Removing recipients does not revoke
+keys exposed through historical ciphertext; revoke public SSH keys on their
+destinations when a host is compromised.
+
+For NixOS desktops, `secrets/hosts/<host>/ssh.pub` holds the matching public
+Ed25519 identity. The `desktop-ssh-sources` check reads ciphertext recipients,
+checks the encrypted field and creation rule, and rejects missing, invalid,
+or duplicate public metadata without decrypting real keys. SOPS keeps the
+decrypted recovery source root-only. The fixed `desktop-ssh-provision.service`
+receives it through systemd credentials only in the configured user's active
+local graphical session. It publishes a passphrase-protected working key at
+`~/.ssh/id_ed25519_nix_config` with mode 0600 in a 0700 directory. The random
+passphrase lives in `kdewallet`, folder `nix-config SSH`, under the public
+fingerprint; it never enters Nix expressions or command arguments. Builds and
+ordinary configuration applies do not need an unlocked wallet. See
+[desktop source creation](../docs/adding-a-host.md#create-the-desktop-ssh-key-source)
+and [desktop provisioning](../docs/provisioning.md#ssh-key-on-a-nixos-desktop).
+
+For non-NixOS hosts, the `linux-host-secrets` check reads the recipients from
+the encrypted file itself and fails when it lists any other. Production
+activation publishes the passphrase-free key at `~/.ssh/id_ed25519_nix_config`
+with mode 0600, protected by the distribution's disk encryption.
+[Adding a host](../docs/adding-a-host.md#create-the-host-ssh-key-file) shows how
+to generate and encrypt it. This desktop migration does not change that path.
 
 Keep each encrypted document at its path above; do not pass SSID, PSK, or
 token values as command arguments or print decrypted output when populating

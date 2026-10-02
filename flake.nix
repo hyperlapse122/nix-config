@@ -36,7 +36,7 @@
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
     compound-engineering-plugin = {
-      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.30.2";
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.30.3";
       flake = false;
     };
   };
@@ -1082,6 +1082,8 @@
                 touch $out
               '';
           desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
+          desktop-ssh = import ./tests/desktop-ssh.nix { inherit pkgs self; };
+          desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
           kde-dark-theme = import ./tests/kde-dark-theme.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };

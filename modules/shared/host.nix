@@ -25,6 +25,12 @@
       description = "Whether the host runs NixOS or another Linux distribution.";
     };
 
+    desktopSSH.publicKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Public SSH metadata shared by the desktop provisioner and user agent.";
+    };
+
     user = {
       name = lib.mkOption {
         type = lib.types.str;
