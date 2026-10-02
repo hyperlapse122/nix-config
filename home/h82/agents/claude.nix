@@ -44,6 +44,22 @@ let
     advisorModel = "fable";
   };
 
+  # Leaves assigned inside nested objects of settings.json. A plugin is enabled
+  # by one entry of enabledPlugins, an object that also holds the plugins
+  # agent-plugins.nix registers, so declaring the whole object in settingsTier
+  # would drop theirs. To turn a plugin off, set its value to false rather than
+  # deleting the entry: the merge only assigns, and retiredKeys can only remove
+  # enabledPlugins as a whole.
+  settingsPaths = [
+    {
+      path = [
+        "enabledPlugins"
+        "cc-plugin-you-should-know@builtin"
+      ];
+      value = true;
+    }
+  ];
+
   # Keys Claude Code reads only from its global config, ~/.claude.json, and
   # never from settings.json.  That file is Claude Code's own runtime state too,
   # so the same merge assigns these keys and leaves the rest untouched.
@@ -58,11 +74,13 @@ let
   retiredKeys = [ ];
 
   renderDeclared =
-    name: set: remove:
-    pkgs.writeText name (builtins.toJSON { inherit set remove; });
+    name: set: remove: paths:
+    pkgs.writeText name (
+      builtins.toJSON ({ inherit set remove; } // lib.optionalAttrs (paths != [ ]) { setPaths = paths; })
+    );
 
-  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys;
-  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ];
+  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths;
+  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];
 in
 {
   home.sessionVariables = environmentTier;

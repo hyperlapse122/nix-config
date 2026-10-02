@@ -553,8 +553,8 @@ class NestedPathTests(unittest.TestCase):
         self.assertEqual(current, NESTED_EXISTING)
 
     def test_flat_declarations_behave_as_before(self):
-        # The Claude and Gemini declarations carry no setPaths; with and without
-        # an empty one they must produce the same bytes.
+        # The Claude global-config and Gemini declarations carry no setPaths;
+        # with and without an empty one they must produce the same bytes.
         outputs = []
         for extra in ({}, {'setPaths': []}):
             self.seed(EXISTING)

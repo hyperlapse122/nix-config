@@ -14,7 +14,9 @@
   at activation; everything else is written into ~/.claude/settings.json at
   activation. Claude Code rewrites both files itself, so a read-only store
   symlink cannot live at either. The managed settings tier is deliberately
-  unused: it blocks a change even inside a running session.
+  unused: it blocks a change even inside a running session. A plugin is
+  enabled through one leaf of settings.json's enabledPlugins object, declared
+  as a nested path so the merge leaves every other plugin's entry alone.
 
   Verifies, per configuration:
   - every environment-tier variable carries its declared value.
@@ -25,7 +27,7 @@
     exit status, so a symlinked or malformed file fails the rebuild instead of
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
-    at its declared value. Asserting the rendered file rather than the Nix
+    and nested path at its declared value. Asserting the rendered file rather than the Nix
     attribute set keeps the check on what activation actually feeds the
     merger.
   - no environment.etc entry declares claude-code/managed-settings.json.
@@ -75,29 +77,42 @@ let
     advisorModel = "fable";
   };
 
+  settingsPaths = [
+    {
+      path = [
+        "enabledPlugins"
+        "cc-plugin-you-should-know@builtin"
+      ];
+      value = true;
+    }
+  ];
+
   globalConfigTier = {
     leftArrowOpensAgents = false;
   };
 
   expectedDeclared =
-    name: set:
+    name: set: paths:
     pkgs.writeText name (
-      builtins.toJSON {
-        inherit set;
-        remove = [ ];
-      }
+      builtins.toJSON (
+        {
+          inherit set;
+          remove = [ ];
+        }
+        // lib.optionalAttrs (paths != [ ]) { setPaths = paths; }
+      )
     );
 
   merges = [
     {
       attr = "claudeSettings";
       file = ".claude/settings.json";
-      expected = expectedDeclared "claude-expected-settings.json" settingsTier;
+      expected = expectedDeclared "claude-expected-settings.json" settingsTier settingsPaths;
     }
     {
       attr = "claudeGlobalConfig";
       file = ".claude.json";
-      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier;
+      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ];
     }
   ];
 
