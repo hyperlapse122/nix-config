@@ -11,20 +11,22 @@
   Every assertion reads what the machine boots from: the initrd's materialised
   /etc tree (its systemd unit tree, Plymouth configuration and themes,
   modules-load and modprobe files), the loader.conf lanzaboote installs, and the
-  systemd-boot builder the bootstrap output installs with. Kernel parameters are
-  the one exception: their only built copy is the toplevel's kernel-params file,
-  which joins `boot.kernelParams` verbatim, and building every toplevel here
-  would rebuild whole systems the CI build job already builds. They are read
-  from the option, and production and bootstrap must disagree on them, so the
-  assertion cannot fold to a constant.
+  systemd-boot builder the bootstrap output installs with. Kernel parameters
+  are the one exception: the toplevel's kernel-params file and the bootspec
+  both copy `boot.kernelParams` verbatim, and building either here would build
+  each configuration's kernel and initrd that the CI build job already builds.
+  They are read from the option, and production and bootstrap must disagree on
+  them, so the assertion cannot fold to a constant.
 
   Verifies, on every production configuration:
   - the initrd wires plymouth-start.service into sysinit.target.wants, and the
     wired unit starts plymouthd rather than being masked to /dev/null.
   - the initrd Plymouth configuration selects the bgrt theme, and the initrd
     ships that theme.
-  - the initrd carries the Plymouth password agent, so a failed TPM2 unlock
-    asks for the passphrase on the splash.
+  - the wired plymouth-start.service pulls in the Plymouth password agent's
+    path unit, which watches for password requests and is not masked, and the
+    agent service forwards them to Plymouth, so a failed TPM2 unlock asks for
+    the passphrase on the splash.
   - lanzaboote's loader.conf sets `timeout 0`, so systemd-boot skips its menu
     unless a key is held.
   - the kernel command line carries every quiet-boot parameter.
@@ -67,8 +69,8 @@ let
     "loglevel=3"
     "udev.log_level=3"
     "rd.udev.log_level=3"
-    "systemd.show_status=auto"
-    "rd.systemd.show_status=auto"
+    "systemd.show_status=error"
+    "rd.systemd.show_status=error"
   ];
 
   kmsDrivers = [
@@ -78,6 +80,8 @@ let
     "nvidia_drm"
   ];
 
+  # The NVIDIA predicate and module list repeat the module's on purpose: the
+  # expectation must not come from the code under test. Change both together.
   nvidiaModules = [
     "nvidia"
     "nvidia_modeset"
@@ -90,8 +94,8 @@ let
 
   initrdFile = config: path: config.boot.initrd.systemd.contents.${path}.source or null;
 
-  # Lines of a file as a newline-separated shell word list, one per line, so
-  # `grep -Fx` matches whole entries rather than substrings.
+  # One kernel parameter per line, so `grep -Fx` matches whole parameters
+  # rather than substrings.
   paramsFile =
     config:
     pkgs.writeText "kernel-params" (lib.concatMapStrings (p: "${p}\n") config.boot.kernelParams);
@@ -118,6 +122,12 @@ let
           ${fail' "the initrd does not wire plymouth-start.service into sysinit.target.wants"}
         elif ! grep -q '^ExecStart=.*plymouthd' "$start"; then
           ${fail' "the initrd plymouth-start.service does not start plymouthd; it may be masked"}
+        fi
+        if ! grep -qs '^Wants=.*systemd-ask-password-plymouth\.path' "$start"; then
+          ${fail' "the initrd plymouth-start.service does not pull in the Plymouth password agent's path unit"}
+        fi
+        if ! grep -Fxqs 'DirectoryNotEmpty=/run/systemd/ask-password' ${units}/systemd-ask-password-plymouth.path; then
+          ${fail' "the initrd Plymouth password agent's path unit watches no password requests; it may be masked"}
         fi
         if ! grep -qs '^ExecStart=.*systemd-tty-ask-password-agent.*--plymouth' ${units}/systemd-ask-password-plymouth.service; then
           ${fail' "the initrd carries no Plymouth password agent, so a failed TPM2 unlock cannot prompt on the splash"}
@@ -151,8 +161,7 @@ let
 
       for param in ${lib.escapeShellArgs quietParams}; do
         if ! grep -Fxq -- "$param" ${paramsFile config}; then
-          echo ${esc name}": the kernel command line lacks $param" >&2
-          failed=1
+          report ${esc name}": the kernel command line lacks $param"
         fi
       done
 
@@ -174,8 +183,7 @@ let
             ''
               for module in ${lib.escapeShellArgs nvidiaModules}; do
                 if ! grep -Fxq -- "$module" ${modulesLoad}; then
-                  echo ${esc name}": the NVIDIA configuration does not load $module in the initrd" >&2
-                  failed=1
+                  report ${esc name}": the NVIDIA configuration does not load $module in the initrd"
                 fi
               done
               if grep -Fxq nvidia_uvm ${modulesLoad}; then
@@ -225,8 +233,7 @@ let
       ${lib.optionalString (modulesLoad != null) ''
         for driver in ${lib.escapeShellArgs kmsDrivers}; do
           if grep -Fxq -- "$driver" ${modulesLoad}; then
-            echo ${esc name}": the bootstrap initrd loads the KMS driver $driver" >&2
-            failed=1
+            report ${esc name}": the bootstrap initrd loads the KMS driver $driver"
           fi
         done
       ''}
@@ -238,6 +245,8 @@ let
         builder=$(grep -o '/nix/store/[^ ]*/bin/systemd-boot' ${installer} | head -1)
         if [ -z "$builder" ] || [ ! -f "$builder" ]; then
           ${fail' "the bootstrap boot loader installer names no systemd-boot builder"}
+        elif ! grep -q '^TIMEOUT = "' "$builder"; then
+          ${fail' "the bootstrap systemd-boot builder carries no TIMEOUT setting, so its timeout cannot be checked"}
         elif grep -Fxq 'TIMEOUT = "0"' "$builder"; then
           ${fail' "the bootstrap systemd-boot is installed with timeout 0, hiding the recovery menu"}
         fi
@@ -245,8 +254,7 @@ let
 
       for param in ${lib.escapeShellArgs quietParams}; do
         if grep -Fxq -- "$param" ${paramsFile config}; then
-          echo ${esc name}": the bootstrap kernel command line carries $param" >&2
-          failed=1
+          report ${esc name}": the bootstrap kernel command line carries $param"
         fi
       done
     '';
@@ -262,6 +270,11 @@ pkgs.runCommand "boot-splash-tests"
     set -x
     ${configurations.guard}
     failed=0
+    # For messages that expand a loop variable, which `fail` cannot escape.
+    report() {
+      echo "$1" >&2
+      failed=1
+    }
 
     ${lib.optionalString (!lib.any (entry: usesNvidia entry.config) configurations.production) (
       fail "no production configuration uses the NVIDIA driver, so the NVIDIA initrd assertions would cover nothing"

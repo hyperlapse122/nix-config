@@ -16,14 +16,16 @@ in
     };
 
     # boot.initrd.verbose is left alone: only the scripted initrd reads it.
-    # show_status=auto still prints failures, which show_status=false would hide.
+    # show_status=error still prints failures, which show_status=false would
+    # hide, and unlike auto it stays quiet when a slow boot crosses systemd's
+    # delay threshold.
     boot.consoleLogLevel = 3;
     boot.kernelParams = [
       "quiet"
       "udev.log_level=3"
       "rd.udev.log_level=3"
-      "systemd.show_status=auto"
-      "rd.systemd.show_status=auto"
+      "systemd.show_status=error"
+      "rd.systemd.show_status=error"
     ];
 
     # Plymouth ignores simpledrm until its 8 s device timeout, so without a
