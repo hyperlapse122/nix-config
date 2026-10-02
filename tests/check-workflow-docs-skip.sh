@@ -17,13 +17,18 @@
 #   never lists host names (R19). build-linux does the same for the
 #   non-NixOS outputs and aarch64 fixture checks, and sends aarch64 targets
 #   to the ubuntu-24.04-arm runner so nothing is built under emulation.
+# - check-shard-names and check-shards carry the same gate, so every flake
+#   check still builds on every non-docs-only PR and on push now that
+#   flake-check only evaluates. check-shards reads its matrix from
+#   check-shard-names, so a check added to `checks` joins CI without a
+#   workflow edit.
 # - vm-check-names and vm-checks carry the same gate, so the NixOS VM tests
 #   that live outside `nix flake check` still run on every non-docs-only
 #   PR and on push. vm-checks reads its matrix from vm-check-names, so a
 #   VM test added to tests/vm-checks.nix joins CI without a workflow edit.
 # - markdown-lint declares the complementary condition: it runs only on
-#   a genuine docs_only:true PR, the one case flake-check's own
-#   `nix flake check` does not already build it, so it is exercised
+#   a genuine docs_only:true PR, the one case no check-shards entry
+#   already builds it, so it is exercised
 #   exactly once per event instead of twice on ordinary PRs and push.
 # - fmt carries no such conditional -- it always runs.
 #
@@ -193,6 +198,9 @@ assert_gated build-linux list
 assert_matrix_from_hosts build targets
 assert_matrix_from_hosts build-linux linux_targets
 assert_native_arm
+assert_gated check-shard-names
+assert_gated check-shards list
+assert_matrix_from check-shards check-shard-names names name
 assert_gated vm-check-names
 assert_gated vm-checks list
 assert_matrix_from vm-checks vm-check-names names name
