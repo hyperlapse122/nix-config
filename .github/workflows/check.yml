@@ -76,7 +76,8 @@ jobs:
       # evaluation of every check's drvPath realises them first. It builds no
       # check: only the sources evaluation itself reads.
       - name: Realise import-from-derivation sources
-        run: nix eval --json .#checks.x86_64-linux --apply 'c: builtins.mapAttrs (_: d: d.drvPath) c' > /dev/null
+        run: |
+          nix eval --json .#checks.x86_64-linux --apply 'c: builtins.mapAttrs (_: d: d.drvPath) c' > /dev/null
       - name: Evaluate
         run: nix flake check --no-build
 

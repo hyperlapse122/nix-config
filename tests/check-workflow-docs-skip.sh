@@ -206,8 +206,8 @@ assert_ifd_realised_before_no_build() {
   local block
   block=$(job_block flake-check "$file" | grep -vE '^[[:space:]]*#')
   if ! printf '%s\n' "$block" | awk '
-    /run:[[:space:]]*nix eval .*\.#checks\.x86_64-linux .*drvPath/ { if (!seen_eval) seen_eval = NR }
-    /run:[[:space:]]*nix flake check --no-build/ { if (seen_eval && NR > seen_eval) ok = 1; else early = 1 }
+    /^[[:space:]]*(run:[[:space:]]*)?nix eval .*\.#checks\.x86_64-linux .*drvPath/ { if (!seen_eval) seen_eval = NR }
+    /^[[:space:]]*(run:[[:space:]]*)?nix flake check --no-build/ { if (seen_eval && NR > seen_eval) ok = 1; else early = 1 }
     END { exit !(ok && !early) }
   '; then
     fail "job 'flake-check' does not realise the checks' drvPaths before nix flake check --no-build"
