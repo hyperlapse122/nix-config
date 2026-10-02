@@ -197,6 +197,24 @@ assert_empty_list_fails() {
   echo "check-workflow-docs-skip: ok - $job fails on an empty name list"
 }
 
+# assert_ifd_realised_before_no_build: flake-check runs `nix flake check
+# --no-build`, which refuses to build import-from-derivation sources, so a
+# plain `nix eval` of the checks' drvPaths must run first. Without it the
+# job fails on a fresh runner while passing on any machine whose store
+# already holds those sources.
+assert_ifd_realised_before_no_build() {
+  local block
+  block=$(job_block flake-check "$file" | grep -vE '^[[:space:]]*#')
+  if ! printf '%s\n' "$block" | awk '
+    /run:[[:space:]]*nix eval .*\.#checks\.x86_64-linux .*drvPath/ { if (!seen_eval) seen_eval = NR }
+    /run:[[:space:]]*nix flake check --no-build/ { if (seen_eval && NR > seen_eval) ok = 1; else early = 1 }
+    END { exit !(ok && !early) }
+  '; then
+    fail "job 'flake-check' does not realise the checks' drvPaths before nix flake check --no-build"
+  fi
+  echo "check-workflow-docs-skip: ok - flake-check realises import-from-derivation sources before --no-build"
+}
+
 # assert_native_arm: build-linux sends aarch64 targets to the arm runner, so
 # no aarch64 output is ever built under emulation (KTD13 in the non-NixOS
 # hosts plan).
@@ -211,6 +229,7 @@ assert_native_arm() {
 }
 
 assert_gated flake-check
+assert_ifd_realised_before_no_build
 assert_gated hosts
 assert_gated build list
 assert_gated build-linux list
