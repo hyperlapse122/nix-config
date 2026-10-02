@@ -6,6 +6,7 @@
   ];
   # keyd stays off here so the NuPhy Gem80 keeps its firmware mapping.
   my.nuphyGem80.enable = true;
+  my.printing.queues = [ "office" ];
   my.tailscale.advertiseRoutes = !config.my.bootstrap;
   fileSystems."/mnt/data" = {
     device = "/dev/disk/by-id/ata-ST2000DM008-2UB102_ZK30PHAD-part1";

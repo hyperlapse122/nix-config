@@ -15,6 +15,7 @@
     ./system/nix-ld.nix
     ./system/agent-browser-deps.nix
     ./services/podman.nix
+    ./services/printing.nix
     ./services/tailscale.nix
     ./services/proton-vpn.nix
     ./services/resolved.nix
@@ -33,6 +34,7 @@
 
   config.my = {
     podman.enable = lib.mkDefault true;
+    printing.enable = lib.mkDefault true;
     cliAuth.enable = lib.mkDefault (!config.my.bootstrap);
     cliAuth.enableTokscaleToken = lib.mkDefault true;
     tailscale.enable = lib.mkDefault (!config.my.bootstrap);

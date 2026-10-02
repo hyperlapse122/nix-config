@@ -35,12 +35,19 @@ let
     "su"
   ];
 
+  # cupsd checks a password sent over HTTP Basic authentication against `cups`,
+  # with no terminal or session to read a finger from, so the factor could only
+  # stall the request until fprintd times out.
+  nonInteractive = [
+    "cups"
+  ];
+
   # DUPLICATION IS DELIBERATE. tests/pam-fingerprint.nix states the set of PAM
   # files allowed to carry pam_fprintd.so as its own independent literal. Do not
   # make the check import these lists, and do not make this module read the
   # check's allowlist: a single edit must never be able to change both sides and
   # leave the guard green.
-  withheld = greeterReachable ++ credentialMutating;
+  withheld = greeterReachable ++ credentialMutating ++ nonInteractive;
 in
 {
   # The bootstrap output carries no enrolled prints and no user secrets, so the

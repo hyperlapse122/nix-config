@@ -1094,6 +1094,7 @@
           proton-vpn = import ./tests/proton-vpn.nix { inherit pkgs self; };
           wireplumber-bluetooth = import ./tests/wireplumber-bluetooth.nix { inherit pkgs self; };
           thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
+          printing = import ./tests/printing.nix { inherit pkgs self; };
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           vm-checks-guard = import ./tests/vm-checks-guard.nix {
