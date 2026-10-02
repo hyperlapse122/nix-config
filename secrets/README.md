@@ -28,6 +28,8 @@ creation_rules:
     age: <comma-separated recipients of every host that shares this file>
   - path_regex: secrets/tailscale\.yaml$
     age: <comma-separated recipients of every host that shares this file>
+  - path_regex: secrets/printers\.yaml$
+    age: <comma-separated recipients of every host that declares a printer queue>
   - path_regex: secrets/hosts/<host>/ssh\.yaml$
     age: <that one non-NixOS host's recipient>
 ```
@@ -74,6 +76,20 @@ wifi:
   <label>:
     ssid: <network SSID>
     psk: <network passphrase>
+```
+
+The encrypted printer document (`secrets/printers.yaml`) nests one device URI
+and description per queue label under a top-level `printers` key.  The label
+is the CUPS queue name a host lists in `my.printing.queues`, an arbitrary local
+name, never the printer model; sops encrypts values, not keys.  Its rule lists
+only the recipients of hosts that declare a queue (see
+`modules/nixos/services/printing.nix`):
+
+```yaml
+printers:
+  <label>:
+    uri: <IPP Everywhere device URI>
+    info: <description shown in print dialogs>
 ```
 
 Each non-NixOS host has its own encrypted SSH key document,
