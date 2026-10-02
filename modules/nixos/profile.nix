@@ -6,6 +6,7 @@
   imports = [
     ./system/base.nix
     ./system/boot.nix
+    ./system/boot-splash.nix
     ./desktop/desktop.nix
     ./desktop/user-avatar.nix
     ./hardware/fingerprint.nix

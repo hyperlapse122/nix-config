@@ -16,7 +16,7 @@ Use the machine's distinctive model identifier, such as the DMI product name or 
 
 Create `hosts/<host>/` with three files.
 
-- `hardware.nix`: kernel modules, firmware, CPU microcode, and graphics drivers. Start from `nixos-generate-config --no-filesystems --show-hardware-config` run on the target from the installation media, then keep only what the machine needs.
+- `hardware.nix`: kernel modules, firmware, CPU microcode, and graphics drivers. The production boot splash needs the GPU's KMS driver in the initrd: selecting `nvidia` in `services.xserver.videoDrivers` with `hardware.nvidia.modesetting.enable` loads it automatically, and any other GPU adds its driver (for example `i915`) to `boot.initrd.kernelModules` under `lib.mkIf (!config.my.bootstrap)`; the `boot-splash` check fails otherwise. Start from `nixos-generate-config --no-filesystems --show-hardware-config` run on the target from the installation media, then keep only what the machine needs.
 - `disko.nix`: the disk layout. Copy an existing host's `disko.nix` to keep the shared layout (a 2 GiB ESP, then LUKS2 around Btrfs subvolumes for `/`, `/home`, `/nix`, `/var/log`, and `/swap`), and change only `device` to the target disk's `/dev/disk/by-id/` path.
 - `default.nix`: imports the other two files and declares the host's traits.
 

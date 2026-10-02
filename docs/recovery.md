@@ -23,7 +23,7 @@ A failed NixOS switch does not transactionally roll back all system changes. If 
 
 ## Roll back a boot generation
 
-Select a supported previous NixOS generation from the boot menu. If the system can boot, use the following command to roll back.
+Select a supported previous NixOS generation from the boot menu. Production outputs hide the menu: hold Space at power-on until it appears. Press Esc during the boot splash to see the boot log. If the system can boot, use the following command to roll back.
 
 ```sh
 sudo nixos-rebuild switch --rollback
@@ -35,7 +35,7 @@ Weekly cleanup keeps the 10 newest generations regardless of age, so every entry
 
 ## An authentication stack that refuses
 
-If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself — but confirm the passphrase works before you ever need it, because a change to Secure Boot policy is exactly what would make it mandatory at the worst moment.
+If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead, holding Space at power-on to open it. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself — but confirm the passphrase works before you ever need it, because a change to Secure Boot policy is exactly what would make it mandatory at the worst moment.
 
 There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
 
