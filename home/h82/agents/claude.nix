@@ -74,10 +74,8 @@ let
   retiredKeys = [ ];
 
   renderDeclared =
-    name: set: remove: paths:
-    pkgs.writeText name (
-      builtins.toJSON ({ inherit set remove; } // lib.optionalAttrs (paths != [ ]) { setPaths = paths; })
-    );
+    name: set: remove: setPaths:
+    pkgs.writeText name (builtins.toJSON { inherit set remove setPaths; });
 
   declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths;
   declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];

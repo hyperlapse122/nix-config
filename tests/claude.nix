@@ -4,9 +4,10 @@
     import ./tests/claude.nix { inherit pkgs self; }
 
   Asserts that Claude Code's declared settings reach user `h82` through the
-  right tier on every configuration `tests/lib/configurations.nix` yields,
-  production and bootstrap alike, since no tier depends on a host trait or on
-  `my.bootstrap`.
+  right tier on every Home Manager user environment
+  `tests/lib/configurations.nix` yields (`userEntries`): NixOS and non-NixOS
+  hosts, production and bootstrap alike, since no tier depends on a host kind,
+  a host trait, or `my.bootstrap`.
 
   The declared set is split across three tiers. A setting whose persistent
   form is an environment variable is declared through session variables; a key
@@ -27,10 +28,11 @@
     exit status, so a symlinked or malformed file fails the rebuild instead of
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
-    and nested path at its declared value. Asserting the rendered file rather than the Nix
-    attribute set keeps the check on what activation actually feeds the
-    merger.
-  - no environment.etc entry declares claude-code/managed-settings.json.
+    and nested path at its declared value. Asserting the rendered file rather
+    than the Nix attribute set keeps the check on what activation actually
+    feeds the merger.
+  - no environment.etc entry declares claude-code/managed-settings.json, on
+    each NixOS configuration (`entries`), the only kind with environment.etc.
   - no Home Manager file targets either merged file. An activation-time
     merge and a store symlink are mutually exclusive, so this assertion now
     guards the mechanism rather than contradicting it. Home Manager resolves a
@@ -92,15 +94,12 @@ let
   };
 
   expectedDeclared =
-    name: set: paths:
+    name: set: setPaths:
     pkgs.writeText name (
-      builtins.toJSON (
-        {
-          inherit set;
-          remove = [ ];
-        }
-        // lib.optionalAttrs (paths != [ ]) { setPaths = paths; }
-      )
+      builtins.toJSON {
+        inherit set setPaths;
+        remove = [ ];
+      }
     );
 
   merges = [
@@ -116,14 +115,12 @@ let
     }
   ];
 
-  assertHost =
+  assertUser =
     entry:
     let
       hostName = entry.name;
       userConfig = entry.user;
       sessionVariables = userConfig.home.sessionVariables or { };
-
-      managed = entry.config.environment.etc."claude-code/managed-settings.json" or null;
 
       environmentChecks = lib.concatStringsSep "\n" (
         lib.mapAttrsToList (name: value: ''
@@ -223,24 +220,32 @@ let
             failed=1
           fi
         '';
-
-      managedPresent = lib.optionalString (managed != null) ''
-        echo 'the managed settings tier must stay unused, but ${hostName} declares claude-code/managed-settings.json' >&2
-        failed=1
-      '';
     in
     ''
       ${environmentChecks}
       ${lib.concatMapStringsSep "\n" mergeChecks merges}
-      ${managedPresent}
+    '';
+
+  # environment.etc exists only on a NixOS system configuration, so this one
+  # assertion runs over the NixOS entries alone.
+  assertManagedUnused =
+    entry:
+    let
+      managed = entry.config.environment.etc."claude-code/managed-settings.json" or null;
+    in
+    lib.optionalString (managed != null) ''
+      echo 'the managed settings tier must stay unused, but ${entry.name} declares claude-code/managed-settings.json' >&2
+      failed=1
     '';
 in
 pkgs.runCommand "claude-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x
   ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertUser configurations.userEntries}
+  ${lib.concatMapStringsSep "\n" assertManagedUnused configurations.entries}
 
   if [ "$failed" != "0" ]; then
     exit 1
