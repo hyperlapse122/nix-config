@@ -87,7 +87,7 @@ Claude Code 2.1.287 bundles a built-in plugin, `cc-plugin-you-should-know`, that
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | Nix layout is clean |
 | Checks | `nix flake check` | `claude` and `agent-settings` checks pass with the new declaration |
 | Outputs | build every `nixosConfigurations`, `homeConfigurations`, and `systemConfigs` output as `AGENTS.md` lists | the change evaluates and builds on every host |
