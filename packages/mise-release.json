@@ -1,15 +1,15 @@
 {
-  "version": "2026.10.0",
+  "version": "2026.10.1",
   "systems": {
     "x86_64-linux": {
       "asset": "linux-x64-musl",
-      "sha256": "df32ce8cb98e801ad48ed523e30ff6bcfe7311c45567a8b0dbb2c5181f09d436",
-      "hash": "sha256-3zLOjLmOgBrUjtUj4w/2vP5zEcRVZ6iw27LFGB8J1DY="
+      "sha256": "4b3980806c7b38623b927749eca2b5b6bf0f9d9613dac5c21648057cc872b613",
+      "hash": "sha256-SzmAgGx7OGI7kndJ7KK1tr8PnZYT2sXCFkgFfMhythM="
     },
     "aarch64-linux": {
       "asset": "linux-arm64-musl",
-      "sha256": "7e0a2bcfc44fad4dd19654bd1261915802e2334becdc985ffa8becfe9de9cb01",
-      "hash": "sha256-fgorz8RPrU3RllS9EmGRWALiM0vs3Jhf+ovs/p3pywE="
+      "sha256": "1a68e659d939e67710546a09cf6d683b19d814ac261e5318a9ce91ab461bf06e",
+      "hash": "sha256-GmjmWdk55ncQVGoJz21oOxnYFKwmHlMYqc6Rq0Yb8G4="
     }
   }
 }
