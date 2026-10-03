@@ -20,6 +20,9 @@
     module's rule giving Apple USB devices to the usbmux group, verbatim.
   - the system path ships executable bin/idevicerestore, bin/irecovery, and
     bin/ideviceinfo.
+  - the shipped irecovery lists the iPhone 18 Pro Max (iPhone19,7), and the
+    libirecovery that the shipped idevicerestore loads carries it too, so a
+    restore of that device gets past "Unable to discover device type".
 
   It cannot see whether a real device enters DFU mode or restores;
   docs/verification.md covers that on hardware.
@@ -46,6 +49,8 @@ let
   '';
 
   usbmuxRule = ''SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", GROUP="usbmux"'';
+
+  newestDevice = "iPhone19,7";
 
   binaries = [
     "idevicerestore"
@@ -93,17 +98,37 @@ let
           ${fail "${entry.name}: the system path ships no executable bin/${name}"}
         fi
       '') binaries
+      ++ [
+        ''
+          if ! ${esc "${systemPath}/bin/irecovery"} -a | grep -q ${esc "^${newestDevice} "}; then
+            ${fail "${entry.name}: the shipped irecovery does not list ${newestDevice}"}
+          fi
+          # idevicerestore resolves the device type through the libirecovery
+          # it links, which can differ from the one bin/irecovery comes from.
+          lib=$(ldd ${esc "${systemPath}/bin/idevicerestore"} | grep -o '/nix/store/[^ ]*/libirecovery[^ ]*\.so[^ ]*' || true)
+          if [ -z "$lib" ] || ! grep -qF ${esc newestDevice} "$lib"; then
+            ${fail "${entry.name}: the libirecovery idevicerestore loads does not know ${newestDevice}"}
+          fi
+        ''
+      ]
     );
 in
-pkgs.runCommand "iphone-restore-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-  set -x
-  ${configurations.guard}
-  failed=0
+pkgs.runCommand "iphone-restore-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.gnugrep
+      pkgs.stdenv.cc.libc.bin
+    ];
+  }
+  ''
+    set -x
+    ${configurations.guard}
+    failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+    ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
-  if [ "$failed" != 0 ]; then
-    exit 1
-  fi
-  touch $out
-''
+    if [ "$failed" != 0 ]; then
+      exit 1
+    fi
+    touch $out
+  ''
