@@ -16,6 +16,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 DELEGATE_PATH = "@PINENTRY_QT@"
 LINUX_FALLBACK_PATH = "@PINENTRY_CURSES@"
@@ -24,6 +25,14 @@ IS_LINUX = True
 KEYRING_BACKEND = "secret-tool"
 MAX_DECODE_LEN = 4096
 KEYRING_LOOKUP_TIMEOUT = 5
+# After stdin closes, a delegate gets EXIT_GRACE seconds to exit on its own:
+# on a loaded machine a healthy one can take that long just to start.  One
+# that has answered every command before a pending dialog is showing that
+# dialog and will not notice the EOF, so it gets DIALOG_GRACE seconds, as does
+# every delegate once a signal asks the wrapper to stop.
+EXIT_GRACE = 10
+DIALOG_GRACE = 2
+DIALOG_COMMANDS = (b"GETPIN", b"CONFIRM", b"MESSAGE")
 NUMBER_LINE_RE = re.compile(r"(?:^|\n)[\x1e\x1f]*Number:[\x1e\x1f]*[ \t]*([^\n]*)")
 SERIAL_FORM_RE = re.compile(r"\d+(?: \d+)*")
 
@@ -179,11 +188,37 @@ def spawn_delegate(path):
     )
 
 
-def pump(delegate_stdout, client_out, output_lock):
+class Exchange:
+    """Commands forwarded to the delegate and replies it has sent.  The
+    relay thread only increments replies and the main thread only writes the
+    rest, so no lock is needed (and none that on_signal could block on)."""
+
+    def __init__(self):
+        self.forwarded = 0
+        # The greeting is the reply to command 0, so command n is answered
+        # once replies exceeds n.
+        self.replies = 0
+        self.dialog_at = 0
+
+    def sent(self, command):
+        self.forwarded += 1
+        if command in DIALOG_COMMANDS:
+            self.dialog_at = self.forwarded
+
+    def received(self, line):
+        if line == b"OK\n" or line.startswith((b"OK ", b"ERR ")):
+            self.replies += 1
+
+    def showing_dialog(self):
+        return self.dialog_at > 0 and self.replies == self.dialog_at
+
+
+def pump(delegate_stdout, client_out, output_lock, exchange):
     while True:
         chunk = delegate_stdout.readline()
         if not chunk:
             return
+        exchange.received(chunk)
         with output_lock:
             client_out.write(chunk)
             client_out.flush()
@@ -194,20 +229,44 @@ def main():
     client_out = sys.stdout.buffer
     delegate = spawn_delegate(choose_delegate_path())
     output_lock = threading.Lock()
-    relay = threading.Thread(target=pump, args=(delegate.stdout, client_out, output_lock), daemon=True)
+    exchange = Exchange()
+    relay = threading.Thread(target=pump, args=(delegate.stdout, client_out, output_lock, exchange), daemon=True)
     relay.start()
     state = Prompt()
     stopped = threading.Event()
+    hurried = threading.Event()
 
-    def reap(close_stdin):
-        close_stdin()
+    def exited_within(timeout):
         try:
-            delegate.wait(timeout=2)
+            delegate.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            return False
+        return True
+
+    def exited_unprompted():
+        deadline = time.monotonic() + EXIT_GRACE
+        dialog_since = None
+        hurried_at = None
+        while not exited_within(0.1):
+            now = time.monotonic()
+            if hurried_at is None and hurried.is_set():
+                hurried_at = now
+                deadline = min(deadline, now + DIALOG_GRACE)
+            if now >= deadline:
+                return False
+            if not exchange.showing_dialog():
+                dialog_since = None
+            elif dialog_since is None:
+                dialog_since = now
+            elif now - dialog_since >= DIALOG_GRACE:
+                return False
+        return True
+
+    def reap(close_stdin, exited):
+        close_stdin()
+        if not exited():
             delegate.terminate()
-            try:
-                delegate.wait(timeout=2)
-            except subprocess.TimeoutExpired:
+            if not exited_within(2):
                 delegate.kill()
                 delegate.wait()
         return delegate.returncode
@@ -222,7 +281,7 @@ def main():
     # the daemon relay thread is inside a stdout write at that moment.
     def shutdown():
         stopped.set()
-        status = reap(close_delegate_stdin)
+        status = reap(close_delegate_stdin, exited_unprompted)
         relay.join(timeout=2)
         # Holding the lock means the relay is not mid-write, so no reply is
         # cut short.  The wait is bounded: a relay blocked on a stdout nobody
@@ -237,9 +296,10 @@ def main():
     def on_signal(signum, frame):
         del signum, frame
         # The main thread is already reaping the delegate and exits on its
-        # own once that bounded wait ends; waiting here could deadlock on
-        # Popen's waitpid lock.
+        # own once that bounded wait ends, cut to DIALOG_GRACE from here;
+        # waiting here could deadlock on Popen's waitpid lock.
         if stopped.is_set():
+            hurried.set()
             return
         stopped.set()
 
@@ -252,12 +312,13 @@ def main():
             except OSError:
                 pass
 
-        os._exit(reap(close_raw_stdin))
+        os._exit(reap(close_raw_stdin, lambda: exited_within(DIALOG_GRACE)))
 
     signal.signal(signal.SIGINT, on_signal)
     signal.signal(signal.SIGTERM, on_signal)
 
-    def forward(line):
+    def forward(line, command):
+        exchange.sent(command)
         try:
             delegate.stdin.write(line)
             delegate.stdin.flush()
@@ -292,7 +353,7 @@ def main():
                     client_out.write(b"D " + percent_encode(pin) + b"\nOK\n")
                     client_out.flush()
                 continue
-            forward(line)
+            forward(line, command)
             continue
         if command == b"CONFIRM" and state.wants_cancel():
             with output_lock:
@@ -301,7 +362,7 @@ def main():
             continue
         if command in (b"SETPROMPT", b"SETDESC", b"SETERROR"):
             state.remember(command, argument)
-        forward(line)
+        forward(line, command)
         if command == b"BYE":
             shutdown()
 

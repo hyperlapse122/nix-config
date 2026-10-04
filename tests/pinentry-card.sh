@@ -62,6 +62,10 @@ tag = os.environ.get("FAKE_DELEGATE_TAG", "delegate")
 exit_status = int(os.environ.get("FAKE_DELEGATE_EXIT", "0"))
 stream_after_eof = os.environ.get("FAKE_DELEGATE_STREAM_AFTER_EOF") == "1"
 flood_on_getpin = os.environ.get("FAKE_DELEGATE_FLOOD_ON_GETPIN") == "1"
+# Seconds to stall before the greeting or before exiting at EOF: a healthy
+# delegate on a loaded machine, slow to start or to wind down.
+start_delay = float(os.environ.get("FAKE_DELEGATE_START_DELAY", "0"))
+exit_delay = float(os.environ.get("FAKE_DELEGATE_EXIT_DELAY", "0"))
 
 
 def log(data):
@@ -88,6 +92,7 @@ def fork_flooder():
 
 
 out = sys.stdout.buffer
+time.sleep(start_delay)
 out.write(b"OK Pleased to meet you\n")
 out.flush()
 
@@ -118,6 +123,7 @@ while True:
     out.flush()
 if stream_after_eof:
     fork_flooder()
+time.sleep(exit_delay)
 sys.exit(exit_status)
 PYEOF
 
@@ -770,5 +776,52 @@ exec {wrapper_in}>&-
 await_wrapper_exit '31 eof-during-blocked-relay' 'stdin closed' "$scratch/err31"
 exec {wrapper_out}<&-
 pass '31: stdin closing while the relay thread is blocked on an unread stdout exits promptly with the delegate'"'"'s status'
+
+# 32. A delegate that takes 3 seconds to exit after stdin closes, with no
+#     dialog pending, is a slow but healthy one on a loaded machine: the
+#     wrapper waits for it and exits with its status, not a SIGTERM (241).
+out="$scratch/out32" err="$scratch/err32"
+rm -f "$gnome_log"
+input=$(printf 'OPTION ttyname=/dev/pts/1\nSETKEYINFO --clear\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
+rc=0
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 FAKE_DELEGATE_EXIT=7 FAKE_DELEGATE_EXIT_DELAY=3 || rc=$?
+[[ $rc -eq 7 ]] || fail "32 slow-exit-after-eof: expected the delegate's status 7, got $rc"
+ok_count=$(grep -c '^OK$' "$out")
+[[ $ok_count -eq 7 ]] || fail "32 slow-exit-after-eof: expected 7 relayed OK replies, saw $ok_count"
+pass '32: a delegate slow to exit after stdin closes is waited for and its status kept'
+
+# 33. A delegate that takes 3 seconds to start has not reached the GETPIN
+#     when stdin closes, so it is not stuck in a dialog: the wrapper waits for
+#     it to answer, relays the reply, and exits with its status.
+out="$scratch/out33" err="$scratch/err33"
+rm -f "$gnome_log"
+input=$(printf 'SETPROMPT Admin PIN\nSETDESC Please enter the Admin PIN\nGETPIN\n')
+rc=0
+run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 FAKE_DELEGATE_EXIT=7 FAKE_DELEGATE_START_DELAY=3 || rc=$?
+[[ $rc -eq 7 ]] || fail "33 slow-start-before-getpin: expected the delegate's status 7, got $rc"
+assert_contains "$out" 'D DELEGATE-PIN-gnome' '33 slow-start-before-getpin'
+pass '33: a delegate slow to start is not taken for a stuck dialog; its GETPIN reply is relayed'
+
+# 34. SIGTERM while the wrapper is already waiting out a slow delegate after
+#     stdin closed: the signal cuts that wait short, so the wrapper terminates
+#     the delegate and exits within 8 seconds instead of the full exit grace.
+start_wrapper "$scratch/out34" "$scratch/err34" FAKE_DELEGATE_EXIT_DELAY=30
+exec {wrapper_in}>&-
+"$sleep_bin" 0.5
+kill -TERM "$wrapper_pid"
+for (( i = 0; i < 80; i++ )); do
+  kill -0 "$wrapper_pid" 2>/dev/null || break
+  "$sleep_bin" 0.1
+done
+if kill -0 "$wrapper_pid" 2>/dev/null; then
+  kill -KILL "$wrapper_pid" 2>/dev/null || true
+  wait "$wrapper_pid" || true
+  fail "34 sigterm-during-exit-grace: the wrapper was still running 8s after SIGTERM; its stderr: $(<"$scratch/err34")"
+fi
+rc=0
+wait "$wrapper_pid" || rc=$?
+# 241 is the delegate's own -SIGTERM status, passed through by os._exit.
+[[ $rc -eq 241 ]] || fail "34 sigterm-during-exit-grace: expected the terminated delegate's status 241, got $rc; stderr: $(<"$scratch/err34")"
+pass '34: SIGTERM during the post-EOF wait for a slow delegate still exits promptly'
 
 pass 'all U5 test scenarios passed'
