@@ -6,6 +6,8 @@
   ];
   # keyd stays off here so the NuPhy Gem80 keeps its firmware mapping.
   my.nuphyGem80.enable = true;
+  my.t3.cli.enable = true;
+  my.t3.desktop.enable = true;
   my.printing.queues = [ "office" ];
   my.tailscale.advertiseRoutes = !config.my.bootstrap;
   fileSystems."/mnt/data" = {

@@ -1316,6 +1316,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          t3code-traits = import ./tests/t3code-traits.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
         }
         // fixtureChecksFor system;
       formatter.${system} = pkgs.nixfmt-tree;
