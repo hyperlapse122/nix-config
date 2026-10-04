@@ -23,10 +23,13 @@
   - it carries the shared rule to apply every review finding and its ban on
     deferring findings, so either sentence dropped from the template or moved
     into one harness's branch fails.
+  - it exists, is non-empty, and mentions Orca in no letter case, so the
+    shared instructions stay tool-neutral for every orchestrator.
   - it carries the shared branch-name rule: rename a placeholder before the
-    first push, only a branch never pushed, and the `type/short-kebab-slug`
-    fallback, so any of those sentences dropped or moved into one harness's
-    branch fails.
+    first push, what counts as a tool-generated placeholder (including a
+    random-hex branch), only a branch never pushed, and the
+    `type/short-kebab-slug` fallback, so any of those sentences dropped or
+    moved into one harness's branch fails.
   - it names every native tool its harness template maps, and none of the
     other harnesses', so a branch keyed on the wrong id, or swapped targets,
     fail.
@@ -57,6 +60,7 @@ let
 
   branchNameSentences = [
     "Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not."
+    "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
   ];
@@ -144,6 +148,14 @@ let
 
       sourcePresent = lib.optionalString (source != null) ''
         file=${source}
+        if [ ! -s "$file" ]; then
+          echo ${esc "${label} is missing or empty"} >&2
+          failed=1
+        fi
+        if grep -qi -- orca "$file"; then
+          echo ${esc "${label} mentions Orca"} >&2
+          failed=1
+        fi
         if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then
           echo ${esc "${label} lacks the shared instructions"} >&2
           failed=1
