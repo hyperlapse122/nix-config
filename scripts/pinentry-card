@@ -199,14 +199,8 @@ def main():
     state = Prompt()
     stopped = threading.Event()
 
-    def shutdown():
-        if stopped.is_set():
-            return delegate.returncode if delegate.returncode is not None else 0
-        stopped.set()
-        try:
-            delegate.stdin.close()
-        except OSError:
-            pass
+    def reap(close_stdin):
+        close_stdin()
         try:
             delegate.wait(timeout=2)
         except subprocess.TimeoutExpired:
@@ -216,12 +210,48 @@ def main():
             except subprocess.TimeoutExpired:
                 delegate.kill()
                 delegate.wait()
+        return delegate.returncode
+
+    def close_delegate_stdin():
+        try:
+            delegate.stdin.close()
+        except OSError:
+            pass
+
+    # Every exit ends in os._exit: interpreter shutdown aborts (exit 134) when
+    # the daemon relay thread is inside a stdout write at that moment.
+    def shutdown():
+        stopped.set()
+        status = reap(close_delegate_stdin)
         relay.join(timeout=2)
-        return delegate.returncode if delegate.returncode is not None else 0
+        # Holding the lock means the relay is not mid-write, so no reply is
+        # cut short.
+        with output_lock:
+            try:
+                client_out.flush()
+            except OSError:
+                pass
+            os._exit(status)
 
     def on_signal(signum, frame):
         del signum, frame
-        sys.exit(shutdown())
+        # The main thread is already reaping the delegate and exits on its
+        # own once that bounded wait ends; waiting here could deadlock on
+        # Popen's waitpid lock.
+        if stopped.is_set():
+            return
+        stopped.set()
+
+        # The interrupted main thread may hold output_lock or be inside a
+        # buffered write to stdout or to the delegate's stdin, so leave both
+        # buffered objects alone: close the raw descriptor and exit.
+        def close_raw_stdin():
+            try:
+                os.close(delegate.stdin.fileno())
+            except OSError:
+                pass
+
+        os._exit(reap(close_raw_stdin))
 
     signal.signal(signal.SIGINT, on_signal)
     signal.signal(signal.SIGTERM, on_signal)
@@ -231,12 +261,12 @@ def main():
             delegate.stdin.write(line)
             delegate.stdin.flush()
         except (BrokenPipeError, OSError):
-            sys.exit(shutdown())
+            shutdown()
 
     while True:
         line = client_in.readline()
         if not line or not line.endswith(b"\n"):
-            sys.exit(shutdown())
+            shutdown()
         command, _, argument = line[:-1].partition(b" ")
         if command == b"GETPIN":
             serial = state.card_serial()
@@ -272,7 +302,7 @@ def main():
             state.remember(command, argument)
         forward(line)
         if command == b"BYE":
-            sys.exit(shutdown())
+            shutdown()
 
 
 if __name__ == "__main__":

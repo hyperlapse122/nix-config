@@ -59,6 +59,8 @@ import time
 log_path = os.environ["FAKE_DELEGATE_LOG"]
 hang = os.environ.get("FAKE_DELEGATE_HANG_ON_GETPIN") == "1"
 tag = os.environ.get("FAKE_DELEGATE_TAG", "delegate")
+exit_status = int(os.environ.get("FAKE_DELEGATE_EXIT", "0"))
+stream_after_eof = os.environ.get("FAKE_DELEGATE_STREAM_AFTER_EOF") == "1"
 
 
 def log(data):
@@ -90,7 +92,20 @@ while True:
         break
     out.write(b"OK\n")
     out.flush()
-sys.exit(0)
+if stream_after_eof and os.fork() == 0:
+    # A grandchild that inherits the delegate's stdout keeps the wrapper's
+    # relay thread writing after the delegate itself has exited, until the
+    # wrapper is gone and the pipe breaks.
+    filler = b"S" * 512 + b"\n"
+    deadline = time.monotonic() + 20
+    try:
+        while time.monotonic() < deadline:
+            out.write(filler)
+            out.flush()
+    except OSError:
+        pass
+    os._exit(0)
+sys.exit(exit_status)
 PYEOF
 
 make_delegate_shim() {
@@ -225,10 +240,17 @@ run_wrapper() {
   # trailing newline; restore exactly one so the final Assuan line is
   # terminated like every other, instead of looking like a dangling partial
   # line the wrapper must treat as EOF.
-  local functional=$1 input=$2 out=$3 err=$4
+  # A non-zero exit prints the wrapper's stderr, so a failure that only shows
+  # up on a loaded builder still names its cause; cases that expect a
+  # non-zero exit print it too.
+  local functional=$1 input=$2 out=$3 err=$4 rc=0
   shift 4
   printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" "$@" PATH="$scratch/bin:/usr/bin:/bin" \
-    "$python3_bin" "$functional" >"$out" 2>"$err"
+    "$python3_bin" "$functional" >"$out" 2>"$err" || rc=$?
+  if (( rc != 0 )); then
+    printf 'pinentry-card: wrapper exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
+  fi
+  return "$rc"
 }
 
 assert_contains() {
@@ -611,5 +633,100 @@ assert_no_clear '27 ambiguous-serial-rejection'
 assert_entry_present "$serial_nfc" '27 ambiguous-serial-rejection'
 assert_entry_present "$serial_nano" '27 ambiguous-serial-rejection'
 pass '27: a rejection with no unambiguous serial clears nothing'
+
+# 28. Stdin closes while the relay thread is still writing the delegate's
+#     output: the wrapper exits with the delegate's status, not an interpreter
+#     abort at shutdown (exit 134).  A slow reader on stdout keeps the relay
+#     thread inside its write for most of the time the wrapper exits in.
+slow_fifo="$scratch/slow-reader"
+mkfifo "$slow_fifo"
+"$python3_bin" -c '
+import os, time
+while os.read(0, 4096):
+    time.sleep(0.005)
+' <"$slow_fifo" &
+reader_pid=$!
+rc=0
+run_wrapper "$scratch/functional-gnome.py" 'GETINFO pid' "$slow_fifo" "$scratch/err28" \
+  DISPLAY=:0 FAKE_DELEGATE_EXIT=7 FAKE_DELEGATE_STREAM_AFTER_EOF=1 || rc=$?
+wait "$reader_pid" || true
+[[ $rc -eq 7 ]] || fail "28 eof-during-relay-write: expected the delegate's status 7, got $rc"
+pass '28: stdin closing while the relay thread writes exits with the delegate'"'"'s status'
+
+# start_wrapper <out-target> <err-file>: run the gnome wrapper in the
+# background with stdin on a FIFO this shell holds open (fd $wrapper_in), a
+# delegate that exits 7 at EOF, and wait until that delegate has read a
+# line. Sets wrapper_pid.
+wrapper_fifo="$scratch/wrapper-in"
+mkfifo "$wrapper_fifo"
+start_wrapper() {
+  local out=$1 err=$2 i
+  rm -f "$gnome_log"
+  "$env_bin" DISPLAY=:0 FAKE_DELEGATE_EXIT=7 PATH="$scratch/bin:/usr/bin:/bin" \
+    "$python3_bin" "$scratch/functional-gnome.py" <"$wrapper_fifo" >"$out" 2>"$err" &
+  wrapper_pid=$!
+  exec {wrapper_in}>"$wrapper_fifo"
+  printf 'GETINFO pid\n' >&"$wrapper_in"
+  for (( i = 0; i < 100; i++ )); do
+    grep -qF 'GETINFO pid' "$gnome_log" 2>/dev/null && return 0
+    "$sleep_bin" 0.1
+  done
+  fail "start_wrapper: the delegate never received a line; wrapper stderr: $(<"$err")"
+}
+
+# term_wrapper <label> <err-file>: SIGTERM the background wrapper and require
+# it to exit within 8 seconds with the delegate's status 7.
+term_wrapper() {
+  local label=$1 err=$2 i rc=0
+  kill -TERM "$wrapper_pid"
+  for (( i = 0; i < 80; i++ )); do
+    kill -0 "$wrapper_pid" 2>/dev/null || break
+    "$sleep_bin" 0.1
+  done
+  if kill -0 "$wrapper_pid" 2>/dev/null; then
+    kill -KILL "$wrapper_pid" 2>/dev/null || true
+    wait "$wrapper_pid" || true
+    fail "$label: the wrapper was still running 8s after SIGTERM; its stderr: $(<"$err")"
+  fi
+  wait "$wrapper_pid" || rc=$?
+  exec {wrapper_in}>&-
+  [[ $rc -eq 7 ]] || fail "$label: expected the delegate's status 7 after SIGTERM, got $rc; stderr: $(<"$err")"
+}
+
+# 29. SIGTERM while the wrapper waits for its next command.
+start_wrapper "$scratch/out29" "$scratch/err29"
+term_wrapper '29 sigterm-idle' "$scratch/err29"
+pass '29: SIGTERM while idle reaps the delegate and exits promptly with its status'
+
+# 30. SIGTERM while the main thread is blocked in its own write: stdout is a
+#     FIFO nobody reads, and each insert-card CONFIRM makes the main thread
+#     write a 45-byte cancel reply, so 3000 of them overflow the pipe and leave
+#     it blocked with the output lock held.
+wrapper_out_fifo="$scratch/wrapper-out"
+mkfifo "$wrapper_out_fifo"
+exec {wrapper_out}<>"$wrapper_out_fifo"
+start_wrapper "$wrapper_out_fifo" "$scratch/err30"
+{
+  printf 'SETDESC Please insert the card with serial number:%%0A%%0A  14 963 605\n'
+  for (( i = 0; i < 3000; i++ )); do printf 'CONFIRM\n'; done
+} >&"$wrapper_in"
+# Wait until the unread stdout pipe is full (within a page's slack per slot)
+# and has stopped growing, so the signal lands during the blocked write.
+"$python3_bin" -c '
+import fcntl, struct, sys, termios, time
+size = fcntl.fcntl(0, fcntl.F_GETPIPE_SZ)
+previous = -1
+deadline = time.monotonic() + 8
+while time.monotonic() < deadline:
+    queued = struct.unpack("i", fcntl.ioctl(0, termios.FIONREAD, b"\0\0\0\0"))[0]
+    if queued >= size - 1024 and queued == previous:
+        sys.exit(0)
+    previous = queued
+    time.sleep(0.1)
+sys.exit(1)
+' <&"$wrapper_out" || fail "30 sigterm-during-write: the wrapper's stdout pipe never filled; stderr: $(<"$scratch/err30")"
+term_wrapper '30 sigterm-during-write' "$scratch/err30"
+exec {wrapper_out}<&-
+pass '30: SIGTERM during a blocked main-thread write exits promptly with the delegate'"'"'s status'
 
 pass 'all U5 test scenarios passed'
