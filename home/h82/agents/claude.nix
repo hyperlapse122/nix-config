@@ -39,9 +39,6 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
-    # The advisor must be at least as capable as the `opus[1m]` main model,
-    # which `fable` is.
-    advisorModel = "fable";
   };
 
   # Leaves assigned inside nested objects of settings.json. A plugin is enabled
@@ -71,7 +68,10 @@ let
   # assigns, so dropping a key from settingsTier alone would leave its last
   # written value on every machine forever. Move it here instead, and delete
   # the entry once every host has rebuilt past it.
-  retiredKeys = [ ];
+  retiredKeys = [
+    # Removed so the advisor stays off.
+    "advisorModel"
+  ];
 
   renderDeclared =
     name: set: remove: setPaths:
