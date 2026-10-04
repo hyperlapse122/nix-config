@@ -1210,6 +1210,21 @@
                   ${./.github/workflows/update-dependencies.yml}
                 touch $out
               '';
+          update-dependencies-reconcile =
+            pkgs.runCommand "update-dependencies-reconcile-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.jq
+                  pkgs.gawk
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                bash ${./tests/update-dependencies-reconcile.sh} \
+                  ${./.github/workflows/update-dependencies.yml}
+                touch $out
+              '';
           ci-workflow-docs-skip =
             pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''
