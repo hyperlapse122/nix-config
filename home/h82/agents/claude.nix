@@ -68,10 +68,7 @@ let
   # assigns, so dropping a key from settingsTier alone would leave its last
   # written value on every machine forever. Move it here instead, and delete
   # the entry once every host has rebuilt past it.
-  retiredKeys = [
-    # Removed so the advisor stays off.
-    "advisorModel"
-  ];
+  retiredKeys = [ "advisorModel" ];
 
   renderDeclared =
     name: set: remove: setPaths:
