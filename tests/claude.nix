@@ -28,9 +28,9 @@
     exit status, so a symlinked or malformed file fails the rebuild instead of
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
-    and nested path at its declared value. Asserting the rendered file rather
-    than the Nix attribute set keeps the check on what activation actually
-    feeds the merger.
+    and nested path at its declared value and lists every retired key for
+    removal. Asserting the rendered file rather than the Nix attribute set
+    keeps the check on what activation actually feeds the merger.
   - no environment.etc entry declares claude-code/managed-settings.json, on
     each NixOS configuration (`entries`), the only kind with environment.etc.
   - no Home Manager file targets either merged file. An activation-time
@@ -76,8 +76,9 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
-    advisorModel = "fable";
   };
+
+  retiredKeys = [ "advisorModel" ];
 
   settingsPaths = [
     {
@@ -94,24 +95,19 @@ let
   };
 
   expectedDeclared =
-    name: set: setPaths:
-    pkgs.writeText name (
-      builtins.toJSON {
-        inherit set setPaths;
-        remove = [ ];
-      }
-    );
+    name: set: remove: setPaths:
+    pkgs.writeText name (builtins.toJSON { inherit set remove setPaths; });
 
   merges = [
     {
       attr = "claudeSettings";
       file = ".claude/settings.json";
-      expected = expectedDeclared "claude-expected-settings.json" settingsTier settingsPaths;
+      expected = expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths;
     }
     {
       attr = "claudeGlobalConfig";
       file = ".claude.json";
-      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ];
+      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ];
     }
   ];
 
