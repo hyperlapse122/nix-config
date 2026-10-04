@@ -50,13 +50,16 @@ pkgs.stdenv.mkDerivation {
     find node_modules -depth -type d -name '*-musl' -exec rm -rf {} +
     find node_modules -type d -path '*/prebuilds/*' -prune ! -name '${platformKey}' -exec rm -rf {} +
 
-    # autoPatchelf skips only ET_EXEC static binaries. The Cursor SDK's rg and
-    # cursorsandbox are static-pie (ET_DYN with no interpreter), and any
-    # runpath it writes into one leaves it segfaulting. None is written today,
-    # as nothing sets appendRunpaths or runtimeDependencies, but that is one
-    # attribute away. Set every static-pie file aside here and put it back
-    # after autoPatchelf in postFixup, as packages/chatgpt.nix does.
+    # autoPatchelf skips only ET_EXEC static binaries. On x86_64 the Cursor
+    # SDK's rg and cursorsandbox are static-pie (ET_DYN with no interpreter),
+    # and any runpath it writes into one leaves it segfaulting. None is written
+    # today, as nothing sets appendRunpaths or runtimeDependencies, but that is
+    # one attribute away. Set every static-pie file aside here and put it back
+    # after autoPatchelf in postFixup, as packages/chatgpt.nix does. The arm64
+    # tarball has none (its rg is ET_EXEC), so the directory must exist even
+    # when nothing is set aside.
     # One file(1) run per batch: -0 ends each name with NUL, then ": <type>".
+    mkdir -p "$TMPDIR/static-pie"
     find . -type f -exec file -0 -- {} + | while IFS= read -r -d "" path && IFS= read -r type; do
       case $type in
         *'static-pie linked'*) install -Dm755 "$path" "$TMPDIR/static-pie/$path" ;;
