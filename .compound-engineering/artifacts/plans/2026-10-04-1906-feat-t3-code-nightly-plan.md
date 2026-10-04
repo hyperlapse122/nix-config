@@ -218,6 +218,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Files:** `home/h82/agents/instructions/instructions.md.tmpl`, `tests/agent-instructions.nix`, `docs/provisioning.md`.
 
 **Approach:**
+
 1. Rewrite the second sentence of the branch-names paragraph so the placeholder examples carry no tool name, for example "a worktree codename like `hyperlapse122/mooneye`, or a random-hex branch like `t3code/1a2b3c4d`". Keep the first sentence verbatim, because `tests/agent-instructions.nix` pins it.
 2. In `tests/agent-instructions.nix`, add a case-insensitive "orca" assertion to the per-harness block that already reads each materialized instructions file, as an explicit `if … then fail` branch. Pin the reworded placeholder sentence in `branchNameSentences`.
 3. Extend the check's description in `docs/provisioning.md`.
@@ -225,6 +226,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** the `sourcePresent` block in `tests/agent-instructions.nix`; `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md`.
 
 **Test scenarios:**
+
 - Each harness's rendered file (Claude Code, Codex, Antigravity) exists, is non-empty, and contains no "orca" in any case.
 - Mutation: putting "Orca" back into the template fails the check, naming the harness file.
 - Covers AE5. The rendered file contains the placeholder sentence with a `t3code/`-style example; removing it fails the check.
@@ -240,11 +242,13 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** none.
 
 **Files:**
+
 - Delete: `home/h82/agents/orca-skills.nix`, `tests/orca-skills.nix`.
 - Create: `home/h82/agents/retire-orca-skills.nix`, `tests/retire-orca-skills.nix`.
 - Modify: `home/h82/agents/default.nix`, `packages/orca.nix`, `flake.nix`, `.github/workflows/check.yml`, `tests/check-workflow-docs-skip.sh`, `docs/provisioning.md`, `README.md`.
 
 **Approach:**
+
 1. Replace the import of `orca-skills.nix` with `retire-orca-skills.nix`, which implements KTD8 across the same three roots.
 2. Remove the `skills` fetch and `passthru.skills` from `packages/orca.nix`, keeping the AppImage wrapper, `orca` link, and desktop entry (R16).
 3. Replace the `orca-skills` registration in `flake.nix` with the new check.
@@ -256,6 +260,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** the old installer's manifest loop and its name guard; the retirement rows in `home/h82/agents/agent-plugins.nix`; `tests/orca-skills.nix`'s method of running the materialized activation entry against a seeded home.
 
 **Test scenarios:**
+
 - Covers AE6. A seeded home has Orca skill directories plus `.orca-skills` in all three roots, and a user skill in `~/.claude/skills`. After activation, the listed directories and manifests are gone and the user skill is intact.
 - A root with no manifest is left unchanged.
 - A manifest line of `..`, `.`, empty, or `a/b` removes nothing outside the root.
@@ -275,10 +280,12 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** none.
 
 **Files:**
+
 - Create: `packages/t3code-release.json`, `scripts/t3code-release`, `tests/test_t3code_release.py`.
 - Modify: `packages/agent-tools.nix`, `flake.nix`.
 
 **Approach:**
+
 1. Write the script per KTD3, emitting the KTD2 shape for `x86_64-linux` (`T3-Code-<v>-x86_64.AppImage`, `t3-<v>-linux-x64.tar.gz`) and `aarch64-linux` (`-arm64.AppImage`, `-linux-arm64.tar.gz`). Every asset must match exactly once, or the script fails.
 2. Seed the pin with the current newest nightly.
 3. Export the script as `t3code-release` from `packages/agent-tools.nix` and the flake packages.
@@ -287,6 +294,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** `scripts/codex-release`, `tests/test_codex_release.py`, `packages/codex-release.json`.
 
 **Test scenarios:**
+
 - With a fixture release list of a stable release, a newer preview, and two nightlies, the script picks the newest nightly.
 - A nightly with a missing arm64 AppImage fails, naming the asset.
 - A digest converts to the matching SRI hash.
@@ -305,10 +313,12 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** U3.
 
 **Files:**
+
 - Create: `packages/t3code.nix` (desktop), `packages/t3code-cli.nix`.
 - Modify: `flake.nix` (package outputs and a `t3code` check).
 
 **Approach:**
+
 1. Build the desktop package per KTD4. Install its `.desktop` file with `Exec` pointing at the wrapper, plus its icons.
 2. Build the CLI per KTD5. Unpack the tarball, keeping `client/`, `node_modules/`, and `resource-monitor/` beside the binary. Expose `bin/t3`. Restrict prebuilt native addons to the target system.
 3. Set `meta.platforms` from the pin's systems.
@@ -318,6 +328,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** `packages/orca.nix`, `packages/chatgpt.nix`, `packages/codex.nix`; the `orca-desktop`, `chatgpt`, and `codex` checks in `flake.nix`.
 
 **Test scenarios:**
+
 - `t3 --version` from the built CLI prints the pinned version, both in the package's install check and in the `t3code` check.
 - The bundled static-pie `rg --version` runs from the built CLI.
 - The CLI's node-pty native addon loads from the patched tree.
@@ -337,6 +348,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** U4.
 
 **Files:**
+
 - Create: `home/h82/t3code.nix`, `tests/t3code-traits.nix`.
 - Modify:
   - `modules/shared/host.nix`, `home/h82/default.nix`;
@@ -345,6 +357,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
   - `tests/non-nixos-outputs.nix`, `flake.nix`.
 
 **Approach:**
+
 1. Declare both traits with `lib.mkEnableOption` in `modules/shared/host.nix`.
 2. Implement KTD6 in `home/h82/t3code.nix`.
 3. Enable both traits on both NixOS hosts (R9).
@@ -355,6 +368,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** `configurations.withTrait` in `tests/lib/configurations.nix`, the assertion test in `tests/wifi-assertions.nix`, `extraModules` in `lib/linux-host.nix`, `tests/lib/linux-fixtures.nix`.
 
 **Test scenarios:**
+
 - Covers AE1. On each NixOS production and bootstrap config, the user profile contains `bin/t3` and the T3 Code desktop entry.
 - Covers AE2. With `my.t3.desktop.enable` forced off, the profile has `bin/t3` and no T3 Code desktop entry.
 - With `my.t3.cli.enable` forced off and desktop on, the desktop entry exists and the T3 Code CLI package is absent.
@@ -373,10 +387,12 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** U3.
 
 **Files:**
+
 - Modify: `.github/workflows/update-dependencies.yml`, `flake.nix`.
 - Create: `tests/update-dependencies-reconcile.sh`.
 
 **Approach:**
+
 1. Set the cron per KTD11. In the PR body, fix the "hourly" wording and replace the auto-merge sentence with one saying the PR waits for the user to review and merge (KTD10).
 2. Add a `t3code-release` step after the other release steps, and a `chore(packages): bump t3code to <version>` commit block in the push step, mirroring the existing ones.
 3. Apply KTD9 and KTD10.
@@ -384,6 +400,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** `tests/update-dependencies-push-order.sh` and `tests/update-dependencies-verify-status.sh` (awk extraction of a step's `run:` block, stub tools, `#!$BASH`); `.compound-engineering/artifacts/solutions/logic-errors/pipe-to-tee-exit-status-reports-success-in-github-actions-step.md`.
 
 **Test scenarios:**
+
 - Covers AE7. The extracted "Open reconciliation PR on failure" block, with a stub `gh` that fails on any `--label`, creates the PR and exits 0.
 - With a stub `gh` reporting an existing PR, the block edits it instead of creating one.
 - The workflow's Claude step sets `CLAUDE_BRANCH` to `update-dependencies-fix`, and no step runs `gh pr merge`.
@@ -401,6 +418,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Dependencies:** none.
 
 **Files:**
+
 - Modify: `tests/check-workflow-docs-skip.sh`, `scripts/pinentry-card`, `tests/pinentry-card.sh`.
 
 **Approach:** Apply KTD12 and KTD13.
@@ -410,6 +428,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Patterns to follow:** the mutation rounds documented in `tests/check-workflow-docs-skip.sh`; `.compound-engineering/artifacts/solutions/best-practices/compound-condition-clause-assertions-miss-connective-mutations.md`.
 
 **Test scenarios:**
+
 - A multi-line block whose first line matches makes the assertion pass with no SIGPIPE, even under the forced reproduction.
 - The documented mutation rounds of `check-workflow-docs-skip` still each fail the check.
 - The wrapper exits with the delegate's status, and without abort, when stdin closes while the relay thread is mid-write.
@@ -429,6 +448,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 **Files:** `docs/adding-a-host.md`, `docs/provisioning.md`, `README.md`, `scripts/claude-code-release` (comment).
 
 **Approach:**
+
 1. Add both traits to the traits table in `docs/adding-a-host.md`, and rewrite the sentence saying traits change nothing on a non-NixOS host.
 2. Add a T3 Code subsection to `docs/provisioning.md` covering its pin, its updater, self-update being off, app-managed settings, and use of PATH `codex` and `claude`.
 3. Add T3 Code to `README.md`'s app list.
@@ -443,7 +463,7 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | Nix formatting |
 | Checks | `nix flake check` | U1 to U7 checks on x86_64 |
 | VM tests | `nix build --no-link .#vmChecks.all` | No regression in VM tests |
@@ -466,5 +486,5 @@ U1, U2, U7 are independent. U3 precedes U4, which precedes U5. U6 depends on U3 
 
 **Deferred to the user (no code change)**
 
-- The user is registering a fine-grained `GH_TOKEN_FOR_UPDATES` token scoped to this repository, which makes updater pushes and reconciliation PRs trigger CI. Restoring auto-merge (KTD10) additionally needs a required check on `main`.
+- `GH_TOKEN_FOR_UPDATES` now holds a fine-grained token scoped to this repository, so updater pushes and reconciliation PRs trigger CI. Restoring auto-merge (KTD10) additionally needs a required check on `main`.
 - Whether to delete the stale remote `update-dependencies-fix` branch.
