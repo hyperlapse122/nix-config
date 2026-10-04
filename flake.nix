@@ -127,6 +127,7 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
+        t3code-release = agentTools.t3codeRelease;
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
@@ -430,6 +431,14 @@
             cp ${./scripts/codex-release} scripts/codex-release
             cp ${./tests/test_codex_release.py} tests/test_codex_release.py
             python tests/test_codex_release.py
+            touch $out
+          '';
+          t3code-release = pkgs.runCommand "t3code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            export PYTHONDONTWRITEBYTECODE=1
+            mkdir -p scripts tests
+            cp ${./scripts/t3code-release} scripts/t3code-release
+            cp ${./tests/test_t3code_release.py} tests/test_t3code_release.py
+            python tests/test_t3code_release.py
             touch $out
           '';
           # Drives the packaged helper, so a package that lost nokogiri from its
