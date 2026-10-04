@@ -61,11 +61,30 @@ hang = os.environ.get("FAKE_DELEGATE_HANG_ON_GETPIN") == "1"
 tag = os.environ.get("FAKE_DELEGATE_TAG", "delegate")
 exit_status = int(os.environ.get("FAKE_DELEGATE_EXIT", "0"))
 stream_after_eof = os.environ.get("FAKE_DELEGATE_STREAM_AFTER_EOF") == "1"
+flood_on_getpin = os.environ.get("FAKE_DELEGATE_FLOOD_ON_GETPIN") == "1"
 
 
 def log(data):
     with open(log_path, "ab") as fh:
         fh.write(data)
+
+
+def fork_flooder():
+    # A grandchild that inherits the delegate's stdout keeps the wrapper's
+    # relay thread writing, whatever the delegate itself does next, until the
+    # wrapper is gone and the pipe breaks.  One page per write fills a pipe
+    # to within one page, so a test can measure it.
+    if os.fork() != 0:
+        return
+    filler = b"S" * 4095 + b"\n"
+    deadline = time.monotonic() + 20
+    try:
+        while time.monotonic() < deadline:
+            out.write(filler)
+            out.flush()
+    except OSError:
+        pass
+    os._exit(0)
 
 
 out = sys.stdout.buffer
@@ -81,6 +100,11 @@ while True:
     if cmd == b"GETPIN" and hang:
         time.sleep(3600)
         continue
+    if cmd == b"GETPIN" and flood_on_getpin:
+        # No reply: the delegate's own writes must never block on the full
+        # pipe, so it can still exit with its status at EOF.
+        fork_flooder()
+        continue
     if cmd == b"GETPIN":
         out.write(("D DELEGATE-PIN-%s\n" % tag).encode())
         out.write(b"OK\n")
@@ -92,19 +116,8 @@ while True:
         break
     out.write(b"OK\n")
     out.flush()
-if stream_after_eof and os.fork() == 0:
-    # A grandchild that inherits the delegate's stdout keeps the wrapper's
-    # relay thread writing after the delegate itself has exited, until the
-    # wrapper is gone and the pipe breaks.
-    filler = b"S" * 512 + b"\n"
-    deadline = time.monotonic() + 20
-    try:
-        while time.monotonic() < deadline:
-            out.write(filler)
-            out.flush()
-    except OSError:
-        pass
-    os._exit(0)
+if stream_after_eof:
+    fork_flooder()
 sys.exit(exit_status)
 PYEOF
 
@@ -653,16 +666,17 @@ wait "$reader_pid" || true
 [[ $rc -eq 7 ]] || fail "28 eof-during-relay-write: expected the delegate's status 7, got $rc"
 pass '28: stdin closing while the relay thread writes exits with the delegate'"'"'s status'
 
-# start_wrapper <out-target> <err-file>: run the gnome wrapper in the
-# background with stdin on a FIFO this shell holds open (fd $wrapper_in), a
-# delegate that exits 7 at EOF, and wait until that delegate has read a
-# line. Sets wrapper_pid.
+# start_wrapper <out-target> <err-file> [NAME=value ...]: run the gnome
+# wrapper in the background with stdin on a FIFO this shell holds open (fd
+# $wrapper_in), a delegate that exits 7 at EOF, and any extra environment,
+# and wait until that delegate has read a line. Sets wrapper_pid.
 wrapper_fifo="$scratch/wrapper-in"
 mkfifo "$wrapper_fifo"
 start_wrapper() {
   local out=$1 err=$2 i
+  shift 2
   rm -f "$gnome_log"
-  "$env_bin" DISPLAY=:0 FAKE_DELEGATE_EXIT=7 PATH="$scratch/bin:/usr/bin:/bin" \
+  "$env_bin" DISPLAY=:0 FAKE_DELEGATE_EXIT=7 "$@" PATH="$scratch/bin:/usr/bin:/bin" \
     "$python3_bin" "$scratch/functional-gnome.py" <"$wrapper_fifo" >"$out" 2>"$err" &
   wrapper_pid=$!
   exec {wrapper_in}>"$wrapper_fifo"
@@ -674,11 +688,10 @@ start_wrapper() {
   fail "start_wrapper: the delegate never received a line; wrapper stderr: $(<"$err")"
 }
 
-# term_wrapper <label> <err-file>: SIGTERM the background wrapper and require
-# it to exit within 8 seconds with the delegate's status 7.
-term_wrapper() {
-  local label=$1 err=$2 i rc=0
-  kill -TERM "$wrapper_pid"
+# await_wrapper_exit <label> <event> <err-file>: require the background
+# wrapper to exit within 8 seconds of <event> with the delegate's status 7.
+await_wrapper_exit() {
+  local label=$1 event=$2 err=$3 i rc=0
   for (( i = 0; i < 80; i++ )); do
     kill -0 "$wrapper_pid" 2>/dev/null || break
     "$sleep_bin" 0.1
@@ -686,11 +699,37 @@ term_wrapper() {
   if kill -0 "$wrapper_pid" 2>/dev/null; then
     kill -KILL "$wrapper_pid" 2>/dev/null || true
     wait "$wrapper_pid" || true
-    fail "$label: the wrapper was still running 8s after SIGTERM; its stderr: $(<"$err")"
+    fail "$label: the wrapper was still running 8s after $event; its stderr: $(<"$err")"
   fi
   wait "$wrapper_pid" || rc=$?
+  [[ $rc -eq 7 ]] || fail "$label: expected the delegate's status 7 after $event, got $rc; stderr: $(<"$err")"
+}
+
+# term_wrapper <label> <err-file>: SIGTERM the background wrapper and require
+# it to exit within 8 seconds with the delegate's status 7.
+term_wrapper() {
+  kill -TERM "$wrapper_pid"
+  await_wrapper_exit "$1" SIGTERM "$2"
   exec {wrapper_in}>&-
-  [[ $rc -eq 7 ]] || fail "$label: expected the delegate's status 7 after SIGTERM, got $rc; stderr: $(<"$err")"
+}
+
+# await_pipe_full <fd>: wait until the unread pipe on <fd> is full (within one
+# page: a write that does not fit the last page opens a new one) and has
+# stopped growing; returns non-zero after 8s.
+await_pipe_full() {
+  "$python3_bin" -c '
+import fcntl, struct, sys, termios, time
+size = fcntl.fcntl(0, fcntl.F_GETPIPE_SZ)
+previous = -1
+deadline = time.monotonic() + 8
+while time.monotonic() < deadline:
+    queued = struct.unpack("i", fcntl.ioctl(0, termios.FIONREAD, b"\0\0\0\0"))[0]
+    if queued >= size - 4096 and queued == previous:
+        sys.exit(0)
+    previous = queued
+    time.sleep(0.1)
+sys.exit(1)
+' <&"$1"
 }
 
 # 29. SIGTERM while the wrapper waits for its next command.
@@ -710,23 +749,26 @@ start_wrapper "$wrapper_out_fifo" "$scratch/err30"
   printf 'SETDESC Please insert the card with serial number:%%0A%%0A  14 963 605\n'
   for (( i = 0; i < 3000; i++ )); do printf 'CONFIRM\n'; done
 } >&"$wrapper_in"
-# Wait until the unread stdout pipe is full (within a page's slack per slot)
-# and has stopped growing, so the signal lands during the blocked write.
-"$python3_bin" -c '
-import fcntl, struct, sys, termios, time
-size = fcntl.fcntl(0, fcntl.F_GETPIPE_SZ)
-previous = -1
-deadline = time.monotonic() + 8
-while time.monotonic() < deadline:
-    queued = struct.unpack("i", fcntl.ioctl(0, termios.FIONREAD, b"\0\0\0\0"))[0]
-    if queued >= size - 1024 and queued == previous:
-        sys.exit(0)
-    previous = queued
-    time.sleep(0.1)
-sys.exit(1)
-' <&"$wrapper_out" || fail "30 sigterm-during-write: the wrapper's stdout pipe never filled; stderr: $(<"$scratch/err30")"
+# The signal must land during the blocked write.
+await_pipe_full "$wrapper_out" || fail "30 sigterm-during-write: the wrapper's stdout pipe never filled; stderr: $(<"$scratch/err30")"
 term_wrapper '30 sigterm-during-write' "$scratch/err30"
 exec {wrapper_out}<&-
 pass '30: SIGTERM during a blocked main-thread write exits promptly with the delegate'"'"'s status'
+
+# 31. Stdin closes while the relay thread is blocked writing to a full stdout
+#     nobody reads, holding the output lock: the delegate's GETPIN starts a
+#     flood of output and never replies, so the main thread stays in its read
+#     and sees the EOF.  Shutdown must not wait on the lock forever.
+wrapper_out_fifo="$scratch/wrapper-out31"
+mkfifo "$wrapper_out_fifo"
+exec {wrapper_out}<>"$wrapper_out_fifo"
+start_wrapper "$wrapper_out_fifo" "$scratch/err31" FAKE_DELEGATE_FLOOD_ON_GETPIN=1
+printf 'GETPIN\n' >&"$wrapper_in"
+# The EOF must arrive while the relay thread is blocked in its write.
+await_pipe_full "$wrapper_out" || fail "31 eof-during-blocked-relay: the wrapper's stdout pipe never filled; stderr: $(<"$scratch/err31")"
+exec {wrapper_in}>&-
+await_wrapper_exit '31 eof-during-blocked-relay' 'stdin closed' "$scratch/err31"
+exec {wrapper_out}<&-
+pass '31: stdin closing while the relay thread is blocked on an unread stdout exits promptly with the delegate'"'"'s status'
 
 pass 'all U5 test scenarios passed'

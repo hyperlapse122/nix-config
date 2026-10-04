@@ -56,10 +56,11 @@ pkgs.stdenv.mkDerivation {
     # as nothing sets appendRunpaths or runtimeDependencies, but that is one
     # attribute away. Set every static-pie file aside here and put it back
     # after autoPatchelf in postFixup, as packages/chatgpt.nix does.
-    find . -type f -print0 | while IFS= read -r -d "" file; do
-      if file -b "$file" | grep -q 'static-pie linked'; then
-        install -Dm755 "$file" "$TMPDIR/static-pie/$file"
-      fi
+    # One file(1) run per batch: -0 ends each name with NUL, then ": <type>".
+    find . -type f -exec file -0 -- {} + | while IFS= read -r -d "" path && IFS= read -r type; do
+      case $type in
+        *'static-pie linked'*) install -Dm755 "$path" "$TMPDIR/static-pie/$path" ;;
+      esac
     done
 
     mkdir -p $out/libexec $out/bin

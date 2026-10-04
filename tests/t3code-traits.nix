@@ -172,34 +172,27 @@ pkgs.runCommand "t3code-traits" { } ''
     return 1
   }
 
+  # Fails unless $3 resolving into package $4 matches the trait value $5.
+  expectPresence() {
+    local name=$1 what=$2 path=$3 pkg=$4 expected=$5 trait=$6 present=false
+    resolvesInto "$path" "$pkg" && present=true
+    if [ "$present" != "$expected" ]; then
+      echo "$name: $what is present=$present, $trait is $expected" >&2
+      fail=1
+    fi
+  }
+
   checkProfile() {
-    local name=$1 profile=$2 cli=$3 desktop=$4 present target exe
+    local name=$1 profile=$2 cli=$3 desktop=$4 target exe
     if [ -z "$profile" ] || [ ! -d "$profile" ]; then
       echo "$name: Home Manager renders no home.path" >&2
       fail=1
       return
     fi
 
-    present=false
-    resolvesInto "$profile/bin/t3" t3code-cli && present=true
-    if [ "$present" != "$cli" ]; then
-      echo "$name: bin/t3 from t3code-cli is present=$present, my.t3.cli.enable is $cli" >&2
-      fail=1
-    fi
-
-    present=false
-    resolvesInto "$profile/share/applications/t3code.desktop" t3code-desktop && present=true
-    if [ "$present" != "$desktop" ]; then
-      echo "$name: the t3code.desktop entry is present=$present, my.t3.desktop.enable is $desktop" >&2
-      fail=1
-    fi
-
-    present=false
-    resolvesInto "$profile/bin/t3code-desktop" t3code-desktop && present=true
-    if [ "$present" != "$desktop" ]; then
-      echo "$name: bin/t3code-desktop is present=$present, my.t3.desktop.enable is $desktop" >&2
-      fail=1
-    fi
+    expectPresence "$name" "bin/t3 from t3code-cli" "$profile/bin/t3" t3code-cli "$cli" my.t3.cli.enable
+    expectPresence "$name" "the t3code.desktop entry" "$profile/share/applications/t3code.desktop" t3code-desktop "$desktop" my.t3.desktop.enable
+    expectPresence "$name" "bin/t3code-desktop" "$profile/bin/t3code-desktop" t3code-desktop "$desktop" my.t3.desktop.enable
 
     for exe in "$profile"/bin/*; do
       target=$(readlink -f "$exe")

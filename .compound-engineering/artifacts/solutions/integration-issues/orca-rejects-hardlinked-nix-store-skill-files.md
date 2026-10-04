@@ -12,10 +12,12 @@ symptoms:
 root_cause: config_error
 resolution_type: code_fix
 tags: ["orca", "agent-skills", "home-manager", "nix-store", "auto-optimise-store", "hardlink", "nlink"]
-retire_when: "Orca stops rejecting installed skill files whose link count is not 1; check the skill observer in a newer Orca app.asar for the `nlink!==1` test that throws `skill-package-link`"
+retire_when: "No tool this flake configures inspects installed files for their link count or symlink status; Orca skills are no longer installed (2026-10-04), so keep this only for the general lesson"
 ---
 
 # Orca rejects skill files hardlinked by the Nix store optimiser
+
+**Status (2026-10-04):** The flake no longer installs Orca's skills. `home/h82/agents/orca-skills.nix` and `tests/orca-skills.nix`, named below as the fix, were removed so the skills stop reaching sessions that other orchestrators start. `home/h82/agents/retire-orca-skills.nix` now reads each root's `.orca-skills` manifest once, removes the copies it lists, and deletes the manifest; `tests/retire-orca-skills.nix` covers it. The general lesson under Prevention still applies to any tool that inspects installed files on disk.
 
 ## Problem
 

@@ -38,8 +38,6 @@ pkgs.appimageTools.wrapType2 {
     ''--setenv CONTAINER_HOST "unix://$XDG_RUNTIME_DIR/podman/podman.sock"''
   ];
 
-  # The AppImage bundles its resource monitor under resources/, where the
-  # packaged app looks for it.
   extraInstallCommands = ''
     install -m 444 -D ${appimageContents}/t3code.desktop $out/share/applications/t3code.desktop
     substituteInPlace $out/share/applications/t3code.desktop \

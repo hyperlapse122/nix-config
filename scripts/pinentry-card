@@ -225,13 +225,14 @@ def main():
         status = reap(close_delegate_stdin)
         relay.join(timeout=2)
         # Holding the lock means the relay is not mid-write, so no reply is
-        # cut short.
-        with output_lock:
+        # cut short.  The wait is bounded: a relay blocked on a stdout nobody
+        # reads gives up the final flush, never the exit.
+        if output_lock.acquire(timeout=2):
             try:
                 client_out.flush()
             except OSError:
                 pass
-            os._exit(status)
+        os._exit(status)
 
     def on_signal(signum, frame):
         del signum, frame
