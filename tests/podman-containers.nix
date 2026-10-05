@@ -73,12 +73,18 @@ let
             ${fail "${name}: a unit wants podman-prune.service, so it runs outside its timer"}
           fi
         done
-        for line in OnCalendar=weekly Persistent=true RandomizedDelaySec=1h; do
-          if ! grep -qx "$line" "$timer"; then
-            echo ${esc "${name}: podman-prune.timer is missing, masked, or lacks"} "$line" >&2
-            failed=1
-          fi
-        done
+        ${lib.concatMapStrings
+          (line: ''
+            if ! grep -qx ${esc line} "$timer"; then
+              ${fail "${name}: podman-prune.timer is missing, masked, or lacks ${line}"}
+            fi
+          '')
+          [
+            "OnCalendar=weekly"
+            "Persistent=true"
+            "RandomizedDelaySec=1h"
+          ]
+        }
         if [ ! -e ${esc "${tree}/timers.target.wants/podman-prune.timer"} ]; then
           ${fail "${name}: timers.target does not want podman-prune.timer"}
         fi
@@ -87,11 +93,12 @@ let
   assertPruneDisabled =
     entry:
     let
-      tree = userUnits entry.config;
+      inherit (entry) config name;
+      tree = userUnits config;
     in
     lib.optionalString (tree != null) ''
       if [ -e ${esc "${tree}/podman-prune.service"} ] || [ -e ${esc "${tree}/podman-prune.timer"} ]; then
-        ${fail "${entry.name}: my.podman.enable is off but a podman-prune user unit exists"}
+        ${fail "${name}: my.podman.enable is off but a podman-prune user unit exists"}
       fi
     '';
 

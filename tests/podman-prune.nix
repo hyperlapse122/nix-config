@@ -70,6 +70,11 @@ pkgs.testers.nixosTest {
     machine.wait_for_unit("user@1000.service")
     machine.wait_for_unit("user@1001.service")
 
+    # Stop the timer so a scheduled run cannot prune the seeded storage before
+    # the preconditions are checked; the service is started explicitly below.
+    assert "podman-prune.timer" in machine.succeed(user("systemctl --user list-timers --all"))
+    machine.succeed(user("systemctl --user stop podman-prune.timer"))
+
     machine.succeed(user("podman load -i ${keptImage}"))
     machine.succeed(user("podman load -i ${danglingImage}"))
     machine.succeed(user("podman untag localhost/prune-dangling:latest"))
@@ -78,8 +83,6 @@ pkgs.testers.nixosTest {
 
     assert "stopped" in machine.succeed(user("podman ps -a --format '{{.Names}}'")).split()
     assert len(machine.succeed(user("podman images --filter dangling=true --quiet")).split()) == 1
-
-    assert "podman-prune.timer" in machine.succeed(user("systemctl --user list-timers --all"))
 
     # A unit whose condition fails also reports Result=success, so the
     # condition result proves the prune actually ran.

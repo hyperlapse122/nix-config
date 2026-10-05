@@ -24,14 +24,14 @@ in
 
     # Rootless Podman needs /etc/subuid and /etc/subgid entries. nixpkgs only
     # sets this with mkDefault for normal users that declare no explicit ranges.
-    users.users.h82.autoSubUidGidRange = true;
+    users.users.${config.my.user.name}.autoSubUidGidRange = true;
 
     # virtualisation.podman.autoPrune runs as root against rootful storage,
     # which holds nothing here, so prune each user's rootless storage from
     # their own user manager instead. The wrapped package keeps /run/wrappers
     # on PATH for newuidmap, which the unit's own PATH would otherwise drop.
-    # Only the configured account has subordinate ID ranges; other user
-    # managers, such as the display manager's, skip the unit.
+    # System accounts, such as the display manager's, have no subordinate ID
+    # ranges, so the prune runs only in the configured account's manager.
     systemd.user.services.podman-prune = {
       description = "Prune unused rootless Podman containers, networks, and dangling images";
       unitConfig.ConditionUser = config.my.user.name;
