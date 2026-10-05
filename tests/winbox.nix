@@ -12,7 +12,8 @@
   Verifies, per configuration:
   - the system path carries bin/WinBox and share/applications/winbox.desktop.
   - the firewall start script accepts UDP 5678 (MikroTik Neighbor Discovery),
-    UDP 20561 (MAC-address connections), and the UDP range 40000:50000.
+    UDP 20561 (MAC-address connections), and the UDP range 40000:50000 on
+    every interface, so a rule scoped to one interface fails.
 
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
@@ -30,19 +31,8 @@ let
     failed=1
   '';
 
-  # An /etc entry that is disabled or retargeted is not materialised at its
-  # path, so it counts as missing even though its source still evaluates.
-  units =
-    config:
-    let
-      entry = config.environment.etc."systemd/system" or null;
-    in
-    if
-      entry == null || !(entry.enable or true) || (entry.target or "systemd/system") != "systemd/system"
-    then
-      null
-    else
-      entry.source;
+  etcFile = import ./lib/etc-file.nix { inherit lib; };
+  units = config: etcFile config "systemd/system";
 
   ports = [
     "5678"
@@ -74,8 +64,11 @@ let
               ${fail "${name}: firewall.service is missing, masked, or runs no start script"}
               firewall=/dev/null
             fi
+            # Anchored at both ends: a rule scoped to one interface carries a
+            # trailing `-i <iface>` and must not satisfy the every-interface
+            # requirement.
             ${lib.concatMapStrings (port: ''
-              if ! grep -q -- ${esc "-p udp --dport ${port} -j nixos-fw-accept"} "$firewall"; then
+              if ! grep -qE -- ${esc "^ip46tables -A nixos-fw -p udp --dport ${port} -j nixos-fw-accept *$"} "$firewall"; then
                 ${fail "${name}: the firewall start script does not accept UDP ${port} for WinBox"}
               fi
             '') ports}
