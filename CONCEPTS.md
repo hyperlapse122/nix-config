@@ -24,7 +24,7 @@ Turning a feature off and disabling one thing that feature produces are differen
 
 **Check evidence** — what a pull request's current head has actually been verified by, as opposed to what its check rollup appears to say. Evidence exists only when every workflow that runs on pull requests has a run registered against that head and every such run has finished; a rollup that is empty because the runs have not been created yet satisfies "all finished" without saying anything, so presence is a separate condition from completion.
 
-A run that skipped is absent evidence rather than a passing one: skipping is how a reviewer reports that it never examined this head, and nothing in the rollup distinguishes that from a reviewer that examined it and found nothing. Readiness is judged on evidence in this sense rather than on a quiet period, because a quiet period measures that the pull request stopped moving, not that anything checked it.
+Jobs that a finished run skips by design, such as the Nix jobs on a docs-only change, are part of that run's result rather than missing evidence. Readiness is judged on evidence in this sense rather than on a quiet period, because a quiet period measures that the pull request stopped moving, not that anything checked it.
 
 ## Signing key
 
