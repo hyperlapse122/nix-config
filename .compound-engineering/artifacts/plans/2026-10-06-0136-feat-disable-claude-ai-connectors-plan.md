@@ -87,7 +87,7 @@ Claude Code auto-loads every connector the user has authorized on claude.ai. Tho
 ## Verification Contract
 
 | Gate | Command |
-|---|---|
+| --- | --- |
 | Formatting | `nix fmt -- --ci` |
 | Flake checks | `nix flake check` |
 | Focused check | `nix build --no-link .#checks.x86_64-linux.claude` |
