@@ -10,21 +10,18 @@
 #   against a sandboxed git remote and a stub `gh` that rejects any
 #   `--label`, the way the real repository does: it has no `dependencies`
 #   or `automated` label, and the workflow cannot create one. With no open
-#   PR, the step must push the fix branch, open the PR, set reconcile=true,
-#   and exit 0, so the Claude step after it runs. With a PR already open,
-#   the fix branch may carry fix commits that a reset would discard: the
-#   step must leave the branch alone, refresh the PR body with the new logs,
-#   and set reconcile=false. When the open-PR query itself fails, the step
-#   must fail without touching the branch or any PR.
-# - Both failure steps run only for a changed update that failed
-#   verification, and the Claude step only when reconcile is true.
-# - The Claude step must set CLAUDE_BRANCH to the fix branch. On a scheduled
-#   run claude-code-action otherwise commits to GITHUB_REF_NAME, which is
-#   main. Its allowed tools and its prompt must name the action's commit
-#   tool, or it cannot commit at all.
-# - No step may run `gh pr merge`: a PR opened with GITHUB_TOKEN triggers no
-#   CI, and main requires no check, so auto-merge would land an unverified
-#   fix on main.
+#   PR, the step must push the fix branch, open the PR, and exit 0. With a
+#   PR already open, the fix branch may carry fix commits that a reset would
+#   discard: the step must leave the branch alone and refresh the PR body
+#   with the new logs. When the open-PR query itself fails, the step must
+#   fail without touching the branch or any PR.
+# - The PR body asks a person to push a fix and merge by hand; it never
+#   calls the updater hourly, promises an automatic merge, or names Claude.
+# - The PR step runs only for a changed update that failed verification.
+# - No step may run `gh pr merge`: main requires no check, and the PR gets
+#   CI only because it is opened with GH_TOKEN_FOR_UPDATES (a PR opened with
+#   the GITHUB_TOKEN fallback triggers none), so auto-merge could land an
+#   unverified fix on main.
 # - The cron must fire twice an hour and never at minute 0.
 # - The "Push verified updates directly to main" step must commit a T3 Code
 #   pin change on its own, as `chore(packages): bump t3code to <version>`.
@@ -124,11 +121,11 @@ pr_script=$(step_run 'Open reconciliation PR on failure')
 # whose open-PR query (`pr list --state open`) finds no PR (mode none) or
 # one PR (open), or whose `pr list` and `pr view` fail the way an API or
 # auth error does (error). Under open and error, the remote fix branch
-# already carries a fix commit, the way it does once Claude or a person has
-# pushed to the reconciliation PR. The step must exit 0 when <want-status>
+# already carries a fix commit, the way it does once a person has pushed to
+# the reconciliation PR. The step must exit 0 when <want-status>
 # is 0 and non-zero otherwise. The stub logs each call to gh.log, copies
 # --body-file to body.md, and fails on any --label, as `gh` does when the
-# label does not exist. Prints the origin and the step's reconcile output.
+# label does not exist. Prints the origin.
 run_pr_step() {
   local name=$1 mode=$2 want=$3 origin clone status=0
   read -r origin clone <<<"$(setup_clone "$name")"
@@ -176,13 +173,12 @@ exit 0
 EOF
   chmod +x "$scratch/$name-bin/gh"
   : >"$scratch/$name-gh.log"
-  : >"$scratch/$name-output"
   printf 'changed\n' >>"$clone/tracked.txt"
   printf 'nix flake check output\n' >"$clone/check.log"
   printf 'nix build vmChecks output\n' >"$clone/vm-check.log"
   (
     cd "$clone"
-    PATH=$scratch/$name-bin:$PATH BRANCH=$fix_branch GITHUB_OUTPUT=$scratch/$name-output \
+    PATH=$scratch/$name-bin:$PATH BRANCH=$fix_branch \
       bash -e -c "$pr_script"
   ) >"$scratch/$name-step.log" 2>&1 || status=$?
   if ((want == 0 && status != 0)); then
@@ -190,10 +186,10 @@ EOF
   elif ((want != 0 && status == 0)); then
     fail "the reconciliation PR step exited 0 ($name): $(tail -n 5 "$scratch/$name-step.log")"
   fi
-  printf '%s %s\n' "$origin" "$(sed -n 's/^reconcile=//p' "$scratch/$name-output")"
+  printf '%s\n' "$origin"
 }
 
-read -r origin reconcile <<<"$(run_pr_step create none 0)"
+origin=$(run_pr_step create none 0)
 "$git_bin" --git-dir "$origin" rev-parse -q --verify "refs/heads/$fix_branch" >/dev/null ||
   fail "with no open PR, the step did not push $fix_branch"
 pushed=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
@@ -201,16 +197,15 @@ pushed=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
   fail "with no open PR, $fix_branch does not carry this run's update: $pushed"
 grep -q '^pr create' "$scratch/create-gh.log" ||
   fail "with no open PR, the step did not run gh pr create: $(cat "$scratch/create-gh.log")"
-[[ $reconcile == true ]] ||
-  fail "with no open PR, the step set reconcile='$reconcile', so Claude is not dispatched"
-pass "with no open PR and no labels, the step pushes $fix_branch, opens the PR, sets reconcile=true, and exits 0"
+pass "with no open PR and no labels, the step pushes $fix_branch, opens the PR, and exits 0"
 
 body=$(cat "$scratch/create-body.md")
 [[ $body != *hourly* ]] || fail 'the PR body still calls the updater hourly'
 [[ $body != *"merged automatically"* ]] || fail 'the PR body still promises an automatic merge'
-pass 'the PR body neither calls the updater hourly nor promises an automatic merge'
+[[ $body != *Claude* ]] || fail 'the PR body still mentions Claude'
+pass 'the PR body neither calls the updater hourly, promises an automatic merge, nor mentions Claude'
 
-read -r origin reconcile <<<"$(run_pr_step open open 0)"
+origin=$(run_pr_step open open 0)
 head_subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
 [[ $head_subject == 'fix: reconcile the update' ]] ||
   fail "with a PR already open, the step reset $fix_branch over its fix commit; its head is now: $head_subject"
@@ -221,19 +216,15 @@ if grep -q '^pr create' "$scratch/open-gh.log"; then
 fi
 grep -q 'nix flake check output' "$scratch/open-body.md" ||
   fail 'with a PR already open, the refreshed PR body lacks the new failure logs'
-[[ $reconcile == false ]] ||
-  fail "with a PR already open, the step set reconcile='$reconcile', so Claude is dispatched again"
-pass "with a PR already open, the step keeps $fix_branch, refreshes the PR body, and sets reconcile=false"
+pass "with a PR already open, the step keeps $fix_branch and refreshes the PR body"
 
-read -r origin reconcile <<<"$(run_pr_step error error 1)"
+origin=$(run_pr_step error error 1)
 head_subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
 [[ $head_subject == 'fix: reconcile the update' ]] ||
   fail "with the open-PR query failing, the step reset $fix_branch over its fix commit; its head is now: $head_subject"
 if grep -Eq '^pr (create|edit)' "$scratch/error-gh.log"; then
   fail "with the open-PR query failing, the step still created or edited a PR: $(cat "$scratch/error-gh.log")"
 fi
-[[ -z $reconcile ]] ||
-  fail "with the open-PR query failing, the step set reconcile='$reconcile'"
 pass "with the open-PR query failing, the step exits non-zero and leaves $fix_branch and the PR alone"
 
 # step_if <name>: the named step's `if:` expression.
@@ -241,30 +232,14 @@ step_if() {
   step_block "$1" | sed -n 's/^[[:space:]]*if:[[:space:]]*//p'
 }
 
-for step in 'Open reconciliation PR on failure' 'Reconcile breakages with Claude Code'; do
-  cond=$(step_if "$step")
-  [[ $cond == *"steps.update.outputs.changed == 'true'"* ]] ||
-    fail "the '$step' step does not require steps.update.outputs.changed == 'true': $cond"
-  [[ $cond == *"steps.verify.outputs.status == 'failure'"* ]] ||
-    fail "the '$step' step does not require steps.verify.outputs.status == 'failure': $cond"
-done
-cond=$(step_if 'Reconcile breakages with Claude Code')
-[[ $cond == *"steps.pr.outputs.reconcile == 'true'"* ]] ||
-  fail "the Claude step does not require steps.pr.outputs.reconcile == 'true', so every failing run re-dispatches it: $cond"
-pass 'both failure steps gate on a changed, failing update, and the Claude step on reconcile'
+cond=$(step_if 'Open reconciliation PR on failure')
+[[ $cond == *"steps.update.outputs.changed == 'true'"* ]] ||
+  fail "the reconciliation PR step does not require steps.update.outputs.changed == 'true': $cond"
+[[ $cond == *"steps.verify.outputs.status == 'failure'"* ]] ||
+  fail "the reconciliation PR step does not require steps.verify.outputs.status == 'failure': $cond"
+pass 'the reconciliation PR step gates on a changed, failing update'
 
-# --- Claude step and auto-merge ---------------------------------------------
-
-claude_block=$(step_block 'Reconcile breakages with Claude Code')
-[[ -n $claude_block ]] || fail "could not find the Claude reconciliation step in $workflow"
-grep -Eq "^[[:space:]]*CLAUDE_BRANCH:[[:space:]]*${fix_branch}[[:space:]]*$" <<<"$claude_block" ||
-  fail "the Claude step does not set CLAUDE_BRANCH to $fix_branch, so its commits go to main"
-grep -q 'mcp__github_file_ops__commit_files' <<<"$claude_block" ||
-  fail "the Claude step's allowed tools omit mcp__github_file_ops__commit_files"
-claude_prompt=$(sed -n '/^[[:space:]]*prompt: |/,$p' <<<"$claude_block")
-grep -q 'mcp__github_file_ops__commit_files' <<<"$claude_prompt" ||
-  fail "the Claude prompt does not tell it to commit with mcp__github_file_ops__commit_files: $claude_prompt"
-pass "the Claude step commits to $fix_branch with the action's commit tool allowed and named in its prompt"
+# --- auto-merge -------------------------------------------------------------
 
 if grep -Eq 'gh[[:space:]]+pr[[:space:]]+merge' "$workflow"; then
   fail 'a step runs gh pr merge, which would merge an unverified fix into main'

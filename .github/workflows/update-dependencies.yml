@@ -12,8 +12,6 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
-  actions: read
 
 jobs:
   update-dependencies:
@@ -218,12 +216,11 @@ jobs:
 
       - name: Open reconciliation PR on failure
         if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
-        id: pr
         env:
           BRANCH: update-dependencies-fix
         run: |
           set -euo pipefail
-          # An open PR's branch may carry fix commits from Claude or a person.
+          # An open PR's branch may carry fix commits from a person.
           # Resetting it to this run's update would discard them, so an open
           # PR only gets this run's logs. A failed query fails the step rather
           # than reading as "no open PR".
@@ -247,13 +244,12 @@ jobs:
             if [ "$open_prs" -gt 0 ]; then
               echo "These logs are from the latest failing run, which left this branch as it was. This PR waits for you to review and merge it."
             else
-              echo "Claude Code Action has been dispatched to reconcile breakages on this branch. This PR waits for you to review and merge it."
+              echo "Push a fix to this branch; CI runs on each push. This PR waits for you to review and merge it."
             fi
           } > pr-body.md
 
           if [ "$open_prs" -gt 0 ]; then
             gh pr edit "$BRANCH" --body-file pr-body.md
-            echo "reconcile=false" >> "$GITHUB_OUTPUT"
           else
             TITLE="chore(deps): automated dependency update (reconciliation required)"
             git checkout -B "$BRANCH"
@@ -261,25 +257,4 @@ jobs:
             git commit -m "$TITLE"
             git push --force-with-lease origin "$BRANCH"
             gh pr create --head "$BRANCH" --title "$TITLE" --body-file pr-body.md
-            echo "reconcile=true" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Reconcile breakages with Claude Code
-        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure' && steps.pr.outputs.reconcile == 'true'
-        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
-        env:
-          # On a scheduled run the action otherwise commits to GITHUB_REF_NAME,
-          # which is main.
-          CLAUDE_BRANCH: update-dependencies-fix
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          base_branch: main
-          additional_permissions: |
-            actions: read
-          use_commit_signing: true
-          claude_args: >-
-            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake check:*),Bash(nix flake metadata:*),Bash(sleep:*),mcp__github_file_ops__commit_files"
-          prompt: |
-            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci`, `nix flake check`, or the NixOS VM tests built by `nix build --no-link .#vmChecks.all`). Its base is `main`, and the reconciliation PR from update-dependencies-fix into main already exists, so do not open another.
-            Inspect the changes and the error log, then fix the configuration or expression issues so that `nix fmt -- --ci`, `nix flake check`, and `nix build --no-link .#vmChecks.all` pass.
-            Commit the fix to branch update-dependencies-fix with the `mcp__github_file_ops__commit_files` tool. Do not use `git commit` or `git push`; they are not available to you.
