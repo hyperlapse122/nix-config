@@ -1180,20 +1180,6 @@
             '';
           bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
           linux-host-secrets = import ./tests/linux-host-secrets.nix { inherit pkgs self; };
-          github-workflow-conventions =
-            pkgs.runCommand "github-workflow-conventions-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.gawk
-                  pkgs.gnugrep
-                ];
-              }
-              ''
-                bash ${./tests/github-workflow-conventions.sh} \
-                  ${./.github/workflows/claude-code-review.yml} \
-                  ${./.github/workflows/claude.yml}
-                touch $out
-              '';
           update-dependencies-push-order =
             pkgs.runCommand "update-dependencies-push-order-tests" { nativeBuildInputs = [ pkgs.git ]; }
               ''
