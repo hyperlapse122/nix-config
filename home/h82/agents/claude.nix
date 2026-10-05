@@ -39,6 +39,11 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
+    # Stops claude.ai connectors from loading into local sessions.  A settings
+    # key rather than ENABLE_CLAUDEAI_MCP_SERVERS: Claude Code honours it from
+    # any settings source, so a project-level file cannot turn it back on, and
+    # it does not depend on how the session's environment was built.
+    disableClaudeAiConnectors = true;
   };
 
   # Leaves assigned inside nested objects of settings.json. A plugin is enabled

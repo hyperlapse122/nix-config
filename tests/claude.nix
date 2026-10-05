@@ -76,6 +76,7 @@ let
     agentPushNotifEnabled = false;
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
+    disableClaudeAiConnectors = true;
   };
 
   retiredKeys = [ "advisorModel" ];
