@@ -53,16 +53,72 @@
           }
         }
       }
+    },
+    "37.0": {
+      "google_apis": {
+        "x86_64": {
+          "archives": [
+            {
+              "arch": "all",
+              "os": "all",
+              "sha1": "629e507fd5b737c2c836b12b52c81cd0e3b12399",
+              "size": 2234615040,
+              "url": "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-37.0_r06.zip"
+            }
+          ],
+          "dependencies": {
+            "dependency:0": {
+              "element-attributes": {
+                "path": "emulator"
+              },
+              "min-revision:0": {
+                "major:0": "36",
+                "micro:2": "11",
+                "minor:1": "5"
+              }
+            }
+          },
+          "displayName": "Google APIs Intel x86_64 Atom System Image",
+          "license": "android-sdk-license",
+          "name": "system-image-37.0-google_apis-x86_64",
+          "path": "system-images/android-37.0/google_apis/x86_64",
+          "revision": "37.0-google_apis-x86_64",
+          "revision-details": {
+            "major:0": "6"
+          },
+          "type-details": {
+            "abi:6": "x86_64",
+            "api-level:0": "37.0",
+            "base-extension:2": "true",
+            "element-attributes": {
+              "xsi:type": "ns12:sysImgDetailsType"
+            },
+            "extension-level:1": "22",
+            "tag:3": {
+              "display:1": "Google APIs",
+              "id:0": "google_apis"
+            },
+            "tag:4": {
+              "display:1": "AI Glasses Compatible",
+              "id:0": "ai_glasses_compatible"
+            },
+            "vendor:5": {
+              "display:1": "Google Inc.",
+              "id:0": "google"
+            }
+          }
+        }
+      }
     }
   },
   "latest": {
-    "build-tools": "36.0.0",
+    "build-tools": "37.0.0",
     "cmake": "3.22.1",
     "cmdline-tools": "23.0",
     "emulator": "37.2.12",
     "ndk": "29.0.14206865",
     "platform-tools": "37.0.1",
-    "platforms": "36"
+    "platforms": "37.0"
   },
   "licenses": {
     "android-sdk-license": [
@@ -102,6 +158,46 @@
         "revision": "36.0.0",
         "revision-details": {
           "major:0": "36",
+          "micro:2": "0",
+          "minor:1": "0"
+        },
+        "type-details": {
+          "element-attributes": {
+            "xsi:type": "ns5:genericDetailsType"
+          }
+        }
+      },
+      "37.0.0": {
+        "archives": [
+          {
+            "arch": "all",
+            "os": "linux",
+            "sha1": "70954e99f4c3d9d46ee70fa32624672fe7cd6ebe",
+            "size": 66135704,
+            "url": "https://dl.google.com/android/repository/build-tools_r37_linux.zip"
+          },
+          {
+            "arch": "all",
+            "os": "windows",
+            "sha1": "e9c97e26b5b5678002e9d3fed632c841ae62d99f",
+            "size": 61077164,
+            "url": "https://dl.google.com/android/repository/build-tools_r37_windows.zip"
+          },
+          {
+            "arch": "all",
+            "os": "macosx",
+            "sha1": "eb080751b2b2028eb3604f571027d6f7b3c46321",
+            "size": 81933386,
+            "url": "https://dl.google.com/android/repository/build-tools_r37_macosx.zip"
+          }
+        ],
+        "displayName": "Android SDK Build-Tools 37",
+        "license": "android-sdk-license",
+        "name": "build-tools",
+        "path": "build-tools/37.0.0",
+        "revision": "37.0.0",
+        "revision-details": {
+          "major:0": "37",
           "micro:2": "0",
           "minor:1": "0"
         },
@@ -362,6 +458,39 @@
           },
           "extension-level:1": "17",
           "layoutlib:3": {
+            "element-attributes": {
+              "api": "15"
+            }
+          }
+        }
+      },
+      "37.0": {
+        "archives": [
+          {
+            "arch": "all",
+            "os": "all",
+            "sha1": "ed8ebf7f8822a4de5686d427f237d2fa30ff7410",
+            "size": 67281901,
+            "url": "https://dl.google.com/android/repository/platform-37.0_r02.zip"
+          }
+        ],
+        "displayName": "Android SDK Platform 37.0",
+        "license": "android-sdk-license",
+        "name": "platforms",
+        "path": "platforms/android-37.0",
+        "revision": "37.0",
+        "revision-details": {
+          "major:0": "2"
+        },
+        "type-details": {
+          "api-level:0": "37.0",
+          "base-extension:3": "true",
+          "codename:1": {},
+          "element-attributes": {
+            "xsi:type": "ns11:platformDetailsType"
+          },
+          "extension-level:2": "22",
+          "layoutlib:4": {
             "element-attributes": {
               "api": "15"
             }

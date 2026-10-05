@@ -17,6 +17,11 @@
   - ~/.local/share/android-sdk is a link into a store SDK that carries every
     pinned package's and system image's package.xml at its repository path,
     and the accepted android-sdk-license.
+  - the SDK holds the platform (with its android.jar), Google APIs x86_64
+    system image (with its system.img), and build-tools of every API level
+    in requiredApiLevels. The list is fixed here rather than read from the
+    pin, so dropping a level from the pin fails the check instead of
+    dropping its assertions with it.
   - the SDK's adb runs in the sandbox and reports the pinned platform-tools
     version, and aapt2 from each pinned build-tools runs. Both prove
     androidenv patched them for NixOS rather than leaving them to nix-ld.
@@ -64,6 +69,20 @@ let
   emulator = repo.latest.emulator;
   cmdlineTools = repo.latest.cmdline-tools;
   ndk = repo.latest.ndk;
+
+  # compileSdk 37 resolves to the android-37.0 package; upstream publishes no
+  # android-37. build-tools are exact because a project that sets no
+  # buildToolsVersion gets AGP's default, which the read-only SDK cannot fetch.
+  requiredApiLevels = [
+    {
+      platform = "36";
+      buildTools = "36.0.0";
+    }
+    {
+      platform = "37.0";
+      buildTools = "37.0.0";
+    }
+  ];
 
   sdkRoot = "/home/h82/.local/share/android-sdk";
 
@@ -116,6 +135,13 @@ let
     + concatMapStrings (package: ''
       check_line_in ${host'} "$sdk/${package.path}/package.xml" ${escapeShellArg ''path="${builtins.replaceStrings [ "/" ] [ ";" ] package.path}"''}
     '') pinned
+    + concatMapStrings (level: ''
+      for file in platforms/android-${level.platform}/package.xml platforms/android-${level.platform}/android.jar system-images/android-${level.platform}/google_apis/x86_64/package.xml system-images/android-${level.platform}/google_apis/x86_64/system.img build-tools/${level.buildTools}/package.xml; do
+        if [ ! -f "$sdk/$file" ]; then
+          fail ${host'}": required API level ${level.platform} is missing $file"
+        fi
+      done
+    '') requiredApiLevels
     + ''
       adb_version=$("$sdk/platform-tools/adb" version 2>&1 | sed -n 's/^Version \([^-]*\)-.*/\1/p' || true)
       if [ "$adb_version" != ${escapeShellArg platformTools} ]; then

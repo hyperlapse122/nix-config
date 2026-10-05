@@ -135,12 +135,14 @@ BASE = [
     generic("ndk;29.0.14206865", 29, 0, 14206865, "android-ndk-r29-linux.zip", "n29"),
     generic("ndk;30.0.15729638", 30, 0, 15729638, "android-ndk-r30-linux.zip", "n30", channel="channel-1"),
     platform(36, 2, "platform-36_r02.zip", "a36"),
+    platform("37.0", 2, "platform-37.0_r02.zip", "a370"),
     platform(34, 2, "platform-34_r02.zip", "a34r2"),
     platform(34, 3, "platform-34_r03.zip", "a34r3", obsolete=True),
 ]
 
 IMAGES = [
     image(36, "x86_64", 7, "x86_64-36_r07.zip", "i36x"),
+    image("37.0", "x86_64", 6, "x86_64-37.0_r06.zip", "i370x"),
     image(36, "arm64-v8a", 7, "arm64-v8a-36_r07.zip", "i36a", license_ref="android-sdk-arm-dbt-license"),
     image(34, "x86_64", 14, "x86_64-34_r14.zip", "i34x"),
 ]
@@ -323,6 +325,23 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         pin = self.write_pin("--platforms", "34")
         self.assertEqual(sorted(pin["images"]), ["34", "36"])
         self.assertEqual(pin["images"]["34"]["google_apis"]["x86_64"]["archives"][0]["sha1"], "i34x")
+
+    def test_pins_a_minor_level_platform_beside_a_major_one(self):
+        # API 37 ships only as platforms;android-37.0, keyed "37.0".
+        pin = self.write_pin("--platforms", "37.0")
+        self.assertEqual(sorted(pin["packages"]["platforms"]), ["36", "37.0"])
+        self.assertEqual(pin["packages"]["platforms"]["37.0"]["path"], "platforms/android-37.0")
+        self.assertEqual(sorted(pin["images"]), ["36", "37.0"])
+        self.assertEqual(
+            pin["images"]["37.0"]["google_apis"]["x86_64"]["path"],
+            "system-images/android-37.0/google_apis/x86_64",
+        )
+        self.assertEqual(pin["latest"]["platforms"], "37.0")
+
+        result = self.run_release(["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already up to date", result.stdout)
+        self.assertEqual(sorted(json.loads(self.output.read_text())["images"]), ["36", "37.0"])
 
     def test_image_url_follows_the_repository_url(self):
         result = self.run_release(
