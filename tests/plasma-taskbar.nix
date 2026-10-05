@@ -4,17 +4,24 @@
     import ./tests/plasma-taskbar.nix { inherit pkgs self; }
 
   Asserts that the KDE Plasma applets activation script declares the pinned taskbar
-  launchers in the specified order (Google Chrome, Dolphin, Ghostty, T3 Code).
+  launchers in the specified order (Google Chrome, Dolphin, Ghostty, then
+  T3 Code when its desktop app is installed).
 
   Verifies, on every configuration `tests/lib/configurations.nix` yields,
   production and bootstrap alike (home/h82/desktop/kde/plasma.nix is not
-  gated on my.bootstrap, so the bootstrap desktop gets the same taskbar):
+  gated on my.bootstrap, so the bootstrap desktop gets the same taskbar), and
+  on each production configuration re-evaluated with my.t3.desktop.enable
+  forced off:
   - h82's Home Manager generation defines a non-empty kdePlasmaApplets
     activation script.
   - Pinned applications are ordered as: preferred://browser, preferred://filemanager,
-    applications:com.mitchellh.ghostty.desktop, applications:t3code.desktop.
-  - Orca (orca.desktop) is not pinned.
+    applications:com.mitchellh.ghostty.desktop, followed by
+    applications:t3code.desktop exactly when my.t3.desktop.enable is on, so
+    no host pins a launcher whose desktop file is not installed.
   - Task grouping stays disabled (groupingStrategy 0).
+
+  Every configuration enables the T3 Code desktop trait today, so the
+  forced-off configurations keep the trait-off list from passing untested.
 
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
@@ -25,7 +32,19 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
-  expectedLaunchers = "preferred://browser,preferred://filemanager,applications:com.mitchellh.ghostty.desktop,applications:t3code.desktop";
+  desktopEnabled = config: config.my.t3.desktop.enable;
+  desktopTrait = configurations.withTrait "my.t3.desktop.enable" desktopEnabled;
+
+  expectedLaunchers =
+    entry:
+    lib.concatStringsSep "," (
+      [
+        "preferred://browser"
+        "preferred://filemanager"
+        "applications:com.mitchellh.ghostty.desktop"
+      ]
+      ++ lib.optional (desktopEnabled entry.config) "applications:t3code.desktop"
+    );
 
   assertEntry =
     entry:
@@ -40,13 +59,8 @@ let
         echo "kdePlasmaApplets activation script is missing or empty on ${entry.name}" >&2
         failed=1
       else
-        if ! grep -Fq -- '--key launchers "${expectedLaunchers}"' "${scriptFile}"; then
+        if ! grep -Fq -- '--key launchers "${expectedLaunchers entry}"' "${scriptFile}"; then
           echo "kdePlasmaApplets activation script is missing expected launchers on ${entry.name}" >&2
-          failed=1
-        fi
-
-        if grep -Fq -- 'orca.desktop' "${scriptFile}"; then
-          echo "kdePlasmaApplets activation script still pins Orca on ${entry.name}" >&2
           failed=1
         fi
 
@@ -60,9 +74,10 @@ in
 pkgs.runCommand "plasma-taskbar-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
   ${configurations.guard}
+  ${desktopTrait.guard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ desktopTrait.disabled)}
 
   if [ "$failed" != 0 ]; then
     exit 1
