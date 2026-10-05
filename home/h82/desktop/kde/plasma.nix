@@ -6,7 +6,7 @@ let
     "preferred://browser"
     "preferred://filemanager"
     "applications:com.mitchellh.ghostty.desktop"
-    "applications:orca.desktop"
+    "applications:t3code.desktop"
   ];
 in
 {
@@ -20,7 +20,7 @@ in
             org.kde.plasma.icontasks|org.kde.plasma.taskmanager)
               # Do not group applications on task manager panel
               ${kwrite} --file "$applet_file" --group Containments --group "$containment" --group Applets --group "$applet" --group Configuration --group General --key groupingStrategy 0
-              # Pinned application launchers: Google Chrome, Dolphin, Ghostty, Orca
+              # Pinned application launchers: Google Chrome, Dolphin, Ghostty, T3 Code
               ${kwrite} --file "$applet_file" --group Containments --group "$containment" --group Applets --group "$applet" --group Configuration --group General --key launchers "${pinnedLaunchers}"
               ;;
             org.kde.plasma.kickoff)
