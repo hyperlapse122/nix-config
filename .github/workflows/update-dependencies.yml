@@ -242,10 +242,9 @@ jobs:
             echo '```'
             echo ""
             if [ "$open_prs" -gt 0 ]; then
-              echo "These logs are from the latest failing run, which left this branch as it was. This PR waits for you to review and merge it."
-            else
-              echo "Push a fix to this branch; CI runs on each push. This PR waits for you to review and merge it."
+              echo "These logs are from the latest failing run, which left this branch as it was."
             fi
+            echo "Push a fix to this branch; CI runs on each push. This PR waits for you to review and merge it."
           } > pr-body.md
 
           if [ "$open_prs" -gt 0 ]; then

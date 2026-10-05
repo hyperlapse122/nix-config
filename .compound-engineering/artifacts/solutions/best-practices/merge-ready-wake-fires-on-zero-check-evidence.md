@@ -28,7 +28,7 @@ tags:
 
 ## Context
 
-Issue #30 proposed dropping `ce-babysit-pr`'s 300-second settle window. The argument was clean: the window exists to guard against "CI went green, told the user to merge, then feedback landed" (`.claude/skills/ce-babysit-pr/references/watch-loop.md:169`), and in this repository every reviewer reports as a GitHub check — the Claude review runs as a `pull_request` workflow (`.github/workflows/claude-code-review.yml:3-5`). If review arrives as a check, the check rollup already carries the review verdict, so a quiet period adds nothing the checks do not already say.
+Issue #30 proposed dropping `ce-babysit-pr`'s 300-second settle window. The argument was clean: the window exists to guard against "CI went green, told the user to merge, then feedback landed" (`.claude/skills/ce-babysit-pr/references/watch-loop.md:169`), and in this repository every reviewer reported as a GitHub check — the Claude review then ran as a `pull_request` workflow (`.github/workflows/claude-code-review.yml:3-5`, deleted on 2026-10-05). If review arrives as a check, the check rollup already carries the review verdict, so a quiet period adds nothing the checks do not already say.
 
 That argument is true about *stale* evidence and false about *absent* evidence, and the difference is what the timer was quietly covering.
 
@@ -101,15 +101,18 @@ Remove it (`--settle-seconds 0`) without adding anything, and a CLEAN/MERGEABLE 
 
 ## The rule this repository adopted
 
-Rather than patch the vendored skill (the skill tree is generated and gitignored, so a patch does not survive the next install), the readiness rule is a tracked project instruction in `AGENTS.md:44`. It arms the watch with `--settle-seconds 0` and supersedes the skill's instruction at `.claude/skills/ce-babysit-pr/references/watch-loop.md:33` to leave the flag unset, then replaces the timer with three evidence conditions:
+Rather than patch the vendored skill (the skill tree is generated and gitignored, so a patch does not survive the next install), the readiness rule is a tracked project instruction in `AGENTS.md`. It arms the watch with `--settle-seconds 0` and supersedes the skill's instruction at `.claude/skills/ce-babysit-pr/references/watch-loop.md:33` to leave the flag unset, then replaces the timer with evidence conditions:
 
 - every workflow that runs on pull requests has a run registered against the current head;
-- every such run is terminal;
-- no review check merely skipped — a skipped review is absent evidence, not a clean review.
+- every such run is terminal.
 
-The first condition is what replaces the timer's incidental cover, and it is stricter than the engine's `checks_present`: presence is judged per workflow against the current head, not "at least one run exists anywhere". Nothing else relaxes; threads, comments, `needs-human`, and the base and branch-currency blockers keep their force. While evidence is incomplete the agent neither declares readiness nor re-arms at a shorter window, and a skipped review is reported as a named residual rather than silently withheld.
+While the Claude review workflow ran, a third condition held: no review check merely skipped, because a skipped review is absent evidence, not a clean review. It was retired on 2026-10-05, when Claude Code was removed from CI. `check.yml` is now the only pull-request workflow, and the jobs it skips by design, such as the Nix jobs on a docs-only change, are part of that run's result.
 
-## Why `SKIPPED` needs naming explicitly
+The first condition is what replaces the timer's incidental cover, and it is stricter than the engine's `checks_present`: presence is judged per workflow against the current head, not "at least one run exists anywhere". Nothing else relaxes; threads, comments, `needs-human`, and the base and branch-currency blockers keep their force. While evidence is incomplete the agent neither declares readiness nor re-arms at a shorter window.
+
+## Why `SKIPPED` needed naming explicitly
+
+This section records why the rule named skipped review checks while the Claude review workflow existed. The lesson about the engine's failing set still holds for any future reviewer that reports as a check.
 
 `pr-snapshot`'s failing set is
 
@@ -119,7 +122,7 @@ FAILING = {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAIL
 
 (`.claude/skills/ce-babysit-pr/scripts/pr-snapshot:60`)
 
-`SKIPPED` is not in it. A skipped run is `COMPLETED`, so it satisfies `checks_terminal`, and its conclusion is not failing, so `has_failing_checks` stays false. To the engine a skipped review check is indistinguishable from a review that ran and found nothing. Only the prose rule can draw that line, which is why `AGENTS.md:44` names the case by hand.
+`SKIPPED` is not in it. A skipped run is `COMPLETED`, so it satisfies `checks_terminal`, and its conclusion is not failing, so `has_failing_checks` stays false. To the engine a skipped review check is indistinguishable from a review that ran and found nothing. Only the prose rule can draw that line, which is why `AGENTS.md` named the case by hand.
 
 The case is not hypothetical. The plan records that `anthropics/claude-code-action`'s token exchange fails with a warning and the job *skips* rather than fails when the workflow file is not yet on the default branch (`.compound-engineering/artifacts/plans/2026-09-21-2330-ci-claude-workflow-toolchain-and-settle-window-plan.md:160`; the plan cites that action's own token-exchange source in its upstream repository, which was not re-read here). So every pull request that edits an agent workflow — including the one that introduced these — produces exactly that indistinguishable skipped review.
 

@@ -199,11 +199,19 @@ grep -q '^pr create' "$scratch/create-gh.log" ||
   fail "with no open PR, the step did not run gh pr create: $(cat "$scratch/create-gh.log")"
 pass "with no open PR and no labels, the step pushes $fix_branch, opens the PR, and exits 0"
 
-body=$(cat "$scratch/create-body.md")
-[[ $body != *hourly* ]] || fail 'the PR body still calls the updater hourly'
-[[ $body != *"merged automatically"* ]] || fail 'the PR body still promises an automatic merge'
-[[ $body != *Claude* ]] || fail 'the PR body still mentions Claude'
-pass 'the PR body neither calls the updater hourly, promises an automatic merge, nor mentions Claude'
+# check_body <name>: the PR body a run wrote asks a person to push a fix and
+# never calls the updater hourly, promises an automatic merge, or names Claude.
+check_body() {
+  local body
+  body=$(cat "$scratch/$1-body.md")
+  [[ $body == *"Push a fix to this branch"* ]] || fail "the $1 PR body does not ask for a fix to be pushed"
+  [[ $body != *hourly* ]] || fail "the $1 PR body still calls the updater hourly"
+  [[ $body != *"merged automatically"* ]] || fail "the $1 PR body still promises an automatic merge"
+  [[ $body != *Claude* ]] || fail "the $1 PR body still mentions Claude"
+}
+
+check_body create
+pass 'the created PR body asks for a fix and neither calls the updater hourly, promises an automatic merge, nor mentions Claude'
 
 origin=$(run_pr_step open open 0)
 head_subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
@@ -216,7 +224,8 @@ if grep -q '^pr create' "$scratch/open-gh.log"; then
 fi
 grep -q 'nix flake check output' "$scratch/open-body.md" ||
   fail 'with a PR already open, the refreshed PR body lacks the new failure logs'
-pass "with a PR already open, the step keeps $fix_branch and refreshes the PR body"
+check_body open
+pass "with a PR already open, the step keeps $fix_branch and refreshes the PR body with the new logs and the fix request"
 
 origin=$(run_pr_step error error 1)
 head_subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s "$fix_branch")
@@ -227,17 +236,14 @@ if grep -Eq '^pr (create|edit)' "$scratch/error-gh.log"; then
 fi
 pass "with the open-PR query failing, the step exits non-zero and leaves $fix_branch and the PR alone"
 
-# step_if <name>: the named step's `if:` expression.
-step_if() {
-  step_block "$1" | sed -n 's/^[[:space:]]*if:[[:space:]]*//p'
-}
-
-cond=$(step_if 'Open reconciliation PR on failure')
-[[ $cond == *"steps.update.outputs.changed == 'true'"* ]] ||
-  fail "the reconciliation PR step does not require steps.update.outputs.changed == 'true': $cond"
-[[ $cond == *"steps.verify.outputs.status == 'failure'"* ]] ||
-  fail "the reconciliation PR step does not require steps.verify.outputs.status == 'failure': $cond"
-pass 'the reconciliation PR step gates on a changed, failing update'
+# The whole expression, not its terms: the test runs the step's script
+# directly, so an extra conjunct that GitHub evaluates false (`false && ...`)
+# would skip the step in CI while every substring check still passed.
+cond=$(sed -n 's/^[[:space:]]*if:[[:space:]]*//p' <<<"$pr_block")
+want_cond="steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'"
+[[ $cond == "$want_cond" ]] ||
+  fail "the reconciliation PR step's if: is '$cond', not '$want_cond'"
+pass 'the reconciliation PR step gates on exactly a changed, failing update'
 
 # --- auto-merge -------------------------------------------------------------
 
