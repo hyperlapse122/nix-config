@@ -68,6 +68,8 @@ let
         if [ ! -x ${esc podmanBin} ] || ! grep -q '/run/wrappers' ${esc podmanBin}; then
           ${fail "${name}: the prune's Podman is not executable or its PATH lacks the /run/wrappers setuid helpers"}
         fi
+        # stdenv sets nullglob, so `ls` on an unmatched glob lists the build
+        # directory and succeeds; test each match instead.
         for wanted in ${esc tree}/*.wants/podman-prune.service; do
           if [ -e "$wanted" ]; then
             ${fail "${name}: a unit wants podman-prune.service, so it runs outside its timer"}
