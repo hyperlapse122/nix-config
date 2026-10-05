@@ -92,6 +92,7 @@
           "proton-vpn"
           "thunderbolt"
           "user-avatar"
+          "winbox"
           "yubikey-fido"
         ]
         ++ lib.attrNames (fixtureChecksFor system);
@@ -1232,6 +1233,7 @@
           thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
           iphone-restore = import ./tests/iphone-restore.nix { inherit pkgs self; };
           printing = import ./tests/printing.nix { inherit pkgs self; };
+          winbox = import ./tests/winbox.nix { inherit pkgs self; };
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           vm-checks-guard = import ./tests/vm-checks-guard.nix {

@@ -9,6 +9,7 @@
     ./system/boot-splash.nix
     ./desktop/desktop.nix
     ./desktop/user-avatar.nix
+    ./desktop/winbox.nix
     ./hardware/fingerprint.nix
     ./desktop/fonts.nix
     ./hardware/keyd.nix

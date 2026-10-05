@@ -50,6 +50,7 @@ let
     "okular"
     "libreoffice"
     "telegram-desktop"
+    "winbox"
     "yubioath-flutter"
     "claude-desktop"
     "orca-ide"
