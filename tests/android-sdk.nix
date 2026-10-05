@@ -17,10 +17,10 @@
   - ~/.local/share/android-sdk is a link into a store SDK that carries every
     pinned package's and system image's package.xml at its repository path,
     and the accepted android-sdk-license.
-  - the SDK holds the platform, Google APIs x86_64 system image, and
-    build-tools of every API level in requiredApiLevels, and that
-    build-tools' aapt2 runs. The list is fixed here rather than read from
-    the pin, so dropping a level from the pin fails the check instead of
+  - the SDK holds the platform (with its android.jar), Google APIs x86_64
+    system image (with its system.img), and build-tools of every API level
+    in requiredApiLevels. The list is fixed here rather than read from the
+    pin, so dropping a level from the pin fails the check instead of
     dropping its assertions with it.
   - the SDK's adb runs in the sandbox and reports the pinned platform-tools
     version, and aapt2 from each pinned build-tools runs. Both prove
@@ -136,14 +136,11 @@ let
       check_line_in ${host'} "$sdk/${package.path}/package.xml" ${escapeShellArg ''path="${builtins.replaceStrings [ "/" ] [ ";" ] package.path}"''}
     '') pinned
     + concatMapStrings (level: ''
-      for dir in platforms/android-${level.platform} system-images/android-${level.platform}/google_apis/x86_64 build-tools/${level.buildTools}; do
-        if [ ! -f "$sdk/$dir/package.xml" ]; then
-          fail ${host'}": required API level ${level.platform} is missing $dir"
+      for file in platforms/android-${level.platform}/package.xml platforms/android-${level.platform}/android.jar system-images/android-${level.platform}/google_apis/x86_64/package.xml system-images/android-${level.platform}/google_apis/x86_64/system.img build-tools/${level.buildTools}/package.xml; do
+        if [ ! -f "$sdk/$file" ]; then
+          fail ${host'}": required API level ${level.platform} is missing $file"
         fi
       done
-      if [ -f "$sdk/build-tools/${level.buildTools}/package.xml" ] && ! "$sdk/build-tools/${level.buildTools}/aapt2" version >/dev/null 2>&1; then
-        fail ${host'}": required API level ${level.platform}: aapt2 from build-tools/${level.buildTools} does not run"
-      fi
     '') requiredApiLevels
     + ''
       adb_version=$("$sdk/platform-tools/adb" version 2>&1 | sed -n 's/^Version \([^-]*\)-.*/\1/p' || true)
