@@ -8,12 +8,92 @@
   materialize correctly on every configuration `tests/lib/configurations.nix`
   yields, production and bootstrap alike.
 
+  On every configuration with `my.podman.enable`, the materialized
+  /etc/systemd/user tree carries the weekly podman-prune timer and its oneshot
+  service, which runs the wrapped Podman's `system prune --force` only in the
+  configured account's user manager. With the trait off, neither unit exists.
+
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
 */
 { pkgs, self }:
 let
+  inherit (pkgs) lib;
+
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  podman = configurations.withTrait "my.podman.enable" (config: config.my.podman.enable);
+
+  esc = value: lib.escapeShellArg (toString value);
+
+  fail = message: ''
+    echo ${esc message} >&2
+    failed=1
+  '';
+
+  # A disabled or retargeted /etc entry is not materialised at its path.
+  userUnits =
+    config:
+    let
+      entry = config.environment.etc."systemd/user" or null;
+    in
+    if
+      entry == null || !(entry.enable or true) || (entry.target or "systemd/user") != "systemd/user"
+    then
+      null
+    else
+      entry.source;
+
+  assertPruneEnabled =
+    entry:
+    let
+      inherit (entry) config name;
+      tree = userUnits config;
+      podmanBin = "${config.virtualisation.podman.package}/bin/podman";
+    in
+    if tree == null then
+      fail "${name}: the built system declares no /etc/systemd/user tree"
+    else
+      ''
+        service=${esc "${tree}/podman-prune.service"}
+        timer=${esc "${tree}/podman-prune.timer"}
+        if ! grep -qx 'Type=oneshot' "$service"; then
+          ${fail "${name}: podman-prune.service is missing, masked, or not a oneshot"}
+        fi
+        if ! grep -qx ${esc "ConditionUser=${config.my.user.name}"} "$service"; then
+          ${fail "${name}: podman-prune.service does not run only in ${config.my.user.name}'s user manager"}
+        fi
+        if ! grep -qx ${esc "ExecStart=${podmanBin} system prune --force"} "$service"; then
+          ${fail "${name}: podman-prune.service does not run exactly the wrapped Podman's system prune --force"}
+        fi
+        if [ ! -x ${esc podmanBin} ] || ! grep -q '/run/wrappers' ${esc podmanBin}; then
+          ${fail "${name}: the prune's Podman is not executable or its PATH lacks the /run/wrappers setuid helpers"}
+        fi
+        for wanted in ${esc tree}/*.wants/podman-prune.service; do
+          if [ -e "$wanted" ]; then
+            ${fail "${name}: a unit wants podman-prune.service, so it runs outside its timer"}
+          fi
+        done
+        for line in OnCalendar=weekly Persistent=true RandomizedDelaySec=1h; do
+          if ! grep -qx "$line" "$timer"; then
+            echo ${esc "${name}: podman-prune.timer is missing, masked, or lacks"} "$line" >&2
+            failed=1
+          fi
+        done
+        if [ ! -e ${esc "${tree}/timers.target.wants/podman-prune.timer"} ]; then
+          ${fail "${name}: timers.target does not want podman-prune.timer"}
+        fi
+      '';
+
+  assertPruneDisabled =
+    entry:
+    let
+      tree = userUnits entry.config;
+    in
+    lib.optionalString (tree != null) ''
+      if [ -e ${esc "${tree}/podman-prune.service"} ] || [ -e ${esc "${tree}/podman-prune.timer"} ]; then
+        ${fail "${entry.name}: my.podman.enable is off but a podman-prune user unit exists"}
+      fi
+    '';
 
   checkHost =
     entry:
@@ -145,9 +225,12 @@ pkgs.runCommand "podman-containers-tests"
   ''
     set -x
     ${configurations.guard}
+    ${podman.guard}
     failed=0
 
     ${pkgs.lib.concatMapStringsSep "\n" checkHost configurations.entries}
+    ${lib.concatMapStringsSep "\n" assertPruneEnabled podman.enabled}
+    ${lib.concatMapStringsSep "\n" assertPruneDisabled podman.disabled}
 
     if [ "$failed" != 0 ]; then
       exit 1
