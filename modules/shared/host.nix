@@ -49,5 +49,7 @@
     fingerprint.enable = lib.mkEnableOption "fingerprint authentication for the lock screen, polkit and sudo";
     thunderbolt.enable = lib.mkEnableOption "Thunderbolt device authorization through bolt";
     nuphyGem80.enable = lib.mkEnableOption "device access for the NuPhy Gem80 configurator and firmware flashing";
+    t3.cli.enable = lib.mkEnableOption "the headless T3 Code `t3` CLI";
+    t3.desktop.enable = lib.mkEnableOption "the T3 Code desktop app (NixOS hosts only)";
   };
 }

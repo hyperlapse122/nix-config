@@ -22,6 +22,7 @@ in
     ./dev
     ./security
     ./shell
+    ./t3code.nix
   ];
 
   home.username = config.my.user.name;

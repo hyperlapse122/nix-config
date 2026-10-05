@@ -121,7 +121,7 @@ def main(argv=None):
         version = fetch_latest_version(args.base_url)
 
         # Skip the manifest fetch entirely when it can't change the outcome:
-        # an hourly run where nothing changed shouldn't pay for a second
+        # a scheduled run where nothing changed shouldn't pay for a second
         # request just to discard its result below.
         if not args.dry_run and args.output:
             current_version = None

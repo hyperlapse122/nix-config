@@ -12,20 +12,6 @@ let
   appimageContents = pkgs.appimageTools.extract {
     inherit pname version src;
   };
-
-  # The agent skills are published only in the source tree; the AppImage
-  # carries their manifests, not the SKILL.md files. The tag follows `version`
-  # so the stubs match the CLI they drive. The version-bearing name matters: a
-  # fixed-output fetch keeps its store path when only `rev` changes, so under
-  # the default `source` name a bump that forgot this hash would silently reuse
-  # the previous release's skills instead of failing.
-  skills = pkgs.fetchFromGitHub {
-    name = "orca-skills-${version}";
-    owner = "stablyai";
-    repo = "orca";
-    tag = "v${version}";
-    hash = "sha256-TTcHOf2SB8LYNCtA4A488k6aKW1HXjxcoWy5VlXn+FQ=";
-  };
 in
 pkgs.appimageTools.wrapType2 {
   inherit pname version src;
@@ -43,10 +29,7 @@ pkgs.appimageTools.wrapType2 {
   # own linux-orca-cli-shim runs. The wrapper's bin/orca-ide launches the GUI.
   # It runs the unwrapped Electron binary outside the FHS sandbox, so it relies
   # on the host's nix-ld (modules/nixos/system/nix-ld.nix).
-  passthru = {
-    inherit skills;
-    cli = "${appimageContents}/resources/bin/orca-ide";
-  };
+  passthru.cli = "${appimageContents}/resources/bin/orca-ide";
 
   extraInstallCommands = ''
     for desktop in "${appimageContents}/orca.desktop" "${appimageContents}/orca-ide.desktop"; do

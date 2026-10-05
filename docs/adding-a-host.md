@@ -44,6 +44,8 @@ A trait is a `my.*.enable` option that defaults to `false`. Hardware-specific mo
 | `my.thunderbolt.enable` | Thunderbolt device authorization through bolt. |
 | `my.nuphyGem80.enable` | Device access for the NuPhy Gem80 configurator and firmware flashing. |
 | `my.laptop.enable` | The lid-switch policy, in both logind and KDE Powerdevil. |
+| `my.t3.cli.enable` | The headless T3 Code server, `t3` (`packages/t3code-cli.nix`). It also works on a non-NixOS host. |
+| `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS only. |
 
 Other per-host options keep their own meaning. `my.tailscale.advertiseRoutes` makes the host the tailnet's subnet router, which only one host should be, and `my.cliAuth.enableDockerToken` decrypts the Docker Hub token (see `secrets/README.md`). Keep anything that is not a trait, such as an extra mount, in the host's `default.nix`.
 
@@ -192,7 +194,7 @@ Create `hosts/<host>/` with two files. `host.nix` marks the directory as a non-N
 }
 ```
 
-Only the options in `modules/shared/host.nix` exist here. NixOS options such as `my.cliAuth.enableDockerToken` fail evaluation. The traits (`my.*.enable`) are accepted, but they change nothing on a non-NixOS host today, because every module that reads them is NixOS system or desktop configuration.
+Only the options in `modules/shared/host.nix` exist here. NixOS options such as `my.cliAuth.enableDockerToken` fail evaluation. The traits (`my.*.enable`) are accepted. Only `my.t3.cli.enable` changes a non-NixOS host: it installs the headless `t3` server, so enable it only on a headless machine such as a server. `my.t3.desktop.enable` fails evaluation on a non-NixOS host, and every other trait reads NixOS system or desktop configuration and changes nothing.
 
 ### Create the non-NixOS bootstrap age material
 

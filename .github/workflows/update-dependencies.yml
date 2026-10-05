@@ -2,7 +2,7 @@ name: Update dependencies
 
 on:
   schedule:
-    - cron: '0 * * * *' # Every hour
+    - cron: '7,37 * * * *' # Every 30 minutes, off the hour
   workflow_dispatch:
 
 concurrency:
@@ -87,6 +87,14 @@ jobs:
           # 8. Update the ChatGPT app
           nix run .#chatgpt-release -- --output packages/chatgpt-version.json
 
+          # 9. Update T3 Code. A nightly can be published before its assets
+          # and digests are, so a failure here keeps the current pin and lets
+          # the other updates through.
+          if ! nix run .#t3code-release -- --output packages/t3code-release.json; then
+            echo "::warning title=T3 Code update skipped::t3code-release failed; keeping the current pin in packages/t3code-release.json."
+            git checkout -- packages/t3code-release.json
+          fi
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -158,6 +166,12 @@ jobs:
             git commit -m "chore(packages): bump codex to $NEW_VER"
           fi
 
+          if [ -n "$(git status --porcelain packages/t3code-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/t3code-release.json)
+            git add packages/t3code-release.json
+            git commit -m "chore(packages): bump t3code to $NEW_VER"
+          fi
+
           if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then
             NEW_VER=$(jq -r .version packages/chatgpt-version.json)
             git add packages/chatgpt-version.json
@@ -209,15 +223,16 @@ jobs:
           BRANCH: update-dependencies-fix
         run: |
           set -euo pipefail
-          git checkout -B "$BRANCH"
-          git add -A
-          git commit -m "chore(deps): automated dependency update (reconciliation required)"
-          git push --force-with-lease origin "$BRANCH"
+          # An open PR's branch may carry fix commits from Claude or a person.
+          # Resetting it to this run's update would discard them, so an open
+          # PR only gets this run's logs. A failed query fails the step rather
+          # than reading as "no open PR".
+          open_prs=$(gh pr list --head "$BRANCH" --state open --json number --jq length)
 
           {
             echo "## Automated Dependency Update (Reconciliation Required)"
             echo ""
-            echo "The hourly dependency update job detected changes to flake inputs or packages, but pre-push verification failed."
+            echo "The dependency update job, which runs every 30 minutes, detected changes to flake inputs or packages, but pre-push verification failed."
             echo ""
             echo "### Failure Logs"
             echo "#### nix flake check"
@@ -229,33 +244,42 @@ jobs:
             tail -n 80 vm-check.log
             echo '```'
             echo ""
-            echo "Claude Code Action has been dispatched to reconcile breakages on this branch. Once status checks pass, this PR will be merged automatically."
+            if [ "$open_prs" -gt 0 ]; then
+              echo "These logs are from the latest failing run, which left this branch as it was. This PR waits for you to review and merge it."
+            else
+              echo "Claude Code Action has been dispatched to reconcile breakages on this branch. This PR waits for you to review and merge it."
+            fi
           } > pr-body.md
 
-          TITLE="chore(deps): automated dependency update (reconciliation required)"
-          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
-            gh pr edit "$BRANCH" --title "$TITLE" --body-file pr-body.md
+          if [ "$open_prs" -gt 0 ]; then
+            gh pr edit "$BRANCH" --body-file pr-body.md
+            echo "reconcile=false" >> "$GITHUB_OUTPUT"
           else
-            gh pr create --head "$BRANCH" --title "$TITLE" --body-file pr-body.md --label dependencies --label automated
+            TITLE="chore(deps): automated dependency update (reconciliation required)"
+            git checkout -B "$BRANCH"
+            git add -A
+            git commit -m "$TITLE"
+            git push --force-with-lease origin "$BRANCH"
+            gh pr create --head "$BRANCH" --title "$TITLE" --body-file pr-body.md
+            echo "reconcile=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Reconcile breakages with Claude Code
-        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
+        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure' && steps.pr.outputs.reconcile == 'true'
         uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        env:
+          # On a scheduled run the action otherwise commits to GITHUB_REF_NAME,
+          # which is main.
+          CLAUDE_BRANCH: update-dependencies-fix
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: main
           additional_permissions: |
             actions: read
           use_commit_signing: true
           claude_args: >-
-            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake check:*),Bash(nix flake metadata:*),Bash(sleep:*)"
+            --allowedTools "Bash(nix fmt:*),Bash(nix eval:*),Bash(nix build:*),Bash(nix flake check:*),Bash(nix flake metadata:*),Bash(sleep:*),mcp__github_file_ops__commit_files"
           prompt: |
-            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci`, `nix flake check`, or the NixOS VM tests built by `nix build --no-link .#vmChecks.all`).
-            Please inspect the changes and error log, fix the configuration or expression issues so that `nix fmt -- --ci`, `nix flake check`, and `nix build --no-link .#vmChecks.all` pass, and push the fix commit to this branch.
-
-      - name: Enable auto-merge on reconciliation PR
-        if: steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'
-        env:
-          BRANCH: update-dependencies-fix
-        run: |
-          gh pr merge --auto --squash "$BRANCH" || gh pr merge --auto --merge "$BRANCH" || true
+            The automated dependency update on branch update-dependencies-fix failed pre-push verification checks (`nix fmt -- --ci`, `nix flake check`, or the NixOS VM tests built by `nix build --no-link .#vmChecks.all`). Its base is `main`, and the reconciliation PR from update-dependencies-fix into main already exists, so do not open another.
+            Inspect the changes and the error log, then fix the configuration or expression issues so that `nix fmt -- --ci`, `nix flake check`, and `nix build --no-link .#vmChecks.all` pass.
+            Commit the fix to branch update-dependencies-fix with the `mcp__github_file_ops__commit_files` tool. Do not use `git commit` or `git push`; they are not available to you.

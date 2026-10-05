@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Resolve the newest T3 Code nightly release from GitHub's release API.
+
+Fetches pingdotgg/t3code's recent GitHub releases, keeps only nightlies -- a
+prerelease whose tag has the shape v<semver>-nightly.<YYYYMMDD>.<build>, which
+excludes stable releases (not prereleases) and preview builds (-preview. tags)
+-- and picks the newest by (semver, date, build). For that release it reads
+the sha256 digest GitHub records for the AppImage and the t3 CLI tarball of
+each supported system and writes or checks the pin file both T3 Code packages
+consume, so the two artifacts always come from the same nightly. Refuses to
+write a pin for a release missing any of those assets or their digests, or a
+version that is not strictly newer than the one already pinned.
+"""
+
+import argparse
+import base64
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+DEFAULT_SOURCE_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
+# -H @- reads extra request headers from stdin, so a GH_TOKEN never appears
+# on the command line.
+DEFAULT_FETCH = "curl -sfL -H @-"
+
+# Every system a host in this flake can be, and the asset names, keyed by
+# component, for a release version.
+TARGET_ASSETS = {
+    "x86_64-linux": {
+        "desktop": "T3-Code-{version}-x86_64.AppImage",
+        "cli": "t3-{version}-linux-x64.tar.gz",
+    },
+    "aarch64-linux": {
+        "desktop": "T3-Code-{version}-arm64.AppImage",
+        "cli": "t3-{version}-linux-arm64.tar.gz",
+    },
+}
+
+TAG_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)$")
+VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$")
+DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
+
+
+class Failure(Exception):
+    """A refusal that should stop the caller with a readable message."""
+
+
+def fetch(url):
+    """Run the overridable fetch command against one URL and return the raw body.
+
+    The URL is the last argument. Request headers arrive on stdin, one per
+    line: an Authorization header when GH_TOKEN is set, nothing otherwise. The
+    command is overridable so offline tests and sandboxed Nix checks can
+    provide fixtures instead of network calls.
+    """
+    command = shlex.split(os.environ.get("T3CODE_RELEASE_FETCH", DEFAULT_FETCH))
+    if not command:
+        raise Failure("T3CODE_RELEASE_FETCH is empty")
+    token = os.environ.get("GH_TOKEN")
+    headers = f"Authorization: Bearer {token}\n" if token else ""
+    proc = subprocess.run(
+        command + [url],
+        input=headers,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise Failure(f"fetching {url} failed with status {proc.returncode}")
+    return proc.stdout
+
+
+def hex_to_sri(sha256_hex):
+    """Convert a 64-character hex sha256 string to Nix SRI format."""
+    return "sha256-" + base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
+
+
+def version_key(version):
+    """Return the (semver, date, build) ordering key of a nightly version."""
+    match = VERSION_PATTERN.match(version) if isinstance(version, str) else None
+    if not match:
+        raise ValueError(f"not a nightly version: {version!r}")
+    major, minor, patch, date, build = (int(part) for part in match.groups())
+    return ((major, minor, patch), date, build)
+
+
+def newest_nightly(body):
+    """Return the newest nightly release object in a GitHub release list."""
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise Failure(f"release list response is not JSON: {exc}") from None
+    if not isinstance(data, list):
+        raise Failure("release list response is not a JSON array")
+
+    nightlies = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("prerelease") is not True or entry.get("draft"):
+            continue
+        tag = entry.get("tag_name")
+        match = TAG_PATTERN.match(tag) if isinstance(tag, str) else None
+        if match:
+            nightlies.append((version_key(match.group(1)), match.group(1), entry))
+    if not nightlies:
+        raise Failure("the release list holds no nightly release")
+    _, version, entry = max(nightlies, key=lambda item: item[0])
+    return version, entry
+
+
+def parse_release(version, data):
+    """Return the pin for each system's AppImage and CLI tarball in one release."""
+    tag = data["tag_name"]
+    assets = data.get("assets")
+    assets = assets if isinstance(assets, list) else []
+    platforms = {}
+    for system, components in TARGET_ASSETS.items():
+        platforms[system] = {}
+        for component, pattern in components.items():
+            name = pattern.format(version=version)
+            matches = [a for a in assets if isinstance(a, dict) and a.get("name") == name]
+            if len(matches) != 1:
+                raise Failure(
+                    f"release {tag} lists {len(matches)} {name} assets, "
+                    "expected exactly one; refusing to write an incomplete pin"
+                )
+            digest = matches[0].get("digest")
+            match = DIGEST_PATTERN.match(digest) if isinstance(digest, str) else None
+            if not match:
+                raise Failure(f"invalid sha256 digest for {name} in {tag}: {digest!r}")
+            sha256_hex = match.group(1).lower()
+            platforms[system][component] = {
+                "asset": name,
+                "sha256": sha256_hex,
+                "hash": hex_to_sri(sha256_hex),
+            }
+    return {"version": version, "tag": tag, "platforms": platforms}
+
+
+def pinned_version(path):
+    """Return the version already pinned at path, or None when unreadable."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            current = json.load(f)
+        return current.get("version")
+    except Exception:
+        return None
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source-url",
+        default=DEFAULT_SOURCE_URL,
+        help="URL of the GitHub release-list API",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        help="Path to the t3code-release.json pin file to write or update",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the resolved pin JSON to stdout without modifying files",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        resolved = parse_release(*newest_nightly(fetch(args.source_url)))
+        out_json = json.dumps(resolved, indent=2) + "\n"
+
+        if args.dry_run or not args.output:
+            sys.stdout.write(out_json)
+            return 0
+
+        current_version = pinned_version(args.output)
+        if current_version is not None:
+            try:
+                is_newer = version_key(resolved["version"]) > version_key(current_version)
+            except ValueError:
+                is_newer = True
+            if not is_newer:
+                print(
+                    f"{args.output} is already up to date at version {current_version} "
+                    f"(resolved {resolved['version']} is not newer)"
+                )
+                return 0
+
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(out_json)
+        print(f"updated {args.output} to version {resolved['version']}")
+        return 0
+
+    except (Failure, OSError) as exc:
+        print(f"t3code-release: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

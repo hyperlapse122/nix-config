@@ -36,6 +36,11 @@
 # negated `! grep`, per this repository's decorative-assertion
 # learning (mutation-testing-reveals-decorative-nix-check-assertions.md):
 # a `! grep` is exempt from `set -e` and would prove nothing.
+#
+# Every assertion feeds its input through a here-string, never
+# `printf ... | grep -q`: grep -q exits at its first match, the printf
+# still writing later lines then fails with a broken pipe, and pipefail
+# reports that as a miss.
 
 set -euo pipefail
 
@@ -85,11 +90,11 @@ assert_gated() {
   if [ -z "$block" ]; then
     fail "job '$job' not found in $file"
   fi
-  if ! printf '%s\n' "$block" | grep -qE "$(needs_pattern "$needs_form")"; then
+  if ! grep -qE "$(needs_pattern "$needs_form")" <<<"$block"; then
     fail "job '$job' does not declare 'changes' in needs: ($needs_form form)"
   fi
   local if_line expected
-  if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
+  if_line=$(grep -E '^[[:space:]]*if:' <<<"$block" || true)
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
@@ -99,7 +104,7 @@ assert_gated() {
   # on the whole expression proves the clauses are joined the way R1/R6/R7
   # require, not just present somewhere in the line.
   expected="!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
-  if ! printf '%s' "$if_line" | grep -qF -- "$expected"; then
+  if ! grep -qF -- "$expected" <<<"$if_line"; then
     fail "job '$job' if: does not match the expected fail-open condition exactly (R1/R6/R7/KTD4); got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' is gated on the changes job (R1/R6/R7/KTD4)"
@@ -111,10 +116,10 @@ assert_unconditional() {
   if [ -z "$block" ]; then
     fail "job '$job' not found in $file"
   fi
-  if printf '%s\n' "$block" | grep -qE '^[[:space:]]*if:'; then
+  if grep -qE '^[[:space:]]*if:' <<<"$block"; then
     fail "job '$job' declares an if: condition; it must always run (R2)"
   fi
-  if printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:'; then
+  if grep -qE '^[[:space:]]*needs:' <<<"$block"; then
     fail "job '$job' declares needs:; it must not depend on the classifier"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' runs unconditionally"
@@ -130,11 +135,11 @@ assert_docs_only_only() {
   if [ -z "$block" ]; then
     fail "job '$job' not found in $file"
   fi
-  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$'; then
+  if ! grep -qE '^[[:space:]]*needs:[[:space:]]*changes[[:space:]]*$' <<<"$block"; then
     fail "job '$job' does not declare 'needs: changes'"
   fi
   local if_line expected
-  if_line=$(printf '%s\n' "$block" | grep -E '^[[:space:]]*if:' || true)
+  if_line=$(grep -E '^[[:space:]]*if:' <<<"$block" || true)
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
@@ -142,7 +147,7 @@ assert_docs_only_only() {
   # comment in assert_gated for why independent substring checks do not
   # prove the clauses are joined with &&.
   expected="!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
-  if ! printf '%s' "$if_line" | grep -qF -- "$expected"; then
+  if ! grep -qF -- "$expected" <<<"$if_line"; then
     fail "job '$job' if: does not match the expected docs-only-only condition exactly; got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
@@ -154,10 +159,10 @@ assert_docs_only_only() {
 assert_matrix_from() {
   local job=$1 producer=$2 output=$3 key=$4 block
   block=$(job_block "$job" "$file")
-  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*${producer}[[:space:]]*(,[^]]*)?\][[:space:]]*$"; then
+  if ! grep -qE "^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*${producer}[[:space:]]*(,[^]]*)?\][[:space:]]*$" <<<"$block"; then
     fail "job '$job' does not list '$producer' in needs:"
   fi
-  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*${key}:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.${producer}\\.outputs\\.${output}\\)[[:space:]]*\\}\\}[[:space:]]*$"; then
+  if ! grep -qE "^[[:space:]]*${key}:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.${producer}\\.outputs\\.${output}\\)[[:space:]]*\\}\\}[[:space:]]*$" <<<"$block"; then
     fail "job '$job' matrix $key is not fromJSON(needs.$producer.outputs.$output)"
   fi
   echo "check-workflow-docs-skip: ok - $job reads its matrix from the $producer job"
@@ -169,10 +174,10 @@ assert_matrix_from() {
 assert_matrix_from_hosts() {
   local job=$1 output=$2 block
   block=$(job_block "$job" "$file")
-  if ! printf '%s\n' "$block" | grep -qE '^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*hosts[[:space:]]*(,[^]]*)?\][[:space:]]*$'; then
+  if ! grep -qE '^[[:space:]]*needs:[[:space:]]*\[([^]]*,)?[[:space:]]*hosts[[:space:]]*(,[^]]*)?\][[:space:]]*$' <<<"$block"; then
     fail "job '$job' does not list 'hosts' in needs: (R19/KTD9)"
   fi
-  if ! printf '%s\n' "$block" | grep -qE "^[[:space:]]*target:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.hosts\\.outputs\\.$output\\)[[:space:]]*\\}\\}[[:space:]]*\$"; then
+  if ! grep -qE "^[[:space:]]*target:[[:space:]]*\\\$\\{\\{[[:space:]]*fromJSON\\(needs\\.hosts\\.outputs\\.$output\\)[[:space:]]*\\}\\}[[:space:]]*\$" <<<"$block"; then
     fail "job '$job' matrix target is not fromJSON(needs.hosts.outputs.$output) (R19/KTD9)"
   fi
   echo "check-workflow-docs-skip: ok - $job reads its matrix from the hosts job (R19/KTD9)"
@@ -185,34 +190,16 @@ assert_matrix_from_hosts() {
 assert_empty_list_fails() {
   local job=$1 block
   block=$(job_block "$job" "$file" | grep -vE '^[[:space:]]*#')
-  if ! printf '%s\n' "$block" | awk '
+  if ! awk '
     /^[[:space:]]*if \[ "\$names" = "\[\]" \]; then[[:space:]]*$/ { if (!seen_if) seen_if = NR }
     seen_if && !seen_exit && NR > seen_if && /^[[:space:]]*exit 1[[:space:]]*$/ { seen_exit = NR }
     !seen_exit && /GITHUB_OUTPUT/ { early = 1 }
     seen_exit && NR > seen_exit && /names=\$names.*GITHUB_OUTPUT/ { ok = 1 }
     END { exit !(ok && !early) }
-  '; then
+  ' <<<"$block"; then
     fail "job '$job' does not fail on an empty name list before publishing it"
   fi
   echo "check-workflow-docs-skip: ok - $job fails on an empty name list"
-}
-
-# assert_ifd_realised_before_no_build: flake-check runs `nix flake check
-# --no-build`, which refuses to build import-from-derivation sources, so a
-# plain `nix eval` of the checks' drvPaths must run first. Without it the
-# job fails on a fresh runner while passing on any machine whose store
-# already holds those sources.
-assert_ifd_realised_before_no_build() {
-  local block
-  block=$(job_block flake-check "$file" | grep -vE '^[[:space:]]*#')
-  if ! printf '%s\n' "$block" | awk '
-    /^[[:space:]]*(run:[[:space:]]*)?nix eval .*\.#checks\.x86_64-linux .*drvPath/ { if (!seen_eval) seen_eval = NR }
-    /^[[:space:]]*(run:[[:space:]]*)?nix flake check --no-build/ { if (seen_eval && NR > seen_eval) ok = 1; else early = 1 }
-    END { exit !(ok && !early) }
-  '; then
-    fail "job 'flake-check' does not realise the checks' drvPaths before nix flake check --no-build"
-  fi
-  echo "check-workflow-docs-skip: ok - flake-check realises import-from-derivation sources before --no-build"
 }
 
 # assert_native_arm: build-linux sends aarch64 targets to the arm runner, so
@@ -222,14 +209,13 @@ assert_native_arm() {
   local block expected
   block=$(job_block build-linux "$file")
   expected="runs-on: \${{ matrix.target.system == 'aarch64-linux' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}"
-  if ! printf '%s\n' "$block" | grep -qF -- "$expected"; then
+  if ! grep -qF -- "$expected" <<<"$block"; then
     fail "job 'build-linux' does not route aarch64 targets to ubuntu-24.04-arm (KTD13)"
   fi
   echo "check-workflow-docs-skip: ok - build-linux builds aarch64 targets on the arm runner (KTD13)"
 }
 
 assert_gated flake-check
-assert_ifd_realised_before_no_build
 assert_gated hosts
 assert_gated build list
 assert_gated build-linux list

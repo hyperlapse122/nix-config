@@ -6,7 +6,7 @@
     ./codex.nix
     ./gemini.nix
     ./instructions
-    ./orca-skills.nix
+    ./retire-orca-skills.nix
     ./tokscale.nix
   ];
 }
