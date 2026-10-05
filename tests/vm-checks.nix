@@ -26,6 +26,7 @@
   wifi-provisioning = import ./wifi-provisioning.nix { inherit pkgs inputs; };
   tailscale-provisioning = import ./tailscale-provisioning.nix { inherit pkgs inputs; };
   podman-registry-auth = import ./podman-registry-auth.nix { inherit pkgs inputs; };
+  podman-prune = import ./podman-prune.nix { inherit pkgs; };
   non-nixos-vm = import ./non-nixos-vm.nix {
     inherit pkgs inputs;
     fixtures = linuxFixtures;
