@@ -217,7 +217,7 @@ The `opus[1m]` value starts every session on the 1M-context variant of the `opus
 
 ### Surfaces that stay unmanaged
 
-Only the scalar settings above are declared. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file. The Claude Code allowlist in `.github/workflows/claude.yml` is a separate surface that governs CI, not this machine.
+Only the scalar settings above are declared. Permission allowlists and hooks, MCP server definitions, plugins and marketplaces, skills, subagents, and `~/.claude/CLAUDE.md` are intentionally left as the user's mutable state; each needs its own mechanism and none is a key in the settings file.
 
 ### Codex
 
