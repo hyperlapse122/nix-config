@@ -148,7 +148,13 @@ let
           fail "${name}: the built system sets no CUPS_DATADIR, so the cupsd driver tree is unknown"
         else
           ''
-            if ! ls ${esc drivers}/lib/cups/filter/rastertogutenprint.* >/dev/null 2>&1; then
+            # stdenv sets nullglob, so `ls` on an unmatched glob lists the
+            # build directory and succeeds; test each match instead.
+            gutenprint=
+            for filter in ${esc drivers}/lib/cups/filter/rastertogutenprint.*; do
+              if [ -e "$filter" ]; then gutenprint=1; fi
+            done
+            if [ -z "$gutenprint" ]; then
               ${fail "${name}: the cupsd driver tree carries no gutenprint filter"}
             fi
             if [ ! -x ${esc "${drivers}/lib/cups/filter/hpcups"} ]; then

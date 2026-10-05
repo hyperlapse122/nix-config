@@ -35,6 +35,7 @@ pkgs.testers.nixosTest {
         inputs.sops-nix.nixosModules.sops
         ../modules/nixos/system/secrets.nix
         ../modules/nixos/services/podman.nix
+        ../modules/shared/host.nix
       ];
       system.switch.enable = true;
       boot.loader.grub.enable = pkgs.lib.mkForce false;
@@ -59,6 +60,7 @@ pkgs.testers.nixosTest {
         inputs.sops-nix.nixosModules.sops
         ../modules/nixos/system/secrets.nix
         ../modules/nixos/services/podman.nix
+        ../modules/shared/host.nix
       ];
       system.switch.enable = true;
       boot.loader.grub.enable = pkgs.lib.mkForce false;
