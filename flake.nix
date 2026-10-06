@@ -690,8 +690,18 @@
                         "JetBrainsMono Nerd Font"
                         "D2CodingLigature Nerd Font"
                         "D2KodingLigature Nerd Font"
+                        "Twitter Color Emoji"
                       ]
                   )}
+                  ${pkgs.lib.optionalString (ghosttyConfig != null) ''
+                    # Twemoji covers ASCII digits and space, so it must stay
+                    # after every text font.
+                    if [ "$(grep '^font-family = ' ${ghosttyConfig} | tail -n 1)" != 'font-family = Twitter Color Emoji' ] \
+                      || [ "$(grep -cFx 'font-family = Twitter Color Emoji' ${ghosttyConfig})" -ne 1 ]; then
+                      echo 'ghostty config does not list Twitter Color Emoji once, last, on ${entry.name}' >&2
+                      fail=1
+                    fi
+                  ''}
                   ${pkgs.lib.concatMapStrings
                     (font: ''
                       if ! echo '${monospaceFonts}' | grep -q "${font}"; then

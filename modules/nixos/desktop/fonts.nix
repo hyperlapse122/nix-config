@@ -1,4 +1,9 @@
 { pkgs, ... }:
+let
+  # fontconfig silently skips a family name it cannot match, so a typo here
+  # would quietly break the fallback order.
+  emojiFont = "Twitter Color Emoji";
+in
 {
   fonts = {
     enableDefaultPackages = true;
@@ -19,20 +24,20 @@
       defaultFonts = {
         sansSerif = [
           "Pretendard"
-          "Twitter Color Emoji"
+          emojiFont
         ];
         serif = [
           "Noto Serif"
-          "Twitter Color Emoji"
+          emojiFont
         ];
         monospace = [
           "JetBrainsMono Nerd Font"
           "D2CodingLigature Nerd Font"
           "D2KodingLigature Nerd Font"
-          "Twitter Color Emoji"
+          emojiFont
         ];
         emoji = [
-          "Twitter Color Emoji"
+          emojiFont
           "Noto Color Emoji"
         ];
       };

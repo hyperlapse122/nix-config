@@ -129,8 +129,8 @@ let
           fi
           ${concatMapStrings (codepoint: expectFont family codepoint ''"$primary"'') sharedAscii}
         '') textFamilies}
-        primary="$(first_cover sans-serif 41)"
-        ${expectFont "sans-serif" "d55c" ''"$primary"''}
+        sans_primary="$(first_cover sans-serif 41)"
+        ${expectFont "sans-serif" "d55c" ''"$sans_primary"''}
 
         unset FONTCONFIG_FILE
       fi
@@ -153,21 +153,28 @@ pkgs.runCommand "emoji-font-tests"
     # Prints the file of the first font in family's fallback order that
     # covers the hex codepoint, the way Skia, Pango, and Qt pick a glyph.
     first_cover_file() {
-      fc-list ":charset=$2" file | sed 's/: *$//' | sort -u > covering.txt
-      fc-match -s -f '%{file}\n' "$1" | while IFS= read -r file; do
-        if grep -qxF "$file" covering.txt; then
-          printf '%s\n' "$file"
+      first_cover_entry "$1" "$2" | cut -f 2
+    }
+
+    # Prints the family of that font. It comes from the sorted face itself,
+    # because fc-query on a font collection names the collection's first face.
+    first_cover() {
+      first_cover_entry "$1" "$2" | cut -f 1
+    }
+
+    # Prints "family<TAB>file" for that font. The covering set is cached per
+    # host and codepoint.
+    first_cover_entry() {
+      covering="covering-$host-$2.txt"
+      if [ ! -e "$covering" ]; then
+        fc-list ":charset=$2" file | sed 's/: *$//' | sort -u > "$covering"
+      fi
+      fc-match -s -f '%{family[0]}\t%{file}\n' "$1" | while IFS="$(printf '\t')" read -r family file; do
+        if grep -qxF "$file" "$covering"; then
+          printf '%s\t%s\n' "$family" "$file"
           break
         fi
       done
-    }
-
-    # Prints the family of that font.
-    first_cover() {
-      file="$(first_cover_file "$1" "$2")"
-      if [ -n "$file" ]; then
-        fc-query -f '%{family[0]}\n' "$file" | head -n 1
-      fi
     }
 
     ${concatMapStrings checkHost configurations.entries}
