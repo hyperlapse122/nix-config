@@ -83,6 +83,7 @@
         hostClosureChecks = [
           "agent-browser-deps"
           "desktop-ssh"
+          "emoji-font"
           "iphone-restore"
           "kde-dark-theme"
           "keyd-remap"
@@ -689,8 +690,18 @@
                         "JetBrainsMono Nerd Font"
                         "D2CodingLigature Nerd Font"
                         "D2KodingLigature Nerd Font"
+                        "Twitter Color Emoji"
                       ]
                   )}
+                  ${pkgs.lib.optionalString (ghosttyConfig != null) ''
+                    # Twemoji covers ASCII digits and space, so it must stay
+                    # after every text font.
+                    if [ "$(grep '^font-family = ' ${ghosttyConfig} | tail -n 1)" != 'font-family = Twitter Color Emoji' ] \
+                      || [ "$(grep -cFx 'font-family = Twitter Color Emoji' ${ghosttyConfig})" -ne 1 ]; then
+                      echo 'ghostty config does not list Twitter Color Emoji once, last, on ${entry.name}' >&2
+                      fail=1
+                    fi
+                  ''}
                   ${pkgs.lib.concatMapStrings
                     (font: ''
                       if ! echo '${monospaceFonts}' | grep -q "${font}"; then
@@ -1229,6 +1240,7 @@
           desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
           kde-dark-theme = import ./tests/kde-dark-theme.nix { inherit pkgs self; };
+          emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
           logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
           logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
