@@ -36,9 +36,9 @@
   must fail evaluation, and the shapes host names take must still build. Those
   fixtures use role names, never a real host's name.
 
-  The wrapper's run-time behaviour (token precedence, Codex directories, exit
-  status) is covered by the tokscale-wrapper check. This check never runs bun
-  or Tokscale.
+  The wrapper's run-time behaviour (token precedence, Codex and Antigravity
+  directories, exit status) is covered by the tokscale-wrapper check. This
+  check never runs bun or Tokscale.
 
   Every lookup carries an `or` fallback so a mutation that removes an entry
   reaches the builder as shell rather than failing evaluation. See
