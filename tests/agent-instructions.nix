@@ -23,6 +23,12 @@
   - it carries the shared rule to apply every review finding and its ban on
     deferring findings, so either sentence dropped from the template or moved
     into one harness's branch fails.
+  - it carries the shared cross-model delegation rules through the T3 Code
+    MCP server: when they apply, their precedence over a skill's own harness
+    discovery, full-access runtime mode, running a skill's cross-model review
+    pass alongside its in-process reviewers, the fallback order, and verifying
+    a delegated result, so any of those sentences dropped, reworded, or moved
+    into one harness's branch fails.
   - it exists, is non-empty, and mentions Orca in no letter case, so the
     shared instructions stay tool-neutral for every orchestrator.
   - it carries the shared branch-name rule: rename a placeholder before the
@@ -63,6 +69,15 @@ let
     "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
+  ];
+
+  delegationSentences = [
+    "This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool."
+    "When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps."
+    "Run every delegated task in full-access runtime mode."
+    "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
+    "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider; fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
+    "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
   ];
 
   claudeTools = [
@@ -124,6 +139,16 @@ let
     }
   ];
 
+  # Fails the build, naming each sentence, when `$file` lacks any of them.
+  requireSentences = message: sentences: ''
+    for sentence in ${lib.escapeShellArgs sentences}; do
+      if ! grep -qF -- "$sentence" "$file"; then
+        echo ${esc message} "$sentence" >&2
+        failed=1
+      fi
+    done
+  '';
+
   assertHarness =
     hostName: userConfig: harness:
     let
@@ -160,18 +185,9 @@ let
           echo ${esc "${label} lacks the shared instructions"} >&2
           failed=1
         fi
-        for sentence in ${lib.escapeShellArgs reviewFindingsSentences}; do
-          if ! grep -qF -- "$sentence" "$file"; then
-            echo ${esc "${label} lacks the review-findings rule:"} "$sentence" >&2
-            failed=1
-          fi
-        done
-        for sentence in ${lib.escapeShellArgs branchNameSentences}; do
-          if ! grep -qF -- "$sentence" "$file"; then
-            echo ${esc "${label} lacks the branch-name rule:"} "$sentence" >&2
-            failed=1
-          fi
-        done
+        ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
+        ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
+        ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
         for tool in ${lib.escapeShellArgs harness.present}; do
           if ! grep -qF -- "$tool" "$file"; then
             echo ${esc "${label} does not name"} "$tool" >&2
