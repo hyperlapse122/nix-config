@@ -33,14 +33,13 @@ pkgs.appimageTools.wrapType2 {
   # process from that view, and the host's Podman service then joins it and
   # fails image pulls. Remote mode sends every podman and docker call to the
   # host service instead, as packages/orca.nix does.
-  #
-  # The Antigravity ACP server that T3 downloads embeds an OpenSSL whose
-  # default CA path, /opt/pyca/cryptography/openssl/cert.pem, does not exist
-  # on NixOS. Without SSL_CERT_FILE every model request fails certificate
-  # verification and the session hangs after session/prompt with no output.
   extraBwrapArgs = [
     "--setenv T3CODE_DISABLE_AUTO_UPDATE 1"
     ''--setenv CONTAINER_HOST "unix://$XDG_RUNTIME_DIR/podman/podman.sock"''
+    # The Antigravity ACP server that T3 downloads embeds an OpenSSL whose
+    # default CA path, /opt/pyca/cryptography/openssl/cert.pem, does not exist
+    # on NixOS. Without SSL_CERT_FILE every model request fails certificate
+    # verification and the session hangs after session/prompt with no output.
     "--setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt"
   ];
 

@@ -64,7 +64,7 @@ When this session runs inside T3 Code, delegate work that needs another model th
 - This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool.
 - Tools the session lists by name count as available even when the harness must load their schemas before the first call.
 - The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`. A harness may expose them under a prefix such as `mcp__t3-code__`.
-- When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 instead, before any of the skill's own discovery or launch steps.
+- When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps.
 - Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
 - Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose a provider other than your own, a model, and options that suit the task.
 - Tell the user which provider and model you delegated to.
@@ -73,7 +73,7 @@ When this session runs inside T3 Code, delegate work that needs another model th
 - When the delegated work must not change files, such as a review, say so explicitly in the task prompt.
 - Delegate long work asynchronously, then continue other work or end your turn instead of polling. Read `task_status` only when you need the result mid-turn.
 - When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run.
-- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 provider; fall back to the skill's own cross-model method only when no T3 provider succeeds, and tell the user that you did.
+- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider; fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did.
 - Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact.
 
 # Review findings
