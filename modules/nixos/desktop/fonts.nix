@@ -7,8 +7,8 @@
       jetbrains-mono
       nerd-fonts.jetbrains-mono
       nerd-fonts.d2coding
-      # CBDT build. twemoji-color-font is OpenType-SVG, which only Firefox
-      # draws in color.
+      # The CBDT Twemoji build. The OpenType-SVG build draws in color only in
+      # Firefox; Chromium, Qt, and GTK fall back to its monochrome glyphs.
       twitter-color-emoji
     ];
     fontconfig = {
