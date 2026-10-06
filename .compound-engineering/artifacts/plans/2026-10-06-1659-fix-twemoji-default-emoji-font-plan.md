@@ -152,7 +152,7 @@ Replace `twemoji-color-font` with nixpkgs `twitter-color-emoji`, which keeps the
 ## Verification Contract
 
 | Gate | Command or evidence |
-|---|---|
+| --- | --- |
 | Format | `nix fmt -- --ci` |
 | New check | `nix build --no-link .#checks.x86_64-linux.emoji-font`, plus a red build for each U2 mutation |
 | Host shard | `nix build --no-link .#checkShards.hosts` |
