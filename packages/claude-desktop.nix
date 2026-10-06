@@ -42,6 +42,7 @@ pkgs.stdenv.mkDerivation rec {
     pkgs.nspr
     pkgs.nss
     pkgs.pango
+    pkgs.pipewire
     pkgs.systemdLibs
     pkgs.libx11
     pkgs.libxcomposite
