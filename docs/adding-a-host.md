@@ -311,7 +311,7 @@ The steps below run on the target machine, in order. The Ubuntu and Debian comma
 
    The narrower option is an AppArmor profile that grants `userns` to that `podman` binary only. Skip this step if you do not run containers.
 
-4. Move aside any file that Home Manager will manage, such as `~/.ssh/config`. Home Manager stops rather than overwrite a file it did not create.
+4. Move aside any file that Home Manager will manage. Home Manager stops rather than overwrite a file it did not create. `~/.ssh/config` is the exception: activation installs it as a user-owned copy and moves a config you wrote to `~/.ssh/config.unmanaged` first.
 
 5. Clone the repository and enable flakes for the first apply. The system layer enables them in `/etc/nix/nix.conf` from then on:
 

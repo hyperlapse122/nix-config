@@ -88,9 +88,13 @@ let
       # Resolved by target and enable, so a renamed or disabled entry cannot
       # hide what actually lands in the home directory.
       enabledTargets = files: lib.filter (file: file.enable) (lib.attrValues files);
-      sshConfig = lib.concatMapStrings (file: file.text or "") (
-        lib.filter (file: file.target == ".ssh/config") (enabledTargets hm.home.file)
-      );
+      sshConfigFile = hm.my.ssh.configFile;
+      # hasInfix matches by regex, which rejects strings that carry store paths.
+      sshInstalled =
+        lib.hasInfix
+          (builtins.unsafeDiscardStringContext ''install -m 600 ${sshConfigFile} "$HOME/.ssh/config"'')
+          (builtins.unsafeDiscardStringContext (activation.sshConfig.data or ""))
+        && !lib.any (file: file.target == ".ssh/config") (enabledTargets hm.home.file);
       desktopFiles = lib.filter (
         target:
         lib.hasPrefix "autostart/" target || lib.hasPrefix "plasma" target || lib.hasPrefix "kde" target
@@ -134,10 +138,15 @@ let
         lib.elem "nr-linux" pnames && !lib.elem "nr" pnames
       ) "${entry.name}: nr must be the non-NixOS apply helper, not the nixos-rebuild one")
       (check (lib.elem "install-user-age-identity" pnames) "${entry.name}: install-user-age-identity is missing, so the identity cannot be recovered")
-      (check (
-        lib.hasInfix "IdentityFile ${hm.my.secrets.sshKey}" sshConfig
-        && !lib.hasInfix "IdentityAgent" sshConfig
-      ) "${entry.name}: ~/.ssh/config must name the host key and no agent socket")
+      # Reads the file activation installs, which builds only on its own
+      # architecture; other architectures are proven by their own build in CI.
+      (lib.optionalString (entry.host.system == pkgs.stdenv.hostPlatform.system) ''
+        if ! grep -qxF -- ${lib.escapeShellArg "  IdentityFile ${hm.my.secrets.sshKey}"} ${sshConfigFile} \
+          || grep -qF IdentityAgent ${sshConfigFile}; then
+          ${fail "${entry.name}: ~/.ssh/config must name the host key and no agent socket"}
+        fi
+      '')
+      (check sshInstalled "${entry.name}: activation must install ~/.ssh/config as a user-owned copy, not a store link")
       (check (desktopFiles == [ ])
         "${entry.name}: desktop configuration reached a non-NixOS host: ${lib.concatStringsSep ", " desktopFiles}"
       )
