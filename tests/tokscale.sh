@@ -283,5 +283,42 @@ mkdir -p "$accounts/a,b/home/sessions"
 run
 [[ $(recorded extra) == "$want" ]] || fail "a path with a comma was not skipped: '$(recorded extra)'"
 pass 'a sessions path containing a comma is skipped'
+rm -rf -- "$home/.config"
+
+# --- Antigravity ACP conversation directories --------------------------------
+
+providers=$home/.t3/userdata/providers/antigravity
+acp_default=$home/.gemini/antigravity-acp/conversations
+
+mkdir -p "$providers/empty" "$providers/filed/antigravity-acp" "$home/.gemini/antigravity-acp"
+touch "$providers/filed/antigravity-acp/conversations" "$acp_default"
+run
+if [[ -f $rec/extra ]]; then fail "TOKSCALE_EXTRA_DIRS was set to '$(recorded extra)'"; fi
+pass 'a provider without a conversations directory, or a file in its place, adds nothing'
+rm -f -- "$acp_default"
+
+mkdir -p "$providers/first/antigravity-acp/conversations" "$providers/second/antigravity-acp/conversations"
+run TOKSCALE_EXTRA_DIRS=claude:/x
+want="claude:/x,antigravity-cli:$providers/first/antigravity-acp/conversations,antigravity-cli:$providers/second/antigravity-acp/conversations"
+[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
+pass 'each T3 Antigravity conversations directory is appended after the caller value'
+
+mkdir -p "$providers/a,b/antigravity-acp/conversations"
+run
+want="antigravity-cli:$providers/first/antigravity-acp/conversations,antigravity-cli:$providers/second/antigravity-acp/conversations"
+[[ $(recorded extra) == "$want" ]] || fail "a path with a comma was not skipped: '$(recorded extra)'"
+pass 'a T3 conversations path containing a comma is skipped'
+
+mkdir -p "$acp_default"
+run
+want+=",antigravity-cli:$acp_default"
+[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
+pass 'the standalone ACP conversations directory follows the T3 ones'
+
+mkdir -p "$accounts/first/home/sessions"
+run TOKSCALE_EXTRA_DIRS=
+want="codex:$accounts/first/home/sessions,$want"
+[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
+pass 'Codex sessions come before Antigravity conversations'
 
 printf 'tokscale: all checks passed (%s)\n' "$mode"
