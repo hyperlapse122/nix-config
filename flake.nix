@@ -1146,15 +1146,16 @@
                 fail=1
               fi
 
-              if ! grep -qE '^[[:space:]]*--setenv T3CODE_DISABLE_AUTO_UPDATE 1( |$)' ${desktop}/bin/t3code-desktop; then
-                echo "the t3code-desktop wrapper does not set T3CODE_DISABLE_AUTO_UPDATE=1" >&2
-                fail=1
-              fi
-
-              if ! grep -qE '^[[:space:]]*--setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates\.crt( |$)' ${desktop}/bin/t3code-desktop; then
-                echo "the t3code-desktop wrapper does not point SSL_CERT_FILE at the system CA bundle" >&2
-                fail=1
-              fi
+              # Takes the literal value and escapes it for the extended regex.
+              expect_setenv() {
+                value=$(printf '%s' "$2" | sed 's/[].[*^$+?(){}|\\]/\\&/g')
+                if ! grep -qE "^[[:space:]]*--setenv $1 $value( |\$)" ${desktop}/bin/t3code-desktop; then
+                  echo "the t3code-desktop wrapper does not set $1 to $2" >&2
+                  fail=1
+                fi
+              }
+              expect_setenv T3CODE_DISABLE_AUTO_UPDATE 1
+              expect_setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
 
               # Expanded under a fake runtime directory, as the orca-desktop
               # check does, so a path baked in at build time cannot match.
