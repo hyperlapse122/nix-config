@@ -77,7 +77,7 @@ T3 Code runs Antigravity through its own ACP server with `GEMINI_HOME` set to `~
 ## Verification Contract
 
 | Gate | Command | Proves |
-|---|---|---|
+| --- | --- | --- |
 | Wrapper behavior | `nix build --no-link .#checks.x86_64-linux.tokscale-wrapper` | R1, R2 on source and packaged wrapper |
 | Static checks | `nix build --no-link .#checks.x86_64-linux.tokscale` | packaging still evaluates |
 | Format | `nix fmt -- --ci` | formatting |
