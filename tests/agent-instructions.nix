@@ -1,17 +1,19 @@
 /*
   Check interface:
 
-    import ./tests/agent-instructions.nix { inherit pkgs self; }
+    import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
   Asserts that the shared agent instructions reach each harness's user-level
   instruction file for user `h82` on every host this flake declares, rendered
   by gomplate from the one shared template with that harness's context.
 
-  The configuration list comes from `tests/lib/configurations.nix`, so a host
-  added later is covered the day it is added, and the helper's guard fails the
-  build when that list is empty instead of letting it pass.
+  The user list is `userEntries` from `tests/lib/configurations.nix`: the h82
+  generation of every NixOS configuration and of every non-NixOS fixture host,
+  so a host of either kind added later is covered the day it is added, and the
+  helper's guard fails the build when either kind is missing instead of
+  letting it pass.
 
-  Verifies, per host and per harness:
+  Verifies, per Home Manager user and per harness:
   - exactly one enabled Home Manager file resolves to the harness's target.
     The lookup compares each entry's resolved `target` rather than its
     attribute name, and reads `enable`, because either can move the file
@@ -55,7 +57,11 @@
   The builder collects every failure instead of exiting at the first, so one
   red build names every broken assertion across all hosts.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures,
+}:
 let
   inherit (pkgs) lib;
 
@@ -219,15 +225,15 @@ let
     in
     countWrong + entryPresent + sourcePresent + sourceAbsent;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   assertEntry = entry: lib.concatMapStrings (assertHarness entry.name entry.user) harnesses;
 in
 pkgs.runCommand "agent-instructions-tests" { } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ "$failed" != "0" ]; then
     exit 1
