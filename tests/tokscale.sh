@@ -283,9 +283,10 @@ mkdir -p "$accounts/a,b/home/sessions"
 run
 [[ $(recorded extra) == "$want" ]] || fail "a path with a comma was not skipped: '$(recorded extra)'"
 pass 'a sessions path containing a comma is skipped'
-rm -rf -- "$home/.config"
 
 # --- Antigravity ACP conversation directories --------------------------------
+
+rm -rf -- "$home/.config"
 
 providers=$home/.t3/userdata/providers/antigravity
 acp_default=$home/.gemini/antigravity-acp/conversations
