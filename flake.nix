@@ -83,6 +83,7 @@
         hostClosureChecks = [
           "agent-browser-deps"
           "desktop-ssh"
+          "emoji-font"
           "iphone-restore"
           "kde-dark-theme"
           "keyd-remap"
@@ -1229,6 +1230,7 @@
           desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
           kde-dark-theme = import ./tests/kde-dark-theme.nix { inherit pkgs self; };
+          emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
           logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
           logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
