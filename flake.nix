@@ -1151,6 +1151,11 @@
                 fail=1
               fi
 
+              if ! grep -qE '^[[:space:]]*--setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates\.crt( |$)' ${desktop}/bin/t3code-desktop; then
+                echo "the t3code-desktop wrapper does not point SSL_CERT_FILE at the system CA bundle" >&2
+                fail=1
+              fi
+
               # Expanded under a fake runtime directory, as the orca-desktop
               # check does, so a path baked in at build time cannot match.
               containerHost=$(
