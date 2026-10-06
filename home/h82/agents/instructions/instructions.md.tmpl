@@ -67,6 +67,10 @@ When this session runs inside T3 Code, delegate work that needs another model th
 - When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps.
 - Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
 - Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose a provider other than your own, a model, and options that suit the task.
+- Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Pro or Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable.
+- Compare versions only within that class: a newer model of another class does not outrank the class the task needs.
+- Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model.
+- Set the chosen version's options, such as reasoning effort, for the task instead of inheriting its defaults, which can differ between versions of one class.
 - Tell the user which provider and model you delegated to.
 - Run every delegated task in full-access runtime mode.
 - Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation.

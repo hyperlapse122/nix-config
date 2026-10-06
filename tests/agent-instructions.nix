@@ -25,7 +25,9 @@
     into one harness's branch fails.
   - it carries the shared cross-model delegation rules through the T3 Code
     MCP server: when they apply, their precedence over a skill's own harness
-    discovery, full-access runtime mode, running a skill's cross-model review
+    discovery, choosing the latest runnable version of a model class and when
+    an older one is allowed, setting that version's options, full-access
+    runtime mode, running a skill's cross-model review
     pass alongside its in-process reviewers, the fallback order, and verifying
     a delegated result, so any of those sentences dropped, reworded, or moved
     into one harness's branch fails.
@@ -74,6 +76,10 @@ let
   delegationSentences = [
     "This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool."
     "When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps."
+    "Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Pro or Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable."
+    "Compare versions only within that class: a newer model of another class does not outrank the class the task needs."
+    "Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model."
+    "Set the chosen version's options, such as reasoning effort, for the task instead of inheriting its defaults, which can differ between versions of one class."
     "Run every delegated task in full-access runtime mode."
     "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
     "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider; fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
