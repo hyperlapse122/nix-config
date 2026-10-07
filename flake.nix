@@ -87,6 +87,7 @@
           "iphone-restore"
           "kde-light-theme"
           "keyd-remap"
+          "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
           "printing"
@@ -630,6 +631,10 @@
             fixtures = linuxFixtures;
           };
           kubernetes-tools = import ./tests/kubernetes-tools.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          minikube-autostart = import ./tests/minikube-autostart.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
