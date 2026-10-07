@@ -59,8 +59,14 @@ def configuration(entry, root):
         if not condition:
             errors.append(f"{entry['name']}: {message}")
     files = Path(entry["files"]) if entry["files"] else None
-    config_path = files / ".ssh/config" if files else Path("/absent-home-files")
+    config_path = Path(entry["sshConfig"]) if entry["sshConfig"] else Path("/absent-ssh-config")
     require(config_path.is_file(), "missing materialized SSH configuration")
+    # A store link would be owned by nobody inside a user-namespace sandbox,
+    # where ssh rejects it, so activation installs a user-owned copy instead.
+    linked = files / ".ssh/config" if files else Path("/absent-home-files")
+    require(not linked.exists() and not linked.is_symlink(), "~/.ssh/config is linked into the store")
+    require(f'install -m 600 {config_path} "$HOME/.ssh/config"' in entry["sshActivation"],
+            "activation does not install a user-owned ~/.ssh/config")
     text = config_path.read_text() if config_path.is_file() else ""
     if entry["kind"] == "nixos":
         fallback_config = files / ".config/1Password/ssh/agent.toml" if files else Path("/absent-fallback-config")

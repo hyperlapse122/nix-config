@@ -102,13 +102,18 @@ let
         ${concatMapStrings (family: expectFont family "1f600" (esc twemoji)) emojiFamilies}
         ${expectFont "emoji" "2615" (esc twemoji)}
 
+        # grep reads files rather than pipes: under the builder's pipefail, an
+        # early grep -q match breaks the writer's pipe and reads as a miss.
         file="$(first_cover_file emoji 1f600)"
         if [ -z "$file" ]; then
           echo "$host: no font covers U+1F600 for emoji" >&2
           failed=1
-        elif ! ttx -l "$file" | grep -Eq '^ +(CBDT|COLR) '; then
-          echo "$host: $file carries no CBDT or COLR color table" >&2
-          failed=1
+        else
+          ttx -l "$file" > emoji-tables.txt
+          if ! grep -Eq '^ +(CBDT|COLR) ' emoji-tables.txt; then
+            echo "$host: $file carries no CBDT or COLR color table" >&2
+            failed=1
+          fi
         fi
 
         fc-match -a -f '%{family[0]}\n' emoji > emoji-order.txt
@@ -116,7 +121,8 @@ let
           echo "$host: the emoji alias does not list ${twemoji} first" >&2
           failed=1
         fi
-        if ! tail -n +2 emoji-order.txt | grep -Fxq 'Noto Color Emoji'; then
+        tail -n +2 emoji-order.txt > emoji-fallbacks.txt
+        if ! grep -Fxq 'Noto Color Emoji' emoji-fallbacks.txt; then
           echo "$host: the emoji alias does not list Noto Color Emoji after ${twemoji}" >&2
           failed=1
         fi

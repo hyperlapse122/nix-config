@@ -12,6 +12,8 @@ let
   entries = map (entry: {
     inherit (entry) name kind bootstrap;
     files = toString (entry.user.home-files or "");
+    sshConfig = toString (entry.user.my.ssh.configFile or "");
+    sshActivation = entry.user.home.activation.sshConfig.data or "";
     path = toString (entry.user.home.path or "");
     home = entry.user.home.homeDirectory or "";
     user = entry.user.home.username or "";
