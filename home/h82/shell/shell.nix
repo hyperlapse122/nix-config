@@ -62,10 +62,15 @@
     # Track upstream releases instead of nixpkgs' lagging version.
     package = import ../../../packages/mise.nix { inherit pkgs; };
     enableZshIntegration = true;
-    # Render settings to conf.d and keep config.toml writable for `mise use --global`.
-    enableMutableConfig = true;
     # mise compiles runtimes from source by default on NixOS; nix-ld runs the
     # precompiled binaries instead.
     globalConfig.settings.all_compile = false;
   };
+
+  # Earlier generations left a writable config.toml, which would collide with
+  # the store link. The condition mirrors the module's own, because a force on
+  # an entry the module does not declare leaves it with no source.
+  xdg.configFile = lib.mkIf (
+    !config.programs.mise.mutableSettings && config.programs.mise.globalConfig != { }
+  ) { "mise/config.toml".force = true; };
 }
