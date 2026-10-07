@@ -5,10 +5,13 @@
 
   Boots a node with the NixOS Podman module and lingering user managers for
   h82 and a second account. As h82 it loads two offline images, leaves one
-  dangling, stops a container, and creates a named volume, then starts
-  podman-prune.service in h82's user manager. Asserts the stopped container
-  and the dangling image are gone while the tagged image and the named volume
-  remain, and that the second account's user manager skips the unit.
+  dangling, stops a container, creates an unused network and a named volume,
+  and stops a container and creates a network both labelled the way minikube
+  labels its node, then starts podman-prune.service in h82's user manager.
+  Asserts the unlabelled stopped container, the unlabelled network, and the
+  dangling image are gone while minikube's labelled container and network,
+  the tagged image, and the named volume remain, and that the second
+  account's user manager skips the unit.
 
   Every Podman and systemctl --user command runs through runuser with the
   user manager's XDG_RUNTIME_DIR, never su -, so the seeded storage and the
@@ -80,8 +83,16 @@ pkgs.testers.nixosTest {
     machine.succeed(user("podman untag localhost/prune-dangling:latest"))
     machine.succeed(user("podman run --network none --name stopped localhost/prune-kept:latest"))
     machine.succeed(user("podman volume create keep-vol"))
+    machine.succeed(user("podman network create unused-net"))
+    # minikube labels its node container and network with
+    # created_by.minikube.sigs.k8s.io=true; a stopped node must survive.
+    machine.succeed(user("podman network create --label created_by.minikube.sigs.k8s.io=true minikube"))
+    machine.succeed(user("podman run --network none --label created_by.minikube.sigs.k8s.io=true --label name.minikube.sigs.k8s.io=minikube --name minikube localhost/prune-kept:latest"))
 
-    assert "stopped" in machine.succeed(user("podman ps -a --format '{{.Names}}'")).split()
+    containers = machine.succeed(user("podman ps -a --format '{{.Names}}'")).split()
+    assert "stopped" in containers and "minikube" in containers
+    networks = machine.succeed(user("podman network ls --format '{{.Name}}'")).split()
+    assert "unused-net" in networks and "minikube" in networks
     assert len(machine.succeed(user("podman images --filter dangling=true --quiet")).split()) == 1
 
     # A unit whose condition fails also reports Result=success, so the
@@ -90,7 +101,12 @@ pkgs.testers.nixosTest {
     assert machine.succeed(user("systemctl --user show -P ConditionResult podman-prune.service")).strip() == "yes"
     assert machine.succeed(user("systemctl --user show -P Result podman-prune.service")).strip() == "success"
 
-    assert "stopped" not in machine.succeed(user("podman ps -a --format '{{.Names}}'")).split()
+    containers = machine.succeed(user("podman ps -a --format '{{.Names}}'")).split()
+    assert "stopped" not in containers
+    assert "minikube" in containers
+    networks = machine.succeed(user("podman network ls --format '{{.Name}}'")).split()
+    assert "unused-net" not in networks
+    assert "minikube" in networks
     assert machine.succeed(user("podman images --filter dangling=true --quiet")).split() == []
     assert "localhost/prune-kept:latest" in machine.succeed(user("podman images --format '{{.Repository}}:{{.Tag}}'")).split()
     assert "keep-vol" in machine.succeed(user("podman volume ls --format '{{.Name}}'")).split()

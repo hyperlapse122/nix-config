@@ -10,8 +10,9 @@
 
   On every configuration with `my.podman.enable`, the materialized
   /etc/systemd/user tree carries the weekly podman-prune timer and its oneshot
-  service, which runs the wrapped Podman's `system prune --force` only in the
-  configured account's user manager. With the trait off, neither unit exists.
+  service, which runs the wrapped Podman's `system prune --force` with a filter
+  that skips minikube's labelled objects, only in the configured account's
+  user manager. With the trait off, neither unit exists.
 
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
@@ -62,8 +63,8 @@ let
         if ! grep -qx ${esc "ConditionUser=${config.my.user.name}"} "$service"; then
           ${fail "${name}: podman-prune.service does not run only in ${config.my.user.name}'s user manager"}
         fi
-        if ! grep -qx ${esc "ExecStart=${podmanBin} system prune --force"} "$service"; then
-          ${fail "${name}: podman-prune.service does not run exactly the wrapped Podman's system prune --force"}
+        if ! grep -qx ${esc "ExecStart=${podmanBin} system prune --force --filter label!=created_by.minikube.sigs.k8s.io"} "$service"; then
+          ${fail "${name}: podman-prune.service does not run exactly the wrapped Podman's system prune --force skipping minikube's labelled objects"}
         fi
         if [ ! -x ${esc podmanBin} ] || ! grep -q '/run/wrappers' ${esc podmanBin}; then
           ${fail "${name}: the prune's Podman is not executable or its PATH lacks the /run/wrappers setuid helpers"}
