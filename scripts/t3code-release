@@ -5,8 +5,9 @@ Fetches pingdotgg/t3code's recent GitHub releases, keeps only nightlies -- a
 prerelease whose tag has the shape v<semver>-nightly.<YYYYMMDD>.<build>, which
 excludes stable releases (not prereleases) and preview builds (-preview. tags)
 -- and picks the newest by (semver, date, build). For that release it reads
-the sha256 digest GitHub records for the AppImage and the t3 CLI tarball of
-each supported system and writes or checks the pin file both T3 Code packages
+the sha256 digest GitHub records for the desktop app (an AppImage on Linux, a
+zipped app bundle on macOS) and the t3 CLI tarball of each supported system,
+and writes or checks the pin file both T3 Code packages
 consume, so the two artifacts always come from the same nightly. Refuses to
 write a pin for a release missing any of those assets or their digests, or a
 version that is not strictly newer than the one already pinned.
@@ -36,6 +37,10 @@ TARGET_ASSETS = {
     "aarch64-linux": {
         "desktop": "T3-Code-{version}-arm64.AppImage",
         "cli": "t3-{version}-linux-arm64.tar.gz",
+    },
+    "aarch64-darwin": {
+        "desktop": "T3-Code-{version}-arm64.zip",
+        "cli": "t3-{version}-darwin-arm64.tar.gz",
     },
 }
 
@@ -112,7 +117,7 @@ def newest_nightly(body):
 
 
 def parse_release(version, data):
-    """Return the pin for each system's AppImage and CLI tarball in one release."""
+    """Return the pin for each system's desktop app and CLI tarball in one release."""
     tag = data["tag_name"]
     assets = data.get("assets")
     assets = assets if isinstance(assets, list) else []

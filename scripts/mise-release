@@ -3,9 +3,9 @@
 
 Fetches the SHASUMS256.txt asset of jdx/mise's latest GitHub release, reads
 the version and the checksums of the static linux-x64-musl and
-linux-arm64-musl tarballs from it, and writes or checks the pin file
-packages/mise.nix consumes. Refuses to write a pin for a release missing
-either tarball, or a version that is not strictly newer than the one already
+linux-arm64-musl tarballs and the macos-arm64 tarball from it, and writes or
+checks the pin file packages/mise.nix consumes. Refuses to write a pin for a
+release missing any of those tarballs, or a version that is not strictly newer than the one already
 pinned, so neither an incomplete release nor a downgrade ever reaches the pin
 file.
 """
@@ -30,6 +30,7 @@ DEFAULT_FETCH = "curl -sfL"
 TARGET_ASSETS = {
     "x86_64-linux": "linux-x64-musl",
     "aarch64-linux": "linux-arm64-musl",
+    "aarch64-darwin": "macos-arm64",
 }
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")

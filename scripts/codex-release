@@ -2,7 +2,7 @@
 """Resolve the newest upstream Codex CLI release from GitHub's release API.
 
 Fetches openai/codex's latest GitHub release, reads the version from its
-rust-v tag and the sha256 digest GitHub records for each static musl tarball
+rust-v tag and the sha256 digest GitHub records for each tarball
 packages/codex.nix installs on each supported system -- the codex binary and
 the codex-code-mode-host it spawns -- and writes or checks the pin file that
 package consumes. Refuses to write a pin for a prerelease, a release missing
@@ -24,7 +24,7 @@ DEFAULT_SOURCE_URL = "https://api.github.com/repos/openai/codex/releases/latest"
 DEFAULT_FETCH = "curl -sfL"
 
 # Every system a host in this flake can be, and the tarballs installed on it.
-# The musl builds are statically linked, so they run on NixOS and other
+# The Linux musl builds are statically linked, so they run on NixOS and other
 # distributions without patching.
 TARGET_ASSETS = {
     "x86_64-linux": {
@@ -34,6 +34,10 @@ TARGET_ASSETS = {
     "aarch64-linux": {
         "codex": "codex-aarch64-unknown-linux-musl.tar.gz",
         "codeModeHost": "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
+    },
+    "aarch64-darwin": {
+        "codex": "codex-aarch64-apple-darwin.tar.gz",
+        "codeModeHost": "codex-code-mode-host-aarch64-apple-darwin.tar.gz",
     },
 }
 TAG_PREFIX = "rust-v"
@@ -72,7 +76,7 @@ def hex_to_sri(sha256_hex):
 
 
 def parse_release(body):
-    """Return the pin for each system's musl tarballs in one GitHub release object."""
+    """Return the pin for each system's tarballs in one GitHub release object."""
     try:
         data = json.loads(body)
     except json.JSONDecodeError as exc:

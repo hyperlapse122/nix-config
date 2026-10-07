@@ -10,6 +10,11 @@
       "asset": "linux-arm64-musl",
       "sha256": "0af3379b7a8060b047416576a746078daee3c9d2bf57fa8f6ba07d3cdf5f47aa",
       "hash": "sha256-CvM3m3qAYLBHQWV2p0YHja7jydK/V/qPa6B9PN9fR6o="
+    },
+    "aarch64-darwin": {
+      "asset": "macos-arm64",
+      "sha256": "28ecc8640b0a28dab52817766f37fecfd898f1dff82e03f36fcb072e971f9246",
+      "hash": "sha256-KOzIZAsKKNq1KBd2bzf+z9iY8d/4LgPzb8sHLpcfkkY="
     }
   }
 }

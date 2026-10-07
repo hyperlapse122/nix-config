@@ -25,6 +25,18 @@
         "sha256": "639d28a17f29412415a25d2104ee02352a943bc18f5ec9fb224bb7ce127ac3b9",
         "hash": "sha256-Y50ooX8pQSQVol0hBO4CNSqUO8GPXsn7Iku3zhJ6w7k="
       }
+    },
+    "aarch64-darwin": {
+      "desktop": {
+        "asset": "T3-Code-0.0.46-nightly.20261007.2761-arm64.zip",
+        "sha256": "d576a1481c61ff800d013f33295518794c8675da1d30b945dc7c0b587cfdfee5",
+        "hash": "sha256-1XahSBxh/4ANAT8zKVUYeUyGddodMLlF3HwLWHz9/uU="
+      },
+      "cli": {
+        "asset": "t3-0.0.46-nightly.20261007.2761-darwin-arm64.tar.gz",
+        "sha256": "02c191e2a3ed5c3d8c9808d6039884cda18e72426130d062bfbd1b024a5dc3fe",
+        "hash": "sha256-AsGR4qPtXD2MmAjWA5iEzaGOckJhMNBiv70bAkpdw/4="
+      }
     }
   }
 }

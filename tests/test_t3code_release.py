@@ -21,6 +21,8 @@ APPIMAGE_X64_HEX = "7521793d4dc87f2b985f88b48b070bedf33a1f590cca34a96c9e7ca0b1fe
 APPIMAGE_ARM_HEX = "784939b3fc0aec185df9148893c22b0ae10abb6e32d03905474c5a43ba511508"
 CLI_X64_HEX = "5f9e29cf2712c87736556c99ea580606b399897cb846c2401a434a0d05c4eeca"
 CLI_ARM_HEX = "73f03e41f2173a9695bb60e2867f14133cf396e0340af6cc8e0ceecd4efcd7d4"
+ZIP_DARWIN_HEX = "d576a1481c61ff800d013f33295518794c8675da1d30b945dc7c0b587cfdfee5"
+CLI_DARWIN_HEX = "02c191e2a3ed5c3d8c9808d6039884cda18e72426130d062bfbd1b024a5dc3fe"
 OTHER_HEX = "6ec2232f168c00aa108c04218e92666a7df2f4c2b71c1e93c734294ae71359d0"
 
 
@@ -33,6 +35,10 @@ def target_assets(version):
         "aarch64-linux": {
             "desktop": (f"T3-Code-{version}-arm64.AppImage", APPIMAGE_ARM_HEX),
             "cli": (f"t3-{version}-linux-arm64.tar.gz", CLI_ARM_HEX),
+        },
+        "aarch64-darwin": {
+            "desktop": (f"T3-Code-{version}-arm64.zip", ZIP_DARWIN_HEX),
+            "cli": (f"t3-{version}-darwin-arm64.tar.gz", CLI_DARWIN_HEX),
         },
     }
 
@@ -50,7 +56,8 @@ def release(tag, prerelease=True, draft=False, omit=(), duplicate=(), digests=No
     version = tag[1:]
     assets = [
         asset(f"T3-Code-{version}-amd64.deb", OTHER_HEX),
-        asset(f"t3-{version}-darwin-arm64.tar.gz", OTHER_HEX),
+        asset(f"T3-Code-{version}-arm64.zip.blockmap", OTHER_HEX),
+        asset(f"t3-{version}-win32-arm64.zip", OTHER_HEX),
         asset("SHA256SUMS", OTHER_HEX),
     ]
     for components in target_assets(version).values():
@@ -175,6 +182,16 @@ class T3codeReleaseTestCase(unittest.TestCase):
         body = release_list(release(NEWEST, omit=(name,)))
         result = self.run_release(body=body, extra_args=["-o", str(self.output)])
         self.assert_refused(result, name)
+
+    def test_refuses_a_nightly_missing_a_darwin_asset(self):
+        for name in [
+            f"T3-Code-{NEWEST_VERSION}-arm64.zip",
+            f"t3-{NEWEST_VERSION}-darwin-arm64.tar.gz",
+        ]:
+            with self.subTest(missing=name):
+                body = release_list(release(NEWEST, omit=(name,)))
+                result = self.run_release(body=body, extra_args=["-o", str(self.output)])
+                self.assert_refused(result, name)
 
     def test_refuses_a_nightly_with_a_duplicated_asset(self):
         name = f"t3-{NEWEST_VERSION}-linux-x64.tar.gz"

@@ -19,11 +19,15 @@ TARGET = "codex-x86_64-unknown-linux-musl.tar.gz"
 ARM_TARGET = "codex-aarch64-unknown-linux-musl.tar.gz"
 HOST_TARGET = "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz"
 ARM_HOST_TARGET = "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz"
+DARWIN_TARGET = "codex-aarch64-apple-darwin.tar.gz"
+DARWIN_HOST_TARGET = "codex-code-mode-host-aarch64-apple-darwin.tar.gz"
 MUSL_HEX = "b48ca1b2d6b1bf42b944e02c3d937c898e24651916684cdc35fdedf31b291bcb"
 ARM_HEX = "cd5f307b3fcd6080773e684b86c3114a67d4f1c61dc447be09876b552eb4bea7"
 GNU_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
 HOST_HEX = "0f58dd9848c717382e5223e39c1fc8f43a8f4a8cbe20d7af0c0dee0ef3abd438"
 ARM_HOST_HEX = "7cbb47c472c2dc115abfeebf52ff11bf66eb364bf8f5d14659742615919b8e6f"
+DARWIN_HEX = "670af2b049d9c95afb74d7da385f30c5033d13a07175001dd8958c51944984d0"
+DARWIN_HOST_HEX = "6e502df69d9220fa305b0c3c7c17ba8f31ab1d4591fc140084dbb823e800c7db"
 
 
 def asset(name, hex_digest):
@@ -35,7 +39,8 @@ def asset(name, hex_digest):
 
 
 def release(version, musl_digest=None, musl_count=1, prerelease=False, tag=None,
-            arm_count=1, host_count=1, arm_host_count=1):
+            arm_count=1, host_count=1, arm_host_count=1, darwin_count=1,
+            darwin_host_count=1):
     """Build a latest-release body shaped like GitHub's REST API response.
 
     The x86_64 codex tarball comes last, so a test can edit assets[-1].
@@ -45,7 +50,14 @@ def release(version, musl_digest=None, musl_count=1, prerelease=False, tag=None,
         asset("codex-aarch64-unknown-linux-gnu.tar.gz", GNU_HEX),
         asset("codex-x86_64-unknown-linux-musl.zst", GNU_HEX),
         asset("codex-code-mode-host-x86_64-unknown-linux-gnu.tar.gz", GNU_HEX),
+        asset("codex-x86_64-apple-darwin.tar.gz", GNU_HEX),
+        asset("codex-aarch64-apple-darwin.zst", GNU_HEX),
+        asset("codex-aarch64-apple-darwin.dmg", GNU_HEX),
     ]
+    for _ in range(darwin_count):
+        assets.append(asset(DARWIN_TARGET, DARWIN_HEX))
+    for _ in range(darwin_host_count):
+        assets.append(asset(DARWIN_HOST_TARGET, DARWIN_HOST_HEX))
     for _ in range(host_count):
         assets.append(asset(HOST_TARGET, HOST_HEX))
     for _ in range(arm_host_count):
@@ -140,6 +152,18 @@ class CodexReleaseTestCase(unittest.TestCase):
                             "hash": sri(ARM_HOST_HEX),
                         },
                     },
+                    "aarch64-darwin": {
+                        "codex": {
+                            "asset": DARWIN_TARGET,
+                            "sha256": DARWIN_HEX,
+                            "hash": sri(DARWIN_HEX),
+                        },
+                        "codeModeHost": {
+                            "asset": DARWIN_HOST_TARGET,
+                            "sha256": DARWIN_HOST_HEX,
+                            "hash": sri(DARWIN_HOST_HEX),
+                        },
+                    },
                 },
             },
         )
@@ -150,10 +174,17 @@ class CodexReleaseTestCase(unittest.TestCase):
         )
         self.assert_refused(result, ARM_TARGET)
 
+    def test_refuses_a_release_without_the_aarch64_darwin_asset(self):
+        result = self.run_release(
+            body=release("0.159.3", darwin_count=0), extra_args=["-o", str(self.output)]
+        )
+        self.assert_refused(result, DARWIN_TARGET)
+
     def test_refuses_a_release_without_a_code_mode_host_asset(self):
         for kwargs, needle in [
             ({"host_count": 0}, HOST_TARGET),
             ({"arm_host_count": 0}, ARM_HOST_TARGET),
+            ({"darwin_host_count": 0}, DARWIN_HOST_TARGET),
         ]:
             with self.subTest(missing=needle):
                 result = self.run_release(

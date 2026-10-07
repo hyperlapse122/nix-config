@@ -24,6 +24,18 @@
         "sha256": "e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741",
         "hash": "sha256-5eAn5mie/aLjVwqmABefDrsYYygDNQ4VLtbJuX3Pl0E="
       }
+    },
+    "aarch64-darwin": {
+      "codex": {
+        "asset": "codex-aarch64-apple-darwin.tar.gz",
+        "sha256": "670af2b049d9c95afb74d7da385f30c5033d13a07175001dd8958c51944984d0",
+        "hash": "sha256-ZwrysEnZyVr7dNfaOF8wxQM9E6BxdQAd2JWMUZRJhNA="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-aarch64-apple-darwin.tar.gz",
+        "sha256": "6e502df69d9220fa305b0c3c7c17ba8f31ab1d4591fc140084dbb823e800c7db",
+        "hash": "sha256-blAt9p2SIPowWww8fBe6jzGrHUWR/BQAhNu4I+gAx9s="
+      }
     }
   }
 }
