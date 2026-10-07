@@ -8,6 +8,7 @@
     ./host-marker.nix
     ./defaults.nix
     ./homebrew.nix
+    ./fonts.nix
   ];
 
   # nix-darwin applies user-scoped settings, Homebrew included, for this

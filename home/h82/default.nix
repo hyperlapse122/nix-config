@@ -18,6 +18,8 @@ in
     ./agents
   ]
   ++ gui [ ./desktop ]
+  # macOS gets the same terminal configuration, but none of the KDE desktop.
+  ++ lib.optionals (hostKind == "darwin") [ ./desktop/terminal.nix ]
   ++ [
     ./dev
     ./security
