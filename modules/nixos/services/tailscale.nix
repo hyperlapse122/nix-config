@@ -20,7 +20,8 @@ let
   routeLabels = [
     "lan_10"
     "lan_1"
-    "wp_jpi_co_kr"
+    "site_a"
+    "site_b"
   ];
 
   dedupScript = pkgs.writeShellScript "tailscale-dedup-device" (
