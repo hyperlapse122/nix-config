@@ -629,6 +629,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          kubernetes-tools = import ./tests/kubernetes-tools.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           zsh-prezto =
             let
               assertConfiguration =

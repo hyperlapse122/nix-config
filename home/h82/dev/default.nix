@@ -6,6 +6,7 @@
     ./cpp.nix
     ./ghq.nix
     ./git.nix
+    ./kubernetes.nix
     ./rust.nix
     ./swift.nix
     ./tool-environment.nix
