@@ -24,7 +24,9 @@
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
   - the system's nix.conf keeps store auto-optimisation off,
     /etc/nix-config-host records the host and variant, the Brewfile lists the
-    expected casks, and the shared fonts are installed.
+    expected casks, and the shared fonts are installed;
+  - the nix-homebrew setup script is built with autoMigrate on, so the first
+    apply takes over an existing /opt/homebrew instead of stopping.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason.
@@ -165,6 +167,13 @@ let
         casks=$(sed -n 's/^cask "\([^"]*\)".*/\1/p' "$brewfile" | sort | tr '\n' ' ')
         [ "$casks" = ${lib.escapeShellArg "${lib.concatStringsSep " " expectedCasks} "} ] \
           || bad "the Brewfile lists casks: $casks"
+      fi
+      # nix-homebrew renders autoMigrate into this guard as "1" or "".
+      setup=$(grep -o -m1 "/nix/store/[a-z0-9]*-setup-homebrew" "$sys/activate" || true)
+      if [ -z "$setup" ]; then
+        bad "the system activation runs no nix-homebrew setup"
+      elif ! grep -qF 'if [[ -z "1" ]]' "$setup"; then
+        bad "the nix-homebrew setup would stop on an existing Homebrew installation"
       fi
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
         || bad "no fonts under Library/Fonts/Nix Fonts"
