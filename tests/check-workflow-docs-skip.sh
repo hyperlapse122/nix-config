@@ -17,6 +17,7 @@
 #   never lists host names (R19). build-linux does the same for the
 #   non-NixOS outputs and aarch64 fixture checks, and sends aarch64 targets
 #   to the ubuntu-24.04-arm runner so nothing is built under emulation.
+#   build-darwin does the same for macOS outputs and checks, on macos-15.
 # - check-shard-names and check-shards carry the same gate, so every flake
 #   check still builds on every non-docs-only PR and on push now that
 #   flake-check only evaluates. check-shards reads its matrix from
@@ -215,12 +216,26 @@ assert_native_arm() {
   echo "check-workflow-docs-skip: ok - build-linux builds aarch64 targets on the arm runner (KTD13)"
 }
 
+# assert_native_darwin: build-darwin runs on an Apple Silicon macOS runner,
+# the only place an aarch64-darwin output can build.
+assert_native_darwin() {
+  local block
+  block=$(job_block build-darwin "$file")
+  if ! grep -qE '^[[:space:]]*runs-on:[[:space:]]*macos-15[[:space:]]*$' <<<"$block"; then
+    fail "job 'build-darwin' does not run on the macos-15 arm runner"
+  fi
+  echo "check-workflow-docs-skip: ok - build-darwin builds on the macos-15 arm runner"
+}
+
 assert_gated flake-check
 assert_gated hosts
 assert_gated build list
 assert_gated build-linux list
 assert_matrix_from_hosts build targets
 assert_matrix_from_hosts build-linux linux_targets
+assert_gated build-darwin list
+assert_matrix_from_hosts build-darwin darwin_targets
+assert_native_darwin
 assert_native_arm
 assert_gated check-shard-names
 assert_gated check-shards list
