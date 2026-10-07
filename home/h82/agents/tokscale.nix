@@ -17,9 +17,9 @@ let
       inherit pkgs;
       inherit (config.my) hostName;
     }
-    # A non-NixOS host keeps its decrypted tokens in the user's state
-    # directory instead (home/h82/security/non-nixos-secrets.nix).
-    // lib.optionalAttrs (config.my.kind == "linux") {
+    # A non-NixOS host, Linux or macOS, keeps its decrypted tokens in the
+    # user's state directory instead (home/h82/security/non-nixos-secrets.nix).
+    // lib.optionalAttrs (config.my.kind != "nixos") {
       tokenFile = "${config.my.secrets.stateDir}/tokscale_token";
     }
   );

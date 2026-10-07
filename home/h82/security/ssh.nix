@@ -14,10 +14,11 @@ let
   sshConfig = marker + "\n" + body;
 
   # Bootstrap keeps the existing agent until host credentials are provisioned.
-  # A non-NixOS host has no desktop and so no 1Password agent: it uses its own
-  # key, which production activation publishes (non-nixos-secrets.nix).
+  # A non-NixOS host, Linux or macOS, has no 1Password agent the flake sets up:
+  # it uses its own key, which production activation publishes
+  # (non-nixos-secrets.nix).
   body =
-    if config.my.kind == "linux" then
+    if config.my.kind != "nixos" then
       ''
         Host *
           IdentityFile ${config.my.secrets.sshKey}

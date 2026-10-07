@@ -20,7 +20,10 @@ let
     TESTCONTAINERS_RYUK_PRIVILEGED = "true";
   };
 in
-{
+# Rootless Podman is the container runtime on NixOS and Linux hosts. A macOS
+# host runs OrbStack instead, which owns ~/.docker, so none of the Podman
+# socket, Ryuk, or containers/ files apply there.
+lib.mkIf (config.my.kind != "darwin") {
   home.sessionVariables = containerSessionVariables;
 
   systemd.user.sessionVariables = containerSessionVariables;
