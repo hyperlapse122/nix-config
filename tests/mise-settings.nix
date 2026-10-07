@@ -31,6 +31,11 @@
   - with that file installed under a sandboxed $XDG_CONFIG_HOME,
     `mise settings ls --json-extended` reports all_compile as false, sourced
     from mise/config.toml.
+  - the miseReplaceWritableConfig activation entry runs after writeBoundary
+    and before linkGeneration, removes a regular config.toml identical to the
+    generated one (which Home Manager's linker would otherwise leave
+    writable), and keeps the store link. The check runs the entry's own
+    script against the sandboxed $XDG_CONFIG_HOME.
   - the Home Manager warnings name no programs.mise option, so a deprecated
     option name such as enableMutableConfig cannot come back.
 
@@ -61,17 +66,28 @@ let
   assertEntry =
     entry:
     let
-      homeFiles = if entry.user ? home-files then entry.user.home-files else "";
+      homeFiles = entry.user.home-files or "";
       homePath = entry.user.home.path or "";
       forced = lib.any (
         file: (file.target or "") == ".config/mise/config.toml" && (file.force or false)
       ) (lib.attrValues (entry.user.home.file or { }));
-      miseWarnings = lib.filter (lib.hasInfix "programs.mise") (entry.user.warnings or [ ]);
+      forcedFlag = if forced then "1" else "0";
+      miseWarnings = lib.concatStringsSep "\n" (
+        lib.filter (lib.hasInfix "programs.mise") (entry.user.warnings or [ ])
+      );
+      replace = entry.user.home.activation.miseReplaceWritableConfig or { };
+      replaceOrdered =
+        if
+          lib.elem "writeBoundary" (replace.after or [ ]) && lib.elem "linkGeneration" (replace.before or [ ])
+        then
+          "1"
+        else
+          "0";
     in
     ''
-      checkHost ${esc entry.name} ${esc homeFiles} ${esc homePath} ${
-        esc (if forced then "1" else "0")
-      } ${esc (lib.concatStringsSep "\n" miseWarnings)} ${esc pinnedMise}
+      checkHost ${esc entry.name} ${esc homeFiles} ${esc homePath} ${esc forcedFlag} ${esc miseWarnings} ${esc pinnedMise} ${esc (replace.data or "")} ${esc replaceOrdered} ${
+        esc (entry.user.xdg.configHome or "")
+      }
     '';
 in
 pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
@@ -81,6 +97,7 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
 
   checkHost() (
     host=$1 homeFiles=$2 homePath=$3 forced=$4 miseWarnings=$5 pinnedMise=$6
+    replaceScript=$7 replaceOrdered=$8 configHome=$9
     fail() { echo "$host: $*" >> "$failures"; }
 
     if [ -n "$miseWarnings" ]; then
@@ -128,6 +145,27 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
     source=$(jq -r '.all_compile.source // "unset"' <<< "$settings")
     [ "$value" = false ] || fail "all_compile is '$value', expected 'false'"
     [ "$source" = "$installed" ] || fail "all_compile comes from '$source', expected '$installed'"
+
+    # The installed copy is a regular file identical to the generated one: the
+    # state Home Manager's linker would leave writable.
+    if [ -z "$replaceScript" ] || [ -z "$configHome" ]; then
+      fail "home.activation.miseReplaceWritableConfig is missing"
+      exit
+    fi
+    [ "$replaceOrdered" = 1 ] || fail "miseReplaceWritableConfig does not run after writeBoundary and before linkGeneration"
+    runReplace() (
+      run() { "$@"; }
+      VERBOSE_ARG=
+      eval "''${replaceScript//"$configHome"/"$XDG_CONFIG_HOME"}"
+    )
+    runReplace
+    if [ -e "$installed" ] || [ -L "$installed" ]; then
+      fail "miseReplaceWritableConfig left a regular mise/config.toml identical to the generated one"
+      exit
+    fi
+    ln -s "$global" "$installed"
+    runReplace
+    [ -L "$installed" ] || fail "miseReplaceWritableConfig removed the mise/config.toml store link"
   )
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
