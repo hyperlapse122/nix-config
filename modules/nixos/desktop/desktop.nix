@@ -186,22 +186,23 @@
     LANGUAGE=ko:en_US
   '';
 
-  # KColorScheme reads colors from kdeglobals groups and falls back to built-in
-  # light values when they are absent, so ColorScheme=BreezeDark alone leaves
-  # Qt apps light. Append the scheme's color groups from the packaged file.
+  # KColorScheme reads colors from kdeglobals groups and falls back to its
+  # built-in defaults when they are absent, so the ColorScheme name alone does
+  # not set Qt app colors. Append the scheme's color groups from the packaged
+  # file.
   environment.etc."xdg/kdeglobals".source =
     pkgs.runCommand "kdeglobals" { nativeBuildInputs = [ pkgs.gawk ]; }
       ''
         cat > $out <<'EOF'
         [General]
-        ColorScheme=BreezeDark
+        ColorScheme=BreezeLight
         TerminalApplication=ghostty
 
         [Icons]
-        Theme=breeze-dark
+        Theme=breeze
 
         [KDE]
-        LookAndFeelPackage=org.kde.breezedark.desktop
+        LookAndFeelPackage=org.kde.breeze.desktop
 
         [Locale]
         Language=ko:en_US
@@ -209,6 +210,6 @@
         awk '
           /^\[/ { keep = ($0 ~ /^\[(Colors|ColorEffects):/ || $0 == "[WM]") }
           keep { print }
-        ' ${pkgs.kdePackages.breeze}/share/color-schemes/BreezeDark.colors >> $out
+        ' ${pkgs.kdePackages.breeze}/share/color-schemes/BreezeLight.colors >> $out
       '';
 }

@@ -106,7 +106,7 @@ home.activation.kdeTheme = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
 
 `kwrite` is `${pkgs.kdePackages.kconfig}/bin/kwriteconfig6` (`theme.nix:3`). The activation takes about 1.8 s. It needs no display and no `QT_QPA_PLATFORM`.
 
-Regression check: `tests/kde-dark-theme.nix`, registered as `kde-dark-theme` in `flake.nix:728`.
+Regression check: `tests/kde-dark-theme.nix`, registered as `kde-dark-theme` in `flake.nix:728`. The default later moved to Breeze Light with the same two-layer mechanism; the check is now `tests/kde-light-theme.nix` (`kde-light-theme`), which seeds a dark fixture and compares every copied entry.
 
 ## Why This Works
 

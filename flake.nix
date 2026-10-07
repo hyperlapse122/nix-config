@@ -85,7 +85,7 @@
           "desktop-ssh"
           "emoji-font"
           "iphone-restore"
-          "kde-dark-theme"
+          "kde-light-theme"
           "keyd-remap"
           "nix-cleanup"
           "non-nixos-outputs"
@@ -1242,7 +1242,7 @@
           desktop-ssh = import ./tests/desktop-ssh.nix { inherit pkgs self; };
           desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
-          kde-dark-theme = import ./tests/kde-dark-theme.nix { inherit pkgs self; };
+          kde-light-theme = import ./tests/kde-light-theme.nix { inherit pkgs self; };
           emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
           logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
