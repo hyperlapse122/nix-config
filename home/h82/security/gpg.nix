@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   gpgTools = import ../../../packages/gpg-tools.nix { inherit pkgs; };
@@ -57,4 +62,11 @@ in
     disable-ccid
     pcsc-shared
   '';
+
+  # pinentry_mac pre-ticks "Save in Keychain" unless this is false
+  # (AppDelegate.m registers UseKeychain = YES), so saving the card PIN
+  # stays the user's choice on each prompt.
+  targets.darwin.defaults."org.gpgtools.pinentry-mac" = lib.mkIf (config.my.kind == "darwin") {
+    UseKeychain = false;
+  };
 }

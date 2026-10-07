@@ -20,9 +20,10 @@
       type = lib.types.enum [
         "nixos"
         "linux"
+        "darwin"
       ];
       default = "nixos";
-      description = "Whether the host runs NixOS or another Linux distribution.";
+      description = "Whether the host runs NixOS, another Linux distribution, or macOS.";
     };
 
     desktopSSH.publicKey = lib.mkOption {
@@ -50,6 +51,6 @@
     thunderbolt.enable = lib.mkEnableOption "Thunderbolt device authorization through bolt";
     nuphyGem80.enable = lib.mkEnableOption "device access for the NuPhy Gem80 configurator and firmware flashing";
     t3.cli.enable = lib.mkEnableOption "the headless T3 Code `t3` CLI";
-    t3.desktop.enable = lib.mkEnableOption "the T3 Code desktop app (NixOS hosts only)";
+    t3.desktop.enable = lib.mkEnableOption "the T3 Code desktop app (NixOS and macOS hosts only)";
   };
 }

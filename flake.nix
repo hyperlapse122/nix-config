@@ -25,6 +25,14 @@
       url = "github:numtide/system-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Applies the system layer of a macOS host, with Home Manager inside it.
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Installs Homebrew itself on a macOS host, so the first apply needs no
+    # manual Homebrew install; nix-darwin's homebrew module installs the casks.
+    nix-homebrew.url = "github:zhaofengli/nix-homebrew";
     # Boots a foreign distribution's cloud image for the non-NixOS VM check.
     nix-vm-test = {
       url = "github:numtide/nix-vm-test";
@@ -53,20 +61,25 @@
       inherit (nixpkgs) lib;
 
       # Each directory under hosts/ is a host, named by the directory. One that
-      # holds host.nix is a non-NixOS host; every other one is a NixOS host.
+      # holds host.nix is a Linux or macOS host, by the kind host.nix names;
+      # every other one is a NixOS host.
       hosts = import ./lib/hosts.nix { inherit lib; } ./hosts;
 
-      # Both variants of every non-NixOS host, keyed by output name.
-      mkLinuxHost = import ./lib/linux-host.nix { inherit inputs; };
-      linuxHosts = lib.listToAttrs (
-        lib.concatMap (hosts.withVariants (
-          hostName: bootstrap:
-          mkLinuxHost {
-            inherit hostName bootstrap;
-            dir = ./hosts + "/${hostName}";
-          }
-        )) hosts.linux
-      );
+      # Both variants of every host one assembly builds, keyed by output name.
+      variantsOf =
+        mkHost: hostNames:
+        lib.listToAttrs (
+          lib.concatMap (hosts.withVariants (
+            hostName: bootstrap:
+            mkHost {
+              inherit hostName bootstrap;
+              dir = ./hosts + "/${hostName}";
+            }
+          )) hostNames
+        );
+      linuxHosts = variantsOf (import ./lib/linux-host.nix { inherit inputs; }) hosts.linux;
+      darwinHosts = variantsOf (import ./lib/darwin-host.nix { inherit inputs; }) hosts.darwin;
+      darwinFixtures = import ./tests/lib/darwin-fixtures.nix { inherit inputs; };
 
       # The non-NixOS fixture hosts build on their own architecture, so each
       # system's checks carry the fixtures of that system.
@@ -105,6 +118,13 @@
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
       checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+      # Reads what the macOS fixture hosts materialize, so building it builds
+      # both fixture systems; only a macOS builder can.
+      checks.aarch64-darwin.darwin-outputs = import ./tests/darwin-outputs.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit darwinFixtures;
+      };
+      darwinConfigurations = darwinHosts;
 
       nixosConfigurations =
         let
@@ -226,6 +246,38 @@
               ''
                 cp ${./scripts/pinentry-card} ./pinentry-card
                 bash ${./tests/pinentry-card.sh} ./pinentry-card
+                touch $out
+              '';
+          docker-cred-helpers =
+            pkgs.runCommand "docker-cred-helpers-tests" { nativeBuildInputs = [ pkgs.jq ]; }
+              ''
+                bash ${./tests/docker-cred-helpers.sh} ${
+                  pkgs.lib.getExe (import ./packages/docker-cred-helpers.nix { inherit pkgs; })
+                }
+                touch $out
+              '';
+          darwin-config = import ./tests/darwin-config.nix {
+            inherit
+              pkgs
+              self
+              linuxFixtures
+              darwinFixtures
+              ;
+          };
+          pinentry-card-darwin =
+            pkgs.runCommand "pinentry-card-darwin-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.python3
+                  pkgs.bash
+                ];
+              }
+              ''
+                bash ${./tests/pinentry-card-darwin.sh} ${
+                  (import ./packages/gpg-tools.nix { inherit pkgs; }).mkDarwinPinentryCard {
+                    pinentryMac = "/pinentry-mac-stand-in/bin/pinentry-mac";
+                  }
+                }
                 touch $out
               '';
           restore-age-identity =
@@ -1283,7 +1335,11 @@
           };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
-          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; }) install-user-age-identity nr-linux;
+          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; })
+            install-user-age-identity
+            nr-linux
+            nr-darwin
+            ;
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests

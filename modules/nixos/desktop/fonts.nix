@@ -7,15 +7,7 @@ in
 {
   fonts = {
     enableDefaultPackages = true;
-    packages = with pkgs; [
-      pretendard
-      jetbrains-mono
-      nerd-fonts.jetbrains-mono
-      nerd-fonts.d2coding
-      # The CBDT Twemoji build. The OpenType-SVG build draws in color only in
-      # Firefox; Chromium, Qt, and GTK fall back to its monochrome glyphs.
-      twitter-color-emoji
-    ];
+    packages = import ../../shared/font-packages.nix pkgs;
     fontconfig = {
       enable = true;
       # Twemoji follows each primary font so emoji in plain text reach it

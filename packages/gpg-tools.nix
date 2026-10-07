@@ -1,7 +1,7 @@
 { pkgs }:
 
 let
-  pinentryCard = pkgs.stdenvNoCC.mkDerivation {
+  linuxPinentryCard = pkgs.stdenvNoCC.mkDerivation {
     pname = "pinentry-card-wrapper";
     version = "1";
     dontUnpack = true;
@@ -17,6 +17,42 @@ let
     '';
     meta.mainProgram = "pinentry-card";
   };
+
+  # The darwin build: scripts/pinentry-card-darwin in front of a darwin render
+  # of the shared proxy, which it runs as its child.  The shared script is
+  # rendered here rather than edited, because its content feeds the Linux
+  # store path.  `pinentryMac` is the delegate's executable path, so the
+  # checks can render this on Linux with a stand-in.
+  mkDarwinPinentryCard =
+    { pinentryMac }:
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = "pinentry-card-wrapper";
+      version = "1";
+      dontUnpack = true;
+      nativeBuildInputs = [ pkgs.python3 ];
+      installPhase = ''
+        install -Dm644 ${../scripts/pinentry-card} $out/libexec/pinentry-card/pinentry-card-proxy
+        substituteInPlace $out/libexec/pinentry-card/pinentry-card-proxy \
+          --replace-fail '@PINENTRY_QT@' '${pinentryMac}' \
+          --replace-fail '@PINENTRY_CURSES@' '${pinentryMac}' \
+          --replace-fail '@SECRET_TOOL@' '/usr/bin/security' \
+          --replace-fail 'IS_LINUX = True' 'IS_LINUX = False' \
+          --replace-fail 'KEYRING_BACKEND = "secret-tool"' 'KEYRING_BACKEND = "security"'
+        install -Dm755 ${../scripts/pinentry-card-darwin} $out/bin/pinentry-card
+        ln -s pinentry-card $out/bin/pinentry
+        substituteInPlace $out/bin/pinentry-card \
+          --replace-fail '@PINENTRY_CARD_PROXY@' "$out/libexec/pinentry-card/pinentry-card-proxy" \
+          --replace-fail '@SECURITY@' '/usr/bin/security'
+        patchShebangs $out/bin/pinentry-card
+      '';
+      meta.mainProgram = "pinentry-card";
+    };
+
+  pinentryCard =
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      mkDarwinPinentryCard { pinentryMac = pkgs.lib.getExe pkgs.pinentry_mac; }
+    else
+      linuxPinentryCard;
 
   restoreAgeIdentity = pkgs.stdenvNoCC.mkDerivation {
     pname = "restore-age-identity";
@@ -49,5 +85,10 @@ let
   };
 in
 {
-  inherit pinentryCard restoreAgeIdentity installUserAgeIdentity;
+  inherit
+    pinentryCard
+    mkDarwinPinentryCard
+    restoreAgeIdentity
+    installUserAgeIdentity
+    ;
 }

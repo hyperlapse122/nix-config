@@ -11,6 +11,6 @@
     ./swift.nix
     ./tool-environment.nix
   ]
-  # VSCodium is a desktop application; non-NixOS hosts get no desktop.
-  ++ lib.optionals (hostKind == "nixos") [ ./vscodium.nix ];
+  # VSCodium is a desktop application; non-NixOS Linux hosts get no desktop.
+  ++ lib.optionals (hostKind != "linux") [ ./vscodium.nix ];
 }

@@ -26,9 +26,11 @@
   lib/linux-host.nix with my.t3.desktop.enable forced on, Home Manager
   refuses to evaluate, while the fixture as declared evaluates. Home Manager
   throws on a failed assertion before its output can be read, so
-  home/h82/t3code.nix is also evaluated on its own: on a non-NixOS kind its
-  assertion reports that the desktop app is NixOS-only and the desktop
-  package is not added; on NixOS nothing fails and the package is added.
+  home/h82/t3code.nix is also evaluated on its own: on a non-NixOS Linux kind
+  its assertion reports that the desktop app runs on NixOS and macOS only and
+  the desktop package is not added; on NixOS nothing fails and the package is
+  added; on macOS nothing fails, the package is added, and a launchd agent
+  sets T3CODE_DISABLE_AUTO_UPDATE=1 for GUI launches, which NixOS does not get.
 
   Every failure is collected in one build and names the configuration.
 */
@@ -69,7 +71,7 @@ let
     } ${lib.boolToString (cliEnabled entry.config)} ${lib.boolToString (desktopEnabled entry.config)}
   '';
 
-  desktopMessage = "the T3 Code desktop app is NixOS-only";
+  desktopMessage = "the T3 Code desktop app runs on NixOS and macOS only";
 
   # Home Manager throws on a failed assertion before any part of the output
   # can be read, so an assembled fixture can only show that evaluation is
@@ -120,6 +122,10 @@ let
                 type = lib.types.listOf lib.types.package;
                 default = [ ];
               };
+              options.launchd.agents = lib.mkOption {
+                type = lib.types.attrsOf lib.types.unspecified;
+                default = { };
+              };
               config.my = {
                 hostName = "probe";
                 inherit kind;
@@ -132,12 +138,25 @@ let
     {
       failed = map (a: a.message) (lib.filter (a: !a.assertion) config.assertions);
       desktopInstalled = lib.elem "t3code-desktop" (map lib.getName config.home.packages);
+      updaterOff =
+        let
+          agent = config.launchd.agents.t3code-disable-auto-update or { };
+        in
+        (agent.enable or false)
+        &&
+          (agent.config.ProgramArguments or [ ]) == [
+            "/bin/launchctl"
+            "setenv"
+            "T3CODE_DISABLE_AUTO_UPDATE"
+            "1"
+          ];
     };
 
   assertModule =
     let
       linux = moduleOn "linux";
       nixos = moduleOn "nixos";
+      darwin = moduleOn "darwin";
     in
     lib.concatStrings [
       (lib.optionalString (!lib.any (lib.hasInfix desktopMessage) linux.failed) (
@@ -151,6 +170,18 @@ let
       ))
       (lib.optionalString (!nixos.desktopInstalled) (
         fail "NixOS with my.t3.desktop.enable: the T3 Code desktop package is not added"
+      ))
+      (lib.optionalString nixos.updaterOff (
+        fail "NixOS with my.t3.desktop.enable: the macOS updater-off launchd agent is declared"
+      ))
+      (lib.optionalString (darwin.failed != [ ]) (
+        fail "macOS with my.t3.desktop.enable: assertions fail: ${builtins.toJSON darwin.failed}"
+      ))
+      (lib.optionalString (!darwin.desktopInstalled) (
+        fail "macOS with my.t3.desktop.enable: the T3 Code desktop package is not added"
+      ))
+      (lib.optionalString (!darwin.updaterOff) (
+        fail "macOS with my.t3.desktop.enable: no launchd agent runs launchctl setenv T3CODE_DISABLE_AUTO_UPDATE 1, so the copied app can update itself off the nightly pin"
       ))
     ];
 in

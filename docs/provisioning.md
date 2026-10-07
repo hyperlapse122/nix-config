@@ -1,6 +1,6 @@
 # Authentication preparation and recovery
 
-Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS desktops, routine configuration applies use the root-only age identity inside LUKS. SSH prefers the host's own key, unlocked through KWallet, and automatically falls back to selected 1Password keys. Automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host).
+Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS desktops, routine configuration applies use the root-only age identity inside LUKS. SSH prefers the host's own key, unlocked through KWallet, and automatically falls back to selected 1Password keys. Automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host). A macOS host does the same, and its card PIN can be saved in the macOS Keychain; see [YubiKey PIN on macOS](#yubikey-pin-on-macos).
 
 ## Before erasing the existing OS
 
@@ -61,9 +61,9 @@ Use the same command for later applies. It works with the YubiKey disconnected o
 
 ## Recover once on a non-NixOS host
 
-A non-NixOS host keeps its age identity in the user's home, not under `/var/lib/sops-nix`. Recover it once, after the bootstrap output is applied. [Adding a host](adding-a-host.md#first-setup-on-the-machine) gives the full first-setup order.
+A non-NixOS host keeps its age identity in the user's home, not under `/var/lib/sops-nix`. Recover it once, after the bootstrap output is applied. [Adding a host](adding-a-host.md#first-setup-on-the-machine) gives the full first-setup order. A macOS host recovers its identity the same way; its first-setup order is in [first setup on the Mac](adding-a-host.md#first-setup-on-the-mac).
 
-The bootstrap user environment installs the public GPG key, the card tools, and `install-user-age-identity`, and the bootstrap system layer runs pcscd. With a YubiKey inserted, run the recovery helper from the clone in user mode. User mode needs `--host`, because the distribution owns the hostname:
+The bootstrap user environment installs the public GPG key, the card tools, and `install-user-age-identity`, and on Linux the bootstrap system layer runs pcscd. On macOS, GPG reaches the card through the system's own PC/SC framework, with no pcscd. With a YubiKey inserted, run the recovery helper from the clone in user mode. User mode needs `--host`, because the distribution owns the hostname:
 
 ```sh
 ./scripts/recover-age-identity --user --host <host>
@@ -77,13 +77,15 @@ Then apply the production output:
 nr switch
 ```
 
+On a macOS host, `nr` refuses to move from a bootstrap generation to production unless you name the host, so the first production apply there is `nr switch --host <host>`.
+
 Production activation checks the identity before it changes any link. When the identity is missing, has the wrong owner or mode, or cannot decrypt the secrets, the apply stops, names the file and the recovery command, and prints no secret. On success it publishes:
 
 - the tokens in `~/.local/state/cli-auth/` (directory 0700, files 0400);
 - the gh and glab configuration, through `publish-cli-auth`;
 - the host's SSH key at `~/.ssh/id_ed25519_nix_config` (mode 0600).
 
-Later applies need no card. The identity and the published files are plaintext on disk, so their protection rests on the distribution's disk encryption.
+Later applies need no card. The identity and the published files are plaintext on disk, so their protection rests on the distribution's disk encryption, or on FileVault on a Mac.
 
 ## Git signing and SSH
 
@@ -101,6 +103,18 @@ unset card_serial
 ```
 
 Each card serial must match the value that `gpg --card-status` reports with that card inserted. Routine rebuilds work without any of these registrations.
+
+### YubiKey PIN on macOS
+
+A macOS host has no Secret Service, so the PIN entries above do not exist there. gpg-agent's pinentry is `scripts/pinentry-card-darwin`, a filter in front of the same `pinentry-card` proxy, with `pinentry_mac` as the prompt. The filter gives `pinentry_mac` a key id derived from the card serial, `n/gnupg-card-pin-<serial>`, so the native PIN dialog offers a "Save in Keychain" checkbox. The checkbox starts unticked on every prompt, because the configuration sets `UseKeychain` to false in the `org.gpgtools.pinentry-mac` defaults.
+
+When you tick it, `pinentry_mac` saves that card's PIN in the login Keychain, with service `GnuPG` and account `gnupg-card-pin-<serial>`, and answers later prompts for that card from the Keychain without a dialog. Each card has its own item, as each has its own Secret Service entry on NixOS. When the card rejects a PIN, the filter deletes that card's item and the next prompt shows the dialog; a saved PIN is never offered to the card a second time. After a nixpkgs update changes `pinentry_mac`'s store path, macOS may ask once whether the new `pinentry_mac` may read the saved item.
+
+To remove a saved PIN by hand, for example before handing a card to someone else, delete its Keychain item:
+
+```sh
+security delete-generic-password -s GnuPG -a gnupg-card-pin-<serial>
+```
 
 Sign in to the 1Password app once and enable the SSH agent under Settings > Developer for fallback destinations. The repository preserves the key selection in `~/.config/1Password/ssh/agent.toml`. The user signs in, unlocks the app, and approves fallback SSH requests. Bootstrap configurations still use `IdentityAgent ~/.1password/agent.sock` directly; production desktops use the host-first path described below. In the same Settings > Developer pane, turn on "Integrate with 1Password CLI" once; that toggle is what lets `op` authorize through the desktop app instead of asking for a manual `op signin`, and no build-time check can reach it. `op` authorizes only inside a desktop session with a running PolKit agent, so it does not work over plain SSH, on a tty, or from a systemd unit.
 
@@ -130,7 +144,7 @@ If both authentication paths fail, unlock KWallet or 1Password as appropriate an
 
 ## SSH key on a non-NixOS host
 
-A non-NixOS host has no desktop and so no 1Password agent. Each one has its own SSH key instead, stored encrypted in `secrets/hosts/<host>/ssh.yaml`. Production activation publishes it at `~/.ssh/id_ed25519_nix_config`, a name that never clobbers a key you made. `~/.ssh/config` names it with `IdentityFile ~/.ssh/id_ed25519_nix_config` and names no agent socket. [Adding a host](adding-a-host.md#create-the-host-ssh-key-file) creates the key.
+A non-NixOS host has no desktop and so no 1Password agent. A macOS host is set up the same way. Each one has its own SSH key instead, stored encrypted in `secrets/hosts/<host>/ssh.yaml`. Production activation publishes it at `~/.ssh/id_ed25519_nix_config`, a name that never clobbers a key you made. `~/.ssh/config` names it with `IdentityFile ~/.ssh/id_ed25519_nix_config` and names no agent socket. [Adding a host](adding-a-host.md#create-the-host-ssh-key-file) creates the key.
 
 Registering the public key stays manual. After the first production apply, print it:
 
@@ -142,7 +156,7 @@ Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_ke
 
 ## Compromise or decommission of a non-NixOS host
 
-Follow these steps when a non-NixOS host is lost, compromised, or retired. Its identity and SSH key are plaintext on its disk, so treat everything that host could decrypt as exposed.
+Follow these steps when a non-NixOS host or a macOS host is lost, compromised, or retired. Its identity and SSH key are plaintext on its disk, so treat everything that host could decrypt as exposed.
 
 1. Revoke its SSH public key on GitHub and remove it from every server's `authorized_keys`.
 2. Remove the host's recipient from the `secrets/tokens.yaml` rule in `.sops.yaml`. On a machine that can still decrypt, re-encrypt the file to the remaining recipients, then replace its data key:
@@ -237,7 +251,7 @@ The ChatGPT app is x86_64-only and installed on NixOS hosts only, with the other
 
 T3 Code tracks the upstream nightly channel. `packages/t3code-release.json` pins one nightly release for both artifacts, and the dependency workflow bumps it with `t3code-release`, which takes the newest GitHub prerelease tagged `v<semver>-nightly.<date>.<build>` and skips stable and preview builds. A host opts in with two traits (see [Adding a host](adding-a-host.md)):
 
-- `my.t3.desktop.enable` installs the desktop app (`packages/t3code.nix`), an `appimageTools` wrapper, on NixOS hosts only. The wrapper sets `T3CODE_DISABLE_AUTO_UPDATE=1`, so the app never updates itself, and points `CONTAINER_HOST` at the session Podman socket, as Orca's does, so a container started by an agent inside its sandbox cannot disturb the host Podman service.
+- `my.t3.desktop.enable` installs the desktop app (`packages/t3code.nix`), on NixOS and macOS hosts only. On NixOS it is an `appimageTools` wrapper. The wrapper sets `T3CODE_DISABLE_AUTO_UPDATE=1`, so the app never updates itself, and points `CONTAINER_HOST` at the session Podman socket, as Orca's does, so a container started by an agent inside its sandbox cannot disturb the host Podman service. On macOS it is the nightly release's app bundle, `T3 Code (Nightly).app`, which Home Manager copies into `~/Applications/Home Manager Apps`. That copy is writable, so a launchd agent runs `launchctl setenv T3CODE_DISABLE_AUTO_UPDATE 1` at login to keep the app from updating itself off the pin.
 - `my.t3.cli.enable` installs the headless `t3` server (`packages/t3code-cli.nix`), patched to run without nix-ld so it also works on non-NixOS hosts. It updates only when you run `t3 update`, which installs an unmanaged runtime under `~/.t3`; let the flake pin move it instead.
 
 T3 Code's own settings, under `~/.t3/userdata/`, stay app-managed. It starts the `codex` and `claude` it finds on `PATH` with the user's `~/.codex` and `~/.claude`, so its sessions get the shared agent instructions and plugins below without a separate copy, and it gives each session its orchestration tools through its own `t3-code` MCP server.
@@ -308,6 +322,8 @@ Removing every enrolled finger is a required step before a host with the `my.fin
 
 Rootless Podman is configured declaratively in `modules/nixos/services/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`. A non-NixOS host gets no Podman from the flake, only the registry search, `auth.json`, and the credential helper. There the helper reads `~/.local/state/cli-auth/` instead, and `docker.io` pulls stay anonymous, because that host never publishes `docker_token`. A Podman you install there may also need the Ubuntu 24.04 AppArmor user-namespace setting in [adding a host](adding-a-host.md#first-setup-on-the-machine).
 
+A macOS host runs containers through OrbStack, a Homebrew cask, and gets no Podman. Its production activation merges `credHelpers` entries into `~/.docker/config.json`, so OrbStack's `docker` CLI asks the same credential helper, which reads `~/.local/state/cli-auth/`. Docker Hub is keyed there as `https://index.docker.io/v1/`, the address that `docker` asks for. As on a non-NixOS Linux host, `docker_token` is never published, so `docker.io` pulls stay anonymous.
+
 Supported registries:
 
 - `ghcr.io` (authenticated via `github_token`)
@@ -337,5 +353,7 @@ Supported registries:
 `home/h82/dev/vscodium.nix` installs VSCodium through Home Manager's `programs.vscodium`, with `codium` and a `code` wrapper on `PATH`, `nixd`, and the Nix IDE and Biome extensions. Other extensions, including GitHub Copilot and GitLens, stay user-installed from Open VSX; their settings are declared anyway and apply once they are installed. The extensions directory stays writable for them.
 
 VSCodium owns `~/.config/VSCodium/User/settings.json`, so activation runs the same `agent-settings` merger as Claude Code. It reasserts the settings ported from the legacy dotfiles, and leaves every other key as VSCodium wrote it, including keys VSCodium or an extension adds inside a declared object such as `[nix]` or `json.schemaDownload.trustedDomains`. Array settings, such as `todo-tree.general.tags`, are reasserted whole. As with Claude Code, a declared value returns only on a rebuild that produces a new Home Manager generation. The merger reads plain JSON only: a comment or trailing comma in `settings.json` makes it refuse the file and fail the rebuild, naming the file, until the comment is removed.
+
+On macOS, VSCodium's user directory is `~/Library/Application Support/VSCodium/User` instead of `~/.config/VSCodium/User`, for both files.
 
 `~/.config/VSCodium/User/keybindings.json` is a read-only store link, forced over the regular file the legacy dotfiles left there. A keybinding added through VSCodium's keyboard shortcuts editor cannot be saved; add it to `home/h82/dev/vscodium.nix` instead.

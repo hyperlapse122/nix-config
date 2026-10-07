@@ -49,15 +49,25 @@ let
     accounts.jpi
   ];
 
+  registries = import ../../../modules/shared/cli-registries.nix {
+    dir = cfg.stateDir;
+    users = accounts;
+  };
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    routingTable = import ../../../modules/shared/cli-registries.nix {
-      dir = cfg.stateDir;
-      users = accounts;
-    };
+    # The docker CLI OrbStack ships asks for Docker Hub under its legacy index
+    # address rather than docker.io.
+    routingTable =
+      registries
+      // lib.optionalAttrs (config.my.kind == "darwin") {
+        ${import ../../../modules/shared/docker-hub-index.nix} = registries."docker.io";
+      };
   };
 
-  active = config.my.kind == "linux" && !config.my.bootstrap;
+  # Linux and macOS hosts alike: neither has the NixOS system unit that
+  # decrypts secrets with a root-owned identity.
+  nonNixos = config.my.kind != "nixos";
+  active = nonNixos && !config.my.bootstrap;
 in
 {
   options.my.secrets = {
@@ -91,7 +101,7 @@ in
   };
 
   config = lib.mkMerge [
-    (lib.mkIf (config.my.kind == "linux") {
+    (lib.mkIf nonNixos {
       # Needed from the bootstrap output on, since recovery runs there.
       home.packages = [
         gpgTools.installUserAgeIdentity

@@ -1,10 +1,11 @@
-# The hosts under a hosts/ directory, split by kind. A directory that holds
-# host.nix is a non-NixOS host; every other one is a NixOS host. Host
-# discovery in flake.nix and every check that enumerates hosts share this, so
-# they all agree on which hosts have a NixOS system, and with it a disk layout.
+# The hosts under a hosts/ directory, split by kind. A directory without
+# host.nix is a NixOS host; one with host.nix is the kind its `kind` field
+# names, `linux` or `darwin`. Host discovery in flake.nix and every check that
+# enumerates hosts share this, so they all agree on which hosts have a NixOS
+# system, and with it a disk layout.
 #
 #   hosts = import ./lib/hosts.nix { inherit lib; } ./hosts;
-#   -> { all, nixos, linux, withVariants }
+#   -> { all, nixos, linux, darwin, withVariants }
 #
 # withVariants build hostName gives the production and bootstrap output of one
 # host as name/value pairs for listToAttrs, calling build hostName bootstrap.
@@ -12,12 +13,17 @@
 dir:
 let
   all = import ../tests/lib/directories.nix { inherit lib; } dir;
-  isLinux = hostName: builtins.pathExists (dir + "/${hostName}/host.nix");
+  hasHostFile = hostName: builtins.pathExists (dir + "/${hostName}/host.nix");
+  isDarwin =
+    hostName: hasHostFile hostName && (import (dir + "/${hostName}/host.nix")).kind or null == "darwin";
 in
 {
   inherit all;
-  nixos = lib.filter (hostName: !isLinux hostName) all;
-  linux = lib.filter isLinux all;
+  nixos = lib.filter (hostName: !hasHostFile hostName) all;
+  # Any other kind a host.nix names lands here, so the Linux assembly rejects
+  # it by name rather than the host silently disappearing.
+  linux = lib.filter (hostName: hasHostFile hostName && !isDarwin hostName) all;
+  darwin = lib.filter isDarwin all;
 
   withVariants =
     build: hostName:

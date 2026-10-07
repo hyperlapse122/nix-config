@@ -17,6 +17,7 @@
 #   never lists host names (R19). build-linux does the same for the
 #   non-NixOS outputs and aarch64 fixture checks, and sends aarch64 targets
 #   to the ubuntu-24.04-arm runner so nothing is built under emulation.
+#   build-darwin does the same for macOS outputs and checks, on macos-15.
 # - check-shard-names and check-shards carry the same gate, so every flake
 #   check still builds on every non-docs-only PR and on push now that
 #   flake-check only evaluates. check-shards reads its matrix from
@@ -215,12 +216,47 @@ assert_native_arm() {
   echo "check-workflow-docs-skip: ok - build-linux builds aarch64 targets on the arm runner (KTD13)"
 }
 
+# assert_native_darwin: build-darwin runs on an Apple Silicon macOS runner,
+# the only place an aarch64-darwin output can build.
+assert_native_darwin() {
+  local block
+  block=$(job_block build-darwin "$file")
+  if ! grep -qE '^[[:space:]]*runs-on:[[:space:]]*macos-15[[:space:]]*$' <<<"$block"; then
+    fail "job 'build-darwin' does not run on the macos-15 arm runner"
+  fi
+  echo "check-workflow-docs-skip: ok - build-darwin builds on the macos-15 arm runner"
+}
+
+# assert_darwin_targets: the hosts job feeds every macOS host's two systems and
+# every aarch64-darwin check into darwin_targets, the only path by which the
+# macOS-only checks run at all, and build-darwin splits each entry with
+# globbing off so a target name is never expanded as a pattern.
+assert_darwin_targets() {
+  local hosts build
+  hosts=$(job_block hosts "$file")
+  build=$(job_block build-darwin "$file")
+  if ! grep -qF 'map (n: "checks.aarch64-darwin.${n}") (builtins.attrNames flake.checks.aarch64-darwin)' <<<"$hosts"; then
+    fail "job 'hosts' does not list the aarch64-darwin checks in darwin_targets"
+  fi
+  if ! grep -qF 'darwinConfigurations.${n}.system darwinConfigurations.${n}-bootstrap.system' <<<"$hosts"; then
+    fail "job 'hosts' does not list both variants of each macOS host in darwin_targets"
+  fi
+  if ! grep -qE '^[[:space:]]*set -f[[:space:]]*$' <<<"$build"; then
+    fail "job 'build-darwin' splits its target without turning globbing off"
+  fi
+  echo "check-workflow-docs-skip: ok - darwin_targets carries the macOS hosts and checks"
+}
+
 assert_gated flake-check
 assert_gated hosts
 assert_gated build list
 assert_gated build-linux list
 assert_matrix_from_hosts build targets
 assert_matrix_from_hosts build-linux linux_targets
+assert_gated build-darwin list
+assert_matrix_from_hosts build-darwin darwin_targets
+assert_native_darwin
+assert_darwin_targets
 assert_native_arm
 assert_gated check-shard-names
 assert_gated check-shards list

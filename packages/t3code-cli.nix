@@ -4,11 +4,14 @@ let
   inherit (pkgs) lib;
   source = builtins.fromJSON (builtins.readFile ./t3code-release.json);
   system = pkgs.stdenv.hostPlatform.system;
-  # Missing on a system the pin does not cover; meta.platforms then refuses
-  # the package by name rather than failing on a missing attribute.
-  pin = (source.platforms.${system} or source.platforms.x86_64-linux).cli;
+  inherit (pkgs.stdenv.hostPlatform) isLinux;
+  pin =
+    (source.platforms.${system}
+      or (throw "packages/t3code-release.json pins no t3code-cli asset for ${system}")
+    ).cli;
   # The tarball's single top-level directory, and the Node platform key
-  # (`linux-x64`, `linux-arm64`) its native addons are built for.
+  # (`linux-x64`, `linux-arm64`, `darwin-arm64`) its native addons are built
+  # for.
   topLevel = lib.removeSuffix ".tar.gz" pin.asset;
   platformKey = lib.removePrefix "t3-${source.version}-" topLevel;
 in
@@ -23,15 +26,16 @@ pkgs.stdenv.mkDerivation {
 
   sourceRoot = topLevel;
 
-  nativeBuildInputs = [
-    pkgs.autoPatchelfHook
+  # The darwin tarball's Mach-O binaries link only system libraries, so only
+  # the Linux build is patched.
+  nativeBuildInputs = lib.optional isLinux pkgs.autoPatchelfHook ++ [
     pkgs.file
     pkgs.writableTmpDirAsHomeHook
   ];
 
   # libstdc++, libgcc_s, and libatomic for the Node binary and node-pty; every
   # other library the binaries need is glibc's.
-  buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+  buildInputs = lib.optional isLinux pkgs.stdenv.cc.cc.lib;
 
   # `t3` is a Node single-executable application whose bundle lives in the
   # non-allocated `.note.node.sea` section; strip would remove it. patchelf
@@ -75,9 +79,10 @@ pkgs.stdenv.mkDerivation {
 
   # postFixup runs before the postFixupHooks array the hook registers itself
   # in, so restoring there would precede the patching. The hook is disabled
-  # and run here instead, ahead of the restore.
+  # and run here instead, ahead of the restore. On darwin nothing is patched,
+  # and file(1) reports no static-pie Mach-O, so nothing was set aside.
   dontAutoPatchelf = true;
-  postFixup = ''
+  postFixup = lib.optionalString isLinux ''
     autoPatchelf -- "$out"
     (cd "$TMPDIR/static-pie" && find . -type f -print0 | while IFS= read -r -d "" file; do
       install -Dm755 "$file" "$out/libexec/t3code/$file"

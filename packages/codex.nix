@@ -4,9 +4,9 @@ let
   inherit (pkgs) lib;
   source = builtins.fromJSON (builtins.readFile ./codex-release.json);
   system = pkgs.stdenv.hostPlatform.system;
-  # Missing on a system the pin does not cover; meta.platforms then refuses
-  # the package by name rather than failing on a missing attribute.
-  platform = source.platforms.${system} or source.platforms.x86_64-linux;
+  platform =
+    source.platforms.${system}
+      or (throw "packages/codex-release.json pins no codex asset for ${system}");
   fetchAsset =
     version: pin:
     pkgs.fetchurl {
@@ -19,8 +19,8 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "codex";
   inherit (source) version;
 
-  # The musl builds are statically linked, so they run on NixOS and other
-  # distributions unpatched.
+  # The Linux musl builds are statically linked, so they run on NixOS and
+  # other distributions unpatched.
   srcs = [
     (fetchAsset finalAttrs.version platform.codex)
     (fetchAsset finalAttrs.version platform.codeModeHost)
@@ -40,6 +40,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   # outside the store; nixpkgs patches it off, which a prebuilt pin cannot.
   # Codex spawns codex-code-mode-host from beside its own executable, never
   # from PATH, so the host sits next to the real binary, not in bin/.
+  # bubblewrap is Codex's Linux sandbox; on macOS it uses Seatbelt instead.
   installPhase = ''
     runHook preInstall
 
@@ -47,10 +48,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     install -Dm755 ${binaryOf platform.codeModeHost} $out/libexec/codex/codex-code-mode-host
     makeWrapper $out/libexec/codex/codex $out/bin/codex \
       --prefix PATH : ${
-        lib.makeBinPath [
-          pkgs.ripgrep
-          pkgs.bubblewrap
-        ]
+        lib.makeBinPath ([ pkgs.ripgrep ] ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.bubblewrap)
       } \
       --add-flags "-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start"
 

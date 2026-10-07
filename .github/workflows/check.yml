@@ -185,27 +185,41 @@ jobs:
     outputs:
       targets: ${{ steps.list.outputs.targets }}
       linux_targets: ${{ steps.list.outputs.linux_targets }}
+      darwin_targets: ${{ steps.list.outputs.darwin_targets }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
       - name: List host configurations
         id: list
         run: |
-          targets=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames)
-          echo "targets=$targets" >> "$GITHUB_OUTPUT"
-          # Non-NixOS outputs, each with the system it builds for, plus the
-          # aarch64 fixture checks that nix flake check on x86_64 cannot build.
-          # One evaluation of the flake lists all three.
-          linux_targets=$(nix eval --impure --json --expr '
+          # One evaluation of the flake lists every matrix:
+          # - targets: the NixOS hosts;
+          # - linux_targets: each non-NixOS output with the system it builds
+          #   for, plus the aarch64 fixture checks that nix flake check on
+          #   x86_64 cannot build;
+          # - darwin_targets: per macOS host, both variants' systems in one
+          #   entry so one runner builds the shared closure once, plus the
+          #   macOS fixture checks.
+          lists=$(nix eval --impure --json --expr '
             let
               flake = builtins.getFlake (toString ./.);
               list = set: attrOf: systemOf:
                 map (n: { attr = attrOf n; system = systemOf set.${n}; }) (builtins.attrNames set);
-            in
-            list flake.homeConfigurations (n: "homeConfigurations.${n}.activationPackage") (h: h.activationPackage.system)
-            ++ list flake.systemConfigs (n: "systemConfigs.${n}") (s: s.system)
-            ++ list flake.checks.aarch64-linux (n: "checks.aarch64-linux.${n}") (_: "aarch64-linux")')
-          echo "linux_targets=$linux_targets" >> "$GITHUB_OUTPUT"
+              darwinHosts = builtins.filter (n: builtins.match ".*-bootstrap" n == null)
+                (builtins.attrNames flake.darwinConfigurations);
+            in {
+              targets = builtins.attrNames flake.nixosConfigurations;
+              linux_targets =
+                list flake.homeConfigurations (n: "homeConfigurations.${n}.activationPackage") (h: h.activationPackage.system)
+                ++ list flake.systemConfigs (n: "systemConfigs.${n}") (s: s.system)
+                ++ list flake.checks.aarch64-linux (n: "checks.aarch64-linux.${n}") (_: "aarch64-linux");
+              darwin_targets =
+                map (n: "darwinConfigurations.${n}.system darwinConfigurations.${n}-bootstrap.system") darwinHosts
+                ++ map (n: "checks.aarch64-darwin.${n}") (builtins.attrNames flake.checks.aarch64-darwin);
+            }')
+          for key in targets linux_targets darwin_targets; do
+            echo "$key=$(jq -c --arg key "$key" '.[$key]' <<<"$lists")" >> "$GITHUB_OUTPUT"
+          done
 
   build:
     needs: [changes, hosts]
@@ -256,3 +270,28 @@ jobs:
         env:
           ATTR: ${{ matrix.target.attr }}
         run: nix build --no-link ".#${ATTR}"
+
+  build-darwin:
+    needs: [changes, hosts]
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
+    # macOS outputs build on an Apple Silicon runner; nothing is activated.
+    runs-on: macos-15
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.hosts.outputs.darwin_targets) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+      - name: Build macOS output
+        # The target comes from the hosts job, so it reaches the shell as
+        # data rather than being spliced into the script. One entry may name
+        # several attributes, separated by spaces.
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -f
+          args=()
+          for attr in $TARGET; do args+=(".#$attr"); done
+          nix build --no-link --print-build-logs "${args[@]}"

@@ -11,7 +11,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "mise";
   inherit (source) version;
 
-  # The musl build is statically linked, so it runs on NixOS unpatched.
+  # The Linux musl build is statically linked, so it runs on NixOS unpatched.
   src = pkgs.fetchurl {
     url = "https://github.com/jdx/mise/releases/download/v${finalAttrs.version}/mise-v${finalAttrs.version}-${asset.asset}.tar.gz";
     inherit (asset) hash;

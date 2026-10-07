@@ -26,7 +26,6 @@ grep -qF 'IS_LINUX = True' "$wrapper" || fail 'production wrapper is not Linux-o
 grep -qF 'KEYRING_BACKEND = "secret-tool"' "$wrapper" || fail 'production wrapper does not use Secret Service'
 pass 'production wrapper syntax and safety constants are present'
 rendered_gnome="$wrapper"
-rendered_darwin="$wrapper"
 
 # ---------------------------------------------------------------------------
 # BEHAVIOR half: fake delegate, stub keyring commands
@@ -140,10 +139,8 @@ SHIM
 
 gnome_log="$scratch/gnome-delegate.log"
 fallback_log="$scratch/fallback-delegate.log"
-darwin_log="$scratch/darwin-delegate.log"
 make_delegate_shim fake-gnome-delegate gnome "$gnome_log"
 make_delegate_shim fake-fallback-delegate fallback "$fallback_log"
-make_delegate_shim fake-darwin-delegate darwin "$darwin_log"
 
 # secret-tool lookup|clear service gnupg-card-pin username <serial>
 keyring_dir="$scratch/keyring"
@@ -215,22 +212,6 @@ card_desc() {
   fi
 }
 
-# security find-generic-password -s gnupg-card-pin -a <serial> -w
-stored_pin_b64=$(printf '%s' "$stored_pin" | "$base64_bin" | "$tr_bin" -d '\n')
-stored_pin_hex=$("$python3_bin" -c "import sys; sys.stdout.write(sys.argv[1].encode().hex())" "$stored_pin")
-cat >"$scratch/bin/security" <<STUB
-#!$bash_bin
-mode=\${KEYRING_STUB_MODE:-base64}
-serial=\$5
-if [[ "\$serial" != "$stored_serial" ]]; then exit 1; fi
-case "\$mode" in
-  base64) printf 'go-keyring-base64:%s' "$stored_pin_b64"; exit 0 ;;
-  hex) printf 'go-keyring-encoded:%s' "$stored_pin_hex"; exit 0 ;;
-  locked) echo 'keychain is locked' >&2; exit 44 ;;
-esac
-STUB
-chmod +x "$scratch/bin/security"
-
 # Behaviour fixtures: retarget the absolute delegate path(s) to the scratch
 # shims above, and shrink the 5-second keyring bound to 1 second (pinned at
 # its real value by the render half above).
@@ -246,12 +227,6 @@ sed \
   -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/secret-tool\"#" \
   -e 's/KEYRING_LOOKUP_TIMEOUT = 5/KEYRING_LOOKUP_TIMEOUT = 1/' \
   "$rendered_gnome" >"$scratch/functional-fallback.py"
-sed \
-  -e "s#^DELEGATE_PATH = .*#DELEGATE_PATH = \"$scratch/bin/fake-darwin-delegate\"#" \
-  -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/security\"#" \
-  -e 's/KEYRING_BACKEND = "secret-tool"/KEYRING_BACKEND = "security"/' \
-  -e 's/KEYRING_LOOKUP_TIMEOUT = 5/KEYRING_LOOKUP_TIMEOUT = 1/' \
-  "$rendered_darwin" >"$scratch/functional-darwin.py"
 
 run_wrapper() {
   # run_wrapper <functional.py> <stdin-text> <out-file> <err-file> [env NAME=value ...]
@@ -365,8 +340,8 @@ assert_contains "$gnome_log" 'GETPIN' '5d encoded-newline-in-prompt'
 assert_not_contains "$out" "D $stored_pin_encoded" '5d encoded-newline-in-prompt'
 pass '5d: an encoded newline in SETPROMPT fails the exact PIN match and passes through'
 
-# macOS keychain decoding remains covered by the source behavior oracle; this
-# Nix wrapper is Linux-only, so the platform-specific fixture is omitted here.
+# The macOS Keychain backend is covered by tests/pinentry-card-darwin.sh,
+# which runs the darwin render behind its front-stage filter.
 
 # 7. Stdin closes while the delegate is inside GETPIN: the delegate is
 #    terminated and the wrapper exits (bounded, not left hanging).

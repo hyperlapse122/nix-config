@@ -18,6 +18,8 @@ in
     ./agents
   ]
   ++ gui [ ./desktop ]
+  # macOS gets the same terminal configuration, but none of the KDE desktop.
+  ++ lib.optionals (hostKind == "darwin") [ ./desktop/terminal.nix ]
   ++ [
     ./dev
     ./security
@@ -67,7 +69,12 @@ in
         let
           nixTools = import ../../packages/nix-tools.nix { inherit pkgs; };
         in
-        if nixos then nixTools.nr else nixTools.nrLinux
+        {
+          nixos = nixTools.nr;
+          linux = nixTools.nrLinux;
+          darwin = nixTools.nrDarwin;
+        }
+        .${hostKind}
       )
     ]
     ++ gui [ (import ../../packages/orca.nix { inherit pkgs; }) ];
