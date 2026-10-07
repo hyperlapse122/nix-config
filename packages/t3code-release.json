@@ -1,29 +1,29 @@
 {
-  "version": "0.0.46-nightly.20261006.2752",
-  "tag": "v0.0.46-nightly.20261006.2752",
+  "version": "0.0.46-nightly.20261007.2761",
+  "tag": "v0.0.46-nightly.20261007.2761",
   "platforms": {
     "x86_64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.0.46-nightly.20261006.2752-x86_64.AppImage",
-        "sha256": "edb5fd8065d6581edf3dcfd0dde714fed0cec7040ffb0ca4c560246d276e57a0",
-        "hash": "sha256-7bX9gGXWWB7fPc/Q3ecU/tDOxwQP+wykxWAkbSduV6A="
+        "asset": "T3-Code-0.0.46-nightly.20261007.2761-x86_64.AppImage",
+        "sha256": "95595cf11a1adad09997b027433f6e0494127c50d437433aa77ca968159bdaf7",
+        "hash": "sha256-lVlc8Roa2tCZl7AnQz9uBJQSfFDUN0M6p3ypaBWb2vc="
       },
       "cli": {
-        "asset": "t3-0.0.46-nightly.20261006.2752-linux-x64.tar.gz",
-        "sha256": "3d10c9fb7ca042647fb3c07a09f6465b0bc7cec18f11c0c348f5b8c3a756a747",
-        "hash": "sha256-PRDJ+3ygQmR/s8B6CfZGWwvHzsGPEcDDSPW4w6dWp0c="
+        "asset": "t3-0.0.46-nightly.20261007.2761-linux-x64.tar.gz",
+        "sha256": "d8c7188c771ac391b724a3f464b5ceac8c551b0d87c1627295d97513a39b913b",
+        "hash": "sha256-2McYjHcaw5G3JKP0ZLXOrIxVGw2HwWJyldl1E6ObkTs="
       }
     },
     "aarch64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.0.46-nightly.20261006.2752-arm64.AppImage",
-        "sha256": "4ca1ca721f029a138a2bd9679969528f107f9faa3c0125dce12191643a110b02",
-        "hash": "sha256-TKHKch8CmhOKK9lnmWlSjxB/n6o8ASXc4SGRZDoRCwI="
+        "asset": "T3-Code-0.0.46-nightly.20261007.2761-arm64.AppImage",
+        "sha256": "b86b4ffb58e1bd2eea228061f41b2e85c3784ee03b3681aaa6e46cc04a8f683d",
+        "hash": "sha256-uGtP+1jhvS7qIoBh9BsuhcN4TuA7NoGqpuRswEqPaD0="
       },
       "cli": {
-        "asset": "t3-0.0.46-nightly.20261006.2752-linux-arm64.tar.gz",
-        "sha256": "c3d15594eff3cd22df99622e62c68f88235ceb47f1e3b8788da12e5021041f58",
-        "hash": "sha256-w9FVlO/zzSLfmWIuYsaPiCNc60fx47h4jaEuUCEEH1g="
+        "asset": "t3-0.0.46-nightly.20261007.2761-linux-arm64.tar.gz",
+        "sha256": "639d28a17f29412415a25d2104ee02352a943bc18f5ec9fb224bb7ce127ac3b9",
+        "hash": "sha256-Y50ooX8pQSQVol0hBO4CNSqUO8GPXsn7Iku3zhJ6w7k="
       }
     }
   }
