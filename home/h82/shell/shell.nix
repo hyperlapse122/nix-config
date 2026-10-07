@@ -4,6 +4,13 @@
   pkgs,
   ...
 }:
+let
+  mise = config.programs.mise;
+  # The condition under which the Home Manager module writes globalConfig to
+  # mise/config.toml.
+  miseManagesGlobal = mise.enable && !mise.mutableSettings && mise.globalConfig != { };
+  miseGlobalConfig = "${config.xdg.configHome}/mise/config.toml";
+in
 {
   programs.zsh = {
     enable = true;
@@ -62,10 +69,23 @@
     # Track upstream releases instead of nixpkgs' lagging version.
     package = import ../../../packages/mise.nix { inherit pkgs; };
     enableZshIntegration = true;
-    # Render settings to conf.d and keep config.toml writable for `mise use --global`.
-    enableMutableConfig = true;
     # mise compiles runtimes from source by default on NixOS; nix-ld runs the
     # precompiled binaries instead.
     globalConfig.settings.all_compile = false;
   };
+
+  # Earlier generations left a writable config.toml, which would collide with
+  # the store link. The force mirrors the module's own condition, because a
+  # force on an entry the module does not declare leaves it with no source.
+  xdg.configFile = lib.mkIf miseManagesGlobal { "mise/config.toml".force = true; };
+
+  # Even with force, Home Manager leaves a regular file in place when its
+  # content matches the generated one, which would keep config.toml writable.
+  home.activation.miseReplaceWritableConfig = lib.mkIf miseManagesGlobal (
+    lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''
+      if [[ -f ${lib.escapeShellArg miseGlobalConfig} && ! -L ${lib.escapeShellArg miseGlobalConfig} ]]; then
+        run rm $VERBOSE_ARG ${lib.escapeShellArg miseGlobalConfig}
+      fi
+    ''
+  );
 }
