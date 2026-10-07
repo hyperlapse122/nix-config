@@ -42,6 +42,8 @@ Jobs that a finished run skips by design, such as the Nix jobs on a docs-only ch
 
 **Host trait** — a property a host declares about itself, such as being a laptop or having a fingerprint reader, that modules and checks branch on in place of the host's name. Everything not covered by a trait comes from the shared host profile that every host imports, so two hosts differ only where a trait says they do; a difference with no trait behind it is drift, not configuration.
 
+A trait need not be set by the host: the shared profile may default it from other traits or from whether the host is a bootstrap host, and a host may still override that default. A check guarding such a trait therefore confirms each input of the default separately, since sorting hosts by the trait's own value cannot reveal a default that turns it on too widely.
+
 **Non-NixOS host** — a host whose Linux distribution is not NixOS, found and declared like any other host but assembled as a standalone user environment plus a separately applied system layer instead of a NixOS system. It shares the user profile and traits with the NixOS hosts and never receives desktop configuration. The distribution keeps ownership of everything the system layer does not declare, including vendor stacks such as a JetPack NVIDIA driver.
 
 ## Generations
