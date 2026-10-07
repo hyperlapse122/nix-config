@@ -4,7 +4,7 @@ A host is a directory under `hosts/`. `flake.nix` reads that directory and build
 
 Replace `<host>` in every command below with the new directory name.
 
-The sections up to [Install](#install) describe a NixOS host. A machine that keeps another Linux distribution follows [Non-NixOS hosts](#non-nixos-hosts) instead.
+The sections up to [Install](#install) describe a NixOS host. A machine that keeps another Linux distribution follows [Non-NixOS hosts](#non-nixos-hosts) instead, and a Mac follows [macOS hosts](#macos-hosts).
 
 ## Choose the name
 
@@ -45,7 +45,7 @@ A trait is a `my.*.enable` option that defaults to `false`. Hardware-specific mo
 | `my.nuphyGem80.enable` | Device access for the NuPhy Gem80 configurator and firmware flashing. |
 | `my.laptop.enable` | The lid-switch policy, in both logind and KDE Powerdevil. |
 | `my.t3.cli.enable` | The headless T3 Code server, `t3` (`packages/t3code-cli.nix`). It also works on a non-NixOS host. |
-| `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS only. |
+| `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS and macOS hosts only. |
 
 Other per-host options keep their own meaning. `my.tailscale.advertiseRoutes` makes the host the tailnet's subnet router, which only one host should be, and `my.cliAuth.enableDockerToken` decrypts the Docker Hub token (see `secrets/README.md`). Keep anything that is not a trait, such as an extra mount, in the host's `default.nix`.
 
@@ -352,3 +352,166 @@ The steps below run on the target machine, in order. The Ubuntu and Debian comma
     ```
 
 Later applies run `nr switch` from the clone after `git pull`. They need no card. `nr switch --bootstrap` applies the bootstrap output again; it leaves the published secrets in place. `nr build` builds both layers without activating them. `nr boot` and `nr test` refuse, because a non-NixOS host has no boot generation.
+
+## macOS hosts
+
+A macOS host is an Apple silicon Mac (`aarch64-darwin`). It gets the same shell, development tools, coding-agent configuration, Git signing, and CLI authentication as a non-NixOS Linux host, and the GUI apps, fonts, and Ghostty settings of a NixOS host. Intel Macs are not supported: `lib/darwin-host.nix` stops evaluation with a message naming the host when `host.nix` sets any other system.
+
+The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` and `darwinConfigurations.<host>-bootstrap`. Each is a nix-darwin system with Home Manager inside it, so one activation applies both layers. The bootstrap output holds no secrets.
+
+Every macOS host imports `modules/darwin/profile.nix`, which sets up the system layer:
+
+- nix-darwin owns `/etc/nix/nix.conf` and writes the shared Nix settings into it, with `auto-optimise-store` forced off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
+- `/etc/nix-config-host` records the host and the variant, as on a non-NixOS Linux host.
+- nix-homebrew installs Homebrew on the first apply. nix-darwin's Homebrew module then installs the casks that `home/h82/darwin-apps.nix` lists. Its cleanup mode is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones; Homebrew's own auto-update stays off.
+- The NixOS font list, `modules/shared/font-packages.nix`, is installed system-wide.
+- `modules/darwin/defaults.nix` is where macOS system defaults go: Dock, Finder, trackpad, appearance, and keyboard. It sets none yet.
+
+`home/h82/darwin-apps.nix` gives every NixOS-only package of the user environment a macOS decision: a Homebrew cask, a Nix package, or left out with a reason. The `darwin-config` check fails when a NixOS package has no decision, so an app added on NixOS needs an entry here. OrbStack is a macOS-only cask that takes the place of rootless Podman and minikube. VSCodium and the T3 Code desktop app come from Nix rather than Homebrew; the T3 Code app is the flake's pinned nightly.
+
+### Name the macOS host
+
+The name rule is the same as for a NixOS host; see [Choose the name](#choose-the-name). The name macOS shows for the machine does not matter: `nr` reads the host from `/etc/nix-config-host`.
+
+### Create the macOS `host.nix` and `default.nix`
+
+Create `hosts/<host>/` with two files. `host.nix` marks the directory as a macOS host:
+
+```nix
+{
+  kind = "darwin";
+  system = "aarch64-darwin";
+}
+```
+
+`default.nix` sets the account and the traits. A macOS home directory is under `/Users`:
+
+```nix
+{
+  my.user.name = "<account>";
+  my.user.home = "/Users/<account>";
+  my.t3.cli.enable = true;
+  my.t3.desktop.enable = true;
+}
+```
+
+As on a non-NixOS Linux host, only the options in `modules/shared/host.nix` exist, and NixOS options such as `my.cliAuth.enableDockerToken` fail evaluation. Only `my.t3.cli.enable` and `my.t3.desktop.enable` change a macOS host; the hardware traits change nothing there.
+
+### Create the macOS host's secrets
+
+A macOS host's secrets work as a non-NixOS Linux host's do. Run these three steps on a machine that already has the checkout and a card:
+
+1. [Create the bootstrap age material](#create-the-non-nixos-bootstrap-age-material). `bootstrap-recipients` fails when `secrets/bootstrap/<host>/` is missing.
+2. [Add the recipient to the `tokens.yaml` rule only](#add-the-recipient-to-the-tokensyaml-rule-only), and re-encrypt `tokens.yaml`. On a Mac, FileVault protects the identity in place of the distribution's disk encryption.
+3. [Create the host SSH key file](#create-the-host-ssh-key-file). The production output does not evaluate without `secrets/hosts/<host>/ssh.yaml`.
+
+### Stage and check the macOS host
+
+Stage the new files, so the flake sees them, and confirm that the flake lists `<host>` and `<host>-bootstrap`:
+
+```sh
+git add hosts/<host> secrets/bootstrap/<host> secrets/hosts/<host> .sops.yaml secrets/tokens.yaml
+nix eval .#darwinConfigurations --apply builtins.attrNames
+nix fmt -- --ci
+nix flake check
+```
+
+A macOS output builds only on a macOS builder. On a Mac, build both:
+
+```sh
+nix build --no-link .#darwinConfigurations.<host>.system
+nix build --no-link .#darwinConfigurations.<host>-bootstrap.system
+```
+
+CI's `build-darwin` job builds every `darwinConfigurations` output on a `macos-15` runner, so a new macOS host joins it without a workflow change.
+
+Three checks fail when a step above was missed:
+
+- `bootstrap-recipients` fails when the host has no bootstrap material, or when its recipient is missing from `.sops.yaml`.
+- `linux-host-secrets` covers every host with a `host.nix`, macOS hosts included. It fails when `secrets/hosts/<host>/ssh.yaml` is missing or lists another recipient, when the recipient is missing from the `tokens.yaml` rule, or when it appears in the `wifi.yaml` or `tailscale.yaml` rule.
+- `host-name-guard` fails when the new name appears in scanned code.
+
+Commit and push, so the Mac can clone the result.
+
+### First setup on the Mac
+
+Run these steps on the Mac, in order, from a local login session.
+
+1. Confirm that FileVault is on. The age identity and the published tokens are plaintext files in your home directory, and FileVault is what encrypts them at rest:
+
+   ```sh
+   fdesetup status
+   ```
+
+   It must report `FileVault is On.` Turn it on in System Settings > Privacy & Security > FileVault before you continue.
+
+2. Install Nix with the upstream multi-user installer, the same one a non-NixOS Linux host uses:
+
+   ```sh
+   sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+   ```
+
+   Open a new terminal afterwards, so `nix` is on `PATH`.
+
+3. Move the installer's `nix.conf` aside. nix-darwin takes over `/etc/nix/nix.conf` and stops rather than replace a file it did not write:
+
+   ```sh
+   sudo mv /etc/nix/nix.conf /etc/nix/nix.conf.before-nix-darwin
+   ```
+
+4. Clone the repository. The first time it runs, macOS's `git` may ask to install the Command Line Tools; accept.
+
+   ```sh
+   git clone https://github.com/hyperlapse122/nix-config.git
+   cd nix-config
+   ```
+
+5. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
+
+   ```sh
+   sudo nix --extra-experimental-features 'nix-command flakes' \
+     run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
+     switch --flake .#<host>-bootstrap
+   ```
+
+   This apply also installs Homebrew and the casks, so it takes a while. It writes `/etc/nix-config-host` and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+
+6. Launch OrbStack once from Applications, so it sets up its virtual machine and the `docker` CLI.
+
+7. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
+
+8. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
+
+   ```sh
+   for dir in ~/.config/nix-config/age ~/.local/state/cli-auth ~/.config/gh ~/.config/glab-cli; do
+     mkdir -p "$dir"
+     chmod 0700 "$dir"
+     tmutil addexclusion "$dir"
+   done
+   ```
+
+9. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support:
+
+   ```sh
+   ./scripts/recover-age-identity --user --host <host>
+   ```
+
+   It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
+
+10. Apply the production output. `nr` refuses to move a bootstrap generation to production unless you name the host:
+
+    ```sh
+    nr switch --host <host>
+    ```
+
+    It publishes the gh and glab configuration, the tokens, and the host's SSH key.
+
+11. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
+
+    ```sh
+    sudo tmutil addexclusion -p ~/.ssh/id_ed25519_nix_config
+    ```
+
+12. Register the host's SSH public key with GitHub and every server the host must reach; see [provisioning](provisioning.md#ssh-key-on-a-non-nixos-host).
+
+Later applies run `nr switch` from the clone after `git pull`. They need no card. `nr switch --bootstrap` applies the bootstrap output again, and `nr build` builds the system without activating it. `nr boot` and `nr test` refuse, because a Mac has no boot generation.

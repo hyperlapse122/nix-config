@@ -37,8 +37,8 @@ creation_rules:
 Only a host whose recipient appears in a file's rule can decrypt it.
 `secrets/tokens.yaml` lists every host's recipient.  `secrets/wifi.yaml` and
 `secrets/tailscale.yaml` list only the NixOS hosts' recipients; the
-`linux-host-secrets` check fails when a non-NixOS host's recipient appears in
-either rule.  Adding a new host's bootstrap material does not by itself give
+`linux-host-secrets` check fails when the recipient of a non-NixOS or macOS
+host appears in either rule.  Adding a new host's bootstrap material does not by itself give
 it access to an existing file: add its recipient to the file's rule and
 re-encrypt the file with `sops updatekeys`, or split the rule per host.
 
@@ -59,7 +59,7 @@ keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
 
-A non-NixOS host has no `my.cliAuth` options. Its production apply always
+A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
 decrypts `github_token`, `gitlab_token`, `jpi_token`, and `tokscale_token`,
 and stops when any of them is missing. It never decrypts `docker_token`.
 
@@ -123,10 +123,11 @@ ordinary configuration applies do not need an unlocked wallet. See
 [desktop source creation](../docs/adding-a-host.md#create-the-desktop-ssh-key-source)
 and [desktop provisioning](../docs/provisioning.md#ssh-key-on-a-nixos-desktop).
 
-For non-NixOS hosts, the `linux-host-secrets` check reads the recipients from
+For non-NixOS hosts and macOS hosts, the `linux-host-secrets` check reads the recipients from
 the encrypted file itself and fails when it lists any other. Production
 activation publishes the passphrase-free key at `~/.ssh/id_ed25519_nix_config`
-with mode 0600, protected by the distribution's disk encryption.
+with mode 0600, protected by the distribution's disk encryption, or by FileVault
+on a macOS host.
 [Adding a host](../docs/adding-a-host.md#create-the-host-ssh-key-file) shows how
 to generate and encrypt it. This desktop migration does not change that path.
 
@@ -179,7 +180,9 @@ bootstrap output puts on `PATH`, instead of crossing sudo.  The installer
 checks the same public recipient, then atomically replaces
 `~/.config/nix-config/age/key.txt`, owned by the user with mode 0600, in a
 0700 directory.  Production applies decrypt with that file and need no card.
-Its protection rests on the distribution's disk encryption.
+Its protection rests on the distribution's disk encryption.  A macOS host
+recovers and keeps its identity the same way, and there FileVault is the disk
+encryption that protects it.
 
 When a non-NixOS host is lost, compromised, or retired, follow
 [compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).

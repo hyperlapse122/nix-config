@@ -17,13 +17,18 @@ done
 for host in $(nix eval --raw .#systemConfigs --apply 'c: toString (builtins.attrNames c)'); do
   nix build --no-link ".#systemConfigs.$host"
 done
+# On a Mac only:
+for host in $(nix eval --raw .#darwinConfigurations --apply 'c: toString (builtins.attrNames c)'); do
+  nix build --no-link ".#darwinConfigurations.$host.system"
+done
+nix build --no-link .#checks.aarch64-darwin.darwin-outputs
 ```
 
 `nix flake check` builds no NixOS VM test. The VM tests live in `tests/vm-checks.nix` and are exposed as `vmChecks`: build one with `nix build --no-link .#vmChecks.<name>`, or every one with `.#vmChecks.all`. They need Linux with `/dev/kvm` and the `nixos-test` and `kvm` system features. CI builds each in its own `vm-checks` job, derived from the same attribute names, and the update-dependencies workflow builds `.#vmChecks.all` before it pushes. `vm-checks-guard` fails when a `checks` entry carries the `nixos-test` system feature, and also when it cannot recognize every `vmChecks` entry that way.
 
 CI does not run plain `nix flake check`. Its `flake-check` job runs `nix flake check --no-build`, which evaluates every output once, and its `check-shards` jobs build the checks, one job per entry of `checkShards` (defined in `tests/check-shards.nix`). The `hosts` shard holds the checks whose closure carries a NixOS system path or a Home Manager or system-manager generation, so those closures are fetched once; the remaining checks split by sorted name across the `light-<n>` shards. Build one shard locally with `nix build --no-link .#checkShards.<name>`. A new check joins a shard and CI without a workflow edit; list it in `hostClosureChecks` in `flake.nix` when it reads a host generation, or it lands in a light shard and makes that shard fetch the host closures. `check-shards-guard` fails when a check is in no shard or in two, or when a shard is empty or names something that is not a check.
 
-Build every output under `nixosConfigurations`, `homeConfigurations`, and `systemConfigs`, production and bootstrap; the loops build whatever the flake lists, so they need no edit when a host is added. `homeConfigurations` and `systemConfigs` hold the non-NixOS hosts and stay empty until `hosts/` has one. CI's build matrix is derived from the same attribute names. It builds each non-NixOS output on a runner of that output's architecture, aarch64 on `ubuntu-24.04-arm`.
+Build every output under `nixosConfigurations`, `homeConfigurations`, `systemConfigs`, and `darwinConfigurations`, production and bootstrap; the loops build whatever the flake lists, so they need no edit when a host is added. `homeConfigurations` and `systemConfigs` hold the non-NixOS hosts and stay empty until `hosts/` has one; `darwinConfigurations` holds the macOS hosts in the same way. CI's build matrix is derived from the same attribute names. It builds each non-NixOS output on a runner of that output's architecture, aarch64 on `ubuntu-24.04-arm`. A macOS output builds only on a macOS builder. CI's `build-darwin` job builds every `darwinConfigurations.<host>.system` and every `checks.aarch64-darwin` entry on a `macos-15` runner, one job per target.
 
 The checks iterate every configuration and decide what to expect from each configuration's traits (`my.*.enable`), `my.kind`, and `my.bootstrap`, never from its host name. A check that covers a trait fails when no production configuration enables that trait. `bootstrap-recipients` also fails when a directory under `hosts/` has no matching `secrets/bootstrap/` directory or the reverse, and `host-name-guard` fails when a host directory name or a fixture host name under `tests/fixtures/hosts/` appears in `flake.nix`, `lib/`, `modules/`, `home/`, `tests/`, `scripts/`, `packages/`, or `.github/workflows/`.
 
@@ -50,13 +55,24 @@ The non-NixOS checks run against two fixture hosts under `tests/fixtures/hosts/`
 - `install-user-age-identity` runs `tests/test_install_user_age_identity.py` against the user-mode installer with a fake `age-keygen`.
 - `non-nixos-vm` boots an Ubuntu 24.04 cloud image through nix-vm-test on x86_64 with KVM and applies the x86_64 fixture with the non-NixOS `nr`. Bootstrap applies without an identity. Production without an identity, or with the wrong one, stops before anything is published. After the identity is installed, production publishes the gh and glab configuration and the SSH key with the required ownership and modes, and `ssh` uses that key. Repeated applies keep the published files, and no apply changes the user database, subordinate id ranges, or `/etc/shells`. An aarch64 VM check does not exist; aarch64 is covered by builds only.
 
+### macOS host checks
+
+The macOS checks run against one fixture host under `tests/fixtures/hosts/`, with fake age identities, tokens, and SSH keys. The fixture is reachable only through `checks`, never through `darwinConfigurations`.
+
+- `darwin-config`, in `checks.x86_64-linux`, evaluates the macOS fixture on Linux, where no darwin derivation can be built. It asserts host discovery and both outputs; that every NixOS-only package has a decision in `home/h82/darwin-apps.nix`; that the Homebrew casks are exactly the mapping's, with cleanup `"none"`, upgrades on, and every third-party tap tapped and trusted; that the user environment takes the non-NixOS path, with no Podman variable, `nr` as `nr-darwin`, and the darwin pinentry with the Keychain checkbox unticked by default; and that the system layer keeps store optimisation off, installs the shared fonts, and writes `/etc/nix-config-host`.
+- `darwin-outputs`, the only check in `checks.aarch64-darwin`, builds both fixture systems and reads what they materialize: the activation order of the secret steps and the docker `credHelpers` merge, the gpg-agent and pinentry configuration, Ghostty's font families, `nr` on `PATH`, the VSCodium settings path, the T3 Code bundle and its launch agent, `nix.conf`, `/etc/nix-config-host`, the Brewfile, and the fonts. It builds only on a macOS builder; CI builds it in `build-darwin`.
+- `nr-darwin` drives `scripts/nr-darwin` against a fixture root, with commands printed or stubbed. It covers host resolution from `/etc/nix-config-host`, the age-identity preflight, the refusal to move a bootstrap generation to production without `--host` or `--bootstrap`, the register-then-activate order, and the refused `boot` and `test` subcommands.
+- `pinentry-card-darwin` drives the darwin pinentry filter and its child proxy with a stand-in `pinentry_mac`, using fake PINs.
+
+None of these activates a Mac. A nix-darwin activation that exits 0 is not proof that every step applied, so on real hardware confirm the state itself, as the list under [macOS hosts](#macos-hosts) does.
+
 ## Hardware checks after installation
 
 A successful VM test or build does not replace these checks. The person who performs them must record the results.
 
 ### Every host
 
-These items cover NixOS hosts. A non-NixOS host follows [its own list](#non-nixos-hosts).
+These items cover NixOS hosts. A non-NixOS host follows [its own list](#non-nixos-hosts), and a macOS host follows [its own](#macos-hosts).
 
 - [ ] Before installation, recover the bootstrap age identity with an actual YubiKey carrying key `621512777E6933FEB4458FDC4945855D4F283F05`.
 - [x] Boot the installed NixOS with Secure Boot in the enabled/user state.
@@ -232,5 +248,22 @@ No non-NixOS machine has been set up yet, so none of these checks has been perfo
 - [ ] Confirm `/etc/passwd`, `/etc/group`, `/etc/subuid`, `/etc/subgid`, and `/etc/shells` are unchanged by the apply.
 - [ ] Apply production again with the card removed and confirm it succeeds.
 - [ ] On an aarch64 host, confirm the same list, and that the distribution's vendor stack, such as a JetPack NVIDIA driver and CUDA, is untouched.
+
+### macOS hosts
+
+No Mac has been set up yet, so none of these checks has been performed. The evidence so far is the repository checks above, built in CI's `build-darwin` job; nothing there activates a Mac. Record the results here for the first real host, separately from CI evidence. An activation exit status is not proof that a step applied: inspect the state each item names.
+
+- [ ] Recover the age identity with a real YubiKey through `./scripts/recover-age-identity --user --host <host>`, and confirm `~/.config/nix-config/age/key.txt` has mode 0600 in a 0700 directory.
+- [ ] Confirm each of the three cards signs a commit and decrypts, with only that card inserted.
+- [ ] At the first PIN prompt, confirm the `pinentry_mac` dialog shows "Save in Keychain" and that the checkbox is unticked.
+- [ ] Tick it once, then sign again and confirm no dialog appears: the saved PIN was reused. Confirm Keychain Access lists a `GnuPG` item with account `gnupg-card-pin-<serial>`.
+- [ ] On a card whose retry counter can spare one attempt, enter a wrong PIN with the checkbox ticked. Confirm the card rejects it, the dialog appears again, and Keychain Access no longer lists an item for that serial.
+- [ ] Confirm `/etc/nix/nix.conf` is managed by nix-darwin and sets `auto-optimise-store = false`, and that `/etc/nix-config-host` names the host and `production`.
+- [ ] Show `😀` in Ghostty and record whether it draws as color Twemoji. The emoji font is a CBDT build, which CoreText may not draw in color.
+- [ ] Launch OrbStack, then pull a private image from `ghcr.io` with `docker pull` and no `docker login`, and confirm it succeeds through the credential helper.
+- [ ] Launch T3 Code a day after the apply and confirm it still reports the pinned nightly version from `packages/t3code-release.json`, and that `launchctl getenv T3CODE_DISABLE_AUTO_UPDATE` prints `1`.
+- [ ] Run `nr switch` a second time from the terminal that holds the App Management permission and confirm it finishes without the `copyApps` permission error.
+- [ ] Reboot and confirm `readlink /run/current-system` still points at the generation `nr switch` applied.
+- [ ] Confirm `tmutil isexcluded` reports each secret directory and `~/.ssh/id_ed25519_nix_config` as excluded, the key after at least two applies.
 
 Automation does not reinstall any physical machine. Report repository verification results separately from completion of this checklist.
