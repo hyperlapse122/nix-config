@@ -87,6 +87,7 @@
           "iphone-restore"
           "kde-light-theme"
           "keyd-remap"
+          "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
           "printing"
@@ -626,6 +627,14 @@
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          kubernetes-tools = import ./tests/kubernetes-tools.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          minikube-autostart = import ./tests/minikube-autostart.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };

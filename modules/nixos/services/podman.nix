@@ -32,12 +32,15 @@ in
     # on PATH for newuidmap, which the unit's own PATH would otherwise drop.
     # System accounts, such as the display manager's, have no subordinate ID
     # ranges, so the prune runs only in the configured account's manager.
+    # minikube does not recreate a Podman node container that a prune
+    # removed, so a stopped cluster would only come back through
+    # `minikube delete`; the label filter keeps its container and network.
     systemd.user.services.podman-prune = {
       description = "Prune unused rootless Podman containers, networks, and dangling images";
       unitConfig.ConditionUser = config.my.user.name;
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${config.virtualisation.podman.package}/bin/podman system prune --force";
+        ExecStart = "${config.virtualisation.podman.package}/bin/podman system prune --force --filter label!=created_by.minikube.sigs.k8s.io";
       };
     };
 

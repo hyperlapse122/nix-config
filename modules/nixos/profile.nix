@@ -17,6 +17,7 @@
     ./system/nix-ld.nix
     ./system/agent-browser-deps.nix
     ./services/podman.nix
+    ./services/minikube.nix
     ./services/printing.nix
     ./services/tailscale.nix
     ./services/proton-vpn.nix
@@ -37,6 +38,8 @@
 
   config.my = {
     podman.enable = lib.mkDefault true;
+    # The first cluster start pulls images, so an installer console gets none.
+    minikube.enable = lib.mkDefault (config.my.podman.enable && !config.my.bootstrap);
     printing.enable = lib.mkDefault true;
     cliAuth.enable = lib.mkDefault (!config.my.bootstrap);
     cliAuth.enableTokscaleToken = lib.mkDefault true;
