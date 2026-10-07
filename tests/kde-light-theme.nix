@@ -21,11 +21,13 @@
 
   Verifies, on every configuration as well (home/h82/desktop/kde/theme.nix is
   not gated on my.bootstrap), by running the kdeTheme Home Manager activation
-  against a fixture HOME whose kdeglobals holds the Breeze Dark color, color
-  effect, and window manager groups, scheme name, look-and-feel package, and
-  icon theme (the shape the previous dark default left behind), with the
-  built /etc/xdg in XDG_CONFIG_DIRS. Seeding dark values keeps the light
-  system defaults from masking a missing write:
+  against two fixture HOMEs, with the built /etc/xdg in XDG_CONFIG_DIRS: one
+  whose kdeglobals holds the Breeze Dark color, color effect, and window
+  manager groups, scheme name, look-and-feel package, and icon theme, and one
+  that holds a value no light entry has in every copied entry and identity
+  key, because the two schemes share many entries. Seeding values other than
+  the light ones keeps the light system defaults from masking a missing
+  write. On each fixture:
   - the effective (user, else system) values are ColorScheme BreezeLight, the
     Breeze Light look-and-feel package, and the breeze icon theme.
   - the effective value of every copied BreezeLight.colors entry is the light
@@ -41,7 +43,7 @@
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) concatMapStringsSep escapeShellArg;
+  inherit (pkgs.lib) attrNames concatMapStringsSep escapeShellArg;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
@@ -81,17 +83,36 @@ let
       fi
     '';
 
+  # User kdeglobals fixtures the activation must convert. `dark` is what the
+  # previous Breeze Dark default left behind. Breeze Dark and Breeze Light
+  # share many entries (every [ColorEffects:*] one among them), so `stale`
+  # also seeds every copied entry and identity key with a value no light entry
+  # has, and a skipped write cannot pass by already holding the light value.
+  fixtures = {
+    dark = ''
+      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=BreezeDark\n\n'
+      printf '[Icons]\nTheme=breeze-dark\n\n[KDE]\nLookAndFeelPackage=org.kde.breezedark.desktop\n\n'
+      awk ${esc "${copiedGroups} keep { print }"} ${esc "${colorSchemes}/BreezeDark.colors"}
+    '';
+    stale = ''
+      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=stale\n\n'
+      printf '[Icons]\nTheme=stale\n\n[KDE]\nLookAndFeelPackage=stale\n'
+      awk -F '\t' '$1 != group { group = $1; printf "\n[%s]\n", group } { printf "%s=stale\n", $2 }' "$light_entries"
+    '';
+  };
+
   activationAssertions =
-    entry:
+    entry: fixture:
     let
       data = entry.user.home.activation.kdeTheme.data or "";
       script = pkgs.writeText "${entry.name}-kde-theme.sh" data;
-      home = "$TMPDIR/${entry.name}-home";
+      label = "${entry.name}: after kdeTheme activation on the ${fixture} fixture,";
+      home = "$TMPDIR/${entry.name}-${fixture}-home";
       userGlobals = "${home}/.config/kdeglobals";
       systemGlobals = "${entry.config.system.build.etc}/etc/xdg/kdeglobals";
       expectUser = group: key: expected: message: ''
         if [ "$(ini_effective "${userGlobals}" ${esc systemGlobals} ${esc group} ${esc key})" != ${expected} ]; then
-          ${fail "${entry.name}: after kdeTheme activation, ${message}"}
+          ${fail "${label} ${message}"}
         fi
       '';
     in
@@ -101,21 +122,19 @@ let
       else
         mkdir -p "${home}/.config"
         {
-          printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=BreezeDark\n\n'
-          printf '[Icons]\nTheme=breeze-dark\n\n[KDE]\nLookAndFeelPackage=org.kde.breezedark.desktop\n\n'
-          awk ${esc "${copiedGroups} keep { print }"} ${esc "${colorSchemes}/BreezeDark.colors"}
+          ${fixtures.${fixture}}
         } > "${userGlobals}"
         if ! HOME="${home}" XDG_CONFIG_HOME="${home}/.config" \
           XDG_CONFIG_DIRS=${esc "${entry.config.system.build.etc}/etc/xdg"} \
           bash ${esc script} >/dev/null 2>&1; then
-          ${fail "${entry.name}: kdeTheme activation exited non-zero"}
+          ${fail "${label} the activation exited non-zero"}
         fi
         ${expectUser "General" "ColorScheme" "BreezeLight" "the user ColorScheme is not BreezeLight"}
         ${expectUser "KDE" "LookAndFeelPackage" "org.kde.breeze.desktop"
           "the user LookAndFeelPackage is not Breeze Light"
         }
         ${expectUser "Icons" "Theme" "breeze" "the user icon theme is not breeze"}
-        expect_scheme ${esc "${entry.name}: after kdeTheme activation, the effective"} \
+        expect_scheme ${esc "${label} the effective"} \
           ini_effective "${userGlobals}" ${esc systemGlobals}
         ${expectUser "General" "BrowserApplication" "fixture.desktop" "an unrelated user key was lost"}
       fi
@@ -140,11 +159,22 @@ pkgs.runCommand "kde-light-theme-tests"
       ' "$1"
     }
 
+    # Succeeds when key is present in [group] of an INI file, even with an
+    # empty value.
+    ini_has() {
+      awk -v group="[$2]" -v key="$3" '
+        /^\[/ { in_group = ($0 == group); next }
+        in_group && index($0, key "=") == 1 { found = 1; exit }
+        END { exit !found }
+      ' "$1"
+    }
+
     # Prints what KConfig resolves: the user file's value, else the system one.
     # KConfig drops a user entry that equals the cascaded default, so a key
-    # absent from the user file is not a missing write.
+    # absent from the user file is not a missing write. An empty user value
+    # still overrides the system one, so presence decides, not emptiness.
     ini_effective() {
-      if grep -qxF "[$3]" "$1" && [ -n "$(ini_get "$1" "$3" "$4")" ]; then
+      if ini_has "$1" "$3" "$4"; then
         ini_get "$1" "$3" "$4"
       else
         ini_get "$2" "$3" "$4"
@@ -185,7 +215,9 @@ pkgs.runCommand "kde-light-theme-tests"
     fi
 
     ${concatMapStringsSep "\n" etcAssertions configurations.entries}
-    ${concatMapStringsSep "\n" activationAssertions configurations.entries}
+    ${concatMapStringsSep "\n" (
+      entry: concatMapStringsSep "\n" (activationAssertions entry) (attrNames fixtures)
+    ) configurations.entries}
 
     if [ "$failed" -ne 0 ]; then
       exit 1
