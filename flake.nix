@@ -1305,7 +1305,11 @@
           };
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
-          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; }) install-user-age-identity nr-linux;
+          inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; })
+            install-user-age-identity
+            nr-linux
+            nr-darwin
+            ;
           nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
             export HOME=$TMPDIR
             mkdir -p scripts tests
