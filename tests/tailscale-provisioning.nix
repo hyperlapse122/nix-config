@@ -19,7 +19,8 @@ let
           routes:
             lan_10: 192.168.10.0/24
             lan_1: 192.168.1.0/24
-            wp_jpi_co_kr: 203.0.113.99/32
+            site_a: 203.0.113.0/24
+            site_b: 198.51.100.0/24
         EOF
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tailscale.yaml
       '';
@@ -163,7 +164,7 @@ pkgs.testers.nixosTest {
       # --- Runtime: TAILSCALE_ROUTES rendering (U4 test scenario) ---
 
       router_routes_env = router.succeed("cat ${nodes.router.sops.templates."tailscale-routes.env".path}")
-      assert "TAILSCALE_ROUTES=192.168.10.0/24,192.168.1.0/24,203.0.113.99/32" in router_routes_env, router_routes_env
+      assert "TAILSCALE_ROUTES=192.168.10.0/24,192.168.1.0/24,203.0.113.0/24,198.51.100.0/24" in router_routes_env, router_routes_env
 
       # --- Runtime: dedup script against the mock API (U3 test scenario, AE1) ---
       #
