@@ -61,32 +61,24 @@
       inherit (nixpkgs) lib;
 
       # Each directory under hosts/ is a host, named by the directory. One that
-      # holds host.nix is a non-NixOS host; every other one is a NixOS host.
+      # holds host.nix is a Linux or macOS host, by the kind host.nix names;
+      # every other one is a NixOS host.
       hosts = import ./lib/hosts.nix { inherit lib; } ./hosts;
 
-      # Both variants of every non-NixOS host, keyed by output name.
-      mkLinuxHost = import ./lib/linux-host.nix { inherit inputs; };
-      linuxHosts = lib.listToAttrs (
-        lib.concatMap (hosts.withVariants (
-          hostName: bootstrap:
-          mkLinuxHost {
-            inherit hostName bootstrap;
-            dir = ./hosts + "/${hostName}";
-          }
-        )) hosts.linux
-      );
-
-      # Both variants of every macOS host, keyed by output name.
-      mkDarwinHost = import ./lib/darwin-host.nix { inherit inputs; };
-      darwinHosts = lib.listToAttrs (
-        lib.concatMap (hosts.withVariants (
-          hostName: bootstrap:
-          mkDarwinHost {
-            inherit hostName bootstrap;
-            dir = ./hosts + "/${hostName}";
-          }
-        )) hosts.darwin
-      );
+      # Both variants of every host one assembly builds, keyed by output name.
+      variantsOf =
+        mkHost: hostNames:
+        lib.listToAttrs (
+          lib.concatMap (hosts.withVariants (
+            hostName: bootstrap:
+            mkHost {
+              inherit hostName bootstrap;
+              dir = ./hosts + "/${hostName}";
+            }
+          )) hostNames
+        );
+      linuxHosts = variantsOf (import ./lib/linux-host.nix { inherit inputs; }) hosts.linux;
+      darwinHosts = variantsOf (import ./lib/darwin-host.nix { inherit inputs; }) hosts.darwin;
       darwinFixtures = import ./tests/lib/darwin-fixtures.nix { inherit inputs; };
 
       # The non-NixOS fixture hosts build on their own architecture, so each
@@ -254,6 +246,14 @@
               ''
                 cp ${./scripts/pinentry-card} ./pinentry-card
                 bash ${./tests/pinentry-card.sh} ./pinentry-card
+                touch $out
+              '';
+          docker-cred-helpers =
+            pkgs.runCommand "docker-cred-helpers-tests" { nativeBuildInputs = [ pkgs.jq ]; }
+              ''
+                bash ${./tests/docker-cred-helpers.sh} ${
+                  pkgs.lib.getExe (import ./packages/docker-cred-helpers.nix { inherit pkgs; })
+                }
                 touch $out
               '';
           darwin-config = import ./tests/darwin-config.nix {

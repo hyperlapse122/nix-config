@@ -21,19 +21,5 @@ let
   mkLinuxHost = import ../../lib/linux-host.nix { inherit inputs; };
 
   fixtureNames = (import ../../lib/hosts.nix { inherit lib; } ../fixtures/hosts).linux;
-
-  entryOf = fixture: bootstrap: {
-    name = if bootstrap then "${fixture}-bootstrap" else fixture;
-    inherit fixture bootstrap;
-    host = mkLinuxHost {
-      hostName = fixture;
-      dir = ../fixtures/hosts + "/${fixture}";
-      inherit bootstrap;
-      extraModules.home = [ ./fake-secrets-module.nix ];
-    };
-  };
 in
-lib.concatMap (fixture: [
-  (entryOf fixture false)
-  (entryOf fixture true)
-]) fixtureNames
+import ./fixture-entries.nix { inherit lib; } mkLinuxHost fixtureNames

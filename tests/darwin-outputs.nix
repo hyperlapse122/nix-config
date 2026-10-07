@@ -17,7 +17,7 @@
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
-  - `nr` on PATH is nr-darwin, and `codex` runs without bubblewrap;
+  - `nr` on PATH is nr-darwin;
   - the VSCodium settings merge targets Application Support;
   - with my.t3.desktop.enable, the T3 Code nightly bundle is in the profile,
     its main executable is byte-identical to the release zip's, and a launch
@@ -33,11 +33,8 @@
 let
   inherit (pkgs) lib;
 
-  mapping = import ../home/h82/darwin-apps.nix;
-  expectedCasks = lib.sort lib.lessThan (
-    lib.mapAttrsToList (_: app: app.cask) (lib.filterAttrs (_: app: app ? cask) mapping.apps)
-    ++ mapping.darwinOnly
-  );
+  mapping = import ../modules/shared/darwin-apps.nix;
+  expectedCasks = lib.sort lib.lessThan mapping.casks;
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -110,7 +107,10 @@ let
       grep -qx 'disable-ccid' "$gen/home-files/.gnupg/scdaemon.conf" \
         && grep -qx 'pcsc-shared' "$gen/home-files/.gnupg/scdaemon.conf" \
         || bad "scdaemon.conf is not the shared one"
-      plist=$(grep -o "/usr/bin/defaults import 'org.gpgtools.pinentry-mac' /nix/store/[^ ]*" "$gen/activate" | awk '{print $4}')
+      # Home Manager writes `/usr/bin/defaults <flags> import <domain> <plist>`,
+      # with an empty flag slot and the domain quoted only when it needs it.
+      plist=$(grep -oE "/usr/bin/defaults +import +'?org\.gpgtools\.pinentry-mac'? +/nix/store/[^ ]*" "$gen/activate" \
+        | grep -o '/nix/store/[^ ]*' || true)
       if [ -z "$plist" ]; then
         bad "activation does not import pinentry_mac's defaults"
       else
@@ -131,9 +131,6 @@ let
         /nix/store/*-nr-darwin-*) ;;
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
-      if grep -q bwrap "$(readlink -f "$gen/home-path/bin/codex")"; then
-        bad "codex runs under bubblewrap"
-      fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \
         || bad "the VSCodium settings merge does not target Application Support"
@@ -143,15 +140,12 @@ let
         if [ ! -d "$app" ]; then
           bad "the T3 Code nightly bundle is missing"
         else
-          unpacked=$(mktemp -d)
-          unzip -q ${t3Desktop.src} -d "$unpacked"
           exe=$(/usr/bin/plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist" 2>/dev/null \
             || sed -n '/CFBundleExecutable/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' "$app/Contents/Info.plist")
-          cmp -s "$app/Contents/MacOS/$exe" "$unpacked/T3 Code (Nightly).app/Contents/MacOS/$exe" \
+          unzip -p ${t3Desktop.src} "T3 Code (Nightly).app/Contents/MacOS/$exe" | cmp -s - "$app/Contents/MacOS/$exe" \
             || bad "the T3 Code main executable differs from the release zip's, so its signature is broken"
         fi
-        grep -rqs T3CODE_DISABLE_AUTO_UPDATE \
-          $(grep -o '/nix/store/[a-z0-9]*-[^/ "'"'"']*' "$gen/activate" | sort -u) \
+        grep -qs T3CODE_DISABLE_AUTO_UPDATE "$gen/LaunchAgents/org.nix-community.home.t3code-disable-auto-update.plist" \
           || bad "no launch agent sets T3CODE_DISABLE_AUTO_UPDATE"
       ''}
 
@@ -164,7 +158,7 @@ let
         && grep -qx "variant=$variant" "$sys/etc/nix-config-host" \
         || bad "/etc/nix-config-host does not record the host and variant"
 
-      brewfile=$(grep -o "/nix/store/[a-z0-9]*-Brewfile" "$sys/activate" | head -n1)
+      brewfile=$(grep -o -m1 "/nix/store/[a-z0-9]*-Brewfile" "$sys/activate" || true)
       if [ -z "$brewfile" ]; then
         bad "the system activation runs no brew bundle"
       else

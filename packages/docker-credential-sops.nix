@@ -17,5 +17,7 @@ pkgs.stdenvNoCC.mkDerivation {
       --replace-fail '@CREDENTIAL_MAP@' '${credentialMap}'
     patchShebangs $out/bin/docker-credential-sops
   '';
+  # Read by tests/darwin-config.nix; passthru leaves the derivation unchanged.
+  passthru = { inherit routingTable; };
   meta.mainProgram = "docker-credential-sops";
 }

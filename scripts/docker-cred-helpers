@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Merges credential helpers into the docker CLI's config on a macOS host.
+# OrbStack writes its own context into ~/.docker/config.json, so the file is
+# never linked from the store: the helpers given as a JSON object are merged
+# under credHelpers, and every other key stays as OrbStack wrote it.
+#
+#   docker-cred-helpers '<json object of registry -> helper>'
+#
+# A config that is not valid JSON is left untouched with a warning rather than
+# failing the whole activation, and the file is replaced atomically so a kill
+# or a concurrent OrbStack write never leaves it half-written.
+set -euo pipefail
+
+helpers=$1
+dir=${HOME:?}/.docker
+file=$dir/config.json
+
+mkdir -p "$dir"
+[ -e "$file" ] || printf '{}\n' > "$file"
+
+if ! merged=$(jq --argjson helpers "$helpers" '.credHelpers = ((.credHelpers // {}) + $helpers)' "$file"); then
+  echo "docker-cred-helpers: $file is not valid JSON; leaving it unchanged" >&2
+  exit 0
+fi
+
+if [ "$merged" != "$(cat "$file")" ]; then
+  tmp=$(mktemp "$dir/config.json.XXXXXX")
+  printf '%s\n' "$merged" > "$tmp"
+  chmod 0600 "$tmp"
+  mv -f "$tmp" "$file"
+fi
+chmod 0600 "$file"

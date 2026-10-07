@@ -17,18 +17,19 @@ let
   cfg = config.my.t3;
   nixos = config.my.kind == "nixos";
   darwin = config.my.kind == "darwin";
+  desktopSupported = nixos || darwin;
 in
 {
   assertions = [
     {
-      assertion = cfg.desktop.enable -> nixos || darwin;
+      assertion = cfg.desktop.enable -> desktopSupported;
       message = "${config.my.hostName}: my.t3.desktop.enable: the T3 Code desktop app runs on NixOS and macOS only; enable my.t3.cli.enable on a non-NixOS Linux host.";
     }
   ];
 
   home.packages =
     lib.optionals cfg.cli.enable [ (import ../../packages/t3code-cli.nix { inherit pkgs; }) ]
-    ++ lib.optionals (cfg.desktop.enable && (nixos || darwin)) [
+    ++ lib.optionals (cfg.desktop.enable && desktopSupported) [
       (import ../../packages/t3code.nix { inherit pkgs; })
     ];
 

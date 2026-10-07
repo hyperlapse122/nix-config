@@ -363,11 +363,11 @@ Every macOS host imports `modules/darwin/profile.nix`, which sets up the system 
 
 - nix-darwin owns `/etc/nix/nix.conf` and writes the shared Nix settings into it, with `auto-optimise-store` forced off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - `/etc/nix-config-host` records the host and the variant, as on a non-NixOS Linux host.
-- nix-homebrew installs Homebrew on the first apply. nix-darwin's Homebrew module then installs the casks that `home/h82/darwin-apps.nix` lists. Its cleanup mode is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones; Homebrew's own auto-update stays off.
+- nix-homebrew installs Homebrew on the first apply. nix-darwin's Homebrew module then installs the casks that `modules/shared/darwin-apps.nix` lists. Its cleanup mode is `"none"`, so an app you installed by hand stays installed. Each apply refreshes Homebrew's cask metadata, then installs missing casks and upgrades outdated ones. Homebrew itself stays at the version nix-homebrew pins.
 - The NixOS font list, `modules/shared/font-packages.nix`, is installed system-wide.
 - `modules/darwin/defaults.nix` is where macOS system defaults go: Dock, Finder, trackpad, appearance, and keyboard. It sets none yet.
 
-`home/h82/darwin-apps.nix` gives every NixOS-only package of the user environment a macOS decision: a Homebrew cask, a Nix package, or left out with a reason. The `darwin-config` check fails when a NixOS package has no decision, so an app added on NixOS needs an entry here. OrbStack is a macOS-only cask that takes the place of rootless Podman and minikube. VSCodium and the T3 Code desktop app come from Nix rather than Homebrew; the T3 Code app is the flake's pinned nightly.
+`modules/shared/darwin-apps.nix` gives every NixOS-only package of the user environment a macOS decision: a Homebrew cask, a Nix package, or left out with a reason. The `darwin-config` check fails when a NixOS package has no decision, so an app added on NixOS needs an entry here. OrbStack is a macOS-only cask that takes the place of rootless Podman and minikube. VSCodium and the T3 Code desktop app come from Nix rather than Homebrew; the T3 Code app is the flake's pinned nightly.
 
 ### Name the macOS host
 

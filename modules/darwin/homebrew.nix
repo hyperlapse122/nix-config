@@ -1,24 +1,12 @@
 { config, lib, ... }:
 let
-  mapping = import ../../home/h82/darwin-apps.nix;
-  casks =
-    lib.mapAttrsToList (_: app: app.cask) (lib.filterAttrs (_: app: app ? cask) mapping.apps)
-    ++ mapping.darwinOnly;
-
-  # A cask from a third-party tap is named <owner>/<tap>/<cask>.
-  tapOf =
-    cask:
-    let
-      parts = lib.splitString "/" cask;
-    in
-    if lib.length parts == 3 then "${lib.elemAt parts 0}/${lib.elemAt parts 1}" else null;
+  inherit (import ../shared/darwin-apps.nix) casks tapOf;
   thirdParty = lib.filter (cask: tapOf cask != null) casks;
 in
 {
   # nix-homebrew installs Homebrew itself on the first apply, so a new Mac
   # needs only Nix installed by hand. Taps stay mutable: an immutable tap set
-  # turns off Homebrew's auto-update, which also stops its API cache from
-  # refreshing, and then `upgrade` below would never see a newer cask.
+  # turns off Homebrew's auto-update for every brew call.
   nix-homebrew = {
     enable = true;
     user = config.system.primaryUser;
@@ -34,9 +22,12 @@ in
       # Apps installed outside the list stay installed.
       cleanup = "none";
       # An apply installs missing casks and upgrades outdated ones; apps that
-      # update themselves are left to their own updater.
+      # update themselves are left to their own updater. Off, autoUpdate
+      # passes HOMEBREW_NO_AUTO_UPDATE=1 to brew bundle, and Homebrew then
+      # never refreshes its cask metadata, so upgrade would never see a newer
+      # version. Homebrew itself stays pinned by nix-homebrew.
       upgrade = true;
-      autoUpdate = false;
+      autoUpdate = true;
     };
   };
 }

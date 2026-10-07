@@ -12,7 +12,7 @@
   - Host discovery: every fixture whose host.nix names kind darwin is a macOS
     fixture and no other kind is; every macOS fixture yields a production and
     a bootstrap output.
-  - GUI apps (home/h82/darwin-apps.nix): every package a NixOS user has and no
+  - GUI apps (modules/shared/darwin-apps.nix): every package a NixOS user has and no
     non-NixOS Linux fixture has, plus the 1Password GUI where NixOS enables
     it, has a macOS decision, and each decision is exactly one of a cask, a
     Nix package, or left out. The set is derived from the evaluated
@@ -99,15 +99,13 @@ let
   ) nixosConfigs) "1password";
   required = lib.subtractLists linuxNames nixosNames ++ onePassword;
 
-  mapping = import ../home/h82/darwin-apps.nix;
+  mapping = import ../modules/shared/darwin-apps.nix;
   kinds = [
     "cask"
     "nix"
     "leftOut"
   ];
-  expectedCasks =
-    lib.mapAttrsToList (_: app: app.cask) (lib.filterAttrs (_: app: app ? cask) mapping.apps)
-    ++ mapping.darwinOnly;
+  expectedCasks = mapping.casks;
 
   assertMapping = lib.concatStrings [
     (check (required != [ ]) "no package is NixOS-only, so the mapping check would pass vacuously")
@@ -115,7 +113,7 @@ let
       name:
       check (
         mapping.apps ? ${name}
-      ) "${name}: installed on NixOS but has no macOS decision in home/h82/darwin-apps.nix"
+      ) "${name}: installed on NixOS but has no macOS decision in modules/shared/darwin-apps.nix"
     ) required)
     (lib.concatStrings (
       lib.mapAttrsToList (
@@ -125,7 +123,16 @@ let
         ) "${name}: the macOS decision must be exactly one of cask, nix, or leftOut"
       ) mapping.apps
     ))
-    (check (lib.elem "orbstack" mapping.darwinOnly) "OrbStack is not among the macOS-only casks")
+    # Pinned by name, not taken from the mapping: other assertions and the
+    # docs rely on these casks, and dropping one from the mapping must fail.
+    (lib.concatMapStrings
+      (cask: check (lib.elem cask mapping.casks) "${cask} is not among the macOS casks")
+      [
+        "ghostty"
+        "orbstack"
+        "1password"
+      ]
+    )
   ];
 
   sort = lib.sort lib.lessThan;
@@ -139,8 +146,7 @@ let
       pnames = namesOf user.home.packages;
       casks = map (cask: cask.name) config.homebrew.casks;
       taps = map (tap: tap.name) config.homebrew.taps;
-      thirdParty = lib.filter (cask: lib.length (lib.splitString "/" cask) == 3) expectedCasks;
-      tapOf = cask: lib.concatStringsSep "/" (lib.take 2 (lib.splitString "/" cask));
+      thirdParty = lib.filter (cask: mapping.tapOf cask != null) expectedCasks;
       sessionVariables = lib.attrNames user.home.sessionVariables;
       podmanVariables = [
         "DOCKER_HOST"
@@ -149,9 +155,20 @@ let
         "TESTCONTAINERS_RYUK_PRIVILEGED"
       ];
       leakedVariables = lib.filter (name: lib.elem name sessionVariables) podmanVariables;
-      containerFiles = lib.filter (name: lib.hasPrefix "containers/" name) (
-        lib.attrNames (lib.filterAttrs (_: file: file.enable) user.xdg.configFile)
+      # By target, so an entry renamed onto containers/ is still caught.
+      containerFiles = lib.filter (target: lib.hasPrefix "containers/" target) (
+        map (file: file.target) (lib.filter (file: file.enable) (lib.attrValues user.xdg.configFile))
       );
+      nixApps = lib.attrNames (lib.filterAttrs (_: app: app ? nix) mapping.apps);
+      missingNixApps = lib.filter (
+        name: !lib.elem name pnames && (name != "t3code-desktop" || user.my.t3.desktop.enable)
+      ) nixApps;
+      dockerData = plain (activation.dockerCredHelpers.data or "");
+      credentialHelper = lib.findFirst (
+        p: (p.pname or "") == "docker-credential-sops"
+      ) null user.home.packages;
+      hubRoute = (credentialHelper.routingTable or { })."https://index.docker.io/v1/" or null;
+      codex = lib.findFirst (p: (p.pname or "") == "codex") null user.home.packages;
       sshText = plain user.my.ssh.configFile.drvAttrs.text;
       pinentry = user.services.gpg-agent.pinentry.package;
       vscodiumData = plain (activation.vscodiumSettings.data or "");
@@ -166,10 +183,34 @@ let
         "${entry.name}: homebrew cleanup is ${config.homebrew.onActivation.cleanup}, so an apply removes apps installed outside the list"
       )
       (check config.homebrew.onActivation.upgrade "${entry.name}: homebrew upgrade is off, so an apply never updates listed apps")
+      (check config.homebrew.onActivation.autoUpdate "${entry.name}: homebrew autoUpdate is off, so brew bundle never refreshes cask metadata and upgrade sees no newer version")
+      (check (missingNixApps == [ ])
+        "${entry.name}: apps the mapping installs from Nix are missing: ${lib.concatStringsSep ", " missingNixApps}"
+      )
+      (check (user.my.t3.desktop.enable && lib.elem "t3code-desktop" pnames)
+        "${entry.name}: the macOS fixture must enable and install the T3 Code desktop app, or its darwin-outputs assertions vanish"
+      )
+      (check
+        (
+          !production
+          || (
+            lib.hasInfix "docker-cred-helpers" dockerData
+            && lib.hasInfix "https://index.docker.io/v1/" dockerData
+            && lib.hasInfix "ghcr.io" dockerData
+          )
+        )
+        "${entry.name}: the docker credHelpers step must run scripts/docker-cred-helpers with every registry"
+      )
+      (check (hubRoute != null && hubRoute == (credentialHelper.routingTable."docker.io" or null))
+        "${entry.name}: the credential helper must answer Docker Hub's index address with the docker.io account"
+      )
+      (check (
+        codex != null && !lib.hasInfix "bubblewrap" (plain (builtins.toJSON (codex.drvAttrs or { })))
+      ) "${entry.name}: codex must be installed and must not run under bubblewrap")
       (lib.concatMapStrings (
         cask:
         check (
-          lib.elem (tapOf cask) taps && lib.elem cask config.nix-homebrew.trust.casks
+          lib.elem (mapping.tapOf cask) taps && lib.elem cask config.nix-homebrew.trust.casks
         ) "${entry.name}: ${cask} needs its tap tapped and the cask trusted"
       ) thirdParty)
       (check config.nix-homebrew.enable "${entry.name}: nix-homebrew is off, so a new Mac needs Homebrew installed by hand")

@@ -188,10 +188,14 @@ let
 
   explorer = "filesExplorerFocus && foldersViewVisible";
 
+  # Home Manager's VSCodium module picks the user directory by platform, so
+  # this follows the same test rather than the host kind.
+  isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+
   # Where Home Manager's VSCodium module puts the user settings: macOS keeps
   # them under Application Support rather than the XDG config directory.
   userDir =
-    if pkgs.stdenv.hostPlatform.isDarwin then
+    if isDarwin then
       "${config.home.homeDirectory}/Library/Application Support/VSCodium/User"
     else
       "${config.xdg.configHome}/VSCodium/User";
@@ -199,10 +203,7 @@ let
   # The macOS path holds a space, so it is quoted there; the Linux path is
   # interpolated as before so the Linux activation script is unchanged.
   settingsArg =
-    if pkgs.stdenv.hostPlatform.isDarwin then
-      lib.escapeShellArg "${userDir}/settings.json"
-    else
-      "${userDir}/settings.json";
+    if isDarwin then lib.escapeShellArg "${userDir}/settings.json" else "${userDir}/settings.json";
 in
 {
   programs.vscodium = {

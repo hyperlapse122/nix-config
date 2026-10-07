@@ -10,9 +10,11 @@
     { nix = "<where>"; }            installed from Nix on macOS, by that module
     { leftOut = "<reason>"; }       not installed on macOS
 
-  `darwinOnly` lists casks macOS hosts install with no NixOS counterpart.
+  `darwinOnly` lists casks macOS hosts install with no NixOS counterpart, and
+  `casks` is every cask a macOS host installs. `tapOf` names the tap of a
+  third-party cask, `<owner>/<tap>/<cask>`, and is null for a core cask.
 */
-{
+let
   apps = {
     "1password".cask = "1password";
     chatgpt.cask = "chatgpt";
@@ -43,4 +45,22 @@
 
   # OrbStack replaces rootless Podman and minikube as the container runtime.
   darwinOnly = [ "orbstack" ];
+
+  tapOf =
+    cask:
+    let
+      parts = builtins.split "/" cask;
+    in
+    if builtins.length parts == 5 then
+      "${builtins.elemAt parts 0}/${builtins.elemAt parts 2}"
+    else
+      null;
+in
+{
+  inherit apps darwinOnly tapOf;
+  casks =
+    builtins.concatMap (name: if apps.${name} ? cask then [ apps.${name}.cask ] else [ ]) (
+      builtins.attrNames apps
+    )
+    ++ darwinOnly;
 }

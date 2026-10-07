@@ -56,11 +56,11 @@ let
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
     # The docker CLI OrbStack ships asks for Docker Hub under its legacy index
-    # address rather than docker.io, which only Podman normalises to.
+    # address rather than docker.io.
     routingTable =
       registries
       // lib.optionalAttrs (config.my.kind == "darwin") {
-        "https://index.docker.io/v1/" = registries."docker.io";
+        ${import ../../../modules/shared/docker-hub-index.nix} = registries."docker.io";
       };
   };
 

@@ -104,18 +104,24 @@ class Replies:
 
 
 def pump(child_stdout, client_out, output_lock, replies):
-    while True:
-        line = child_stdout.readline()
-        if not line:
-            replies.end()
-            return
-        # Under the lock, so a reply counted as answered has been written
-        # before the main thread writes a reply of its own.
-        with output_lock:
-            if is_reply(line) and not replies.received():
-                continue
-            client_out.write(line)
-            client_out.flush()
+    # Ends the replies on every exit, a write to a vanished agent included,
+    # so the main thread never waits on a reply that can no longer arrive.
+    try:
+        while True:
+            line = child_stdout.readline()
+            if not line:
+                return
+            # Under the lock, so a reply counted as answered has been written
+            # before the main thread writes a reply of its own.
+            with output_lock:
+                if is_reply(line) and not replies.received():
+                    continue
+                client_out.write(line)
+                client_out.flush()
+    except (BrokenPipeError, OSError):
+        return
+    finally:
+        replies.end()
 
 
 def main():

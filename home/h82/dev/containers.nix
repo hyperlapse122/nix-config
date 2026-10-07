@@ -5,14 +5,13 @@
   ...
 }:
 let
-  initialAuth = builtins.toJSON {
-    credHelpers = {
-      "docker.io" = "sops";
-      "ghcr.io" = "sops";
-      "registry.gitlab.com" = "sops";
-      "registry.jpi.app" = "sops";
-    };
+  credHelpers = {
+    "docker.io" = "sops";
+    "ghcr.io" = "sops";
+    "registry.gitlab.com" = "sops";
+    "registry.jpi.app" = "sops";
   };
+  initialAuth = builtins.toJSON { inherit credHelpers; };
   containerSessionVariables = {
     REGISTRY_AUTH_FILE = "${config.home.homeDirectory}/.config/containers/auth.json";
     DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock";
@@ -22,12 +21,12 @@ let
   };
 
   # The docker CLI keys Docker Hub by its legacy index address.
-  dockerCredHelpers = builtins.toJSON {
-    "https://index.docker.io/v1/" = "sops";
-    "ghcr.io" = "sops";
-    "registry.gitlab.com" = "sops";
-    "registry.jpi.app" = "sops";
-  };
+  dockerCredHelpers = builtins.toJSON (
+    removeAttrs credHelpers [ "docker.io" ]
+    // {
+      ${import ../../../modules/shared/docker-hub-index.nix} = "sops";
+    }
+  );
 in
 lib.mkMerge [
   # Rootless Podman is the container runtime on NixOS and Linux hosts. A macOS
@@ -60,24 +59,16 @@ lib.mkMerge [
     '';
   })
 
-  # OrbStack writes its own context into ~/.docker/config.json, so the file is
-  # never linked from the store: the credential helpers are merged into it, and
-  # every other key stays as OrbStack wrote it. Bootstrap has no tokens yet.
+  # OrbStack owns ~/.docker/config.json; scripts/docker-cred-helpers merges the
+  # credential helpers into it. Bootstrap has no tokens yet.
   (lib.mkIf (config.my.kind == "darwin" && !config.my.bootstrap) {
     home.activation.dockerCredHelpers = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-      DOCKER_DIR="$HOME/.docker"
-      DOCKER_CONFIG_FILE="$DOCKER_DIR/config.json"
       if [[ -v DRY_RUN ]]; then
-        echo "Merging credHelpers into $DOCKER_CONFIG_FILE"
+        echo "Merging credHelpers into $HOME/.docker/config.json"
       else
-        mkdir -p "$DOCKER_DIR"
-        [ -e "$DOCKER_CONFIG_FILE" ] || echo '{}' > "$DOCKER_CONFIG_FILE"
-        merged=$(${lib.getExe pkgs.jq} --argjson helpers ${lib.escapeShellArg dockerCredHelpers} \
-          '.credHelpers = ((.credHelpers // {}) + $helpers)' "$DOCKER_CONFIG_FILE")
-        if [ "$merged" != "$(cat "$DOCKER_CONFIG_FILE")" ]; then
-          printf '%s\n' "$merged" > "$DOCKER_CONFIG_FILE"
-        fi
-        chmod 0600 "$DOCKER_CONFIG_FILE"
+        ${
+          lib.getExe (import ../../../packages/docker-cred-helpers.nix { inherit pkgs; })
+        } ${lib.escapeShellArg dockerCredHelpers}
       fi
     '';
   })
