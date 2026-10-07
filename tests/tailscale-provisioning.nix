@@ -123,6 +123,12 @@ pkgs.testers.nixosTest {
       operators = {client: "${nodes.client.my.user.name}", router: "${nodes.router.my.user.name}"}
       for machine in [client, router]:
           machine.wait_for_unit("tailscaled.service")
+          # With no control server, tailscaled-autoconnect ends only at its
+          # start timeout, and the units ordered after it (tailscaled-set
+          # among them) start then. multi-user.target does not wait for
+          # them, so wait until systemd has no job left; otherwise a late
+          # tailscaled-set can restore the prefs between the two steps below.
+          machine.wait_until_succeeds("test -z \"$(systemctl list-jobs --no-legend)\"", timeout=900)
           machine.succeed("tailscale set --accept-routes=false --ssh=false --operator=")
           assert machine.succeed(prefs_query).split() == ["false", "false"]
           assert machine.succeed(operator_query).strip() == ""
