@@ -20,9 +20,9 @@ let
   '';
 in
 {
-  # ~/.config/kdeglobals still carries the Breeze Dark color groups the previous
-  # dark default wrote, and they override the Breeze Light defaults in
-  # /etc/xdg/kdeglobals, so write the light values here.
+  # ~/.config/kdeglobals may carry color groups from an earlier scheme, and they
+  # override the defaults in /etc/xdg/kdeglobals, so write the scheme's values
+  # here.
   # plasma-apply-colorscheme cannot do this: it reads the cascaded
   # ColorScheme=BreezeLight as already applied and writes nothing. This runs only
   # when the Home Manager generation changes, not on every rebuild.
