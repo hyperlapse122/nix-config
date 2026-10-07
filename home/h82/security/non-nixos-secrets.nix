@@ -49,12 +49,19 @@ let
     accounts.jpi
   ];
 
+  registries = import ../../../modules/shared/cli-registries.nix {
+    dir = cfg.stateDir;
+    users = accounts;
+  };
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    routingTable = import ../../../modules/shared/cli-registries.nix {
-      dir = cfg.stateDir;
-      users = accounts;
-    };
+    # The docker CLI OrbStack ships asks for Docker Hub under its legacy index
+    # address rather than docker.io, which only Podman normalises to.
+    routingTable =
+      registries
+      // lib.optionalAttrs (config.my.kind == "darwin") {
+        "https://index.docker.io/v1/" = registries."docker.io";
+      };
   };
 
   # Linux and macOS hosts alike: neither has the NixOS system unit that
