@@ -134,9 +134,9 @@ Several parts of the current user environment assume Linux. Desktop modules, Gho
 - `home/h82/security/gpg.nix:46-59`, `packages/gpg-tools.nix`, `scripts/pinentry-card`: the agent, the card pinentry proxy, and its existing macOS `security` backend, which the darwin-only source reuses.
 - `home/h82/t3code.nix:24`: the NixOS-only assertion on the T3 Code desktop app.
 - `.github/workflows/check.yml:236-258` and `tests/check-workflow-docs-skip.sh`: the runner routing and the workflow shape guard.
-- nix-darwin manual (`homebrew.*`, `system.primaryUser`, `nix.*`): https://nix-darwin.github.io/nix-darwin/manual/index.html
-- nix-homebrew: https://github.com/zhaofengli/nix-homebrew
-- GitHub-hosted macOS runners: https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
+- nix-darwin manual (`homebrew.*`, `system.primaryUser`, `nix.*`): <https://nix-darwin.github.io/nix-darwin/manual/index.html>
+- nix-homebrew: <https://github.com/zhaofengli/nix-homebrew>
+- GitHub-hosted macOS runners: <https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners>
 
 ---
 
@@ -156,7 +156,7 @@ Several parts of the current user environment assume Linux. Desktop modules, Gho
   3. still tries to delete the Keychain item `pinentry_mac` stored under that id after a rejection, matching `pinentry_mac`'s service and account names; the filter does this delete itself, because the shared proxy's `clear_pin` targets the `gnupg-card-pin` service;
   4. sets `pinentry_mac`'s `UseKeychain` user default to false, because `pinentry_mac` otherwise pre-ticks "Save in Keychain" (`AppDelegate.m:38`), which would reverse R9's opt-in.
   Whether `pinentry_mac` answers from the Keychain without showing the dialog is confirmed against its pinned source during implementation and on hardware after purchase.
-- KTD8. **OrbStack owns `~/.docker`; activation merges only the credential helpers into `~/.docker/config.json`.** Governs R14. OrbStack writes its own context into that file, so it is never linked from the store. The darwin step sets `credHelpers` for the registries in `modules/shared/cli-registries.nix` to `docker-credential-sops`, which `non-nixos-secrets.nix` already installs for non-NixOS kinds once KTD4 lands. Docker Hub is keyed as `https://index.docker.io/v1/`, the address the docker CLI passes to helpers, and the darwin helper's routing table gains that alias for the `docker.io` account; the Linux routing table is unchanged. The merge is idempotent and leaves other keys untouched. The Podman `DOCKER_HOST`, Ryuk variables, and `containers/` files stay Linux-only.
+- KTD8. **OrbStack owns `~/.docker`; activation merges only the credential helpers into `~/.docker/config.json`.** Governs R14. OrbStack writes its own context into that file, so it is never linked from the store. The darwin step sets `credHelpers` for the registries in `modules/shared/cli-registries.nix` to `docker-credential-sops`, which `non-nixos-secrets.nix` already installs for non-NixOS kinds once KTD4 lands. Docker Hub is keyed as `<https://index.docker.io/v1/`,> the address the docker CLI passes to helpers, and the darwin helper's routing table gains that alias for the `docker.io` account; the Linux routing table is unchanged. The merge is idempotent and leaves other keys untouched. The Podman `DOCKER_HOST`, Ryuk variables, and `containers/` files stay Linux-only.
 - KTD9. **`nr` on darwin is a new `scripts/nr-darwin` with the `nr-linux` interface.** Governs R3. It reads the host and variant from `/etc/nix-config-host`, which the darwin profile writes as the system-manager module does. It builds `darwinConfigurations.<out>.system`, registers it as `/nix/var/nix/profiles/system` under `sudo`, then runs that output's `activate` under `sudo`, the same register-then-activate order as `nr-linux`. Activating without registering would let nix-darwin's boot-time daemon point `/run/current-system` back at the old profile after a reboot, and would leave the generation without a GC root or rollback entry. `--bootstrap`, `--host`, and `--flake-dir` behave as in `nr-linux`, including the age-identity preflight before a production switch. `packages/nix-tools.nix` adds `nrDarwin` (`pname = "nr-darwin"`), and `home/h82/default.nix` selects it by kind.
 - KTD10. **Codex, mise, and the T3 Code CLI gain darwin-arm64 release pins.** Governs R6. `scripts/codex-release`, `scripts/mise-release`, and `scripts/t3code-release` add the darwin assets to their target tables and JSON pins. Their derivations drop `bubblewrap` and `autoPatchelfHook` on darwin. Codex uses its own macOS sandbox, so its wrapper runs it directly there. `packages/claude-code.nix` already pins `darwin-arm64`.
 - KTD14. **The T3 Code desktop app on darwin is a Nix package from the same nightly pin as the CLI.** Governs R12. (session-settled: user-directed — chosen over the stable `t3-code` cask and the `t3-code@nightly` cask: T3 Code must use the nightly channel, and the flake's pin keeps the desktop app and CLI on the same nightly.) Each nightly release publishes `T3-Code-<version>-arm64.zip` and `t3-<version>-darwin-arm64.tar.gz`. `scripts/t3code-release` adds both to its aarch64-darwin target, so `packages/t3code-release.json` pins them together, and `packages/t3code.nix` unpacks the app bundle on darwin into `Applications/`, where Home Manager links it. Home Manager's `targets.darwin.copyApps`, on by default at `home.stateVersion = "26.05"`, copies the bundle writable into `~/Applications/Home Manager Apps`, so the store being read-only does not stop the app's updater. As the Linux wrapper does with `T3CODE_DISABLE_AUTO_UPDATE 1`, darwin sets that variable for GUI launches: a Home Manager `launchd.agents` entry, present only when `my.t3.desktop.enable` is set, runs `launchctl setenv T3CODE_DISABLE_AUTO_UPDATE 1` at login. The darwin branch sets `dontFixup`, so the notarized bundle is copied byte for byte and keeps its Developer ID signature. The Linux AppImage derivation is unchanged.
@@ -261,11 +261,13 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** None.
 
 **Files:**
+
 - Modify: `flake.nix` (inputs `nix-darwin`, `nix-homebrew`, non-flake tap inputs; `darwinConfigurations`), `flake.lock`, `lib/hosts.nix`, `modules/shared/host.nix`, `tests/lib/linux-fixtures.nix`
 - Create: `lib/darwin-host.nix`, `modules/darwin/profile.nix`, `modules/darwin/nix.nix`, `modules/darwin/defaults.nix`, `modules/darwin/host-marker.nix`, `tests/lib/darwin-fixtures.nix`, `tests/fixtures/hosts/<darwin-fixture>/host.nix`, `tests/fixtures/hosts/<darwin-fixture>/default.nix`
 - Test: `tests/host-options.nix`, `tests/darwin-config.nix` (U9)
 
 **Approach:**
+
 1. Extend the `my.kind` enum with `darwin` and update its description. `my.t3.desktop.enable`'s "(NixOS hosts only)" text changes with U6.
 2. Make `lib/hosts.nix` read `(import host.nix).kind` and return `darwin` beside `nixos` and `linux`, keeping `nixos` exactly as today (KTD13).
 3. Write `lib/darwin-host.nix` per KTD1. It validates `kind` and `system = "aarch64-darwin"` with named throws, as `lib/linux-host.nix:46-54` does, and sets `system.primaryUser`, `users.users.<name>.home`, and a pinned `system.stateVersion`.
@@ -275,6 +277,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** `lib/linux-host.nix` (validation, `hostFacts`, `extraModules`), `lib/nixos-host.nix` (embedded Home Manager), `tests/fixtures/hosts/juniper/`.
 
 **Test scenarios:**
+
 - A fake tree with one `host.nix` of each kind and one directory without it yields one entry in each of `nixos`, `linux`, and `darwin`.
 - A darwin `host.nix` with `system = "x86_64-darwin"` fails evaluation with a message naming the host and the supported system.
 - The darwin fixture evaluates to `darwinConfigurations.<fixture>` and `<fixture>-bootstrap`, with `my.bootstrap` false and true.
@@ -294,10 +297,12 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1.
 
 **Files:**
+
 - Modify: `home/h82/security/ssh.nix`, `home/h82/security/non-nixos-secrets.nix`, `home/h82/agents/tokscale.nix`, `home/h82/dev/containers.nix`, `home/h82/default.nix`
 - Test: `tests/non-nixos-outputs.nix` (Linux unchanged), `tests/darwin-config.nix`, `tests/darwin-outputs.nix` (U9)
 
 **Approach:**
+
 1. Introduce the non-NixOS predicate once per file (or a shared helper) and replace the four `== "linux"` gates (KTD4).
 2. Gate the Podman session variables, Ryuk flags, `containers/` files, and `containersAuth` activation on `my.kind == "linux"`. The `systemd.user.sessionVariables` uses evaluate to nothing on darwin, because Home Manager disables `systemd.user` off Linux; leave them as they are.
 3. In `home/h82/default.nix`, keep the `gui` gate NixOS-only and its package order unchanged. The `nr` selection moves to U4.
@@ -306,6 +311,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** the existing `active` binding in `non-nixos-secrets.nix`; `hostKind` import gates in `home/h82/dev/default.nix`.
 
 **Test scenarios:**
+
 - Covers AE3. On the darwin production output, the host-secrets stage runs before `writeBoundary` and publish after `linkGeneration`. On the bootstrap output neither runs.
 - `~/.ssh/config` on the darwin production output names the host key and no 1Password socket.
 - The Tokscale wrapper on darwin reads the token from the state directory, not `/run/secrets`.
@@ -323,10 +329,12 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1.
 
 **Files:**
+
 - Modify: `scripts/codex-release`, `scripts/mise-release`, `scripts/t3code-release`, their JSON pins, `packages/codex.nix`, `packages/mise.nix`, `packages/t3code-cli.nix`, `packages/t3code.nix`
 - Test: `tests/test_codex_release.py`, `tests/test_mise_release.py`, `tests/test_t3code_release.py` (or the existing equivalents), `tests/codex.nix`
 
 **Approach:**
+
 1. Add the darwin-arm64 asset to each script's target table and regenerate the pins with the scripts, not by hand. For T3 Code the aarch64-darwin target has `desktop = T3-Code-{version}-arm64.zip` and `cli = t3-{version}-darwin-arm64.tar.gz`, from the same nightly as the Linux assets (KTD14).
 2. In each derivation, select the asset by `system` without falling back to x86_64-linux, and apply `bubblewrap` and `autoPatchelfHook` on Linux only.
 3. `packages/t3code.nix` gains a darwin branch that unpacks the `.app` bundle into `$out/Applications` with `dontFixup = true`, so strip, shebang patching, and ad hoc re-signing never touch the notarized bundle; the Linux AppImage branch is unchanged.
@@ -336,6 +344,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** `packages/claude-code.nix` and its manifest, which already carry `darwin-arm64`.
 
 **Test scenarios:**
+
 - Each release script's test sees the darwin target in its table and a pin entry with a hash for it.
 - A missing darwin asset in a pin fails evaluation with a message naming the package and system, instead of picking the Linux asset.
 - The Codex wrapper on darwin does not reference `bubblewrap`.
@@ -354,10 +363,12 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1, U2.
 
 **Files:**
+
 - Create: `scripts/nr-darwin`, `tests/nr-darwin.sh`
 - Modify: `packages/nix-tools.nix`, `home/h82/default.nix`, `tests/non-nixos-scripts.nix`
 
 **Approach:**
+
 1. Port the host and variant resolution, `--bootstrap`, `--host`, `--flake-dir`, and the age-identity preflight from `scripts/nr-linux`. Drop the Linux-only preflight (subuid, pcscd, `/etc/shells`, `newuidmap`).
 2. Build `darwinConfigurations.<out>.system` once; on `switch`, activate it with that output's `darwin-rebuild` under `sudo`. Refuse a production switch from a bootstrap marker unless asked, as `nr-linux` does.
 3. Select `nr`, `nrLinux`, or `nrDarwin` by kind in `home/h82/default.nix`.
@@ -365,6 +376,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** `scripts/nr-linux`, `tests/nr-linux.sh` (`NR_*` overrides, `NR_DRY_RUN`).
 
 **Test scenarios:**
+
 - `nr build` with a stub marker builds `darwinConfigurations.<host>.system` and activates nothing.
 - `nr switch` runs one build, then registers the output as `/nix/var/nix/profiles/system` under `sudo`, then runs the output's `activate` under `sudo`, in that order.
 - `nr switch --bootstrap` targets `<host>-bootstrap`.
@@ -383,12 +395,14 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1, U2.
 
 **Files:**
+
 - Create: a darwin-only proxy source beside `scripts/pinentry-card` (for example `scripts/pinentry-card-darwin`) that reuses the shared proxy
 - Modify: `packages/gpg-tools.nix`, `home/h82/security/gpg.nix`
 - Leave unchanged: `scripts/pinentry-card` (its content feeds the Linux store path)
 - Test: `tests/pinentry-card.sh`
 
 **Approach:**
+
 1. `packages/gpg-tools.nix` builds `pinentryCard` per platform. Only the darwin branch installs the darwin-only source; the Linux branch is untouched.
 2. Build the darwin-only source as KTD7's front-stage filter around a darwin render of the shared proxy. The pair carries every item in KTD7's list: the platform constants, the conditional key-id forwarding, the best-effort delete, and `pinentry_mac`'s service and account names read from its pinned source.
 3. Declare `pinentry_mac`'s `UseKeychain = false` user default in Home Manager's `targets.darwin.defaults` for its bundle identifier.
@@ -397,6 +411,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** the existing `KEYRING_BACKEND == "security"` branch and the fake darwin delegate in `tests/pinentry-card.sh`.
 
 **Test scenarios:**
+
 - Covers AE2. On the darwin render, the delegate receives a `SETKEYINFO` with the serial-derived id before `GETPIN`.
 - The rendered darwin wrapper has `IS_LINUX = False`, `KEYRING_BACKEND = "security"`, and `pinentry_mac` as its delegate, and picks that delegate with no `DISPLAY` or `WAYLAND_DISPLAY` set.
 - On a prompt whose description reports remaining attempts, or after a `SETERROR`, the delegate receives the agent's `SETKEYINFO --clear` and no derived id, even when the stub `security` delete fails.
@@ -417,11 +432,13 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1, U2, U3.
 
 **Files:**
+
 - Create: `home/h82/darwin-apps.nix`, `modules/darwin/homebrew.nix`
 - Modify: `flake.nix` (the Orca tap input from U1 wired to nix-homebrew), `home/h82/t3code.nix`, `home/h82/dev/default.nix`, `home/h82/dev/vscodium.nix`, `modules/shared/host.nix` (T3 description)
 - Test: `tests/darwin-config.nix` (U9)
 
 **Approach:**
+
 1. Write the mapping per KTD5 and KTD6, covering the NixOS GUI set KTD5 derives from evaluated outputs.
 2. `modules/darwin/homebrew.nix` enables nix-homebrew for `system.primaryUser` with the pinned Orca tap and `mutableTaps = false`, and sets `homebrew.casks` from the mapping's cask entries. Cleanup is `"none"`, `upgrade` is on, and `autoUpdate` is off (KTD3).
 3. The T3 Code nightly desktop package from U3 is installed only when `my.t3.desktop.enable` is set; the assertion in `home/h82/t3code.nix` allows `nixos` and `darwin`.
@@ -430,6 +447,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** `tests/non-nixos-outputs.nix` `guiPackages`; trait gates in `home/h82/t3code.nix`.
 
 **Test scenarios:**
+
 - Every name in the NixOS GUI set computed from evaluated outputs has a mapping entry; removing one entry fails the check with that name.
 - Adding a `gui`-gated package to the NixOS user packages without a mapping entry fails the check with its name.
 - The fixture's `homebrew.casks` equals the mapping's cask entries, and the fixture's user packages include the T3 Code nightly desktop package because it enables the trait.
@@ -452,18 +470,21 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U2, U6.
 
 **Files:**
+
 - Modify: `home/h82/dev/containers.nix`, `home/h82/darwin-apps.nix` (the `orbstack` cask)
 - Test: `tests/test_docker_credential_sops.py` (if the helper changes), `tests/darwin-outputs.nix` (U9)
 
 **Approach:**
-1. Add a darwin-only activation step after `linkGeneration` that creates `~/.docker/config.json` if absent and sets `credHelpers` for each registry in `modules/shared/cli-registries.nix`, preserving every other key. Docker Hub is keyed as `https://index.docker.io/v1/`, and the darwin `docker-credential-sops` routing table gains that alias (KTD8).
+
+1. Add a darwin-only activation step after `linkGeneration` that creates `~/.docker/config.json` if absent and sets `credHelpers` for each registry in `modules/shared/cli-registries.nix`, preserving every other key. Docker Hub is keyed as `<https://index.docker.io/v1/`,> and the darwin `docker-credential-sops` routing table gains that alias (KTD8).
 2. Skip it on bootstrap, where no tokens exist.
 
 **Patterns to follow:** `containersAuth` in `home/h82/dev/containers.nix` (write once, never link from the store).
 
 **Test scenarios:**
-- With no `~/.docker/config.json`, the step creates one whose `credHelpers` maps each registry to `sops`, with Docker Hub under `https://index.docker.io/v1/`.
-- On darwin, `docker-credential-sops get` answers `https://index.docker.io/v1/` with the `docker.io` account; the Linux routing table is unchanged.
+
+- With no `~/.docker/config.json`, the step creates one whose `credHelpers` maps each registry to `sops`, with Docker Hub under `<https://index.docker.io/v1/`.>
+- On darwin, `docker-credential-sops get` answers `<https://index.docker.io/v1/`> with the `docker.io` account; the Linux routing table is unchanged.
 - With an existing file holding `currentContext: orbstack`, the step adds `credHelpers` and keeps `currentContext`.
 - Running the step twice leaves the file byte-identical.
 - The darwin bootstrap output has no such activation step.
@@ -479,15 +500,18 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1, U6.
 
 **Files:**
+
 - Create: `modules/shared/font-packages.nix`, `modules/darwin/fonts.nix`
 - Modify: `modules/nixos/desktop/fonts.nix`, `home/h82/default.nix` or `home/h82/desktop/default.nix` (import `terminal.nix` on darwin), `home/h82/desktop/terminal.nix`
 - Test: `tests/emoji-font.nix` (NixOS unchanged), `tests/darwin-outputs.nix` (U9)
 
 **Approach:**
+
 1. Move the package list into `modules/shared/font-packages.nix` in its current order; NixOS and darwin both read it.
 2. Import `terminal.nix` on darwin without the rest of `./desktop`, and set `programs.ghostty.package` to null there.
 
 **Test scenarios:**
+
 - The NixOS `fonts.packages` derivation path is unchanged.
 - The darwin `fonts.packages` lists the same packages in the same order.
 - The darwin Ghostty `config` has the same `font-family` lines, in order, as the NixOS one.
@@ -504,11 +528,13 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1 to U8.
 
 **Files:**
+
 - Create: `tests/darwin-config.nix`, `tests/darwin-outputs.nix`
 - Modify: `flake.nix` (register `darwin-config` in `checks.x86_64-linux`, add `checks.aarch64-darwin`), `tests/check-shards.nix` if needed, `tests/lib/configurations.nix` (darwin entries excluded from the NixOS and Linux guards)
 - Test: the files above
 
 **Approach:**
+
 1. `darwin-config` renders option values of both darwin fixture variants into a Linux builder, per KTD12.
 2. `darwin-outputs` builds on aarch64-darwin and reads the materialized generation: activation DAG order, `hm-session-vars.sh`, `gpg-agent.conf`, `scdaemon.conf`, Ghostty `config`, the Brewfile, `/etc/nix-config-host`, `nix.conf` (no `auto-optimise-store = true`), and the `nr-darwin` pname.
 3. Every comparison sets `fail=1` with a message naming the fixture and reason; each list assertion first fails on an empty list.
@@ -516,6 +542,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Execution note:** Read the mutation-testing learnings listed in `AGENTS.md` first. Run a baseline, then a removal, content, wiring, and destination mutation for each assertion, in a scratch copy per the copied-worktree learning, and confirm each fails inside the builder with the check's own message.
 
 **Test scenarios:**
+
 - Covers AE4. Adding `DOCKER_HOST` back to the darwin session variables fails `darwin-outputs`.
 - Covers AE3. Moving the secrets stage after `writeBoundary` fails `darwin-outputs`.
 - Covers AE1. Setting cleanup to `"uninstall"` fails `darwin-config`.
@@ -539,9 +566,11 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U9.
 
 **Files:**
+
 - Modify: `.github/workflows/check.yml`, `tests/check-workflow-docs-skip.sh`
 
 **Approach:**
+
 1. The `hosts` job also emits `darwin_targets` from `darwinConfigurations` and `checks.aarch64-darwin`, without naming any fixture.
 2. A `build-darwin` job runs on `macos-15` with the same pinned `cachix/install-nix-action`, carries the docs-only gate, and builds each target. It never activates.
 3. Keep run blocks compatible with macOS's bash 3.2, and read `${PIPESTATUS[0]}` after any `tee`.
@@ -550,6 +579,7 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Patterns to follow:** the `build-linux` job and its matrix from `hosts`.
 
 **Test scenarios:**
+
 - `tests/check-workflow-docs-skip.sh` fails if `build-darwin` loses its docs-only gate.
 - It fails if `build-darwin`'s matrix is not read from `hosts`.
 - A docs-only change skips `build-darwin` by design.
@@ -565,9 +595,11 @@ U1 lands first; every other unit needs the darwin kind and assembly. U2 follows,
 **Dependencies:** U1 to U10.
 
 **Files:**
+
 - Modify: `docs/adding-a-host.md`, `docs/provisioning.md`, `docs/verification.md`, `docs/install.md` (if it lists host kinds), `secrets/README.md`, `AGENTS.md`, `README.md`
 
 **Approach:**
+
 1. `docs/adding-a-host.md` gains a macOS section: `host.nix` and `default.nix` contents, `secrets/bootstrap/<host>/` (required by `tests/bootstrap-recipients.nix`), confirming FileVault is on (`fdesetup status`), installing Nix, moving the installer's `/etc/nix/nix.conf` aside before the first nix-darwin apply, the first bootstrap apply through `nix run nix-darwin`, launching OrbStack once so it sets up its VM and CLI, granting the terminal used for applies the App Management permission (System Settings > Privacy & Security) because Home Manager's `copyApps` check aborts activation without it, applying from a local GUI session rather than over SSH, creating `~/.config/nix-config/age`, `~/.local/state/cli-auth`, `~/.config/gh`, and `~/.config/glab-cli` with mode 0700 and excluding each from Time Machine (`tmutil addexclusion`, which needs the path to exist), recovering the age identity, `nr switch`, and then excluding the host key by path (`sudo tmutil addexclusion -p ~/.ssh/id_ed25519_nix_config`), because `host-secrets` replaces that file on every apply and a sticky exclusion would not survive. `secrets/README.md` names FileVault as the disk encryption that protects the identity on macOS.
 2. `docs/provisioning.md` describes the Keychain PIN on macOS, including how to remove a saved PIN.
 3. `docs/verification.md` lists the hardware checks for after purchase: YubiKey signing, the Keychain dialog, Twemoji colour in Ghostty, OrbStack credentials, T3 Code staying on the pinned nightly after a day, App Management for the apply terminal, and a reboot that keeps the applied generation.
