@@ -10,7 +10,10 @@ let
   # minikube reads these instead of flags or `minikube config`, so the unit
   # and a hand-run `minikube start` choose the same rootless Podman cluster.
   # Without MINIKUBE_ROOTLESS the Podman driver runs `sudo -n podman`.
+  # MINIKUBE_PROFILE pins the cluster over the profile `minikube profile`
+  # persists, so a switch mid-session cannot redirect the unit's stop.
   minikubeEnvironment = {
+    MINIKUBE_PROFILE = "minikube";
     MINIKUBE_DRIVER = "podman";
     MINIKUBE_CONTAINER_RUNTIME = "containerd";
     MINIKUBE_ROOTLESS = "true";
@@ -45,8 +48,8 @@ in
       serviceConfig = {
         Type = "exec";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.minikube}/bin/minikube start";
-        ExecStop = "${pkgs.minikube}/bin/minikube stop";
+        ExecStart = "${lib.getExe pkgs.minikube} start";
+        ExecStop = "${lib.getExe pkgs.minikube} stop";
       };
     };
   };

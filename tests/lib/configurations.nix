@@ -19,6 +19,10 @@
   - `entryOf name host`: the same entry shape for any evaluated host, such as
     one re-evaluated with `extendModules`.
   - `production` and `bootstraps`: `entries` split by `bootstrap`.
+  - `withTraitForcedOff label entry`: a production `entry` re-evaluated with
+    the option at `label` forced to `false`, named after the forced option.
+  - `linuxFixtures`: the non-NixOS fixture hosts of the builder's
+    architecture, each `{ name, fixture, bootstrap, host }`.
   - `guard`: a script fragment that fails the builder when `entries` is empty
     or holds no bootstrap output. Every check splices it before its per-entry
     assertions, so an empty list is a failure, never a silent pass.
@@ -94,8 +98,10 @@ in
   inherit
     entries
     entryOf
+    linuxFixtures
     production
     userEntries
+    withTraitForcedOff
     ;
 
   userGuard =

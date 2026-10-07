@@ -38,31 +38,23 @@ let
   inherit (pkgs) lib;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
+  # Each output is judged by its own trait, so a host may opt out. Every
+  # bootstrap output is asserted off on its own, so a default that drops its
+  # bootstrap clause fails even though the trait split would then call those
+  # outputs enabled.
   minikube = configurations.withTrait "my.minikube.enable" (config: config.my.minikube.enable);
 
-  # The expected split is stated here, not read from the trait: every
-  # production output with Podman runs the cluster and no bootstrap output
-  # does, so a default that drops either clause fails on one side.
-  expectedEnabled = lib.filter (entry: entry.config.my.podman.enable) configurations.production;
-
-  # Production outputs re-evaluated with one option forced off: forcing the
+  # One production output re-evaluated with an option forced off: forcing the
   # trait off covers a production output on the negative side, and forcing
-  # Podman off proves the profile default follows the Podman trait.
+  # Podman off proves the profile default follows the Podman trait. Both rules
+  # live in the shared profile, so one host proves each.
   forcedOff =
-    option:
-    map (
-      entry:
-      configurations.entryOf "${entry.name} with ${option} forced off" (
-        self.nixosConfigurations.${entry.name}.extendModules {
-          modules = [ (lib.setAttrByPath (lib.splitString "." option) (lib.mkForce false)) ];
-        }
-      )
-    ) configurations.production;
+    option: map (configurations.withTraitForcedOff option) (lib.take 1 configurations.production);
 
   linuxUsers = lib.filter (entry: entry.kind == "linux") configurations.userEntries;
-  linuxFixtures = lib.filter (entry: entry.host.system == pkgs.stdenv.hostPlatform.system) fixtures;
 
   expectedVariables = {
+    MINIKUBE_PROFILE = "minikube";
     MINIKUBE_DRIVER = "podman";
     MINIKUBE_CONTAINER_RUNTIME = "containerd";
     MINIKUBE_ROOTLESS = "true";
@@ -86,14 +78,23 @@ let
     else
       entry.source;
 
+  etcTrees = config: {
+    userUnits = etcSource config "systemd/user";
+    systemUnits = etcSource config "systemd/system";
+    setEnvironment = etcSource config "set-environment";
+    pamEnvironment = etcSource config "pam/environment";
+  };
+
   assertEnabled =
     entry:
     let
       inherit (entry) config name;
-      userUnits = etcSource config "systemd/user";
-      systemUnits = etcSource config "systemd/system";
-      setEnvironment = etcSource config "set-environment";
-      pamEnvironment = etcSource config "pam/environment";
+      inherit (etcTrees config)
+        userUnits
+        systemUnits
+        setEnvironment
+        pamEnvironment
+        ;
       podmanBin = "${config.virtualisation.podman.package or "missing-podman"}/bin";
       user = config.my.user.name;
     in
@@ -146,10 +147,12 @@ let
     entry:
     let
       inherit (entry) config name;
-      userUnits = etcSource config "systemd/user";
-      systemUnits = etcSource config "systemd/system";
-      setEnvironment = etcSource config "set-environment";
-      pamEnvironment = etcSource config "pam/environment";
+      inherit (etcTrees config)
+        userUnits
+        systemUnits
+        setEnvironment
+        pamEnvironment
+        ;
     in
     ''
       if [ -e ${esc "${userUnits}/minikube.service"} ] || [ -L ${esc "${userUnits}/default.target.wants/minikube.service"} ]; then
@@ -164,7 +167,9 @@ let
     '';
 
   assertLinuxUser = entry: ''
-    if [ -n "$(find ${esc "${entry.user.home-files or ""}/.config/systemd/user"} -name 'minikube*' 2>/dev/null)" ]; then
+    if [ ! -d ${esc "${entry.user.home-files or ""}"} ]; then
+      ${fail "${entry.name}: the non-NixOS fixture has no Home Manager home-files"}
+    elif [ -n "$(find ${esc "${entry.user.home-files or ""}/.config/systemd/user"} -name 'minikube*' 2>/dev/null)" ]; then
       ${fail "${entry.name}: a non-NixOS Home Manager output carries a minikube user unit"}
     fi
   '';
@@ -181,12 +186,15 @@ pkgs.runCommand "minikube-autostart-tests" { } ''
   ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEnabled expectedEnabled}
+  ${lib.concatMapStringsSep "\n" assertEnabled minikube.enabled}
   ${lib.concatMapStringsSep "\n" assertDisabled (
-    configurations.bootstraps ++ forcedOff "my.minikube.enable" ++ forcedOff "my.podman.enable"
+    lib.filter (entry: !entry.bootstrap) minikube.disabled
+    ++ configurations.bootstraps
+    ++ forcedOff "my.minikube.enable"
+    ++ forcedOff "my.podman.enable"
   )}
   ${lib.concatMapStringsSep "\n" assertLinuxUser linuxUsers}
-  ${lib.concatMapStringsSep "\n" assertLinuxSystem linuxFixtures}
+  ${lib.concatMapStringsSep "\n" assertLinuxSystem configurations.linuxFixtures}
 
   if [ "$failed" != 0 ]; then
     exit 1
