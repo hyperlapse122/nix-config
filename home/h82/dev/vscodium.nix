@@ -187,6 +187,22 @@ let
   };
 
   explorer = "filesExplorerFocus && foldersViewVisible";
+
+  # Where Home Manager's VSCodium module puts the user settings: macOS keeps
+  # them under Application Support rather than the XDG config directory.
+  userDir =
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      "${config.home.homeDirectory}/Library/Application Support/VSCodium/User"
+    else
+      "${config.xdg.configHome}/VSCodium/User";
+
+  # The macOS path holds a space, so it is quoted there; the Linux path is
+  # interpolated as before so the Linux activation script is unchanged.
+  settingsArg =
+    if pkgs.stdenv.hostPlatform.isDarwin then
+      lib.escapeShellArg "${userDir}/settings.json"
+    else
+      "${userDir}/settings.json";
 in
 {
   programs.vscodium = {
@@ -231,7 +247,7 @@ in
 
   # The legacy dotfiles installed a regular keybindings.json here, and an
   # unmanaged file at a Home Manager target aborts activation.
-  home.file."${config.xdg.configHome}/VSCodium/User/keybindings.json".force = true;
+  home.file."${userDir}/keybindings.json".force = true;
 
   home.packages = [
     pkgs.nixd
@@ -248,7 +264,7 @@ in
   home.activation.vscodiumSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
     ${merger} \
       --label VSCodium \
-      --settings ${config.xdg.configHome}/VSCodium/User/settings.json \
+      --settings ${settingsArg} \
       --declared ${declared}
   '';
 }

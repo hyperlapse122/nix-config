@@ -7,6 +7,7 @@
     ./nix.nix
     ./host-marker.nix
     ./defaults.nix
+    ./homebrew.nix
   ];
 
   # nix-darwin applies user-scoped settings, Homebrew included, for this

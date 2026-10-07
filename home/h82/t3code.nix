@@ -4,9 +4,8 @@
   Claude sessions run the flake's own codex and claude with their user-level
   settings, so nothing here adds a copy of either.
 
-  The desktop app is NixOS-only. Its package is added only on a NixOS host, so
-  a non-NixOS host that enables it fails the assertion below rather than a
-  build.
+  The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
+  it fails the assertion below rather than a build.
 */
 {
   config,
@@ -17,18 +16,36 @@
 let
   cfg = config.my.t3;
   nixos = config.my.kind == "nixos";
+  darwin = config.my.kind == "darwin";
 in
 {
   assertions = [
     {
-      assertion = cfg.desktop.enable -> nixos;
-      message = "${config.my.hostName}: my.t3.desktop.enable: the T3 Code desktop app is NixOS-only; enable my.t3.cli.enable on a non-NixOS host.";
+      assertion = cfg.desktop.enable -> nixos || darwin;
+      message = "${config.my.hostName}: my.t3.desktop.enable: the T3 Code desktop app runs on NixOS and macOS only; enable my.t3.cli.enable on a non-NixOS Linux host.";
     }
   ];
 
   home.packages =
     lib.optionals cfg.cli.enable [ (import ../../packages/t3code-cli.nix { inherit pkgs; }) ]
-    ++ lib.optionals (cfg.desktop.enable && nixos) [
+    ++ lib.optionals (cfg.desktop.enable && (nixos || darwin)) [
       (import ../../packages/t3code.nix { inherit pkgs; })
     ];
+
+  # Home Manager copies the macOS app bundle into ~/Applications writable, so
+  # the app's own updater could move it off the nightly pin. The Linux wrapper
+  # turns the updater off with this variable; on macOS a login agent sets it
+  # for every app launched from Finder or the Dock.
+  launchd.agents.t3code-disable-auto-update = lib.mkIf (cfg.desktop.enable && darwin) {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        "/bin/launchctl"
+        "setenv"
+        "T3CODE_DISABLE_AUTO_UPDATE"
+        "1"
+      ];
+      RunAtLoad = true;
+    };
+  };
 }
