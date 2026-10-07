@@ -78,7 +78,7 @@ Testing a Helm chart or opening a service in a browser currently starts with bui
 - AE2. **Covers R7.** **Given** the cluster was stopped with `minikube stop`, **when** the `podman-prune` service runs, **then** a later `minikube start` brings back the same cluster with the release from AE1.
 - AE3. **Covers R8.** **Given** the auto-start fails (for example, the rootless Podman socket is unavailable), **when** h82 logs in, **then** the desktop session comes up normally, the user journal records why the start failed, and `minikube start` run by hand succeeds once the cause is fixed.
 - AE4. **Covers R1, R9.** **Given** a non-NixOS host, **when** its Home Manager configuration is activated, **then** the three commands are on PATH and no cluster auto-start exists.
-- AE5. **Covers R10.** **Given** a Service `web` on port 80 in namespace `demo`, **when** h82 runs `kubectl port-forward -n demo svc/web 8080:80`, **then** `http://localhost:8080` loads in the browser.
+- AE5. **Covers R10.** **Given** a Service `web` on port 80 in namespace `demo`, **when** h82 runs `kubectl port-forward -n demo svc/web 8080:80`, **then** `<http://localhost:8080`> loads in the browser.
 
 ### Scope Boundaries
 
@@ -108,11 +108,11 @@ Testing a Helm chart or opening a service in a browser currently starts with bui
 - `home/h82/shell/shell.nix`: zsh with `enableCompletion = true`.
 - `home/h82/dev/default.nix`: `hostKind` gating for NixOS-only Home Manager modules.
 - `tests/podman-prune.nix`, `tests/vm-checks.nix`: existing Podman checks and VM check registration.
-- minikube Podman driver documentation: https://minikube.sigs.k8s.io/docs/drivers/podman/
-- minikube environment variables (`MINIKUBE_<FLAG>` for any start flag or config value): https://minikube.sigs.k8s.io/docs/handbook/config/
-- Rootless cgroup v2 delegation: https://rootlesscontaine.rs/getting-started/common/cgroup2/
-- systemd's default `user@.service` delegation (`pids memory cpu`): https://raw.githubusercontent.com/systemd/systemd/main/units/user@.service.in
-- `podman system prune` filters: https://docs.podman.io/en/latest/markdown/podman-system-prune.1.html
+- minikube Podman driver documentation: <https://minikube.sigs.k8s.io/docs/drivers/podman/>
+- minikube environment variables (`MINIKUBE_<FLAG>` for any start flag or config value): <https://minikube.sigs.k8s.io/docs/handbook/config/>
+- Rootless cgroup v2 delegation: <https://rootlesscontaine.rs/getting-started/common/cgroup2/>
+- systemd's default `user@.service` delegation (`pids memory cpu`): <https://raw.githubusercontent.com/systemd/systemd/main/units/user@.service.in>
+- `podman system prune` filters: <https://docs.podman.io/en/latest/markdown/podman-system-prune.1.html>
 - nixpkgs packages: `pkgs/by-name/mi/minikube/package.nix` (zsh completion, `bin/kubectl` symlink), `pkgs/by-name/ku/kubectl/package.nix`, `pkgs/applications/networking/cluster/helm/default.nix`.
 
 ---
@@ -179,18 +179,21 @@ U1 and U3 are independent. U2 depends on nothing but should land after U3 so the
 **Dependencies:** None.
 
 **Files:**
+
 - Create `home/h82/dev/kubernetes.nix`.
 - Modify `home/h82/dev/default.nix` (ungated import).
 - Create `tests/kubernetes-tools.nix`.
 - Modify `flake.nix` (register the check; add it to `hostClosureChecks` because it reads host generations).
 
 **Approach:**
+
 1. Add `(lib.hiPrio pkgs.kubectl)`, `pkgs.kubernetes-helm`, and `pkgs.minikube` to `home.packages` in the new module.
 2. The check iterates `configurations.userEntries` with `userGuard`, as `tests/session-variables.nix` does, so NixOS and non-NixOS fixture hosts, production and bootstrap, are all covered.
 
 **Patterns to follow:** `tests/shell-utilities.nix` (run each tool and compare output, `or` fallbacks so removal fails in the builder, collected failures), `home/h82/security/ssh.nix` (`lib.hiPrio`), `tests/session-variables.nix` (userEntries iteration).
 
 **Test scenarios:**
+
 - For each user entry, `bin/kubectl version --client` prints a client version.
 - For each user entry, `bin/helm version --short` and `bin/minikube version --short` print versions.
 - For each user entry, `bin/kubectl` resolves (after `readlink -f`) into the kubectl package, not the minikube package.
@@ -208,12 +211,14 @@ U1 and U3 are independent. U2 depends on nothing but should land after U3 so the
 **Dependencies:** U3 should land first (see Sequencing).
 
 **Files:**
+
 - Create `modules/nixos/services/minikube.nix`.
 - Modify `modules/nixos/profile.nix` (import the module; default `my.minikube.enable`).
 - Create `tests/minikube-autostart.nix`.
 - Modify `flake.nix` (register the check in `hostClosureChecks`).
 
 **Approach:**
+
 1. Declare `options.my.minikube.enable` in the new module, and default it in the profile per KTD2.
 2. Under `lib.mkIf`, define the `MINIKUBE_*` attrset once (KTD3) and use it for `environment.sessionVariables` and the unit's `environment`.
 3. Define the user unit per KTD4, with the wrapped podman package on its `path`.
@@ -225,6 +230,7 @@ U1 and U3 are independent. U2 depends on nothing but should land after U3 so the
 **Patterns to follow:** `modules/nixos/services/podman.nix` (`ConditionUser`, wrapped podman on the unit path, trait option shape), `modules/nixos/profile.nix` (`tailscale`/`protonVpn` bootstrap-off defaults), `tests/podman-containers.nix` (`withTrait` split, whole-line greps of the materialized `/etc/systemd/user` tree, nullglob-safe `*.wants` loop).
 
 **Test scenarios:**
+
 - With the trait on, `/etc/systemd/user/minikube.service` contains `Type=exec`, `RemainAfterExit=yes`, `ConditionUser=h82`, an `ExecStart=` running `minikube start`, an `ExecStop=` running `minikube stop`, and an `Environment=` line carrying each `MINIKUBE_*` value.
 - With the trait on, `default.target.wants/minikube.service` links to the real unit, and the unit file is not a `/dev/null` mask.
 - With the trait on, the unit's PATH includes the wrapped podman package.
@@ -246,17 +252,20 @@ U1 and U3 are independent. U2 depends on nothing but should land after U3 so the
 **Dependencies:** None.
 
 **Files:**
+
 - Modify `modules/nixos/services/podman.nix`.
 - Modify `tests/podman-prune.nix`.
 - Modify `tests/podman-containers.nix` (its exact `ExecStart` assertion).
 
 **Approach:**
+
 1. Add `--filter label!=created_by.minikube.sigs.k8s.io` to the prune `ExecStart`, keeping `--force` and adding no `--volumes` or `--all`.
 2. In the VM check, seed a stopped container and a network labelled `created_by.minikube.sigs.k8s.io=true`, beside the existing unlabelled stopped container.
 
 **Patterns to follow:** `tests/podman-prune.nix` (offline `dockerTools` images, `ConditionResult` check), the converged-fixture learning (`.compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md`).
 
 **Test scenarios:**
+
 - Covers AE2. After the prune unit runs, the labelled stopped container and the labelled network still exist.
 - After the same run, the unlabelled stopped container and an unused unlabelled network are gone, and the named volume and tagged image still exist as before.
 - The static check asserts the exact new `ExecStart` line.
@@ -273,10 +282,12 @@ U1 and U3 are independent. U2 depends on nothing but should land after U3 so the
 **Dependencies:** U1, U2, U3.
 
 **Files:**
+
 - Modify `docs/verification.md`.
 - Modify `AGENTS.md` (the `modules/nixos/services/` list and the trait list in Project structure).
 
 **Approach:**
+
 1. Add a hardware procedure to `docs/verification.md`: reboot, log in, check delegated controllers include `cpuset`, check `systemctl --user status minikube`, then run AE1, AE2 (stop, start `podman-prune`, start), AE3, and AE5. For AE3, induce a failure on the path minikube actually uses, the `podman` CLI, for example by temporarily removing `podman` from the unit's reach or by a broken rootless pause-process namespace; an unavailable Podman socket does not fail minikube, which never uses the socket. AE1's reboot also proves that a stop during logout or shutdown, which can race the user manager stopping the node container's scope, leaves the next start working.
 2. Record the recoveries: `podman system migrate` from a host terminal for a poisoned pause process, `minikube delete` as the explicit reset, and that the first start downloads images for minutes.
 3. Add `minikube` to the AGENTS.md services list and `my.minikube` to the trait list.
