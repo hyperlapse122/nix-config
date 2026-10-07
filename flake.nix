@@ -250,6 +250,22 @@
                 bash ${./tests/pinentry-card.sh} ./pinentry-card
                 touch $out
               '';
+          pinentry-card-darwin =
+            pkgs.runCommand "pinentry-card-darwin-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.python3
+                  pkgs.bash
+                ];
+              }
+              ''
+                bash ${./tests/pinentry-card-darwin.sh} ${
+                  (import ./packages/gpg-tools.nix { inherit pkgs; }).mkDarwinPinentryCard {
+                    pinentryMac = "/pinentry-mac-stand-in/bin/pinentry-mac";
+                  }
+                }
+                touch $out
+              '';
           restore-age-identity =
             pkgs.runCommand "restore-age-identity-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
