@@ -3,7 +3,7 @@
 
     linuxFixtures = import ./lib/linux-fixtures.nix { inherit inputs; };
 
-  The non-NixOS fixture hosts under tests/fixtures/hosts/, assembled through
+  The non-NixOS Linux fixture hosts under tests/fixtures/hosts/, assembled through
   the same lib/linux-host.nix the flake uses for real hosts. They stand in for
   real non-NixOS hosts, which need card-encrypted material under secrets/ and
   so cannot live in hosts/ for testing.
@@ -20,21 +20,7 @@ let
 
   mkLinuxHost = import ../../lib/linux-host.nix { inherit inputs; };
 
-  fixtureNames = import ./directories.nix { inherit lib; } ../fixtures/hosts;
-
-  # Fixtures have no card-encrypted material under secrets/, so production
-  # decrypts fake secrets built for the fixture's own architecture.
-  fakeSecretsModule =
-    { pkgs, ... }:
-    let
-      fakeSecrets = import ./fake-secrets.nix { inherit pkgs; };
-    in
-    {
-      my.secrets = {
-        tokensFile = "${fakeSecrets}/tokens.yaml";
-        sshKeyFile = "${fakeSecrets}/ssh.yaml";
-      };
-    };
+  fixtureNames = (import ../../lib/hosts.nix { inherit lib; } ../fixtures/hosts).linux;
 
   entryOf = fixture: bootstrap: {
     name = if bootstrap then "${fixture}-bootstrap" else fixture;
@@ -43,7 +29,7 @@ let
       hostName = fixture;
       dir = ../fixtures/hosts + "/${fixture}";
       inherit bootstrap;
-      extraModules.home = [ fakeSecretsModule ];
+      extraModules.home = [ ./fake-secrets-module.nix ];
     };
   };
 in

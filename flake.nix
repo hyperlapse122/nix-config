@@ -25,6 +25,14 @@
       url = "github:numtide/system-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Applies the system layer of a macOS host, with Home Manager inside it.
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Installs Homebrew itself on a macOS host, so the first apply needs no
+    # manual Homebrew install; nix-darwin's homebrew module installs the casks.
+    nix-homebrew.url = "github:zhaofengli/nix-homebrew";
     # Boots a foreign distribution's cloud image for the non-NixOS VM check.
     nix-vm-test = {
       url = "github:numtide/nix-vm-test";
@@ -68,6 +76,19 @@
         )) hosts.linux
       );
 
+      # Both variants of every macOS host, keyed by output name.
+      mkDarwinHost = import ./lib/darwin-host.nix { inherit inputs; };
+      darwinHosts = lib.listToAttrs (
+        lib.concatMap (hosts.withVariants (
+          hostName: bootstrap:
+          mkDarwinHost {
+            inherit hostName bootstrap;
+            dir = ./hosts + "/${hostName}";
+          }
+        )) hosts.darwin
+      );
+      darwinFixtures = import ./tests/lib/darwin-fixtures.nix { inherit inputs; };
+
       # The non-NixOS fixture hosts build on their own architecture, so each
       # system's checks carry the fixtures of that system.
       linuxFixtures = import ./tests/lib/linux-fixtures.nix { inherit inputs; };
@@ -105,6 +126,7 @@
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
       checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+      darwinConfigurations = darwinHosts;
 
       nixosConfigurations =
         let
