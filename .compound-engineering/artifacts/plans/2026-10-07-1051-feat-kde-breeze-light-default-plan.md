@@ -95,7 +95,7 @@ The desktop was switched to Breeze Dark in an earlier change, which made dark th
 ## Verification Contract
 
 | Gate | Command |
-|---|---|
+| --- | --- |
 | Format | `nix fmt -- --ci` |
 | Flake checks | `nix flake check` |
 | Theme check | `nix build --no-link .#checks.x86_64-linux.kde-light-theme` |
