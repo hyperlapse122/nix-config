@@ -126,6 +126,21 @@
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
       checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+      # The macOS fixture systems and the check that reads what they
+      # materialize; only a macOS builder can build them.
+      checks.aarch64-darwin =
+        lib.listToAttrs (
+          map (entry: {
+            name = "darwin-system-${entry.name}";
+            value = entry.host.system;
+          }) darwinFixtures
+        )
+        // {
+          darwin-outputs = import ./tests/darwin-outputs.nix {
+            pkgs = import nixpkgs { system = "aarch64-darwin"; };
+            inherit darwinFixtures;
+          };
+        };
       darwinConfigurations = darwinHosts;
 
       nixosConfigurations =
@@ -250,6 +265,14 @@
                 bash ${./tests/pinentry-card.sh} ./pinentry-card
                 touch $out
               '';
+          darwin-config = import ./tests/darwin-config.nix {
+            inherit
+              pkgs
+              self
+              linuxFixtures
+              darwinFixtures
+              ;
+          };
           pinentry-card-darwin =
             pkgs.runCommand "pinentry-card-darwin-tests"
               {
