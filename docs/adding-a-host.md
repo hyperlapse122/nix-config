@@ -363,7 +363,7 @@ Every macOS host imports `modules/darwin/profile.nix`, which sets up the system 
 
 - nix-darwin owns `/etc/nix/nix.conf` and writes the shared Nix settings into it, with `auto-optimise-store` forced off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - `/etc/nix-config-host` records the host and the variant, as on a non-NixOS Linux host.
-- nix-homebrew installs Homebrew on the first apply. nix-darwin's Homebrew module then installs the casks that `modules/shared/darwin-apps.nix` lists. Its cleanup mode is `"none"`, so an app you installed by hand stays installed. Each apply refreshes Homebrew's cask metadata, then installs missing casks and upgrades outdated ones. Homebrew itself stays at the version nix-homebrew pins.
+- nix-homebrew installs Homebrew on the first apply. A Homebrew already at `/opt/homebrew` is migrated in place (`autoMigrate`), keeping the formulae and casks it holds. nix-darwin's Homebrew module then installs the casks that `modules/shared/darwin-apps.nix` lists. Its cleanup mode is `"none"`, so an app you installed by hand stays installed. Each apply refreshes Homebrew's cask metadata, then installs missing casks and upgrades outdated ones. Homebrew itself stays at the version nix-homebrew pins.
 - The NixOS font list, `modules/shared/font-packages.nix`, is installed system-wide.
 - `modules/darwin/defaults.nix` is where macOS system defaults go: Dock, Finder, trackpad, appearance, and keyboard. It sets none yet.
 

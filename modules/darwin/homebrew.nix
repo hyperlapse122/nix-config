@@ -10,6 +10,9 @@ in
   nix-homebrew = {
     enable = true;
     user = config.system.primaryUser;
+    # A Mac that already has Homebrew at /opt/homebrew is taken over in place;
+    # without this, the first apply stops on the existing installation.
+    autoMigrate = true;
     # Homebrew loads a cask from a non-official tap only once it is trusted.
     trust.casks = thirdParty;
   };
