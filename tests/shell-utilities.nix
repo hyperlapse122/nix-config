@@ -101,8 +101,14 @@ pkgs.runCommand "shell-utilities-tests" { } ''
     # name. The unreaped child stays visible as a zombie, so wait on it rather
     # than probing: 143 means SIGTERM from pkill ended it. The sleep is short
     # so a pkill that exits 0 without signalling fails instead of hanging.
+    # The background child is a bash fork until it execs sleep, so wait for
+    # its name to change before matching it by name.
     sleep 5 &
     sleeper=$!
+    for _ in $(seq 50); do
+      [ "$(cat "/proc/$sleeper/comm" 2>/dev/null)" = sleep ] && break
+      sleep 0.1
+    done
     expect pgrep "$sleeper" "$bin/pgrep" -P "$BASHPID" -x sleep
     expect pkill "" "$bin/pkill" -P "$BASHPID" -x sleep
     [ -x "$bin/pkill" ] || kill "$sleeper"
