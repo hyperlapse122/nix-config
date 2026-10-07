@@ -365,7 +365,10 @@
           git-lfs = import ./tests/git-lfs.nix { inherit pkgs self; };
           git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
-          mise-settings = import ./tests/mise-settings.nix { inherit pkgs self; };
+          mise-settings = import ./tests/mise-settings.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };

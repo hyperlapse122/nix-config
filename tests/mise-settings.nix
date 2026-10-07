@@ -1,44 +1,58 @@
 /*
   Check interface:
 
-    import ./tests/mise-settings.nix { inherit pkgs self; }
+    import ./tests/mise-settings.nix { inherit pkgs self fixtures; }
 
-  Asserts that mise uses precompiled runtime binaries for user `h82` on every
-  configuration `tests/lib/configurations.nix` yields, bootstrap outputs
-  included. The bootstrap outputs import the same Home Manager profile and the
-  setting is meant to reach them too, so they are checked rather than assumed
-  identical: a change that gates the profile on `my.bootstrap` fails here.
+  Asserts that mise uses precompiled runtime binaries from an immutable,
+  Nix-managed global config for user `h82` on every Home Manager user
+  `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, bootstrap
+  outputs included). The bootstrap outputs import the same Home Manager profile
+  and the setting is meant to reach them too, so they are checked rather than
+  assumed identical: a change that gates the profile on `my.bootstrap` fails
+  here.
 
   On NixOS, mise defaults all_compile to true and builds runtimes from source.
   The build sandbox may not look like NixOS to mise, so comparing the value
   alone could pass without the declaration. The check therefore asks the
-  packaged mise which file supplied the setting. Per configuration:
+  packaged mise which file supplied the setting. Per user:
 
   - home.path carries bin/mise, and it resolves to the upstream release
     packages/mise.nix pins rather than to nixpkgs' mise. The package's own
     versionCheckHook already proves that binary reports the pinned version,
     so the check compares the materialized path instead of re-running it.
-  - Home Manager renders mise/conf.d/50-home-manager.toml and leaves
-    mise/config.toml unmanaged, so the hand-edited global file stays writable.
-  - with that fragment installed under a sandboxed $XDG_CONFIG_HOME,
+  - the generation's home-files carries .config/mise/config.toml and no
+    .config/mise/conf.d/50-home-manager.toml, so the global file is the
+    read-only store link rather than a writable file for `mise use --global`.
+    Reading home-files rather than option text means a disabled or retargeted
+    entry fails here.
+  - the home.file entry targeting .config/mise/config.toml is forced, so
+    activation replaces the writable config.toml an earlier generation left
+    instead of aborting on the collision.
+  - with that file installed under a sandboxed $XDG_CONFIG_HOME,
     `mise settings ls --json-extended` reports all_compile as false, sourced
-    from the fragment.
+    from mise/config.toml.
+  - the Home Manager warnings name no programs.mise option, so a deprecated
+    option name such as enableMutableConfig cannot come back.
 
-  Every lookup carries an `or` fallback so a mutation that removes a declaration
+  Every lookup carries an `or` fallback, and store paths are interpolated only
+  when the user generation exists, so a mutation that removes a declaration
   reaches the builder as a failing assertion rather than an evaluation error.
   See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
-  Each configuration runs in a subshell and records failures in a file, so one
-  red build names every broken assertion across every configuration. The
-  helper's guard runs first, so an empty configuration list fails the build
-  instead of passing it.
+  Each user runs in a subshell and records failures in a file, so one red
+  build names every broken assertion across every user. The helper's guard
+  runs first, so an empty user list fails the build instead of passing it.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures,
+}:
 let
   inherit (pkgs) lib;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   pinnedMise = "${import ../packages/mise.nix { inherit pkgs; }}/bin/mise";
 
@@ -47,23 +61,32 @@ let
   assertEntry =
     entry:
     let
+      homeFiles = if entry.user ? home-files then entry.user.home-files else "";
       homePath = entry.user.home.path or "";
-      configFiles = entry.user.xdg.configFile or { };
-      fragment = configFiles."mise/conf.d/50-home-manager.toml".source or "";
-      managesGlobal = if configFiles ? "mise/config.toml" then "1" else "0";
+      forced = lib.any (
+        file: (file.target or "") == ".config/mise/config.toml" && (file.force or false)
+      ) (lib.attrValues (entry.user.home.file or { }));
+      miseWarnings = lib.filter (lib.hasInfix "programs.mise") (entry.user.warnings or [ ]);
     in
     ''
-      checkHost ${esc entry.name} ${esc homePath} ${esc fragment} ${esc managesGlobal} ${esc pinnedMise}
+      checkHost ${esc entry.name} ${esc homeFiles} ${esc homePath} ${
+        esc (if forced then "1" else "0")
+      } ${esc (lib.concatStringsSep "\n" miseWarnings)} ${esc pinnedMise}
     '';
 in
 pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
 
   checkHost() (
-    host=$1 homePath=$2 fragment=$3 managesGlobal=$4 pinnedMise=$5
+    host=$1 homeFiles=$2 homePath=$3 forced=$4 miseWarnings=$5 pinnedMise=$6
     fail() { echo "$host: $*" >> "$failures"; }
+
+    if [ -n "$miseWarnings" ]; then
+      fail "home-manager warns about programs.mise: $miseWarnings"
+    fi
+    [ "$forced" = 1 ] || fail "home.file for .config/mise/config.toml is not forced"
 
     mise=$homePath/bin/mise
     if [ -z "$homePath" ] || [ ! -x "$mise" ]; then
@@ -72,11 +95,18 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
     fi
     resolved=$(readlink -f "$mise")
     [ "$resolved" = "$pinnedMise" ] || fail "bin/mise is '$resolved', expected the pinned upstream release '$pinnedMise'"
-    if [ "$managesGlobal" != 0 ]; then
-      fail "home-manager manages mise/config.toml; it must stay mutable"
+
+    if [ -z "$homeFiles" ]; then
+      fail "the h82 Home Manager generation is missing"
+      exit
     fi
-    if [ -z "$fragment" ] || [ ! -f "$fragment" ]; then
-      fail "home-manager renders no mise/conf.d/50-home-manager.toml"
+    fragment=$homeFiles/.config/mise/conf.d/50-home-manager.toml
+    if [ -e "$fragment" ] || [ -L "$fragment" ]; then
+      fail "home-files carries .config/mise/conf.d/50-home-manager.toml; the global config must be mise/config.toml"
+    fi
+    global=$homeFiles/.config/mise/config.toml
+    if [ ! -f "$global" ]; then
+      fail "home-files carries no .config/mise/config.toml"
       exit
     fi
 
@@ -84,9 +114,9 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
     export HOME=$work/home
     export XDG_CONFIG_HOME=$HOME/.config
     unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE MISE_ALL_COMPILE
-    installed=$XDG_CONFIG_HOME/mise/conf.d/50-home-manager.toml
+    installed=$XDG_CONFIG_HOME/mise/config.toml
     mkdir -p "$(dirname "$installed")" "$HOME/project"
-    cp "$fragment" "$installed"
+    cp "$global" "$installed"
     cd "$HOME/project"
 
     settings=$("$mise" settings ls --json-extended 2> /dev/null) || {
@@ -100,7 +130,7 @@ pkgs.runCommand "mise-settings-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
     [ "$source" = "$installed" ] || fail "all_compile comes from '$source', expected '$installed'"
   )
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2
