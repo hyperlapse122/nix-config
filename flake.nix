@@ -1269,6 +1269,7 @@
               tomlVersion = miseToml.tools."npm:markdownlint-cli2";
               lockVersion = (builtins.head miseLock.tools."npm:markdownlint-cli2").version;
               nixpkgsVersion = pkgs.markdownlint-cli2.version;
+              taskRun = miseToml.tasks."lint-staged-markdown".run;
             in
             pkgs.runCommand "lint-staged-markdown-tests"
               {
@@ -1288,7 +1289,7 @@
                 chmod +x scripts/lint-staged-markdown .githooks/pre-commit
                 patchShebangs scripts/lint-staged-markdown .githooks/pre-commit tests/lint-staged-markdown.sh
 
-                bash tests/lint-staged-markdown.sh scripts/lint-staged-markdown .githooks/pre-commit .markdownlint-cli2.jsonc "${tomlVersion}" "${lockVersion}" "${nixpkgsVersion}"
+                bash tests/lint-staged-markdown.sh scripts/lint-staged-markdown .githooks/pre-commit .markdownlint-cli2.jsonc "${tomlVersion}" "${lockVersion}" "${nixpkgsVersion}" "${taskRun}"
                 touch $out
               '';
           ci-docs-only-paths =

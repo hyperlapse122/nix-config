@@ -26,7 +26,7 @@ The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-
 - `nix fmt -- --ci`: check formatting without edits.
 - `nix flake check`: run declared checks. NixOS VM tests are not among them.
 - `nix build --no-link .#vmChecks.all`: build every NixOS VM test; needs `/dev/kvm`. Build one with `.#vmChecks.<name>`.
-- Pre-commit hook: `.githooks/pre-commit` runs `mise run lint-staged-markdown` to lint staged Markdown with `markdownlint-cli2`. The T3 Code `Setup` script enables it automatically; on other checkouts, enable it with `git config core.hooksPath .githooks`. Skip it for a single commit with `git commit --no-verify`.
+- Pre-commit hook: `.githooks/pre-commit` runs `mise run lint-staged-markdown` to lint staged Markdown with `markdownlint-cli2`. The T3 Code `Setup` script enables it automatically; on other checkouts, run `mise trust && mise install`, then enable it with `git config core.hooksPath .githooks`. Skip it for a single commit with `git commit --no-verify`.
 
 Before shipping, run `nix flake check`, build the VM tests, and build every output under `nixosConfigurations`, `homeConfigurations`, `systemConfigs`, and `darwinConfigurations`, production and bootstrap. List them, then build each:
 

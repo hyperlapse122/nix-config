@@ -2,66 +2,26 @@
 #
 # Check interface:
 #
-#   bash tests/lint-staged-markdown.sh <script> [hook] [config] [toml_version] [lock_version] [nixpkgs_version]
+#   bash tests/lint-staged-markdown.sh <script> <hook> <config> <toml_version> <lock_version> <nixpkgs_version> <task_run>
 #
-# Verifies scripts/lint-staged-markdown, .githooks/pre-commit, and version parity.
+# Verifies scripts/lint-staged-markdown, .githooks/pre-commit, the run command
+# of the mise task lint-staged-markdown (<task_run>, relative to the directory
+# holding scripts/), and that the mise.toml and mise.lock markdownlint-cli2 pins
+# equal the nixpkgs version.
 set -euo pipefail
 
-script=${1:-}
-if [[ -z "$script" || ! -f "$script" ]]; then
-  printf "usage: %s SCRIPT [HOOK] [CONFIG] [TOML_VER] [LOCK_VER] [NIXPKGS_VER]\n" "${0##*/}" >&2
+if [[ $# -ne 7 ]]; then
+  printf "usage: %s SCRIPT HOOK CONFIG TOML_VER LOCK_VER NIXPKGS_VER TASK_RUN\n" "${0##*/}" >&2
   exit 2
 fi
-script=$(cd "$(dirname "$script")" && pwd)/$(basename "$script")
-
-hook=${2:-}
-if [[ -z "$hook" ]]; then
-  if [[ -f "$(dirname "$script")/../.githooks/pre-commit" ]]; then
-    hook="$(dirname "$script")/../.githooks/pre-commit"
-  elif [[ -f .githooks/pre-commit ]]; then
-    hook="$(pwd)/.githooks/pre-commit"
-  fi
-fi
-if [[ -n "$hook" && -f "$hook" ]]; then
-  hook=$(cd "$(dirname "$hook")" && pwd)/$(basename "$hook")
-fi
-
-config=${3:-}
-if [[ -z "$config" ]]; then
-  if [[ -f "$(dirname "$script")/../.markdownlint-cli2.jsonc" ]]; then
-    config="$(dirname "$script")/../.markdownlint-cli2.jsonc"
-  elif [[ -f .markdownlint-cli2.jsonc ]]; then
-    config="$(pwd)/.markdownlint-cli2.jsonc"
-  fi
-fi
-if [[ -n "$config" && -f "$config" ]]; then
-  config=$(cd "$(dirname "$config")" && pwd)/$(basename "$config")
-fi
-
-toml_version=${4:-}
-lock_version=${5:-}
-nixpkgs_version=${6:-}
-
-if [[ -z "$toml_version" ]]; then
-  for cand in "$(dirname "$script")/../mise.toml" mise.toml; do
-    if [[ -f "$cand" ]]; then
-      toml_version=$(sed -n 's/^[[:space:]]*"npm:markdownlint-cli2"[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cand")
-      [[ -n "$toml_version" ]] && break
-    fi
-  done
-fi
-if [[ -z "$lock_version" ]]; then
-  for cand in "$(dirname "$script")/../mise.lock" mise.lock; do
-    if [[ -f "$cand" ]]; then
-      lock_version=$(sed -n '/\[\[tools\."npm:markdownlint-cli2"\]\]/,/version =/ s/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$cand" | head -n1)
-      [[ -n "$lock_version" ]] && break
-    fi
-  done
-fi
-if [[ -z "$nixpkgs_version" ]]; then
-  raw_ver=$(markdownlint-cli2 --version 2>&1 || true)
-  nixpkgs_version=$(printf "%s\n" "$raw_ver" | awk 'NR==1 {print $2}' | sed 's/^v//')
-fi
+abspath() { printf "%s/%s\n" "$(cd "$(dirname "$1")" && pwd)" "$(basename "$1")"; }
+script=$(abspath "$1")
+hook=$(abspath "$2")
+config=$(abspath "$3")
+toml_version=$4
+lock_version=$5
+nixpkgs_version=$6
+task_run=$7
 
 fail() { printf "lint-staged-markdown: FAIL: %s\n" "$*" >&2; exit 1; }
 pass() { printf "lint-staged-markdown: ok - %s\n" "$*"; }
@@ -84,11 +44,10 @@ assert_version_parity() {
   fi
 }
 
-# 1. Version parity assertion scenario (U1 / KTD4)
 assert_version_parity "$toml_version" "$lock_version" "$nixpkgs_version"
 pass "version parity holds (mise.toml=$toml_version, mise.lock=$lock_version, nixpkgs=$nixpkgs_version)"
 
-# Verify the assertion fails when given mismatching versions (avoid decorative assertions)
+# The parity assertion must reject each mismatched input.
 if (assert_version_parity "0.0.1" "$lock_version" "$nixpkgs_version") 2>/dev/null; then
   fail "version parity assertion did not fail on mismatched toml version"
 fi
@@ -139,7 +98,6 @@ make_test_repo "$repo1"
 mkdir -p "$repo1/docs"
 printf "%s" "$bad_md_content" > "$repo1/docs/bad.md"
 git -C "$repo1" add docs/bad.md
-out=""
 status=0
 out=$( (cd "$repo1" && bash "$script") 2>&1 ) || status=$?
 [[ $status -ne 0 ]] || fail "staged bad markdown exited 0"
@@ -189,7 +147,6 @@ repo5="$TEST_TMPDIR/repo5"
 make_test_repo "$repo5"
 printf "%s" "$bad_md_content" > "$repo5/README.md"
 git -C "$repo5" add README.md
-out=""
 status=0
 out=$( (cd "$repo5" && bash "$script") 2>&1 ) || status=$?
 [[ $status -ne 0 ]] || fail "root README.md with error exited 0"
@@ -199,7 +156,6 @@ mkdir -p "$repo5/.compound-engineering/artifacts/plans"
 git -C "$repo5" rm -q -f README.md
 printf "%s" "$bad_md_content" > "$repo5/.compound-engineering/artifacts/plans/bad.md"
 git -C "$repo5" add .compound-engineering/artifacts/plans/bad.md
-out=""
 status=0
 out=$( (cd "$repo5" && bash "$script") 2>&1 ) || status=$?
 [[ $status -ne 0 ]] || fail "artifacts plan bad.md exited 0"
@@ -245,7 +201,6 @@ make_test_repo "$repo9"
 mkdir -p "$repo9/docs"
 printf "%s" "$bad_md_content" > "$repo9/docs/with space.md"
 git -C "$repo9" add "docs/with space.md"
-out=""
 status=0
 out=$( (cd "$repo9" && bash "$script") 2>&1 ) || status=$?
 [[ $status -ne 0 ]] || fail "path with space and error exited 0"
@@ -270,7 +225,7 @@ out=$( (cd "$repo10" && bash "$script") 2>&1 ) || status=$?
 [[ $out == *"docs/bad.md"* && $out == *"MD032"* ]] || fail "unborn branch output incorrect: $out"
 pass "unborn repository with staged bad docs/bad.md fails"
 
-# Scenario: After a failing run, index blob and working-tree file are byte-identical (R4)
+# Scenario: a failing run leaves the index blob and the working-tree file unchanged
 repo11="$TEST_TMPDIR/repo11"
 make_test_repo "$repo11"
 mkdir -p "$repo11/docs"
@@ -283,74 +238,104 @@ wt_sha_after=$(git -C "$repo11" hash-object docs/bad.md)
 idx_sha_after=$(git -C "$repo11" ls-files -s docs/bad.md | awk '{print $2}')
 [[ "$wt_sha_before" == "$wt_sha_after" ]] || fail "working tree file modified by lint run"
 [[ "$idx_sha_before" == "$idx_sha_after" ]] || fail "index blob modified by lint run"
-pass "working-tree and index blobs byte-identical after failing run (R4)"
+pass "working-tree and index blobs byte-identical after failing run"
 
-# U2 Scenarios: Hook wiring and linked worktrees
-if [[ -n "$hook" && -f "$hook" ]]; then
-  repo12="$TEST_TMPDIR/repo12"
-  make_test_repo "$repo12"
-  mkdir -p "$repo12/.githooks"
-  cp "$hook" "$repo12/.githooks/pre-commit"
-  chmod +x "$repo12/.githooks/pre-commit"
-  git -C "$repo12" add .githooks/pre-commit
-  git -C "$repo12" commit -q -m "add hook"
-  git -C "$repo12" config core.hooksPath .githooks
+# Scenario: a staged Markdown symlink is linted through its target, as CI does
+repo13="$TEST_TMPDIR/repo13"
+make_test_repo "$repo13"
+mkdir -p "$repo13/docs"
+printf "%s" "$bad_md_content" > "$repo13/payload.txt"
+ln -s ../payload.txt "$repo13/docs/linked.md"
+git -C "$repo13" add payload.txt docs/linked.md
+status=0
+out=$( (cd "$repo13" && bash "$script") 2>&1 ) || status=$?
+[[ $status -ne 0 ]] || fail "staged Markdown symlink to a bad target exited 0"
+[[ $out == *"docs/linked.md"* && $out == *"MD032"* ]] || fail "symlink output incorrect: $out"
+pass "staged Markdown symlink is linted through its target"
 
-  # Setup stub mise that delegates lint-staged-markdown to $script
-  stub_mise_dir="$TEST_TMPDIR/stub_mise_bin"
-  mkdir -p "$stub_mise_dir"
-  cat > "$stub_mise_dir/mise" <<STUB_MISE_EOF
+# Scenario: a nested markdownlint config applies to the staged file beneath it
+repo14="$TEST_TMPDIR/repo14"
+make_test_repo "$repo14"
+mkdir -p "$repo14/docs"
+printf '{ "MD013": true }\n' > "$repo14/docs/.markdownlint.json"
+git -C "$repo14" add docs/.markdownlint.json
+git -C "$repo14" commit -q -m "nested config"
+long_line=$(printf 'word %.0s' {1..30})
+long_line=${long_line% }
+printf "# Title\n\n%s\n" "$long_line" > "$repo14/docs/x.md"
+git -C "$repo14" add docs/x.md
+status=0
+out=$( (cd "$repo14" && bash "$script") 2>&1 ) || status=$?
+[[ $status -ne 0 ]] || fail "nested config enabling MD013 was ignored"
+[[ $out == *"docs/x.md"* && $out == *"MD013"* ]] || fail "nested config output incorrect: $out"
+pass "nested markdownlint config applies to staged files beneath it"
+
+# The hook runs the mise task, so the task must run the script under test.
+task_script=$(abspath "$(dirname "$script")/../$task_run")
+[[ $task_script == "$script" ]] || fail "mise task lint-staged-markdown runs '$task_run', not $script"
+pass "mise task lint-staged-markdown runs the script under test"
+
+# Hook wiring and linked worktrees
+repo12="$TEST_TMPDIR/repo12"
+make_test_repo "$repo12"
+mkdir -p "$repo12/.githooks"
+cp "$hook" "$repo12/.githooks/pre-commit"
+chmod +x "$repo12/.githooks/pre-commit"
+git -C "$repo12" add .githooks/pre-commit
+git -C "$repo12" commit -q -m "add hook"
+git -C "$repo12" config core.hooksPath .githooks
+
+# Setup stub mise that delegates lint-staged-markdown to $script
+stub_mise_dir="$TEST_TMPDIR/stub_mise_bin"
+mkdir -p "$stub_mise_dir"
+cat > "$stub_mise_dir/mise" <<STUB_MISE_EOF
 #!/bin/sh
 if [ "\$1" = "run" ] && [ "\$2" = "lint-staged-markdown" ]; then
-  exec bash "$script"
+  exec bash "$task_script"
 fi
 echo "Unexpected mise arguments: \$*" >&2
 exit 1
 STUB_MISE_EOF
-  chmod +x "$stub_mise_dir/mise"
+chmod +x "$stub_mise_dir/mise"
 
-  # Create linked worktree
-  wt1="$TEST_TMPDIR/wt1"
-  git -C "$repo12" worktree add -q -b wt1-branch "$wt1"
+# Create linked worktree
+wt1="$TEST_TMPDIR/wt1"
+git -C "$repo12" worktree add -q -b wt1-branch "$wt1"
 
-  # Bad commit in linked worktree fails and prints rule
-  mkdir -p "$wt1/docs"
-  printf "%s" "$bad_md_content" > "$wt1/docs/bad.md"
-  git -C "$wt1" add docs/bad.md
-  commit_status=0
-  commit_out=""
-  commit_out=$( PATH="$stub_mise_dir:$PATH" git -C "$wt1" commit -m "commit bad" 2>&1 ) || commit_status=$?
-  [[ $commit_status -ne 0 ]] || fail "git commit with bad markdown succeeded"
-  [[ $commit_out == *"MD032"* ]] || fail "git commit failure output missing MD032"
-  pass "git commit in linked worktree with staged bad markdown fails and prints rule"
+# Bad commit in linked worktree fails and prints rule
+mkdir -p "$wt1/docs"
+printf "%s" "$bad_md_content" > "$wt1/docs/bad.md"
+git -C "$wt1" add docs/bad.md
+commit_status=0
+commit_out=$( PATH="$stub_mise_dir:$PATH" git -C "$wt1" commit -m "commit bad" 2>&1 ) || commit_status=$?
+[[ $commit_status -ne 0 ]] || fail "git commit with bad markdown succeeded"
+[[ $commit_out == *"MD032"* ]] || fail "git commit failure output missing MD032"
+pass "git commit in linked worktree with staged bad markdown fails and prints rule"
 
-  # Clean commit in linked worktree succeeds
-  printf "%s" "$clean_md_content" > "$wt1/docs/bad.md"
-  git -C "$wt1" add docs/bad.md
-  PATH="$stub_mise_dir:$PATH" git -C "$wt1" commit -q -m "commit clean" || fail "git commit with clean markdown failed"
-  pass "git commit in linked worktree with clean markdown succeeds"
+# Clean commit in linked worktree succeeds
+printf "%s" "$clean_md_content" > "$wt1/docs/bad.md"
+git -C "$wt1" add docs/bad.md
+PATH="$stub_mise_dir:$PATH" git -C "$wt1" commit -q -m "commit clean" || fail "git commit with clean markdown failed"
+pass "git commit in linked worktree with clean markdown succeeds"
 
-  # Branch without .githooks/ commits successfully
-  # Create a branch pointing at initial commit (before .githooks was added)
-  initial_commit=$(git -C "$repo12" rev-list --max-parents=0 HEAD)
-  git -C "$repo12" branch branch-no-hooks "$initial_commit"
-  wt2="$TEST_TMPDIR/wt2"
-  git -C "$repo12" worktree add -q "$wt2" branch-no-hooks
-  [[ ! -d "$wt2/.githooks" ]] || fail "wt2 unexpectedly has .githooks"
-  mkdir -p "$wt2/docs"
-  printf "%s" "$bad_md_content" > "$wt2/docs/bad.md"
-  git -C "$wt2" add docs/bad.md
-  PATH="$stub_mise_dir:$PATH" git -C "$wt2" commit -q -m "commit without hook" || fail "commit on branch without .githooks failed"
-  pass "linked worktree on branch without .githooks commits successfully"
+# Branch without .githooks/ commits successfully
+# Create a branch pointing at initial commit (before .githooks was added)
+initial_commit=$(git -C "$repo12" rev-list --max-parents=0 HEAD)
+git -C "$repo12" branch branch-no-hooks "$initial_commit"
+wt2="$TEST_TMPDIR/wt2"
+git -C "$repo12" worktree add -q "$wt2" branch-no-hooks
+[[ ! -d "$wt2/.githooks" ]] || fail "wt2 unexpectedly has .githooks"
+mkdir -p "$wt2/docs"
+printf "%s" "$bad_md_content" > "$wt2/docs/bad.md"
+git -C "$wt2" add docs/bad.md
+PATH="$stub_mise_dir:$PATH" git -C "$wt2" commit -q -m "commit without hook" || fail "commit on branch without .githooks failed"
+pass "linked worktree on branch without .githooks commits successfully"
 
-  # Running git config core.hooksPath twice leaves a single value
-  git -C "$repo12" config core.hooksPath .githooks
-  git -C "$repo12" config core.hooksPath .githooks
-  hooks_count=$(git -C "$repo12" config --get-all core.hooksPath | wc -l | tr -d " ")
-  [[ "$hooks_count" -eq 1 ]] || fail "git config core.hooksPath left multiple values: $hooks_count"
-  pass "running git config core.hooksPath twice leaves a single value"
-else
-  fail "hook file not found for U2 testing"
-fi
+# Running git config core.hooksPath twice leaves a single value
+git -C "$repo12" config core.hooksPath .githooks
+git -C "$repo12" config core.hooksPath .githooks
+hooks_count=$(git -C "$repo12" config --get-all core.hooksPath | wc -l | tr -d " ")
+[[ "$hooks_count" -eq 1 ]] || fail "git config core.hooksPath left multiple values: $hooks_count"
+pass "running git config core.hooksPath twice leaves a single value"
 
 pass "all lint-staged-markdown scenarios passed"

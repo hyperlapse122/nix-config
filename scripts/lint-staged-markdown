@@ -1,47 +1,21 @@
 #!/usr/bin/env bash
-# Lints staged Markdown files against the repository .markdownlint-cli2.jsonc
-# by checking staged blobs out of the git index into a scratch directory and
-# running bare markdownlint-cli2 there.
-#
-# Behavior:
-# - Discovers staged *.md files in the git index.
-# - If no *.md files are staged, exits 0 immediately without running markdownlint-cli2.
-# - Checks staged *.md blobs and .markdownlint-cli2.jsonc out of the index into
-#   a temporary directory, isolating index content from working-tree changes.
-# - Runs markdownlint-cli2 without arguments in the scratch directory to apply
-#   the config globs identically to CI.
-# - On failure, prints one line explaining how to fix or skip, and exits with
-#   markdownlint-cli2 status.
-#
-# Exit codes:
-#   0: All staged Markdown files pass linting, or no Markdown files are staged.
-#   non-zero: One or more staged Markdown files failed linting.
+# Lints the staged Markdown, not the working tree. When any Markdown is
+# staged, the whole index is checked out into a scratch directory and bare
+# markdownlint-cli2 runs there, so the result matches CI's markdown-lint check
+# on this commit: same config globs, nested configs, and symlink targets.
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-staged_md=()
-while IFS= read -r -d "" path; do
-  if [[ "$path" == *.md ]]; then
-    staged_md+=("$path")
-  fi
-done < <(git diff --cached --name-only -z --diff-filter=ACMR)
-
-if [[ ${#staged_md[@]} -eq 0 ]]; then
+if git diff --cached --quiet --diff-filter=ACMR -- '*.md'; then
   exit 0
 fi
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-printf "%s\0" "${staged_md[@]}" | git checkout-index --prefix="$tmpdir/" -z --stdin
-
-if git ls-files --error-unmatch .markdownlint-cli2.jsonc >/dev/null 2>&1; then
-  printf ".markdownlint-cli2.jsonc\0" | git checkout-index --prefix="$tmpdir/" -z --stdin
-elif [[ -f .markdownlint-cli2.jsonc ]]; then
-  cp .markdownlint-cli2.jsonc "$tmpdir/.markdownlint-cli2.jsonc"
-fi
+git checkout-index --all --prefix="$tmpdir/"
 
 status=0
 (cd "$tmpdir" && markdownlint-cli2) || status=$?
