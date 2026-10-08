@@ -340,4 +340,19 @@ wait "$filter_pid" || true
 exec {filter_in}>&-
 pass 'D10: SIGTERM stops the filter and its child promptly'
 
+# D11.  Both stages have answered and exited, but the filter's relay thread is
+#       slow to pass the replies on, as on a loaded builder: this copy of the
+#       filter stalls it 0.5 seconds per line, about 3.5 seconds in all, and
+#       every reply must still reach the agent.
+sed '/^            line = child_stdout.readline()$/a\            time.sleep(0.5)' \
+  "$scratch/filter" >"$scratch/filter-slow-relay"
+grep -qFx '            time.sleep(0.5)' "$scratch/filter-slow-relay" || fail 'D11 slow-relay: the test could not slow the relay down'
+input=$(printf 'OPTION ttyname=/dev/ttys001\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
+: >"$delegate_log"
+printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY \
+  PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter-slow-relay" >"$scratch/out11" 2>"$scratch/err11" ||
+  fail "D11 slow-relay: the filter failed: $(<"$scratch/err11")"
+assert_one_reply_per_command "$input" "$scratch/out11" 'D11 slow-relay'
+pass 'D11: replies both stages wrote before exiting reach the agent even when the filter relay is seconds behind'
+
 pass 'all darwin pinentry-card scenarios passed'

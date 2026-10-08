@@ -20,6 +20,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 PROXY_PATH = "@PINENTRY_CARD_PROXY@"
 SECURITY_PATH = "@SECURITY@"
@@ -78,6 +79,8 @@ class Replies:
         self.changed = threading.Condition()
         self.pending = [True]
         self.ended = False
+        # When the relay's current write to the agent began, or None.
+        self.writing_since = None
 
     def expect(self, relay):
         with self.changed:
@@ -102,6 +105,10 @@ class Replies:
             self.changed.wait_for(lambda: self.ended or not self.pending)
             return not self.ended
 
+    def owes_reply(self):
+        # A reply leaves pending under the output lock it is written under.
+        return bool(self.pending)
+
 
 def pump(child_stdout, client_out, output_lock, replies):
     # Ends the replies on every exit, a write to a vanished agent included,
@@ -116,8 +123,10 @@ def pump(child_stdout, client_out, output_lock, replies):
             with output_lock:
                 if is_reply(line) and not replies.received():
                     continue
+                replies.writing_since = time.monotonic()
                 client_out.write(line)
                 client_out.flush()
+                replies.writing_since = None
     except (BrokenPipeError, OSError):
         return
     finally:
@@ -158,7 +167,8 @@ def main():
         except OSError:
             pass
         status = reap()
-        relay.join(timeout=2)
+        # A killed child answers nothing more.
+        proxy.drain_relay(relay, replies, lambda: child.returncode >= 0)
         if output_lock.acquire(timeout=2):
             try:
                 client_out.flush()

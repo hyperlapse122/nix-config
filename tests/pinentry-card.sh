@@ -65,8 +65,6 @@ flood_on_getpin = os.environ.get("FAKE_DELEGATE_FLOOD_ON_GETPIN") == "1"
 # delegate on a loaded machine, slow to start or to wind down.
 start_delay = float(os.environ.get("FAKE_DELEGATE_START_DELAY", "0"))
 exit_delay = float(os.environ.get("FAKE_DELEGATE_EXIT_DELAY", "0"))
-# Data lines of 1000 bytes to send before the OK of every GETINFO.
-data_lines = int(os.environ.get("FAKE_DELEGATE_DATA_LINES", "0"))
 
 
 def log(data):
@@ -120,8 +118,6 @@ while True:
         out.write(b"OK\n")
         out.flush()
         break
-    if cmd == b"GETINFO":
-        out.write((b"D " + b"x" * 997 + b"\n") * data_lines)
     out.write(b"OK\n")
     out.flush()
 if stream_after_eof:
@@ -803,31 +799,20 @@ wait "$wrapper_pid" || rc=$?
 [[ $rc -eq 241 ]] || fail "34 sigterm-during-exit-grace: expected the terminated delegate's status 241, got $rc; stderr: $(<"$scratch/err34")"
 pass '34: SIGTERM during the post-EOF wait for a slow delegate still exits promptly'
 
-# 35. The delegate has exited but the relay needs several seconds to pass on
-#     what it wrote: on a loaded builder a few short replies can take that
-#     long, here 130 KB of data to a reader taking 20 KB/s does.  The final OK
-#     still reaches the client.  run_wrapper's 10-second bound is too tight.
-slow_fifo="$scratch/slow-reader35"
-mkfifo "$slow_fifo"
-"$python3_bin" -c '
-import fcntl, os, sys, time
-fcntl.fcntl(0, fcntl.F_SETPIPE_SZ, 65536)
-with open(sys.argv[1], "wb") as out:
-    while True:
-        chunk = os.read(0, 4096)
-        if not chunk:
-            break
-        out.write(chunk)
-        time.sleep(0.2)
-' "$scratch/out35" <"$slow_fifo" &
-reader_pid=$!
-rc=0
-printf 'GETINFO pid\n' | "$timeout_bin" 30 "$env_bin" DISPLAY=:0 FAKE_DELEGATE_DATA_LINES=130 PATH="$scratch/bin:/usr/bin:/bin" \
-  "$python3_bin" "$scratch/functional-gnome.py" >"$slow_fifo" 2>"$scratch/err35" || rc=$?
-wait "$reader_pid" || true
-[[ $rc -eq 0 ]] || fail "35 slow-relay-after-exit: the wrapper exited $rc; stderr: $(<"$scratch/err35")"
-last_line=$(tail -n 1 "$scratch/out35")
-[[ $last_line == OK ]] || fail "35 slow-relay-after-exit: the final OK was not relayed; the last line was $(printf '%q' "${last_line:0:20}")"
-pass '35: replies the delegate wrote before exiting are relayed even when the relay takes more than 2 seconds'
+# 35. The delegate answers every command and exits, but the relay thread is
+#     slow to pass the replies on: on a loaded builder it can go unscheduled
+#     for seconds.  This copy of the wrapper stalls the relay 0.5 seconds per
+#     line, about 4 seconds for the greeting and seven replies, and every
+#     reply must still reach the client.
+sed '/^        chunk = delegate_stdout.readline()$/a\        time.sleep(0.5)' \
+  "$scratch/functional-gnome.py" >"$scratch/functional-slow-relay.py"
+grep -qFx '        time.sleep(0.5)' "$scratch/functional-slow-relay.py" || fail '35 slow-relay: the test could not slow the relay down'
+out="$scratch/out35" err="$scratch/err35"
+rm -f "$gnome_log"
+input=$(printf 'OPTION ttyname=/dev/pts/1\nSETKEYINFO --clear\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
+run_wrapper "$scratch/functional-slow-relay.py" "$input" "$out" "$err" DISPLAY=:0
+ok_count=$(grep -c '^OK$' "$out" || true)
+[[ $ok_count -eq 7 ]] || fail "35 slow-relay: expected 7 relayed OK replies, saw $ok_count"
+pass '35: replies the delegate wrote before exiting are relayed even when the relay is seconds behind'
 
 pass 'all U5 test scenarios passed'
