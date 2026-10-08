@@ -367,7 +367,7 @@ Every macOS host imports `modules/darwin/profile.nix`, which sets up the system 
 - The NixOS font list, `modules/shared/font-packages.nix`, is installed system-wide.
 - `modules/darwin/defaults.nix` is where macOS system defaults go: Dock, Finder, trackpad, appearance, and keyboard. It sets none yet.
 
-`modules/shared/darwin-apps.nix` gives every NixOS-only package of the user environment a macOS decision: a Homebrew cask, a Nix package, or left out with a reason. The `darwin-config` check fails when a NixOS package has no decision, so an app added on NixOS needs an entry here. OrbStack is a macOS-only cask that takes the place of rootless Podman and minikube. VSCodium and the T3 Code desktop app come from Nix rather than Homebrew; the T3 Code app is the flake's pinned nightly.
+`modules/shared/darwin-apps.nix` gives every NixOS-only package of the user environment a macOS decision: a Homebrew cask, a Nix package, or left out with a reason. The `darwin-config` check fails when a NixOS package has no decision, so an app added on NixOS needs an entry here. VSCodium and the T3 Code desktop app come from Nix rather than Homebrew; the T3 Code app is the flake's pinned nightly.
 
 ### Name the macOS host
 

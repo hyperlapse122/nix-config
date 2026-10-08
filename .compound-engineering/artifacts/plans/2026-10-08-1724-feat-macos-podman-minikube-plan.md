@@ -106,14 +106,14 @@ Every new Mac needs OrbStack launched from Applications and signed in before con
 - `home/h82/dev/default.nix` imports `kubernetes.nix` for every host kind.
 - `modules/darwin/homebrew.nix`: `cleanup = "none"`.
 - Checks and docs naming OrbStack: `tests/darwin-config.nix`, `tests/docker-cred-helpers.sh`, `README.md`, `docs/macos.md`, `docs/provisioning.md`, `docs/verification.md`, `docs/adding-a-host.md`.
-- libkrun balloon device with free page reporting: https://github.com/libkrun/libkrun
-- Apple's balloon device moves only toward a host-set target: https://developer.apple.com/documentation/virtualization/vzvirtiotraditionalmemoryballoondevice
-- Lima PR showing host RSS not dropping on VZ: https://github.com/lima-vm/lima/pull/4828
-- minikube Podman driver: https://minikube.sigs.k8s.io/docs/drivers/podman/
-- libkrun VM reboot report: https://github.com/podman-container-tools/podman/issues/29084
-- Podman 5.8.7 source for the darwin provider default, machine sockets, and remote-client credentials: https://github.com/podman-container-tools/podman (`pkg/machine/provider/platform_darwin.go`, `pkg/machine/vmconfigs/sockets_darwin.go`, `pkg/bindings/images/pull.go`)
-- Testcontainers with Podman: https://java.testcontainers.org/supported_docker_environment/
-- launchd keys: https://keith.github.io/xcode-man-pages/launchd.plist.5.html
+- libkrun balloon device with free page reporting: <https://github.com/libkrun/libkrun>
+- Apple's balloon device moves only toward a host-set target: <https://developer.apple.com/documentation/virtualization/vzvirtiotraditionalmemoryballoondevice>
+- Lima PR showing host RSS not dropping on VZ: <https://github.com/lima-vm/lima/pull/4828>
+- minikube Podman driver: <https://minikube.sigs.k8s.io/docs/drivers/podman/>
+- libkrun VM reboot report: <https://github.com/podman-container-tools/podman/issues/29084>
+- Podman 5.8.7 source for the darwin provider default, machine sockets, and remote-client credentials: <https://github.com/podman-container-tools/podman> (`pkg/machine/provider/platform_darwin.go`, `pkg/machine/vmconfigs/sockets_darwin.go`, `pkg/bindings/images/pull.go`)
+- Testcontainers with Podman: <https://java.testcontainers.org/supported_docker_environment/>
+- launchd keys: <https://keith.github.io/xcode-man-pages/launchd.plist.5.html>
 
 ---
 
