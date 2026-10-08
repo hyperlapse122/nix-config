@@ -1,7 +1,8 @@
-"""Drive t3code-release against fake GitHub release-list fixtures.
+"""Drive t3code-release against fake GitHub release-list and source fixtures.
 
-The helper's network call goes through an overridable command, so these tests
-feed it a fixture body instead of a network call.
+The helper's network calls go through an overridable command, so these tests
+feed it fixture bodies instead of network calls: the release list, and the
+Antigravity release table from the T3 Code source at the selected tag.
 """
 
 import base64
@@ -24,6 +25,104 @@ CLI_ARM_HEX = "73f03e41f2173a9695bb60e2867f14133cf396e0340af6cc8e0ceecd4efcd7d4"
 ZIP_DARWIN_HEX = "d576a1481c61ff800d013f33295518794c8675da1d30b945dc7c0b587cfdfee5"
 CLI_DARWIN_HEX = "02c191e2a3ed5c3d8c9808d6039884cda18e72426130d062bfbd1b024a5dc3fe"
 OTHER_HEX = "6ec2232f168c00aa108c04218e92666a7df2f4c2b71c1e93c734294ae71359d0"
+
+AGY_VERSION = "9.8.7"
+AGY_SOURCE_PATH = "apps/server/src/provider/antigravityRelease.ts"
+
+# Node platform key, Nix system, and (url, sha256, archive bytes, executable
+# bytes, harness bytes) of each releaseAssets entry the pin needs.
+AGY_PLATFORMS = {
+    "darwin-arm64": (
+        "aarch64-darwin",
+        "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-9.8.7-darwin-arm64.zip",
+        "11d97045f7b4fe81175a107cdf16f9c51484e3c78a5162cae415338bb6aa5b88",
+        111_456_901,
+        278_535_401,
+        118_611_301,
+    ),
+    "linux-x64": (
+        "x86_64-linux",
+        "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-9.8.7-linux-x86_64.zip",
+        "22b60956af0a9d76220a4db91ca9ac88e2a2372ad68f985ab5fceace6b825b96",
+        333_727_102,
+        926_533_902,
+        130_388_002,
+    ),
+    "linux-arm64": (
+        "aarch64-linux",
+        "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-9.8.7-linux-arm64.zip",
+        "330b0bc0fb858e88f4df404d4cedf80bf9298c178291e39e383d6c50b111cbdf",
+        321_690_303,
+        930_848_903,
+        123_224_903,
+    ),
+}
+
+
+def agy_entry(key, sha256=None):
+    _, url, hex_digest, archive, exe, harness = AGY_PLATFORMS[key]
+    return f"""  [
+    "{key}",
+    {{
+      version: ANTIGRAVITY_RELEASE_VERSION,
+      url: "{url}",
+      sha256: "{hex_digest if sha256 is None else sha256}",
+      archiveBytes: {archive:_},
+      executable: {{ name: "agy_acp_server.par", bytes: {exe:_} }},
+      harness: {{ name: "localharness_external", bytes: {harness:_} }},
+    }},
+  ],
+"""
+
+
+def agy_source(omit=(), sha256s=None):
+    """Build antigravityRelease.ts shaped like the T3 Code source file."""
+    sha256s = sha256s or {}
+    entries = "".join(
+        agy_entry(key, sha256s.get(key)) for key in AGY_PLATFORMS if key not in omit
+    )
+    # A platform no host in this flake needs, which the pin must skip.
+    entries += """  [
+    "win32-x64",
+    {
+      version: ANTIGRAVITY_RELEASE_VERSION,
+      url: "https://dl.google.com/agy-extensions/releases/windows/agy-acp-server-9.8.7-windows-x86_64.zip",
+      sha256: "65215e0688681fa3116e048a9eab27ef53af1bbd6f3da3f1c52bd4911d8b17f9",
+      archiveBytes: 124_509_787,
+      executable: { name: "agy_acp_server.exe", bytes: 81_437_336 },
+      harness: { name: "localharness_external.exe", bytes: 145_548_952 },
+    },
+  ],
+"""
+    return f"""const ANTIGRAVITY_RELEASE_VERSION = "{AGY_VERSION}";
+
+export interface AntigravityReleaseAsset {{
+  readonly version: string;
+  readonly executable: {{
+    readonly name: string;
+    readonly bytes: number;
+  }};
+}}
+
+const releaseAssets = new Map<string, AntigravityReleaseAsset>([
+{entries}]);
+"""
+
+
+def expected_antigravity():
+    return {
+        system: {
+            "platform": key,
+            "version": AGY_VERSION,
+            "url": url,
+            "sha256": hex_digest,
+            "hash": sri(hex_digest),
+            "archiveBytes": archive,
+            "executable": {"name": "agy_acp_server.par", "bytes": exe},
+            "harness": {"name": "localharness_external", "bytes": harness},
+        }
+        for key, (system, url, hex_digest, archive, exe, harness) in AGY_PLATFORMS.items()
+    }
 
 
 def target_assets(version):
@@ -73,6 +172,8 @@ def release(tag, prerelease=True, draft=False, omit=(), duplicate=(), digests=No
     return {"tag_name": tag, "prerelease": prerelease, "draft": draft, "assets": assets}
 
 
+DEFAULT_LIST_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
+
 NEWEST = "v0.0.46-nightly.20261004.2644"
 NEWEST_VERSION = NEWEST[1:]
 
@@ -102,6 +203,7 @@ def expected_pin(tag):
             }
             for system, components in target_assets(version).items()
         },
+        "antigravity": expected_antigravity(),
     }
 
 
@@ -109,16 +211,21 @@ def sri(hex_digest):
     return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
 
 
+# Logs each call's stdin and arguments as one JSON line, and answers a URL
+# for the Antigravity source file with FAKE_SOURCE, any other with FAKE_BODY.
 FAKE_FETCH = """#!/usr/bin/env python3
-import os, sys
-with open(os.environ['FAKE_STDIN_LOG'], 'w') as f:
-    f.write(sys.stdin.read())
-with open(os.environ['FAKE_ARGS_LOG'], 'w') as f:
-    f.write('\\n'.join(sys.argv[1:]))
+import json, os, sys
+with open(os.environ['FAKE_STDIN_LOG'], 'a') as f:
+    f.write(json.dumps(sys.stdin.read()) + '\\n')
+with open(os.environ['FAKE_ARGS_LOG'], 'a') as f:
+    f.write(json.dumps(sys.argv[1:]) + '\\n')
 status = int(os.environ.get('FAKE_STATUS', '0'))
 if status:
     sys.exit(status)
-sys.stdout.write(os.environ.get('FAKE_BODY', ''))
+if sys.argv[-1].endswith('antigravityRelease.ts'):
+    sys.stdout.write(os.environ.get('FAKE_SOURCE', ''))
+else:
+    sys.stdout.write(os.environ.get('FAKE_BODY', ''))
 """
 
 
@@ -134,9 +241,13 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.args_log = root / "args.log"
         self.output = root / "t3code-release.json"
 
-    def run_release(self, body=None, extra_args=None, status=0, fetch=None, token=None):
+    def run_release(
+        self, body=None, extra_args=None, status=0, fetch=None, token=None, source=None
+    ):
         if body is None:
             body = release_list()
+        if source is None:
+            source = agy_source()
         env = dict(os.environ)
         env.pop("GH_TOKEN", None)
         if token is not None:
@@ -145,12 +256,18 @@ class T3codeReleaseTestCase(unittest.TestCase):
             f"{sys.executable} {self.fetch}" if fetch is None else fetch
         )
         env["FAKE_BODY"] = body
+        env["FAKE_SOURCE"] = source
         env["FAKE_STATUS"] = str(status)
         env["FAKE_STDIN_LOG"] = str(self.stdin_log)
         env["FAKE_ARGS_LOG"] = str(self.args_log)
         args = [sys.executable, str(SCRIPT)]
         args.extend(extra_args if extra_args is not None else ["--dry-run"])
         return subprocess.run(args, capture_output=True, text=True, env=env)
+
+    def fetched_urls(self):
+        if not self.args_log.exists():
+            return []
+        return [json.loads(line)[-1] for line in self.args_log.read_text().splitlines()]
 
     def write_pin(self, version):
         self.output.write_text(json.dumps({"version": version, "tag": f"v{version}"}))
@@ -214,6 +331,7 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("already up to date", result.stdout)
         self.assertEqual(self.output.read_bytes(), before)
+        self.assertEqual(self.fetched_urls(), [DEFAULT_LIST_URL])
 
     def test_same_version_higher_build_is_newer(self):
         self.write_pin("0.0.46-nightly.20261004.2643")
@@ -294,23 +412,74 @@ class T3codeReleaseTestCase(unittest.TestCase):
         url = "https://example.invalid/releases?per_page=5"
         result = self.run_release(extra_args=["--dry-run", "--source-url", url])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.args_log.read_text().splitlines()[-1], url)
+        self.assertEqual(self.fetched_urls()[0], url)
 
     def test_gh_token_is_sent_on_stdin_as_a_bearer_header(self):
         result = self.run_release(token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.stdin_log.read_text(), f"Authorization: Bearer {FAKE_TOKEN}\n")
+        stdins = [json.loads(line) for line in self.stdin_log.read_text().splitlines()]
+        # Both the release list and the source file get the header.
+        self.assertEqual(stdins, [f"Authorization: Bearer {FAKE_TOKEN}\n"] * 2)
         self.assertNotIn(FAKE_TOKEN, self.args_log.read_text())
 
     def test_no_header_without_gh_token(self):
         result = self.run_release()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.stdin_log.read_text(), "")
+        stdins = [json.loads(line) for line in self.stdin_log.read_text().splitlines()]
+        self.assertEqual(stdins, ["", ""])
 
     def test_fetch_failure_does_not_print_the_token(self):
         result = self.run_release(status=22, token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(FAKE_TOKEN, result.stdout + result.stderr)
+
+    def test_antigravity_entries_match_the_source_at_the_selected_tag(self):
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pin = json.loads(self.output.read_text())
+        self.assertEqual(pin["antigravity"], expected_antigravity())
+        self.assertEqual(
+            pin["antigravity"]["x86_64-linux"]["hash"],
+            "sha256-" + base64.b64encode(bytes.fromhex(AGY_PLATFORMS["linux-x64"][2])).decode(),
+        )
+
+    def test_source_is_fetched_at_the_selected_tag(self):
+        result = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            self.fetched_urls(),
+            [
+                DEFAULT_LIST_URL,
+                f"https://raw.githubusercontent.com/pingdotgg/t3code/{NEWEST}/{AGY_SOURCE_PATH}",
+            ],
+        )
+
+    def test_refuses_a_source_missing_a_required_platform(self):
+        for key in AGY_PLATFORMS:
+            with self.subTest(missing=key):
+                result = self.run_release(
+                    source=agy_source(omit=(key,)), extra_args=["-o", str(self.output)]
+                )
+                self.assert_refused(result, key)
+
+    def test_refuses_a_malformed_runtime_sha256(self):
+        good = AGY_PLATFORMS["linux-arm64"][2]
+        for sha256 in [good.upper(), good[:-1], good + "0", "", "sha256:" + good]:
+            with self.subTest(sha256=sha256):
+                result = self.run_release(
+                    source=agy_source(sha256s={"linux-arm64": sha256}),
+                    extra_args=["-o", str(self.output)],
+                )
+                self.assert_refused(result, "sha256")
+
+    def test_refuses_an_unparsable_source(self):
+        no_version = agy_source().replace(
+            f'const ANTIGRAVITY_RELEASE_VERSION = "{AGY_VERSION}";', ""
+        )
+        for source in ["", "<html>404: Not Found</html>", no_version]:
+            with self.subTest(source=source[:40]):
+                result = self.run_release(source=source, extra_args=["-o", str(self.output)])
+                self.assert_refused(result, "antigravityRelease.ts")
 
     def test_empty_fetch_command_fails(self):
         result = self.run_release(fetch="")
