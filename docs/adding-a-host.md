@@ -27,7 +27,7 @@ Create `hosts/<host>/` with three files.
     ./hardware.nix
     ./disko.nix
   ];
-  my.laptop.enable = true;
+  my.nuphyGem80.enable = true;
 }
 ```
 
@@ -39,11 +39,7 @@ A trait is a `my.*.enable` option that defaults to `false`. Hardware-specific mo
 
 | Trait | Enables |
 | --- | --- |
-| `my.keyd.enable` | The keyd remap of the internal keyboard (`modules/nixos/hardware/keyd.nix`). `my.keyd.copilotKey` adds the correction for a keyboard that ships a Copilot key in place of the right Meta key. |
-| `my.fingerprint.enable` | Fingerprint authentication for the lock screen, polkit, and `sudo`. The module keeps it off on the bootstrap output, so write `true`. |
-| `my.thunderbolt.enable` | Thunderbolt device authorization through bolt. |
 | `my.nuphyGem80.enable` | Device access for the NuPhy Gem80 configurator and firmware flashing. |
-| `my.laptop.enable` | The lid-switch policy, in both logind and KDE Powerdevil. |
 | `my.t3.cli.enable` | The headless T3 Code server, `t3` (`packages/t3code-cli.nix`). It also works on a non-NixOS host. |
 | `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS and macOS hosts only. |
 

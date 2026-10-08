@@ -10,8 +10,7 @@
   - the x86_64-only Android SDK reaches x86_64 hosts only, so an aarch64 host
     gets no tools it cannot execute;
   - the account and home directory follow the host's `my.user` values;
-  - no desktop configuration reaches the user environment, even on a fixture
-    that declares the laptop trait: no KDE lid activation, no Plasma or
+  - no desktop configuration reaches the user environment: no Plasma or
     autostart files, no GUI packages, the T3 Code desktop app included;
   - the T3 Code CLI is in the user packages exactly when the host enables
     my.t3.cli.enable, and at least one fixture enables it;
@@ -112,9 +111,6 @@ let
       (check (hm.home.homeDirectory == hm.my.user.home)
         "${entry.name}: home.homeDirectory is ${hm.home.homeDirectory}, my.user.home is ${hm.my.user.home}"
       )
-      (check (
-        !(hm.home.activation ? kdePowerLid)
-      ) "${entry.name}: the KDE lid activation reached a non-NixOS host")
       (check (
         leakedGui == [ ]
       ) "${entry.name}: GUI packages reached a non-NixOS host: ${lib.concatStringsSep ", " leakedGui}")
@@ -234,18 +230,13 @@ let
       '')
     ];
 
-  # The laptop trait must be exercised, or the desktop assertions above could
-  # pass only because no fixture asked for anything desktop-shaped.
-  laptopFixtures = lib.filter (entry: entry.host.home.config.my.laptop.enable) fixtures;
-
-  # Likewise the T3 Code CLI trait, or its presence assertion would only ever
-  # see the trait off.
+  # The T3 Code CLI trait must be exercised, or its presence assertion would
+  # only ever see the trait off.
   t3CliFixtures = lib.filter (entry: entry.host.home.config.my.t3.cli.enable) fixtures;
 in
 pkgs.runCommand "non-nixos-outputs" { nativeBuildInputs = [ pkgs.jq ]; } ''
   fail=0
   ${lib.optionalString (fixtures == [ ]) (fail "tests/fixtures/hosts holds no fixture host")}
-  ${lib.optionalString (laptopFixtures == [ ]) (fail "no fixture declares my.laptop.enable")}
   ${lib.optionalString (t3CliFixtures == [ ]) (fail "no fixture declares my.t3.cli.enable")}
   ${assertPairs}
   ${lib.concatMapStrings assertEntry fixtures}

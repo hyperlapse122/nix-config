@@ -40,7 +40,9 @@
     Nix store fails.
   On every other configuration, including bootstrap outputs, no
   ensure-printers.service exists. At least one production configuration must
-  declare a queue.
+  declare a queue. When every production configuration declares one, each is
+  re-evaluated with no queues, so the absence assertion still covers a
+  production configuration.
 
   The builder collects every failure instead of exiting at the first, so one
   red build names every affected configuration.
@@ -54,7 +56,21 @@ let
 
   declaresQueues = entry: !entry.bootstrap && entry.config.my.printing.queues != [ ];
   queued = lib.filter declaresQueues configurations.entries;
-  unqueued = lib.filter (entry: !declaresQueues entry) configurations.entries;
+  # A production configuration re-evaluated with no printer queues, for a
+  # fleet in which every production configuration declares one.
+  withoutQueues =
+    entry:
+    configurations.entryOf "${entry.name} with no printer queues" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [ { my.printing.queues = lib.mkForce [ ]; } ];
+      }
+    );
+
+  unqueued =
+    lib.filter (entry: !declaresQueues entry) configurations.entries
+    ++ lib.optionals (lib.all declaresQueues configurations.production) (
+      map withoutQueues configurations.production
+    );
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -273,6 +289,13 @@ let
     echo 'tests/printing.nix: no production configuration declares my.printing.queues, so the queue branch would cover none' >&2
     exit 1
   '';
+
+  unqueuedGuard =
+    lib.optionalString (!lib.any (entry: !entry.bootstrap && !declaresQueues entry) unqueued)
+      ''
+        echo 'tests/printing.nix: every production configuration declares my.printing.queues, even the one re-evaluated with none, so the absence branch would cover no production configuration' >&2
+        exit 1
+      '';
 in
 pkgs.runCommand "printing-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   set -x
@@ -292,6 +315,7 @@ pkgs.runCommand "printing-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
   ${printing.guard}
   ${resolvedGuard}
   ${queueGuard}
+  ${unqueuedGuard}
   failed=0
 
   ${lib.concatMapStringsSep "\n" assertEnabled printing.enabled}

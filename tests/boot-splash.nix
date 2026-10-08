@@ -43,8 +43,10 @@
   - systemd-boot is not installed with a zero timeout.
   - the kernel command line carries none of the quiet-boot parameters.
 
-  The check fails when no production configuration uses NVIDIA or none uses
-  another driver, so neither branch of the GPU assertions passes vacuously.
+  The check fails when no production configuration uses NVIDIA. When none
+  uses another driver, the other branch runs on each production configuration
+  re-evaluated with an Intel KMS driver in place of NVIDIA, so neither branch
+  of the GPU assertions passes vacuously.
   Failures are collected instead of exiting at the first, so one red build
   names every broken assertion across every configuration.
 */
@@ -91,6 +93,29 @@ let
   usesNvidia =
     config:
     lib.elem "nvidia" config.services.xserver.videoDrivers && config.hardware.nvidia.modesetting.enable;
+
+  # A production configuration re-evaluated with the Intel driver in place of
+  # NVIDIA, for a fleet in which every production configuration uses NVIDIA.
+  withIntelDriver =
+    entry:
+    configurations.entryOf "${entry.name} with the Intel driver in place of NVIDIA" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [
+          {
+            services.xserver.videoDrivers = lib.mkForce [ "modesetting" ];
+            hardware.nvidia.modesetting.enable = lib.mkForce false;
+            hardware.nvidia-container-toolkit.enable = lib.mkForce false;
+            boot.initrd.kernelModules = [ "i915" ];
+          }
+        ];
+      }
+    );
+
+  production =
+    configurations.production
+    ++ lib.optionals (lib.all (entry: usesNvidia entry.config) configurations.production) (
+      map withIntelDriver configurations.production
+    );
 
   initrdFile = config: path: config.boot.initrd.systemd.contents.${path}.source or null;
 
@@ -276,13 +301,13 @@ pkgs.runCommand "boot-splash-tests"
       failed=1
     }
 
-    ${lib.optionalString (!lib.any (entry: usesNvidia entry.config) configurations.production) (
+    ${lib.optionalString (!lib.any (entry: usesNvidia entry.config) production) (
       fail "no production configuration uses the NVIDIA driver, so the NVIDIA initrd assertions would cover nothing"
     )}
-    ${lib.optionalString (lib.all (entry: usesNvidia entry.config) configurations.production) (
-      fail "every production configuration uses the NVIDIA driver, so the assertion that others load no nvidia module would cover nothing"
+    ${lib.optionalString (lib.all (entry: usesNvidia entry.config) production) (
+      fail "every production configuration uses the NVIDIA driver, even the one re-evaluated with the Intel driver, so the assertion that others load no nvidia module would cover nothing"
     )}
-    ${lib.concatMapStringsSep "\n" assertProduction configurations.production}
+    ${lib.concatMapStringsSep "\n" assertProduction production}
     ${lib.concatMapStringsSep "\n" assertBootstrap configurations.bootstraps}
 
     if [ "$failed" != 0 ]; then

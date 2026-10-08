@@ -99,13 +99,11 @@
           "emoji-font"
           "iphone-restore"
           "kde-light-theme"
-          "keyd-remap"
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
           "printing"
           "proton-vpn"
-          "thunderbolt"
           "user-avatar"
           "winbox"
           "yubikey-fido"
@@ -296,7 +294,6 @@
                 touch $out
               '';
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
-          keyd-remap = import ./tests/keyd-remap.nix { inherit pkgs self; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           agent-settings =
@@ -315,7 +312,7 @@
               # Activation runs the packaged binary, not this source copy, and its
               # unit's PATH carries no python3. Exercise the built file so a lost
               # +x bit or an unpatched `#!/usr/bin/env python3` fails here rather
-              # than on the laptop.
+              # than at activation.
               interpreter=$(head -1 ${packaged}/bin/agent-settings)
               case "$interpreter" in
                 '#!'/nix/store/*) ;;
@@ -551,114 +548,6 @@
               '';
           nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
           agent-browser-deps = import ./tests/agent-browser-deps.nix { inherit pkgs self; };
-          pam-fingerprint = import ./tests/pam-fingerprint.nix { inherit pkgs self; };
-          enroll-fingerprint =
-            let
-              fingerprint = configurations.withTrait "my.fingerprint.enable" (
-                config: config.my.fingerprint.enable
-              );
-
-              # The configuration's own copy, not a fresh build of the package
-              # file: a module that stopped installing the helper would otherwise
-              # leave this check green while the system ships an enrollment PAM
-              # service and no program that uses it. Whether a configuration
-              # should ship it comes from the trait and the bootstrap flag, never
-              # from the module under test.
-              assertConfiguration =
-                entry:
-                let
-                  expected = entry.config.my.fingerprint.enable && !entry.bootstrap;
-                  packaged = pkgs.lib.lists.findFirst (
-                    p: (p.pname or "") == "enroll-fingerprint"
-                  ) null entry.config.environment.systemPackages;
-                in
-                if !expected then
-                  pkgs.lib.optionalString (packaged != null) ''
-                    echo 'an enroll-fingerprint package reaches the system path on ${entry.name}, whose trait or bootstrap flag withholds it' >&2
-                    fail=1
-                  ''
-                else
-                  ''
-                    ${pkgs.lib.optionalString (packaged == null) ''
-                      echo "no enroll-fingerprint package reaches the system path on ${entry.name}" >&2
-                      fail=1
-                    ''}
-                    ${pkgs.lib.optionalString (packaged != null) ''
-                      helper=${packaged}/bin/enroll-fingerprint
-                      configuration=${entry.name}
-                      assert_line 'PAMTESTER="${pkgs.pamtester}/bin/pamtester"'
-                      assert_line 'FPRINTD_ENROLL="${pkgs.fprintd}/bin/fprintd-enroll"'
-                      assert_line 'FPRINTD_LIST="${pkgs.fprintd}/bin/fprintd-list"'
-                      assert_line 'SUDO="/run/wrappers/bin/sudo"'
-                      assert_line 'PAM_SERVICE=enroll-fingerprint'
-                      test -x ${pkgs.pamtester}/bin/pamtester || {
-                        echo "the authenticator the helper names is not executable on ${entry.name}" >&2
-                        fail=1
-                      }
-
-                      # A mutation that deletes a substitution line reddens the
-                      # package derivation itself, via --replace-fail, so it never
-                      # reaches these assertions. The mutation that exercises them is
-                      # substituting a constant for the wrong store path.
-                      if grep -qE '@[A-Z_]+@' "$helper"; then
-                        echo "packaged helper still carries an unsubstituted placeholder on ${entry.name}" >&2
-                        grep -nE '@[A-Z_]+@' "$helper" >&2
-                        fail=1
-                      fi
-                      interpreter=$(head -1 "$helper")
-                      case "$interpreter" in
-                        '#!'/nix/store/*) ;;
-                        *)
-                          echo "packaged helper must carry a store interpreter on ${entry.name}, got: $interpreter" >&2
-                          fail=1
-                          ;;
-                      esac
-
-                      # Run it once, so a helper that cannot execute at all is
-                      # distinguishable from one that merely reads correctly.
-                      if "$helper" --nonsense >/dev/null 2>&1; then
-                        echo "packaged helper accepted an unknown argument on ${entry.name}" >&2
-                        fail=1
-                      elif [ $? -ne 2 ]; then
-                        echo "packaged helper did not reject an unknown argument with status 2 on ${entry.name}" >&2
-                        fail=1
-                      fi
-                    ''}
-                  '';
-            in
-            pkgs.runCommand "enroll-fingerprint-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.bash
-                  pkgs.gnugrep
-                ];
-              }
-              ''
-                mkdir -p scripts tests
-                cp ${./scripts/enroll-fingerprint} scripts/enroll-fingerprint
-                cp ${./tests/enroll-fingerprint.sh} tests/enroll-fingerprint.sh
-                chmod +x scripts/enroll-fingerprint
-                patchShebangs scripts/enroll-fingerprint
-                bash tests/enroll-fingerprint.sh scripts/enroll-fingerprint
-
-                # The source test renders the @...@ constants itself, so it never
-                # sees the built file. Activation runs the built one, and what
-                # matters there is not that substitution happened but WHAT it
-                # produced: asserting only the absence of a placeholder would pass
-                # a package that substituted the authenticator for coreutils'
-                # `true`, and the installed helper would enroll with no password
-                # at all while every check stayed green.
-                assert_line() {
-                  grep -qxF "$1" "$helper" || {
-                    echo "packaged helper is missing the line on $configuration: $1" >&2
-                    fail=1
-                  }
-                }
-                ${fingerprint.guard}
-                ${forEveryConfiguration assertConfiguration}
-
-                touch $out
-              '';
           wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
           tailscale-single-router =
             let
@@ -1336,13 +1225,11 @@
           kde-light-theme = import ./tests/kde-light-theme.nix { inherit pkgs self; };
           emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
-          logind-lid-switch = import ./tests/logind-lid-switch.nix { inherit pkgs self; };
           logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
           udev-device-access = import ./tests/udev-device-access.nix { inherit pkgs self; };
           kernel-sysctl = import ./tests/kernel-sysctl.nix { inherit pkgs self; };
           proton-vpn = import ./tests/proton-vpn.nix { inherit pkgs self; };
           wireplumber-bluetooth = import ./tests/wireplumber-bluetooth.nix { inherit pkgs self; };
-          thunderbolt = import ./tests/thunderbolt.nix { inherit pkgs self; };
           iphone-restore = import ./tests/iphone-restore.nix { inherit pkgs self; };
           printing = import ./tests/printing.nix { inherit pkgs self; };
           winbox = import ./tests/winbox.nix { inherit pkgs self; };
