@@ -134,7 +134,7 @@ flowchart LR
 The installer is idempotent across three states of the version directory:
 
 | State of `versions/<sha256>/` | Installer action |
-|---|---|
+| --- | --- |
 | Absent | Stage a real directory beside it with the two links and `.install-complete.json`, rename it into place, then write `active.json` atomically. |
 | Present and complete for this release with real binaries (T3 Code's own install) | Leave the directory alone; write `active.json` only if it names another release. |
 | Present with both binaries linked to this activation's package path | Leave the directory alone; write `active.json` only if it names another release. |
@@ -151,7 +151,7 @@ Links to an older package path are replaced even while that path still exists, b
 ### Risks
 
 | Risk | Mitigation |
-|---|---|
+| --- | --- |
 | T3 Code rejects or deletes a version directory whose binaries are store symlinks. | U4 verification runs T3 Code's own resolve and validation against the installed layout on the Mac host; the stop condition covers a hard rejection. |
 | The Linux `.par` build fails to start through a symlink into the read-only store, which the Mac smoke check cannot show. | The `docs/verification.md` step from U6 checks it on each Linux host after `nr switch`, and the PR reports it as unverified until then. |
 | Linux host builds and CI download a 335 MB archive per architecture. | Accepted: it replaces the same download in the app, and the store caches it. |
@@ -170,10 +170,12 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** None.
 
 **Files:**
+
 - `home/h82/t3code.nix`
 - `tests/t3code-traits.nix`
 
 **Approach:**
+
 1. Replace the single `setPaths` declaration with one attrset per file, rendered through a `leaves` helper as in `home/h82/dev/vscodium.nix`.
 2. Keep `home.activation.t3codeSettings` for `settings.json` and add a second entry for `client-settings.json`, same ordering (`entryAfter [ "installPackages" ]`) and `run` wrapper.
 3. Before finalizing KTD2, confirm `sendShortcut`'s absent-value behavior in the pinned bundle and confirm each `settings.json` key is read from `settings.json` rather than another file.
@@ -182,6 +184,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Patterns to follow:** `home/h82/dev/vscodium.nix` (`leaves`), `home/h82/agents/claude.nix` (two merges).
 
 **Test scenarios:**
+
 - Covers AE1. The stub merger records two invocations, one per file, each with the expected `--settings` path.
 - The `client-settings.json` declaration equals, byte for byte, the expected JSON rendered in the test.
 - The `settings.json` declaration owns `defaultModelSelection` whole as `{instanceId: "claudeAgent", model: "claude-opus-5-5"}` and `textGenerationModelSelection` whole as `{instanceId: "antigravity", model: "gemini-3.8-flash-low"}`, so a previous selection's `options` do not survive the merge.
@@ -200,11 +203,13 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** None.
 
 **Files:**
+
 - `scripts/t3code-release`
 - `packages/t3code-release.json`
 - `tests/test_t3code_release.py`
 
 **Approach:**
+
 1. After selecting the newest nightly, fetch `apps/server/src/provider/antigravityRelease.ts` at its tag through the same overridable fetch command used for the release list.
 2. Parse `ANTIGRAVITY_RELEASE_VERSION` and the `releaseAssets` entries for `linux-x64`, `linux-arm64`, and `darwin-arm64`, mapped to `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`.
 3. Write them under `antigravity` with the SRI hash derived from the hex sha256, and fail the whole run on a missing platform, a malformed sha256, or an unparsable file.
@@ -213,6 +218,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Patterns to follow:** the existing fetch override and fixtures in `tests/test_t3code_release.py`; `hex_to_sri`.
 
 **Test scenarios:**
+
 - Covers AE4. A fixture release plus a fixture source file produce a pin whose `antigravity` entries match the fixture's version, url, sha256, SRI hash, archive size, and binary names and sizes.
 - The source file is fetched at the selected tag, not the default branch.
 - A source file missing one required platform fails without writing.
@@ -230,10 +236,12 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** U2.
 
 **Files:**
+
 - `packages/antigravity-acp.nix`
 - `flake.nix`
 
 **Approach:**
+
 1. `fetchurl` the pinned url with the pinned SRI hash, unzip, and install both binaries into one output directory.
 2. Turn fixup off.
 3. Expose it under `packages.<system>` for the three supported systems and pass the pin record through for the installer.
@@ -241,6 +249,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Patterns to follow:** the darwin branch of `packages/t3code.nix` (unzip with `dontFixup`); `packages/t3code-cli.nix` (per-system pin lookup).
 
 **Test scenarios:**
+
 - Building the package on x86_64-linux yields both binaries with the pinned byte sizes and executable bits.
 
 **Verification:** the package builds on x86_64-linux and, through CI, on aarch64-linux and aarch64-darwin.
@@ -254,6 +263,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** U3.
 
 **Files:**
+
 - `scripts/t3code-antigravity-install`
 - `packages/agent-tools.nix`
 - `home/h82/t3code.nix`
@@ -262,6 +272,7 @@ Links to an older package path are replaced even while that path still exists, b
 - `flake.nix`
 
 **Approach:**
+
 1. Write the installer as a Python helper taking the T3 Code base directory, the Node platform key, the package path, and the pin record; package it through `packages/agent-tools.nix`.
 2. Implement the three states of the HTD table, staging inside `versions/` and renaming into place, writing records with mode 0600 like T3 Code does.
 3. Never touch other version directories or anything outside `~/.t3/tools/antigravity-acp/<platform>/`.
@@ -272,6 +283,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Patterns to follow:** `scripts/agent-plugin-sync` (stage then replace); the removed `home/h82/agents/orca-skills.nix` (`git show cfd6dab^:home/h82/agents/orca-skills.nix`); `tests/retire-orca-skills.nix` (two-pass idempotence).
 
 **Test scenarios:**
+
 - Covers AE3. On an empty base directory, the installer creates `active.json`, the version directory, a record matching the pin, and two symlinks resolving to the package's binaries.
 - A second run changes nothing (same inode for the version directory, unchanged record).
 - A complete T3-installed directory for the same release with real binaries is left untouched, and `active.json` is pointed at it.
@@ -292,10 +304,12 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** U2.
 
 **Files:**
+
 - `tests/t3code-antigravity-pin.py`
 - `flake.nix`
 
 **Approach:**
+
 1. Read the CLI binary as bytes, locate the `releaseAssets` map and `ANTIGRAVITY_RELEASE_VERSION`, and extract each platform's fields.
 2. Compare version, url, sha256, archiveBytes, and the binary names and sizes for every pinned system; count compared entries and fail on zero.
 3. Register the check under `checks.x86_64-linux`; it lands in a light shard automatically.
@@ -303,6 +317,7 @@ Links to an older package path are replaced even while that path still exists, b
 **Patterns to follow:** `tests/android-sdk-repo-parity.py`; the `t3code` check's use of `self.packages.<system>.t3code-cli`.
 
 **Test scenarios:**
+
 - Covers AE4. With the committed pin, the check passes and reports three compared entries.
 - Mutating any one field of one entry in a scratch copy of the pin fails the check, naming the platform and field.
 - A binary with no `releaseAssets` text fails the check rather than passing with zero comparisons.
@@ -318,10 +333,12 @@ Links to an older package path are replaced even while that path still exists, b
 **Dependencies:** U1, U4.
 
 **Files:**
+
 - `docs/provisioning.md`
 - `docs/verification.md`
 
 **Approach:**
+
 1. Replace the provisioning note that T3 Code settings stay app-managed with what is declared, what stays app-managed, and that Antigravity sign-in is manual.
 2. Add a verification step: after `nr switch`, the Antigravity provider page shows `1.3.0` installed and an Antigravity thread answers.
 
