@@ -799,4 +799,20 @@ wait "$wrapper_pid" || rc=$?
 [[ $rc -eq 241 ]] || fail "34 sigterm-during-exit-grace: expected the terminated delegate's status 241, got $rc; stderr: $(<"$scratch/err34")"
 pass '34: SIGTERM during the post-EOF wait for a slow delegate still exits promptly'
 
+# 35. The delegate answers every command and exits, but the relay thread is
+#     slow to pass the replies on: on a loaded builder it can go unscheduled
+#     for seconds.  This copy of the wrapper stalls the relay 0.5 seconds per
+#     line, about 4 seconds for the greeting and seven replies, and every
+#     reply must still reach the client.
+sed '/^        chunk = delegate_stdout.readline()$/a\        time.sleep(0.5)' \
+  "$scratch/functional-gnome.py" >"$scratch/functional-slow-relay.py"
+grep -qFx '        time.sleep(0.5)' "$scratch/functional-slow-relay.py" || fail '35 slow-relay: the test could not slow the relay down'
+out="$scratch/out35" err="$scratch/err35"
+rm -f "$gnome_log"
+input=$(printf 'OPTION ttyname=/dev/pts/1\nSETKEYINFO --clear\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
+run_wrapper "$scratch/functional-slow-relay.py" "$input" "$out" "$err" DISPLAY=:0
+ok_count=$(grep -c '^OK$' "$out" || true)
+[[ $ok_count -eq 7 ]] || fail "35 slow-relay: expected 7 relayed OK replies, saw $ok_count"
+pass '35: replies the delegate wrote before exiting are relayed even when the relay is seconds behind'
+
 pass 'all U5 test scenarios passed'

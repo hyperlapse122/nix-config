@@ -190,15 +190,20 @@ def spawn_delegate(path):
 
 class Exchange:
     """Commands forwarded to the delegate and replies it has sent.  The
-    relay thread only increments replies and the main thread only writes the
-    rest, so no lock is needed (and none that on_signal could block on)."""
+    relay thread only writes replies, relayed, and writing_since, and the
+    main thread only writes the rest, so no lock is needed (and none that
+    on_signal could block on)."""
 
     def __init__(self):
         self.forwarded = 0
         # The greeting is the reply to command 0, so command n is answered
-        # once replies exceeds n.
+        # once replies exceeds n.  relayed counts the replies the client has
+        # been written.
         self.replies = 0
+        self.relayed = 0
         self.dialog_at = 0
+        # When the relay's current write to the client began, or None.
+        self.writing_since = None
 
     def sent(self, command):
         self.forwarded += 1
@@ -212,6 +217,9 @@ class Exchange:
     def showing_dialog(self):
         return self.dialog_at > 0 and self.replies == self.dialog_at
 
+    def owes_reply(self):
+        return self.relayed <= self.forwarded
+
 
 def pump(delegate_stdout, client_out, output_lock, exchange):
     while True:
@@ -220,8 +228,31 @@ def pump(delegate_stdout, client_out, output_lock, exchange):
             return
         exchange.received(chunk)
         with output_lock:
+            exchange.writing_since = time.monotonic()
             client_out.write(chunk)
             client_out.flush()
+            exchange.writing_since = None
+        exchange.relayed = exchange.replies
+
+
+def drain_relay(relay, exchange, patient):
+    """Wait for the relay to pass on what the client is still owed.  A reply
+    the child wrote before it exited is already in the pipe, so while one is
+    owed and patient() holds, the relay gets up to EXIT_GRACE: on a loaded
+    machine that can take seconds.  Otherwise it gets DIALOG_GRACE, since a
+    grandchild may hold the pipe open forever, and so does a relay stuck in
+    one write to a client that stopped reading.  exchange needs owes_reply()
+    and writing_since; the darwin front stage passes its own."""
+    start = time.monotonic()
+    while relay.is_alive():
+        relay.join(timeout=0.1)
+        now = time.monotonic()
+        writing_since = exchange.writing_since
+        if writing_since is not None and now - writing_since >= DIALOG_GRACE:
+            return
+        owed = exchange.owes_reply() and patient()
+        if now - start >= (EXIT_GRACE if owed else DIALOG_GRACE):
+            return
 
 
 def main():
@@ -277,12 +308,17 @@ def main():
         except OSError:
             pass
 
+    # A delegate terminated in a dialog never answers it, and a signal hurries
+    # the exit, so neither waits on an owed reply.
+    def patient():
+        return delegate.returncode >= 0 and not hurried.is_set()
+
     # Every exit ends in os._exit: interpreter shutdown aborts (exit 134) when
     # the daemon relay thread is inside a stdout write at that moment.
     def shutdown():
         stopped.set()
         status = reap(close_delegate_stdin, exited_unprompted)
-        relay.join(timeout=2)
+        drain_relay(relay, exchange, patient)
         # Holding the lock means the relay is not mid-write, so no reply is
         # cut short.  The wait is bounded: a relay blocked on a stdout nobody
         # reads gives up the final flush, never the exit.
