@@ -17,16 +17,16 @@
     t3code-desktop package exactly when the desktop trait is on;
   - nothing else on PATH comes from a T3 Code package, so T3 Code brings no
     codex or claude of its own and its sessions run the flake's.
-  - home.activation.t3codeSettings exists exactly when either trait is on and
-    runs after installPackages. Its script is executed with the packaged
-    merger swapped for a stub that records its arguments: on a live run the
-    stub must run with ~/.t3/userdata/settings.json, which the desktop app and
-    the CLI share, and a declaration equal to one rendered here,
-    providers.antigravity.enabled = true and nothing else; a failing stub must
-    fail the script; and with Home Manager's `run` turned into a no-op, as on
-    a dry run, the stub must not run. T3 Code leaves its Antigravity provider
-    off until that key is set, so without the merge every host has to turn it
-    on by hand.
+  - home.activation.t3codeSettings and home.activation.t3codeClientSettings
+    exist exactly when either trait is on and run after installPackages. Each
+    script is executed with the packaged merger swapped for a stub that
+    records its arguments: on a live run the stub must run with its file under
+    ~/.t3/userdata, which the desktop app and the CLI share (settings.json and
+    client-settings.json), and a declaration equal to one rendered here, the
+    settings that differ from the pinned T3 Code's defaults; a failing stub
+    must fail the script; and with Home Manager's `run` turned into a no-op,
+    as on a dry run, the stub must not run. T3 Code rewrites both files at
+    runtime, so the keys are merged rather than the files owned.
   The same holds on each non-NixOS fixture host of the builder's
   architecture, production and bootstrap, and on each bootstrap fixture
   re-assembled with only the CLI trait forced on, since the CLI is the T3
@@ -46,7 +46,7 @@
   the desktop package is not added; on NixOS nothing fails and the package is
   added; on macOS nothing fails, the package is added, and a launchd agent
   sets T3CODE_DISABLE_AUTO_UPDATE=1 for GUI launches, which NixOS does not get.
-  On NixOS and macOS the module also declares the t3codeSettings merge, checked
+  On NixOS and macOS the module also declares both settings merges, checked
   the same way as on the assembled configurations, since no macOS
   configuration is evaluated here.
 
@@ -102,9 +102,21 @@ let
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
 
   # Rendered here rather than read back from the module, so a mutation of the
-  # declaration turns the check red.
+  # declaration turns the check red. Scalars are assigned, objects T3 Code
+  # may extend are declared leaf by leaf, and the model selections, which T3
+  # Code writes whole, are owned whole.
   settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
     builtins.toJSON {
+      set = {
+        addProjectBaseDirectory = "~/src";
+        autoResumeLimitedThreads = true;
+        branchNamingMode = "semantic";
+        defaultAutoPull = true;
+        defaultThreadEnvMode = "worktree";
+        enableAgentDeviceAccess = true;
+        enableDeviceSupport = true;
+        snoozeLimitedThreads = true;
+      };
       setPaths = [
         {
           path = [
@@ -114,24 +126,107 @@ let
           ];
           value = true;
         }
+        {
+          path = [
+            "sourceControlWritingStyle"
+            "mode"
+          ];
+          value = "conventional_commits";
+        }
+        {
+          path = [
+            "storageCleanup"
+            "browserArtifactsAfterDays"
+          ];
+          value = 8;
+        }
+        {
+          path = [
+            "storageCleanup"
+            "logsAfterDays"
+          ];
+          value = 8;
+        }
+        {
+          path = [
+            "storageCleanup"
+            "worktreeAfterDays"
+          ];
+          value = 8;
+        }
+        {
+          path = [
+            "storageCleanup"
+            "worktreeOnDelete"
+          ];
+          value = true;
+        }
+        {
+          path = [
+            "storageCleanup"
+            "worktreeOnMerge"
+          ];
+          value = true;
+        }
+        {
+          path = [
+            "storageCleanup"
+            "worktreeUnchanged"
+          ];
+          value = true;
+        }
       ];
+      own = {
+        defaultModelSelection = {
+          instanceId = "claudeAgent";
+          model = "claude-opus-5-5";
+        };
+        textGenerationModelSelection = {
+          instanceId = "antigravity";
+          model = "gemini-3.8-flash-low";
+        };
+      };
     }
   );
+
+  clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
+    builtins.toJSON {
+      set.fontFamilyCode = "JetBrains Mono";
+      setPaths = [ ];
+      own = { };
+    }
+  );
+
+  merges = [
+    {
+      attr = "t3codeSettings";
+      file = "settings.json";
+      expected = settingsExpected;
+    }
+    {
+      attr = "t3codeClientSettings";
+      file = "client-settings.json";
+      expected = clientSettingsExpected;
+    }
+  ];
 
   # Every lookup has an `or` fallback, so a removed declaration reaches the
   # builder as an empty argument instead of failing evaluation.
   assertSettings =
     name: user: expected:
-    let
-      activation = user.home.activation.t3codeSettings or null;
-    in
-    ''
-      checkSettings ${esc name} ${lib.boolToString expected} ${
-        lib.boolToString (activation != null)
-      } ${esc (activation.data or "")} ${
-        lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-      } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/settings.json"}
-    '';
+    lib.concatMapStrings (
+      merge:
+      let
+        activation = user.home.activation.${merge.attr} or null;
+      in
+      ''
+        checkSettings ${esc name} ${merge.attr} ${lib.boolToString expected} ${
+          lib.boolToString (activation != null)
+        } ${esc (activation.data or "")} ${
+          lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
+        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected}
+      ''
+    ) merges;
 
   assertSettingsOn =
     entry:
@@ -372,36 +467,37 @@ pkgs.runCommand "t3code-traits" { } ''
     awk -v flag="$1" 'previous == flag { print; exit } { previous = $0 }' args
   }
 
-  # $2 says whether the merge belongs on this configuration, $3 whether it is
-  # declared; $4 is its script, $5 whether it runs after installPackages, and
-  # $6 the settings file it must name. The script is executed rather than
+  # $2 names the activation entry, $3 says whether the merge belongs on this
+  # configuration, $4 whether it is declared; $5 is its script, $6 whether it
+  # runs after installPackages, $7 the settings file it must name, and $8 the
+  # declaration it must pass. The script is executed rather than
   # matched, so a merger that is only mentioned, echoed, or has its exit
   # status swallowed fails.
   checkSettings() {
-    local name=$1 expected=$2 present=$3 after=$5 settings=$6 merger actual declared
+    local name=$1 attr=$2 expected=$3 present=$4 after=$6 settings=$7 want=$8 merger actual declared
     if [ "$present" != "$expected" ]; then
-      echo "$name: home.activation.t3codeSettings is present=$present, either T3 Code trait on is $expected" >&2
+      echo "$name: home.activation.$attr is present=$present, either T3 Code trait on is $expected" >&2
       fail=1
       return
     fi
     [ "$present" = true ] || return 0
 
     if [ "$after" != true ]; then
-      echo "$name: home.activation.t3codeSettings must run after installPackages" >&2
+      echo "$name: home.activation.$attr must run after installPackages" >&2
       fail=1
     fi
 
-    printf '%s\n' "$4" > script
+    printf '%s\n' "$5" > script
     merger=$(grep -oE '/nix/store/[^[:space:]]+/bin/agent-settings' script | head -n 1 || true)
     if [ -z "$merger" ]; then
-      echo "$name: the t3codeSettings activation names no packaged merger" >&2
+      echo "$name: the $attr activation names no packaged merger" >&2
       fail=1
       return
     fi
     sed "s|$merger|$PWD/merger-stub|g" script > swapped
 
     if ! exercise '"$@"' 0 || [ ! -f args ]; then
-      echo "$name: on a live run the t3codeSettings activation does not run the merger" >&2
+      echo "$name: on a live run the $attr activation does not run the merger" >&2
       fail=1
       return
     fi
@@ -411,19 +507,19 @@ pkgs.runCommand "t3code-traits" { } ''
       fail=1
     fi
     declared=$(argAfter --declared)
-    if [ -z "$declared" ] || ! cmp -s "$declared" ${settingsExpected}; then
-      echo "$name: the declared T3 Code settings must only set providers.antigravity.enabled = true, got '$declared'" >&2
+    if [ -z "$declared" ] || ! cmp -s "$declared" "$want"; then
+      echo "$name: the $attr declaration must equal $want, got '$declared'" >&2
       fail=1
     fi
 
     if exercise '"$@"' 23; then
-      echo "$name: the t3codeSettings activation swallows the merger's exit status" >&2
+      echo "$name: the $attr activation swallows the merger's exit status" >&2
       fail=1
     fi
 
     exercise ':' 0 || true
     if [ -f args ]; then
-      echo "$name: the t3codeSettings activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
+      echo "$name: the $attr activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
       fail=1
     fi
   }
