@@ -4,7 +4,6 @@
     ./hardware.nix
     ./disko.nix
   ];
-  # keyd stays off here so the NuPhy Gem80 keeps its firmware mapping.
   my.nuphyGem80.enable = true;
   my.t3.cli.enable = true;
   my.t3.desktop.enable = true;

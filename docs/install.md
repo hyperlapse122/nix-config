@@ -113,20 +113,6 @@ After enrollment, encrypt and back up the LUKS header and `/var/lib/sbctl` to ex
 
 ## Per-host notes
 
-### ThinkPad-X1-Carbon-Gen-11
-
-Lenovo ThinkPad X1 Carbon Gen 11 laptop.
-
-- `sudo dmidecode -s system-version` reports the model name here; `system-product-name` reports only Lenovo's machine type.
-- `hosts/ThinkPad-X1-Carbon-Gen-11/disko.nix` identifies the internal Samsung 980 PRO 1TB NVMe as `/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5GXNL0W417359X`.
-- In the Lenovo UEFI setup, enter Setup Mode through the Secure Boot settings. The existing `PK`, `KEK`, and `db` EFI variables may carry the efivarfs immutable bit, which makes `sbctl enroll-keys` fail even in Setup Mode. Clear it just before enrolling ([EFI variables immutability](../.compound-engineering/artifacts/solutions/boot-issues/thinkpad-efivars-immutable-blocks-sbctl-enroll.md)):
-
-  ```sh
-  sudo chattr -i /sys/firmware/efi/efivars/{PK,KEK,db}* 2>/dev/null || true
-  ```
-
-- The fingerprint reader is enabled only on the production output. Enroll after the first production switch; see [provisioning](provisioning.md#fingerprint-enrollment).
-
 ### MS-7D91
 
 MSI MS-7D91 desktop workstation with Intel i7-13700F and NVIDIA GeForce RTX 3060.

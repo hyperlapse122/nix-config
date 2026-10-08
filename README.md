@@ -24,7 +24,6 @@ On a macOS host, `nr switch` from the clone builds the nix-darwin system, which 
 
 | Host | Machine |
 | --- | --- |
-| `ThinkPad-X1-Carbon-Gen-11` | Lenovo ThinkPad X1 Carbon Gen 11 laptop |
 | `MS-7D91` | MSI MS-7D91 desktop workstation (Intel i7-13700F + NVIDIA RTX 3060) |
 | `MacBook-Pro-Mac17-9` | Apple silicon MacBook Pro (model identifier `Mac17,9`), macOS |
 

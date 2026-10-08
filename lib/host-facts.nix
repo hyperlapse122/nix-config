@@ -1,11 +1,11 @@
 # The values of every option modules/shared/host.nix declares, read from a
 # configuration that imports it. NixOS hands these to its Home Manager user, so
 # a trait added to the shared module reaches the user without another edit.
-# Only the declared options are copied: a NixOS-only option under the same
-# attribute, such as my.keyd.ids, stays on the system.
+# Only the declared options are copied: a NixOS-only option, even one declared
+# under the same attribute as a shared one, stays on the system.
 #
 #   hostFacts = import ./lib/host-facts.nix { inherit lib; };
-#   hostFacts.of config.my  -> { bootstrap, hostName, kind, user, laptop, ... }
+#   hostFacts.of config.my  -> { bootstrap, hostName, kind, user, nuphyGem80, ... }
 #   hostFacts.paths         -> [ [ "bootstrap" ] [ "user" "name" ] ... ]
 { lib }:
 let

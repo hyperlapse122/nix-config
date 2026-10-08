@@ -39,16 +39,7 @@ If a rebuild leaves the lock screen or `sudo` refusing a correct password, do no
 
 There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
 
-Booting an older generation escapes the stack but does not undo anything else in it, and it revokes no enrollment: a finger enrolled under the newer generation still matches after the rollback, because the template lives in the sensor rather than in the configuration.
-
-## A compromised fingerprint
-
-A fingerprint that reaches `sudo` reaches root, and root on this host holds `/var/lib/sbctl` and `/var/lib/sops-nix/key.txt`. Deleting the finger is therefore the smallest part of the response, not the whole of it. Treat it the way [lost Secure Boot signing keys](#lost-secure-boot-signing-keys) are treated: re-key `sbctl`, re-enroll the TPM under the new policy, and replace every token the age identity protects. Unlike a password or a token, the template itself cannot be rotated — removing it and not re-enrolling that finger is the only revocation there is.
-
-```sh
-fprintd-list "$USER"
-sudo fprintd-delete "$USER"
-```
+Booting an older generation escapes the stack but does not undo anything else in it,.
 
 ## TPM unlock failure
 
@@ -194,7 +185,7 @@ unset DESKTOP_SSH_OUTPUT
 
 Review and stage both changes, run the checks, and apply production on the target. Provision the replacement through the fixed service above and verify access with 1Password stopped before revoking the old key on every destination. The new fingerprint selects a separate wallet entry; remove the old entry only after migration succeeds.
 
-For a lost, compromised, or retired desktop, revoke its public SSH key remotely even if the working copy was passphrase-protected. Root holding the host's age identity can decrypt the recovery source, and a compromised user session may read an unlocked wallet or use a loaded key. Per-host recipients prevent ordinary hosts from decrypting each other's sources, but the existing recovery cards can recover all host age identities. Git history retains old ciphertext: removing a recipient or deleting a source does not revoke an already exposed key. Rotate every potentially exposed shared token and follow the age-identity replacement process below. Retiring the host also removes its host directory, bootstrap material, SSH source/public metadata, and corresponding SOPS rules.
+For a lost, compromised, or retired desktop, revoke its public SSH key remotely even if the working copy was passphrase-protected. Root holding the host's age identity can decrypt the recovery source, and a compromised user session may read an unlocked wallet or use a loaded key. Per-host recipients prevent ordinary hosts from decrypting each other's sources, but the existing recovery cards can recover all host age identities. Git history retains old ciphertext: removing a recipient or deleting a source does not revoke an already exposed key. Rotate every potentially exposed shared token and follow the age-identity replacement process below. Retiring the host also removes its host directory, bootstrap material, SSH source/public metadata, and corresponding SOPS rules. Then re-key every shared file that listed it with `sops updatekeys -y` followed by `sops rotate -i`, before writing any new value, in the order the [decommission procedure](provisioning.md#compromise-or-decommission-of-a-non-nixos-host) gives: `updatekeys` alone keeps the old data key, which the retired identity can read from any earlier ciphertext.
 
 Git signing remains on the existing OpenPGP/YubiKey identity throughout restoration and rotation. Non-NixOS hosts retain their existing [SSH provisioning](provisioning.md#ssh-key-on-a-non-nixos-host) and [decommission procedure](provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
 

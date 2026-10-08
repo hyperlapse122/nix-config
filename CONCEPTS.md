@@ -8,7 +8,7 @@ Shared vocabulary for this repository. Each entry defines what a term means here
 
 **VM check** — a repository check that boots one or more throwaway virtual machines to exercise behavior only a running system shows, such as a boot or a provisioning service. VM checks need hardware virtualization on the machine that builds them, so they are kept out of the everyday flake check and run on their own: each as a separate CI job, and before an automated dependency update may land. A VM check is still a repository check, so it still cannot stand in for a hardware check.
 
-**Hardware check** — a manual confirmation performed on the physical laptop after installation, recorded by the person who performed it. Hardware checks cover exactly what a repository check cannot reach: real devices, real firmware, real input. A passing build never substitutes for one, and results from the two are reported separately so neither is mistaken for the other.
+**Hardware check** — a manual confirmation performed on the physical machine after installation, recorded by the person who performed it. Hardware checks cover exactly what a repository check cannot reach: real devices, real firmware, real input. A passing build never substitutes for one, and results from the two are reported separately so neither is mistaken for the other.
 
 **Mutation round** — one deliberate break of something a repository check claims to protect, run to confirm the check turns red, then restored. Rounds are counted per class of assertion rather than per assertion, and a check that has only ever been observed passing has not yet been shown to guard anything.
 
@@ -40,7 +40,7 @@ Jobs that a finished run skips by design, such as the Nix jobs on a docs-only ch
 
 **Bootstrap host** — a second configuration built from the same module set as the production host, with private boot keys and user authentication secrets left out, used to install the machine before those secrets exist. It is not a separate machine or a reduced feature set: anything added to the shared modules reaches it too, so a change must be considered against an installer console as well as a logged-in desktop.
 
-**Host trait** — a property a host declares about itself, such as being a laptop or having a fingerprint reader, that modules and checks branch on in place of the host's name. Everything not covered by a trait comes from the shared host profile that every host imports, so two hosts differ only where a trait says they do; a difference with no trait behind it is drift, not configuration.
+**Host trait** — a property a host declares about itself, such as having a NuPhy Gem80 keyboard attached or running the T3 Code desktop app, that modules and checks branch on in place of the host's name. Everything not covered by a trait comes from the shared host profile that every host imports, so two hosts differ only where a trait says they do; a difference with no trait behind it is drift, not configuration.
 
 A trait need not be set by the host: the shared profile may default it from other traits or from whether the host is a bootstrap host, and a host may still override that default. A check guarding such a trait therefore confirms each input of the default separately, since sorting hosts by the trait's own value cannot reveal a default that turns it on too widely.
 
