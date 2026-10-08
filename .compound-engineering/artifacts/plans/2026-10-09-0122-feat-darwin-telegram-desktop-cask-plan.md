@@ -101,7 +101,7 @@ Switch the macOS cask for Telegram from `telegram` (Telegram for macOS) to `tele
 ## Verification Contract
 
 | Gate | Command | Where |
-|---|---|---|
+| --- | --- | --- |
 | Format | `nix fmt -- --ci` | local |
 | `darwin-config` and the U2 mutations, without a Linux builder | `nix eval --raw .#checks.x86_64-linux.darwin-config.buildCommand \| grep -F "echo '"`: no match on the branch, a match naming telegram under each mutation | Mac |
 | Brewfile lists `telegram-desktop` (R4) | `nix build --no-link .#checks.aarch64-darwin.darwin-outputs` | Mac, and CI `build-darwin` |
