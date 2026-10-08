@@ -17,10 +17,25 @@
     t3code-desktop package exactly when the desktop trait is on;
   - nothing else on PATH comes from a T3 Code package, so T3 Code brings no
     codex or claude of its own and its sessions run the flake's.
-  Today every configuration enables both traits, so the forced-off
-  configurations are what keep each "exactly when" from passing on the
-  positive side alone. Some production and some bootstrap configuration must
-  enable each trait.
+  - home.activation.t3codeSettings exists exactly when either trait is on and
+    runs after installPackages. Its script is executed with the packaged
+    merger swapped for a stub that records its arguments: on a live run the
+    stub must run with ~/.t3/userdata/settings.json, which the desktop app and
+    the CLI share, and a declaration equal to one rendered here,
+    providers.antigravity.enabled = true and nothing else; a failing stub must
+    fail the script; and with Home Manager's `run` turned into a no-op, as on
+    a dry run, the stub must not run. T3 Code leaves its Antigravity provider
+    off until that key is set, so without the merge every host has to turn it
+    on by hand.
+  The same holds on each non-NixOS fixture host of the builder's
+  architecture, production and bootstrap, and on each bootstrap fixture
+  re-assembled with only the CLI trait forced on, since the CLI is the T3
+  Code those hosts support.
+  Today every NixOS configuration enables both traits, so the forced-off
+  configurations, including one per production configuration with both traits
+  off, are what keep each "exactly when" from passing on the positive side
+  alone. Some production and some bootstrap configuration must enable each
+  trait.
 
   On every non-NixOS fixture host's bootstrap variant, re-assembled through
   lib/linux-host.nix with my.t3.desktop.enable forced on, Home Manager
@@ -31,6 +46,9 @@
   the desktop package is not added; on NixOS nothing fails and the package is
   added; on macOS nothing fails, the package is added, and a launchd agent
   sets T3CODE_DISABLE_AUTO_UPDATE=1 for GUI launches, which NixOS does not get.
+  On NixOS and macOS the module also declares the t3codeSettings merge, checked
+  the same way as on the assembled configurations, since no macOS
+  configuration is evaluated here.
 
   Every failure is collected in one build and names the configuration.
 */
@@ -63,12 +81,67 @@ let
       fail "no bootstrap configuration enables ${label}, so the bootstrap profile is never checked for it"
     );
 
+  # Each trait forced off alone leaves the other on, so the settings merge
+  # needs configurations with both off for its negative side. Their profiles
+  # are not read: the single-trait configurations already cover each package,
+  # and reading them would build another home.path per host.
+  bothOff = map (
+    entry:
+    configurations.entryOf "${entry.name} with both T3 Code traits forced off" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [
+          {
+            my.t3.cli.enable = lib.mkForce false;
+            my.t3.desktop.enable = lib.mkForce false;
+          }
+        ];
+      }
+    )
+  ) configurations.production;
+
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
+
+  # Rendered here rather than read back from the module, so a mutation of the
+  # declaration turns the check red.
+  settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
+    builtins.toJSON {
+      setPaths = [
+        {
+          path = [
+            "providers"
+            "antigravity"
+            "enabled"
+          ];
+          value = true;
+        }
+      ];
+    }
+  );
+
+  # Every lookup has an `or` fallback, so a removed declaration reaches the
+  # builder as an empty argument instead of failing evaluation.
+  assertSettings =
+    name: user: expected:
+    let
+      activation = user.home.activation.t3codeSettings or null;
+    in
+    ''
+      checkSettings ${esc name} ${lib.boolToString expected} ${
+        lib.boolToString (activation != null)
+      } ${esc (activation.data or "")} ${
+        lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
+      } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/settings.json"}
+    '';
+
+  assertSettingsOn =
+    entry:
+    assertSettings entry.name entry.user (cliEnabled entry.config || desktopEnabled entry.config);
 
   assertProfile = entry: ''
     checkProfile ${esc entry.name} ${
       esc (entry.user.home.path or "")
     } ${lib.boolToString (cliEnabled entry.config)} ${lib.boolToString (desktopEnabled entry.config)}
+    ${assertSettingsOn entry}
   '';
 
   desktopMessage = "the T3 Code desktop app runs on NixOS and macOS only";
@@ -101,6 +174,30 @@ let
       ))
     ];
 
+  # The CLI is the T3 Code a non-NixOS host supports, and no fixture of every
+  # architecture enables it, so the merge's positive side is checked on a
+  # bootstrap fixture with the CLI forced on. Only this architecture's
+  # fixtures, because the activation script interpolates their store paths.
+  assertFixtureCli =
+    entry:
+    let
+      forced = mkLinuxHost {
+        hostName = entry.fixture;
+        dir = ./fixtures/hosts + "/${entry.fixture}";
+        bootstrap = true;
+        extraModules.home = [
+          {
+            my.t3.cli.enable = lib.mkForce true;
+            my.t3.desktop.enable = lib.mkForce false;
+          }
+        ];
+      };
+    in
+    assertSettings "${entry.name} with only my.t3.cli.enable forced on" forced.home.config true;
+
+  # The module reaches lib.hm, which only Home Manager's extended lib carries.
+  hmLib = import "${self.inputs.home-manager}/modules/lib/stdlib-extended.nix" lib;
+
   # The module on its own, so the assertion's message and the packages it
   # would otherwise let through can be read. NixOS is the control: there the
   # desktop app installs and nothing fails.
@@ -108,7 +205,7 @@ let
     kind:
     let
       config =
-        (lib.evalModules {
+        (hmLib.evalModules {
           specialArgs = { inherit pkgs; };
           modules = [
             ../modules/shared/host.nix
@@ -126,6 +223,14 @@ let
                 type = lib.types.attrsOf lib.types.unspecified;
                 default = { };
               };
+              options.home.activation = lib.mkOption {
+                type = lib.types.attrsOf lib.types.unspecified;
+                default = { };
+              };
+              options.home.homeDirectory = lib.mkOption {
+                type = lib.types.str;
+                default = "/home/probe";
+              };
               config.my = {
                 hostName = "probe";
                 inherit kind;
@@ -136,6 +241,7 @@ let
         }).config;
     in
     {
+      inherit config;
       failed = map (a: a.message) (lib.filter (a: !a.assertion) config.assertions);
       desktopInstalled = lib.elem "t3code-desktop" (map lib.getName config.home.packages);
       updaterOff =
@@ -183,6 +289,8 @@ let
       (lib.optionalString (!darwin.updaterOff) (
         fail "macOS with my.t3.desktop.enable: no launchd agent runs launchctl setenv T3CODE_DISABLE_AUTO_UPDATE 1, so the copied app can update itself off the nightly pin"
       ))
+      (assertSettings "NixOS module with my.t3.desktop.enable" nixos.config true)
+      (assertSettings "macOS module with my.t3.desktop.enable" darwin.config true)
     ];
 in
 pkgs.runCommand "t3code-traits" { } ''
@@ -241,7 +349,97 @@ pkgs.runCommand "t3code-traits" { } ''
     done
   }
 
+  # Stands in for the packaged merger: records one argument per line and exits
+  # with STUB_STATUS.
+  cat > merger-stub <<'EOF'
+  #!${pkgs.runtimeShell}
+  printf '%s\n' "$@" > "$STUB_ARGS"
+  exit "''${STUB_STATUS:-0}"
+  EOF
+  chmod +x merger-stub
+
+  # Runs the activation script in `script`, with the merger swapped for the
+  # stub, under Home Manager's shell options. $1 defines `run`: "$@" on a live
+  # run, nothing on a dry run. $2 is the stub's exit status.
+  exercise() {
+    rm -f args
+    { printf 'run() { %s; }\n' "$1"; cat swapped; } > exercise.sh
+    STUB_ARGS=$PWD/args STUB_STATUS=$2 bash -eu -o pipefail exercise.sh
+  }
+
+  # Prints the argument that follows $1 in the stub's recorded arguments.
+  argAfter() {
+    awk -v flag="$1" 'previous == flag { print; exit } { previous = $0 }' args
+  }
+
+  # $2 says whether the merge belongs on this configuration, $3 whether it is
+  # declared; $4 is its script, $5 whether it runs after installPackages, and
+  # $6 the settings file it must name. The script is executed rather than
+  # matched, so a merger that is only mentioned, echoed, or has its exit
+  # status swallowed fails.
+  checkSettings() {
+    local name=$1 expected=$2 present=$3 after=$5 settings=$6 merger actual declared
+    if [ "$present" != "$expected" ]; then
+      echo "$name: home.activation.t3codeSettings is present=$present, either T3 Code trait on is $expected" >&2
+      fail=1
+      return
+    fi
+    [ "$present" = true ] || return 0
+
+    if [ "$after" != true ]; then
+      echo "$name: home.activation.t3codeSettings must run after installPackages" >&2
+      fail=1
+    fi
+
+    printf '%s\n' "$4" > script
+    merger=$(grep -oE '/nix/store/[^[:space:]]+/bin/agent-settings' script | head -n 1 || true)
+    if [ -z "$merger" ]; then
+      echo "$name: the t3codeSettings activation names no packaged merger" >&2
+      fail=1
+      return
+    fi
+    sed "s|$merger|$PWD/merger-stub|g" script > swapped
+
+    if ! exercise '"$@"' 0 || [ ! -f args ]; then
+      echo "$name: on a live run the t3codeSettings activation does not run the merger" >&2
+      fail=1
+      return
+    fi
+    actual=$(argAfter --settings)
+    if [ "$actual" != "$settings" ]; then
+      echo "$name: the merger must be pointed at $settings, got '$actual'" >&2
+      fail=1
+    fi
+    declared=$(argAfter --declared)
+    if [ -z "$declared" ] || ! cmp -s "$declared" ${settingsExpected}; then
+      echo "$name: the declared T3 Code settings must only set providers.antigravity.enabled = true, got '$declared'" >&2
+      fail=1
+    fi
+
+    if exercise '"$@"' 23; then
+      echo "$name: the t3codeSettings activation swallows the merger's exit status" >&2
+      fail=1
+    fi
+
+    exercise ':' 0 || true
+    if [ -f args ]; then
+      echo "$name: the t3codeSettings activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
+      fail=1
+    fi
+  }
+
   ${lib.concatMapStrings assertProfile profileEntries}
+  ${lib.concatMapStrings assertSettingsOn bothOff}
+  ${lib.concatMapStrings (
+    entry:
+    let
+      home = entry.host.home.config;
+    in
+    assertSettings entry.name home (home.my.t3.cli.enable || home.my.t3.desktop.enable)
+  ) configurations.linuxFixtures}
+  ${lib.concatMapStrings assertFixtureCli (
+    lib.filter (entry: entry.bootstrap) configurations.linuxFixtures
+  )}
   ${lib.concatMapStrings assertFixture (lib.filter (entry: entry.bootstrap) fixtures)}
   ${assertModule}
 

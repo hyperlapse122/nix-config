@@ -18,6 +18,29 @@ let
   nixos = config.my.kind == "nixos";
   darwin = config.my.kind == "darwin";
   desktopSupported = nixos || darwin;
+
+  merger = "${
+    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+  }/bin/agent-settings";
+
+  # T3 Code leaves its built-in Antigravity provider off until
+  # providers.antigravity.enabled is set, so it never shows up on its own. The
+  # app and the CLI rewrite the settings file at runtime, so the key is merged
+  # in rather than owned by a store symlink.
+  declared = pkgs.writeText "t3code-declared-settings.json" (
+    builtins.toJSON {
+      setPaths = [
+        {
+          path = [
+            "providers"
+            "antigravity"
+            "enabled"
+          ];
+          value = true;
+        }
+      ];
+    }
+  );
 in
 {
   assertions = [
@@ -49,4 +72,17 @@ in
       RunAtLoad = true;
     };
   };
+
+  # The desktop app and the CLI share ~/.t3/userdata. Ordered after
+  # installPackages, as the Claude Code merge in agents/claude.nix is, so a
+  # refusal cannot strand linkGeneration. `run` leaves the file alone on a
+  # dry run.
+  home.activation.t3codeSettings = lib.mkIf (cfg.cli.enable || cfg.desktop.enable) (
+    lib.hm.dag.entryAfter [ "installPackages" ] ''
+      run ${merger} \
+        --label 'T3 Code' \
+        --settings ${config.home.homeDirectory}/.t3/userdata/settings.json \
+        --declared ${declared}
+    ''
+  );
 }
