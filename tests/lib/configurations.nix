@@ -28,7 +28,7 @@
     assertions, so an empty list is a failure, never a silent pass.
   - `withTrait label predicate`: `{ enabled, disabled, guard }` for the trait
     `predicate config` computes, where `label` is the trait's option path
-    (`my.keyd.enable`). `enabled` and `disabled` split `entries`; `guard`
+    (`my.printing.enable`). `enabled` and `disabled` split `entries`; `guard`
     fails the builder when no production configuration enables the trait, so
     a check's positive branch can never cover zero configurations. When no
     configuration leaves the trait off, `disabled` holds each production

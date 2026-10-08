@@ -10,9 +10,7 @@
     ./desktop/desktop.nix
     ./desktop/user-avatar.nix
     ./desktop/winbox.nix
-    ./hardware/fingerprint.nix
     ./desktop/fonts.nix
-    ./hardware/keyd.nix
     ./system/nix-cleanup.nix
     ./system/nix-ld.nix
     ./system/agent-browser-deps.nix
@@ -31,8 +29,6 @@
     ./hardware/dualsense.nix
     ./hardware/iphone-restore.nix
     ./hardware/bluetooth-audio.nix
-    ./hardware/thunderbolt.nix
-    ./hardware/laptop.nix
     ../shared/host.nix
   ];
 
