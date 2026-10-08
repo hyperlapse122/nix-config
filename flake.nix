@@ -509,6 +509,28 @@
             python tests/test_t3code_release.py
             touch $out
           '';
+          t3code-antigravity-install =
+            pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/t3code-antigravity-install} scripts/t3code-antigravity-install
+                cp ${./tests/test_t3code_antigravity_install.py} tests/test_t3code_antigravity_install.py
+                patchShebangs scripts
+                python tests/test_t3code_antigravity_install.py
+                touch $out
+              '';
+          # The pin and the CLI are independent sources: scripts/t3code-release
+          # writes the pin from the T3 Code source, and the CLI is the release
+          # binary the flake builds, which embeds the table T3 Code installs from.
+          t3code-antigravity-pin =
+            pkgs.runCommand "t3code-antigravity-pin" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                python3 -I ${./tests/t3code-antigravity-pin.py} \
+                  ${self.packages.${system}.t3code-cli}/libexec/t3code/t3 \
+                  ${./packages/t3code-release.json}
+                touch $out
+              '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =

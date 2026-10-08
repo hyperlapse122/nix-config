@@ -4,7 +4,8 @@
   Claude sessions run the flake's own codex and claude with their user-level
   settings, so nothing here adds a copy of either. The T3 Code settings that
   differ from the pinned nightly's defaults are merged into its own settings
-  files on activation.
+  files on activation, and the Antigravity runtime it requires is installed
+  where T3 Code looks for it.
 
   The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
   it fails the assertion below rather than a build.
@@ -21,9 +22,14 @@ let
   darwin = config.my.kind == "darwin";
   desktopSupported = nixos || darwin;
 
-  merger = "${
-    (import ../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
-  }/bin/agent-settings";
+  agentTools = import ../../packages/agent-tools.nix { inherit pkgs; };
+  merger = "${agentTools.agentSettings}/bin/agent-settings";
+  installer = "${agentTools.t3codeAntigravityInstall}/bin/t3code-antigravity-install";
+
+  # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
+  # provider needs only a sign-in.
+  antigravity = import ../../packages/antigravity-acp.nix { inherit pkgs; };
+  antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. App
@@ -130,7 +136,7 @@ in
     };
   };
 
-  # The desktop app and the CLI share ~/.t3/userdata. One entry per file, so a
+  # The desktop app and the CLI share ~/.t3. One settings entry per file, so a
   # refusal on one does not hide the other. Ordered after installPackages, as
   # the Claude Code merge in agents/claude.nix is, so a refusal cannot strand
   # linkGeneration. `run` leaves the files alone on a dry run.
@@ -144,5 +150,15 @@ in
           --declared ${merge.declared}
       ''
     ) merges
+    // {
+      # The script references the package, so this generation keeps the
+      # linked runtime from garbage collection; a later generation relinks.
+      t3codeAntigravity = lib.hm.dag.entryAfter [ "installPackages" ] ''
+        run ${installer} \
+          --base-dir ${config.home.homeDirectory}/.t3 \
+          --runtime ${antigravity}/libexec/antigravity-acp \
+          --pin ${antigravityPin}
+      '';
+    }
   );
 }

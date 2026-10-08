@@ -27,6 +27,14 @@
     must fail the script; and with Home Manager's `run` turned into a no-op,
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned.
+  - home.activation.t3codeAntigravity exists exactly when either trait is on
+    and runs after installPackages. Its script is executed the same way with
+    the packaged installer swapped for a stub: on a live run the stub must
+    run with --base-dir ~/.t3, --runtime in the antigravity-acp package this
+    system pins, and --pin the pin record of packages/t3code-release.json for
+    this system; a failing stub must fail the script; and a dry run must not
+    run it. The paths are compared as strings, so the runtime, about 1.3 GB
+    unpacked, is never built here.
   The same holds on each non-NixOS fixture host of the builder's
   architecture, production and bootstrap, and on each bootstrap fixture
   re-assembled with only the CLI trait forced on, since the CLI is the T3
@@ -197,6 +205,18 @@ let
     }
   );
 
+  # Without string context, so neither the runtime nor the scripts the
+  # activation names are built: the check compares the paths, and the paths
+  # are the store hashes of what the module would install.
+  noContext = builtins.unsafeDiscardStringContext;
+  releasePin = builtins.fromJSON (builtins.readFile ../packages/t3code-release.json);
+  runtimeExpected = noContext "${
+    import ../packages/antigravity-acp.nix { inherit pkgs; }
+  }/libexec/antigravity-acp";
+  pinExpected = noContext "${pkgs.writeText "antigravity-acp-pin.json" (
+    builtins.toJSON (releasePin.antigravity.${pkgs.stdenv.hostPlatform.system} or { })
+  )}";
+
   merges = [
     {
       attr = "t3codeSettings";
@@ -226,7 +246,19 @@ let
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
         } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected}
       ''
-    ) merges;
+    ) merges
+    + (
+      let
+        activation = user.home.activation.t3codeAntigravity or null;
+      in
+      ''
+        checkRuntime ${esc name} ${lib.boolToString expected} ${lib.boolToString (activation != null)} ${
+          esc (noContext (activation.data or ""))
+        } ${
+          lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
+        } ${esc "${user.home.homeDirectory or ""}/.t3"}
+      ''
+    );
 
   assertSettingsOn =
     entry:
@@ -520,6 +552,65 @@ pkgs.runCommand "t3code-traits" { } ''
     exercise ':' 0 || true
     if [ -f args ]; then
       echo "$name: the $attr activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
+      fail=1
+    fi
+  }
+
+  # $2 says whether the runtime install belongs on this configuration, $3
+  # whether it is declared; $4 is its script, $5 whether it runs after
+  # installPackages, and $6 the base directory it must name.
+  checkRuntime() {
+    local name=$1 expected=$2 present=$3 after=$5 base=$6 installer actual
+    if [ "$present" != "$expected" ]; then
+      echo "$name: home.activation.t3codeAntigravity is present=$present, either T3 Code trait on is $expected" >&2
+      fail=1
+      return
+    fi
+    [ "$present" = true ] || return 0
+
+    if [ "$after" != true ]; then
+      echo "$name: home.activation.t3codeAntigravity must run after installPackages" >&2
+      fail=1
+    fi
+
+    printf '%s\n' "$4" > script
+    installer=$(grep -oE '/nix/store/[^[:space:]]+/bin/t3code-antigravity-install' script | head -n 1 || true)
+    if [ -z "$installer" ]; then
+      echo "$name: the t3codeAntigravity activation names no packaged installer" >&2
+      fail=1
+      return
+    fi
+    sed "s|$installer|$PWD/merger-stub|g" script > swapped
+
+    if ! exercise '"$@"' 0 || [ ! -f args ]; then
+      echo "$name: on a live run the t3codeAntigravity activation does not run the installer" >&2
+      fail=1
+      return
+    fi
+    actual=$(argAfter --base-dir)
+    if [ "$actual" != "$base" ]; then
+      echo "$name: the installer must be pointed at $base, got '$actual'" >&2
+      fail=1
+    fi
+    actual=$(argAfter --runtime)
+    if [ "$actual" != ${esc runtimeExpected} ]; then
+      echo "$name: the installer must link ${runtimeExpected}, the runtime this system pins, got '$actual'" >&2
+      fail=1
+    fi
+    actual=$(argAfter --pin)
+    if [ "$actual" != ${esc pinExpected} ]; then
+      echo "$name: the installer must read ${pinExpected}, this system's pin record, got '$actual'" >&2
+      fail=1
+    fi
+
+    if exercise '"$@"' 23; then
+      echo "$name: the t3codeAntigravity activation swallows the installer's exit status" >&2
+      fail=1
+    fi
+
+    exercise ':' 0 || true
+    if [ -f args ]; then
+      echo "$name: the t3codeAntigravity activation runs the installer outside Home Manager's run, so a dry run changes ~/.t3" >&2
       fail=1
     fi
   }
