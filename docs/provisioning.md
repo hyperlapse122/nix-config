@@ -290,34 +290,6 @@ The two Gemini-side files reach the home directory differently, and `home/h82/ag
 
 Existing memory stores on disk are intentionally left untouched. Disabling the features prevents the harnesses from interacting with or reading from those paths, avoiding destructive and non-idempotent removal logic during activation.
 
-## Fingerprint enrollment
-
-This applies to hosts that enable the `my.fingerprint.enable` trait; the fingerprint module keeps it off on the bootstrap output. The template lives in the sensor's own flash, not on disk. `/var/lib/fprint/` keeps only a receipt naming the on-device record, so an enrollment can neither be restored from a backup nor removed by erasing the disk. Nothing about it belongs in `secrets/`.
-
-Enrollment can be performed directly through KDE Plasma System Settings (Users → Fingerprint Settings) or using the packaged `enroll-fingerprint` helper. The polkit rule authorizes `root` and members of the `wheel` group for `net.reactivated.fprint.device.enroll`, while denying unprivileged non-administrative users.
-
-The packaged helper provides a dedicated CLI path that authenticates against the factor-free `enroll-fingerprint` PAM service before invoking `fprintd-enroll` via `sudo`:
-
-Run it unprivileged, once per finger:
-
-```sh
-enroll-fingerprint
-enroll-fingerprint --finger left-index-finger
-```
-
-It writes the template to the sensor and a receipt under `/var/lib/fprint/`. It exits 3 when no reader answers and 4 when the capture itself failed, so the two are distinguishable in a log. Re-running it for a finger that is already enrolled replaces that finger rather than adding a second record, and says so.
-
-To see what is actually enrolled, and to remove one:
-
-```sh
-fprintd-list "$USER"
-fprintd-delete "$USER"
-```
-
-`fprintd-delete` is authorized for `wheel` users and `root` because upstream's policy names one `enroll` action covering both enrollment and deletion.
-
-Removing every enrolled finger is a required step before a host with the `my.fingerprint.enable` trait is reinstalled, sold, serviced, or disposed of. Erasing the disk does not reach the sensor, and a template left there is a credential the next installation will happily match.
-
 ## Container runtime and registry authentication
 
 Rootless Podman is configured declaratively in `modules/nixos/services/podman.nix` with Docker CLI compatibility enabled and the rootful systemd daemon socket disabled. Registry authentication is served through `docker-credential-sops` (`packages/docker-credential-sops.nix`), which answers Podman's credential queries by reading decrypted SOPS secrets at `/run/secrets/cli-auth/` without writing tokens into `~/.config/containers/auth.json`. A non-NixOS host gets no Podman from the flake, only the registry search, `auth.json`, and the credential helper. There the helper reads `~/.local/state/cli-auth/` instead, and `docker.io` pulls stay anonymous, because that host never publishes `docker_token`. A Podman you install there may also need the Ubuntu 24.04 AppArmor user-namespace setting in [adding a host](adding-a-host.md#first-setup-on-the-machine).

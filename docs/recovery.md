@@ -39,16 +39,7 @@ If a rebuild leaves the lock screen or `sudo` refusing a correct password, do no
 
 There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
 
-Booting an older generation escapes the stack but does not undo anything else in it, and it revokes no enrollment: a finger enrolled under the newer generation still matches after the rollback, because the template lives in the sensor rather than in the configuration.
-
-## A compromised fingerprint
-
-A fingerprint that reaches `sudo` reaches root, and root on this host holds `/var/lib/sbctl` and `/var/lib/sops-nix/key.txt`. Deleting the finger is therefore the smallest part of the response, not the whole of it. Treat it the way [lost Secure Boot signing keys](#lost-secure-boot-signing-keys) are treated: re-key `sbctl`, re-enroll the TPM under the new policy, and replace every token the age identity protects. Unlike a password or a token, the template itself cannot be rotated — removing it and not re-enrolling that finger is the only revocation there is.
-
-```sh
-fprintd-list "$USER"
-sudo fprintd-delete "$USER"
-```
+Booting an older generation escapes the stack but does not undo anything else in it,.
 
 ## TPM unlock failure
 
