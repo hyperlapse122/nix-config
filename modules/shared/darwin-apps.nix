@@ -43,8 +43,7 @@ let
     nr.leftOut = "the NixOS apply helper; macOS gets nr-darwin";
   };
 
-  # OrbStack replaces rootless Podman and minikube as the container runtime.
-  darwinOnly = [ "orbstack" ];
+  darwinOnly = [ ];
 
   tapOf =
     cask:

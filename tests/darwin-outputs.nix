@@ -9,10 +9,14 @@
   tests/darwin-config.nix reads their options on Linux:
 
   - the Home Manager activation script stages host secrets before
-    writeBoundary and publishes them, then merges the docker credHelpers,
-    after linkGeneration, in production only;
-  - the session variables carry no Podman socket or Ryuk variable, and the
-    generation holds no containers/ or systemd user file;
+    writeBoundary and publishes them after linkGeneration, in production
+    only;
+  - the session names the Podman machine's API socket and no Ryuk privilege
+    variable, the generation links no containers/ or systemd user file, the
+    containers.conf activation installs selects libkrun, `docker` is the
+    profile's `podman`, the machine watchdog's agent abandons its process
+    group at interactive priority, a login agent exports the socket to GUI
+    apps, and the minikube login agent exists in production only;
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -66,7 +70,6 @@ let
       step() { grep -n "_iNote \"Activating %s\" \"$1\"" "$gen/activate" | head -n1 | cut -d: -f1 || true; }
       stage=$(step nixConfigSecretsStage); stage=''${stage:-0}
       publish=$(step nixConfigSecretsPublish); publish=''${publish:-0}
-      docker=$(step dockerCredHelpers); docker=''${docker:-0}
       boundary=$(step writeBoundary); boundary=''${boundary:-0}
       link=$(step linkGeneration); link=''${link:-0}
       if [ "$boundary" = 0 ] || [ "$link" = 0 ]; then
@@ -75,19 +78,49 @@ let
         [ "$stage" != 0 ] && [ "$stage" -lt "$boundary" ] \
           || bad "host-secrets stage must run before writeBoundary"
         [ "$publish" -gt "$link" ] || bad "host-secrets publish must run after linkGeneration"
-        [ "$docker" -gt "$link" ] || bad "the docker credHelpers merge must run after linkGeneration"
       else
-        [ "$stage" = 0 ] && [ "$publish" = 0 ] && [ "$docker" = 0 ] \
-          || bad "bootstrap must run no host-secrets step and no credHelpers merge"
+        [ "$stage" = 0 ] && [ "$publish" = 0 ] \
+          || bad "bootstrap must run no host-secrets step"
       fi
+      [ "$(step dockerCredHelpers)" = "" ] || bad "the OrbStack credHelpers merge still runs"
 
       vars=$gen/home-path/etc/profile.d/hm-session-vars.sh
       [ -f "$vars" ] || bad "no hm-session-vars.sh in the profile"
-      for v in DOCKER_HOST REGISTRY_AUTH_FILE TESTCONTAINERS_RYUK_PRIVILEGED TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED; do
-        if grep -q "$v=" "$vars"; then bad "the Podman variable $v reached the session"; fi
+      grep -q 'DOCKER_HOST=.*podman/podman-machine-default-api.sock' "$vars" \
+        || bad "DOCKER_HOST does not name the Podman machine's API socket"
+      grep -q 'REGISTRY_AUTH_FILE=' "$vars" || bad "REGISTRY_AUTH_FILE is not in the session"
+      for v in TESTCONTAINERS_RYUK_PRIVILEGED TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED; do
+        if grep -q "$v=" "$vars"; then bad "the Linux Ryuk variable $v reached the session"; fi
       done
-      [ ! -e "$gen/home-files/.config/containers" ] || bad "Podman containers/ files reached macOS"
+      # The VM mounts ~/.config/containers, where a store link would dangle.
+      [ ! -e "$gen/home-files/.config/containers" ] || bad "store-linked containers/ files reached macOS"
       [ ! -e "$gen/home-files/.config/systemd" ] || bad "systemd user files reached macOS"
+
+      containersconf=$(grep -o -m1 '/nix/store/[a-z0-9]*-containers.conf' "$gen/activate" || true)
+      if [ -z "$containersconf" ]; then
+        bad "activation installs no containers.conf"
+      else
+        grep -qx 'provider *= *"libkrun"' "$containersconf" \
+          || bad "containers.conf does not select the libkrun machine provider"
+      fi
+      [ "$(readlink -f "$gen/home-path/bin/docker")" = "$(readlink -f "$gen/home-path/bin/podman")" ] \
+        || bad "docker on PATH is not the profile's podman"
+
+      # A plist with its whitespace removed, so a key and its value are adjacent.
+      agent() { tr -d ' \t\n' 2>/dev/null < "$gen/LaunchAgents/org.nix-community.home.$1.plist" || true; }
+      watchdog=$(agent podman-machine-podman-machine-default)
+      case $watchdog in *'<key>AbandonProcessGroup</key><true/>'*) ;; *) bad "the machine watchdog does not abandon its process group" ;; esac
+      case $watchdog in *'<key>ProcessType</key><string>Interactive</string>'*) ;; *) bad "the machine watchdog does not run at interactive priority" ;; esac
+      case $(agent container-environment) in
+        *'launchctlsetenvDOCKER_HOST'*podman/podman-machine-default-api.sock*) ;;
+        *) bad "no login agent exports the machine's socket to GUI apps" ;;
+      esac
+      minikube=$(agent minikube)
+      if [ "$production" = 1 ]; then
+        case $minikube in *minikube-darwin-start*'<key>RunAtLoad</key><true/>'*) ;; *) bad "the minikube login agent is missing" ;; esac
+      else
+        [ -z "$minikube" ] || bad "bootstrap has a minikube login agent"
+      fi
 
       agentconf=$gen/home-files/.gnupg/gpg-agent.conf
       if [ ! -f "$agentconf" ]; then

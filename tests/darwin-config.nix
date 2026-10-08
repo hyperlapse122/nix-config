@@ -21,12 +21,18 @@
     ones; an apply never removes an unlisted app and upgrades listed ones;
     every third-party cask's tap is tapped and trusted.
   - The user environment takes the non-NixOS path: production runs the
-    host-secrets steps and the docker credHelpers merge and bootstrap runs
-    none; ~/.ssh/config names the host key; no Podman variable or
-    containers/ file is present; `nr` is nr-darwin; the YubiKey pinentry is
+    host-secrets steps and bootstrap runs none; ~/.ssh/config names the host
+    key; `nr` is nr-darwin; the YubiKey pinentry is
     the darwin filter, with pinentry_mac's Keychain checkbox unticked by
     default; VSCodium's settings live under Application Support; Ghostty has
     the NixOS font families and no nixpkgs package.
+  - Containers: both variants init one rootful libkrun Podman machine with
+    the configured memory and CPUs, reconcile an existing machine to them,
+    keep the watchdog's VM alive across an agent reload at interactive
+    priority, export the machine's socket to shells and GUI apps, write
+    auth.json, and link `docker` to Podman; production adds the minikube
+    login agent and bootstrap has none. No OrbStack cask, credHelpers merge,
+    or Docker Hub index alias remains.
   - The system layer turns off store auto-optimisation, installs the shared
     font list, and records the host and variant in /etc/nix-config-host.
 
@@ -129,10 +135,10 @@ let
       (cask: check (lib.elem cask mapping.casks) "${cask} is not among the macOS casks")
       [
         "ghostty"
-        "orbstack"
         "1password"
       ]
     )
+    (check (!lib.elem "orbstack" mapping.casks) "orbstack is still among the macOS casks")
   ];
 
   sort = lib.sort lib.lessThan;
@@ -147,27 +153,35 @@ let
       casks = map (cask: cask.name) config.homebrew.casks;
       taps = map (tap: tap.name) config.homebrew.taps;
       thirdParty = lib.filter (cask: mapping.tapOf cask != null) expectedCasks;
-      sessionVariables = lib.attrNames user.home.sessionVariables;
-      podmanVariables = [
-        "DOCKER_HOST"
-        "REGISTRY_AUTH_FILE"
+      sessionVariables = user.home.sessionVariables;
+      ryukVariables = lib.filter (name: sessionVariables ? ${name}) [
         "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED"
         "TESTCONTAINERS_RYUK_PRIVILEGED"
       ];
-      leakedVariables = lib.filter (name: lib.elem name sessionVariables) podmanVariables;
-      # By target, so an entry renamed onto containers/ is still caught.
-      containerFiles = lib.filter (target: lib.hasPrefix "containers/" target) (
+      # By target, so an entry renamed onto the drop-in directory is still caught.
+      dropIns = lib.filter (target: lib.hasPrefix "containers/registries.conf.d" target) (
         map (file: file.target) (lib.filter (file: file.enable) (lib.attrValues user.xdg.configFile))
       );
+      agents = user.launchd.agents;
+      agentConfig = name: agents.${name}.config or { };
+      watchdog = agentConfig "podman-machine-podman-machine-default";
+      minikubeAgent = agentConfig "minikube";
+      minikubeArgs = plain (lib.concatStringsSep " " (minikubeAgent.ProgramArguments or [ ]));
+      minikubePath = plain (minikubeAgent.EnvironmentVariables.PATH or "");
+      guiEnvironment = plain (
+        lib.concatStringsSep " " ((agentConfig "container-environment").ProgramArguments or [ ])
+      );
+      machinesData = plain (activation.podmanMachines.data or "");
+      machineInits = lib.length (lib.filter lib.isList (builtins.split "machine init " machinesData));
+      resourcesStep = activation.podmanMachineResources or { };
       nixApps = lib.attrNames (lib.filterAttrs (_: app: app ? nix) mapping.apps);
       missingNixApps = lib.filter (
         name: !lib.elem name pnames && (name != "t3code-desktop" || user.my.t3.desktop.enable)
       ) nixApps;
-      dockerData = plain (activation.dockerCredHelpers.data or "");
       credentialHelper = lib.findFirst (
         p: (p.pname or "") == "docker-credential-sops"
       ) null user.home.packages;
-      hubRoute = (credentialHelper.routingTable or { })."https://index.docker.io/v1/" or null;
+      routingTable = credentialHelper.routingTable or { };
       codex = lib.findFirst (p: (p.pname or "") == "codex") null user.home.packages;
       sshText = plain user.my.ssh.configFile.drvAttrs.text;
       pinentry = user.services.gpg-agent.pinentry.package;
@@ -190,19 +204,8 @@ let
       (check (user.my.t3.desktop.enable && lib.elem "t3code-desktop" pnames)
         "${entry.name}: the macOS fixture must enable and install the T3 Code desktop app, or its darwin-outputs assertions vanish"
       )
-      (check
-        (
-          !production
-          || (
-            lib.hasInfix "docker-cred-helpers" dockerData
-            && lib.hasInfix "https://index.docker.io/v1/" dockerData
-            && lib.hasInfix "ghcr.io" dockerData
-          )
-        )
-        "${entry.name}: the docker credHelpers step must run scripts/docker-cred-helpers with every registry"
-      )
-      (check (hubRoute != null && hubRoute == (credentialHelper.routingTable."docker.io" or null))
-        "${entry.name}: the credential helper must answer Docker Hub's index address with the docker.io account"
+      (check (routingTable ? "docker.io" && !(routingTable ? "https://index.docker.io/v1/"))
+        "${entry.name}: the credential helper must route docker.io and no longer the Docker Hub index alias"
       )
       (check (
         codex != null && !lib.hasInfix "bubblewrap" (plain (builtins.toJSON (codex.drvAttrs or { })))
@@ -218,22 +221,74 @@ let
         activation ? nixConfigSecretsStage == production
         && activation ? nixConfigSecretsPublish == production
       ) "${entry.name}: the host-secrets steps must run in production and never in bootstrap")
-      (check
-        (
-          activation ? dockerCredHelpers == production
-          && (!production || lib.elem "linkGeneration" (activation.dockerCredHelpers.after or [ ]))
-        )
-        "${entry.name}: the docker credHelpers merge must run after linkGeneration in production and never in bootstrap"
-      )
+      (check (!activation ? dockerCredHelpers) "${entry.name}: the OrbStack credHelpers merge still runs")
       (check (
         lib.hasInfix "IdentityFile ${user.my.secrets.sshKey}" sshText
         && !lib.hasInfix "IdentityAgent" sshText
       ) "${entry.name}: ~/.ssh/config must name the host key and no agent socket")
-      (check (leakedVariables == [ ])
-        "${entry.name}: Podman session variables reached macOS: ${lib.concatStringsSep ", " leakedVariables}"
+      (check
+        (
+          machineInits == 1
+          && lib.hasInfix "machine init podman-machine-default " machinesData
+          && lib.hasInfix "--rootful" machinesData
+          && lib.hasInfix "--memory 8192" machinesData
+          && lib.hasInfix "--cpus 4" machinesData
+        )
+        "${entry.name}: activation must init exactly podman-machine-default, rootful, with 8192 MiB and 4 CPUs"
       )
-      (check (containerFiles == [ ])
-        "${entry.name}: Podman containers/ files reached macOS: ${lib.concatStringsSep ", " containerFiles}"
+      (check (
+        (user.services.podman.settings.containers.machine.provider or null) == "libkrun"
+        && activation ? podmanContainersConfig
+      ) "${entry.name}: containers.conf must select the libkrun machine provider")
+      (check
+        (
+          lib.elem "podmanMachines" (resourcesStep.after or [ ])
+          && lib.hasInfix "podman-machine-resources" (plain (resourcesStep.data or ""))
+          && lib.hasInfix "podman-machine-default 8192 4" (plain (resourcesStep.data or ""))
+        )
+        "${entry.name}: activation must reconcile the machine to 8192 MiB and 4 CPUs after podmanMachines"
+      )
+      (check
+        (
+          (watchdog.AbandonProcessGroup or null) == true
+          && (watchdog.ProcessType or null) == "Interactive"
+          && (watchdog.RunAtLoad or null) == true
+        )
+        "${entry.name}: the machine watchdog must abandon its process group, run at interactive priority, and start at load"
+      )
+      (check
+        (
+          lib.hasSuffix "podman/podman-machine-default-api.sock" (sessionVariables.DOCKER_HOST or "")
+          && sessionVariables ? REGISTRY_AUTH_FILE
+          && (sessionVariables.TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE or null) == "/var/run/docker.sock"
+          && ryukVariables == [ ]
+        )
+        "${entry.name}: the session must name the machine's socket, auth.json and the VM's Docker socket, and no Ryuk privilege variable"
+      )
+      (check (
+        lib.hasInfix "launchctl setenv DOCKER_HOST" guiEnvironment
+        && lib.hasInfix "podman/podman-machine-default-api.sock" guiEnvironment
+        && lib.hasInfix "launchctl setenv TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE" guiEnvironment
+        && ((agentConfig "container-environment").RunAtLoad or null) == true
+      ) "${entry.name}: a login agent must export the machine's socket to GUI apps")
+      (check (lib.elem "docker-podman-compat" pnames) "${entry.name}: docker must be the Podman link")
+      (check (
+        activation ? containersAuth
+      ) "${entry.name}: auth.json with the credential helpers must be written")
+      (check (dropIns == [ ]) "${entry.name}: the store-linked registries.conf.d drop-in reached macOS")
+      (check
+        (
+          if production then
+            lib.hasInfix "minikube-darwin-start" minikubeArgs
+            && (minikubeAgent.RunAtLoad or null) == true
+            && (minikubeAgent.KeepAlive.SuccessfulExit or null) == false
+            && (minikubeAgent.AbandonProcessGroup or null) == true
+            && lib.hasInfix "-podman-" minikubePath
+            && lib.hasInfix "-minikube-" minikubePath
+          else
+            !agents ? minikube
+        )
+        "${entry.name}: the minikube login agent must run in production, retried on failure, and never in bootstrap"
       )
       (check (
         lib.elem "nr-darwin" pnames && !lib.elem "nr" pnames && !lib.elem "nr-linux" pnames

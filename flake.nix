@@ -248,14 +248,18 @@
                 bash ${./tests/pinentry-card.sh} ./pinentry-card
                 touch $out
               '';
-          docker-cred-helpers =
-            pkgs.runCommand "docker-cred-helpers-tests" { nativeBuildInputs = [ pkgs.jq ]; }
-              ''
-                bash ${./tests/docker-cred-helpers.sh} ${
-                  pkgs.lib.getExe (import ./packages/docker-cred-helpers.nix { inherit pkgs; })
-                }
-                touch $out
-              '';
+          podman-machine-resources = pkgs.runCommand "podman-machine-resources-tests" { } ''
+            bash ${./tests/podman-machine-resources.sh} ${
+              pkgs.lib.getExe (import ./packages/podman-machine-resources.nix { inherit pkgs; })
+            }
+            touch $out
+          '';
+          minikube-darwin-start = pkgs.runCommand "minikube-darwin-start-tests" { } ''
+            bash ${./tests/minikube-darwin-start.sh} ${
+              pkgs.lib.getExe (import ./packages/minikube-darwin-start.nix { inherit pkgs; })
+            }
+            touch $out
+          '';
           darwin-config = import ./tests/darwin-config.nix {
             inherit
               pkgs
