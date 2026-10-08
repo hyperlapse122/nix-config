@@ -1262,6 +1262,35 @@
               bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
               touch $out
             '';
+          lint-staged-markdown =
+            let
+              miseToml = builtins.fromTOML (builtins.readFile ./mise.toml);
+              miseLock = builtins.fromTOML (builtins.readFile ./mise.lock);
+              tomlVersion = miseToml.tools."npm:markdownlint-cli2";
+              lockVersion = (builtins.head miseLock.tools."npm:markdownlint-cli2").version;
+              nixpkgsVersion = pkgs.markdownlint-cli2.version;
+            in
+            pkgs.runCommand "lint-staged-markdown-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.bash
+                  pkgs.git
+                  pkgs.markdownlint-cli2
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                mkdir -p scripts tests .githooks
+                cp ${./scripts/lint-staged-markdown} scripts/lint-staged-markdown
+                cp ${./tests/lint-staged-markdown.sh} tests/lint-staged-markdown.sh
+                cp ${./.githooks/pre-commit} .githooks/pre-commit
+                cp ${./.markdownlint-cli2.jsonc} .markdownlint-cli2.jsonc
+                chmod +x scripts/lint-staged-markdown .githooks/pre-commit
+                patchShebangs scripts/lint-staged-markdown .githooks/pre-commit tests/lint-staged-markdown.sh
+
+                bash tests/lint-staged-markdown.sh scripts/lint-staged-markdown .githooks/pre-commit .markdownlint-cli2.jsonc "${tomlVersion}" "${lockVersion}" "${nixpkgsVersion}"
+                touch $out
+              '';
           ci-docs-only-paths =
             pkgs.runCommand "ci-docs-only-paths-tests" { nativeBuildInputs = [ pkgs.bash ]; }
               ''
