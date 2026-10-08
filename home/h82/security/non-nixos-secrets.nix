@@ -55,13 +55,7 @@ let
   };
   dockerCredentialHelper = import ../../../packages/docker-credential-sops.nix {
     inherit pkgs;
-    # The docker CLI OrbStack ships asks for Docker Hub under its legacy index
-    # address rather than docker.io.
-    routingTable =
-      registries
-      // lib.optionalAttrs (config.my.kind == "darwin") {
-        ${import ../../../modules/shared/docker-hub-index.nix} = registries."docker.io";
-      };
+    routingTable = registries;
   };
 
   # Linux and macOS hosts alike: neither has the NixOS system unit that

@@ -12,8 +12,8 @@ Before the first setup, have:
 
 - the host directory and its secrets pushed to `main`;
 - an administrator account on the Mac, for `sudo`;
-- one of the three YubiKeys and its PIN, for the identity recovery in step 10;
-- time for the first apply, which downloads Homebrew and every cask.
+- one of the three YubiKeys and its PIN, for the identity recovery in step 9;
+- network and time for the first apply, which downloads Homebrew, every cask, and the Podman machine image.
 
 ## What the configuration manages
 
@@ -21,8 +21,9 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 
 - **Nix.** nix-darwin owns `/etc/nix/nix.conf` and keeps `auto-optimise-store` off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - **Host marker.** `/etc/nix-config-host` records the host name and whether the bootstrap or production output is applied. `nr` reads the host from it, so the name macOS shows for the machine does not matter.
-- **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, ChatGPT, Orca, OrbStack, and the other GUI apps. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones.
+- **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, ChatGPT, Orca, and the other GUI apps. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones.
 - **Nix apps.** VSCodium and the T3 Code desktop app come from Nix. Home Manager copies their bundles into `~/Applications/Home Manager Apps`.
+- **Containers.** One Podman machine, with minikube inside it on production outputs; see [Containers](#containers).
 - **Fonts.** The NixOS font list is installed system-wide.
 - **System defaults.** `modules/darwin/defaults.nix` is where Dock, Finder, trackpad, and keyboard defaults go. It sets none yet.
 - **User environment.** zsh, Git, the development tools, Claude Code, Codex, and the other agents, configured as on a non-NixOS Linux host.
@@ -81,13 +82,11 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
      switch --flake ".#$host-bootstrap"
    ```
 
-   This apply also installs Homebrew and the casks, so it takes a while. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+   This apply also installs Homebrew and the casks and creates the Podman machine, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
 
-7. Launch OrbStack once from Applications, so it sets up its virtual machine and the `docker` CLI.
+7. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
 
-8. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
-
-9. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
+8. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
 
    ```sh
    for dir in ~/.config/nix-config/age ~/.local/state/cli-auth ~/.config/gh ~/.config/glab-cli; do
@@ -97,7 +96,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
    done
    ```
 
-10. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd. The new terminal does not have `host` from step 5, so read it from the marker the bootstrap apply wrote:
+9. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd. The new terminal does not have `host` from step 5, so read it from the marker the bootstrap apply wrote:
 
     ```sh
     cd ~/src/github.com/hyperlapse122/nix-config
@@ -107,7 +106,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
     It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
 
-11. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
+10. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
 
     ```sh
     nr switch --host "$host"
@@ -115,13 +114,13 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
     It publishes the gh and glab configuration, the tokens, and the host's SSH key.
 
-12. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
+11. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
 
     ```sh
     sudo tmutil addexclusion -p ~/.ssh/id_ed25519_nix_config
     ```
 
-13. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
+12. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
 
 ## Everyday use
 
@@ -183,7 +182,23 @@ Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_ke
 
 ## Containers
 
-A Mac runs containers through OrbStack and gets no Podman or minikube. Production activation merges `credHelpers` entries into `~/.docker/config.json`, so OrbStack's `docker` CLI pulls private images from `ghcr.io`, `registry.gitlab.com`, and `registry.jpi.app` with no `docker login`. `docker.io` pulls stay anonymous. [Container runtime and registry authentication](provisioning.md#container-runtime-and-registry-authentication) describes the credential helper.
+A Mac runs containers in one Podman machine, `podman-machine-default`: a rootful Fedora CoreOS VM on the libkrun provider with 4 CPUs and an 8 GiB memory cap. Every apply, bootstrap included, creates it when it is missing, and a launch agent starts it at login and whenever it stops. No app needs launching and no account signs in.
+
+- **Memory.** 8 GiB is a cap, not a reservation. The VM holds host memory only while the guest uses it, and libkrun hands pages the guest frees back to macOS. macOS reclaims them lazily, so Activity Monitor can keep showing the old size until memory gets tight. Changing the cap or the CPUs in `home/h82/dev/containers.nix` reaches the existing machine on the next apply: the apply stops the machine, changes it, and the launch agent starts it again.
+- **minikube.** On a production output, a second launch agent waits until the machine answers, then starts the `minikube` cluster on the Podman driver with containerd, 4 GiB, and 2 CPUs. A failed start is retried every minute; its log is `~/Library/Logs/minikube.log`. A bootstrap output starts no cluster. A cluster that stops mid-session, for example after the machine restarts, comes back at the next login or with `minikube start`.
+- **docker.** `docker` is a link to `podman`, as on NixOS, and `DOCKER_HOST` names the machine's API socket under the per-user temporary directory, for shells and for apps launched from Finder or the Dock. Testcontainers works with no other setting.
+- **Registry credentials.** `~/.config/containers/auth.json` maps `ghcr.io`, `registry.gitlab.com`, and `registry.jpi.app` to `docker-credential-sops`, so `podman pull` and `docker pull` fetch private images with no login. `docker.io` pulls stay anonymous. A Docker API client that pulls a private image without sending credentials itself makes the VM look for the helper, which only the Mac has, so that pull fails. [Container runtime and registry authentication](provisioning.md#container-runtime-and-registry-authentication) describes the credential helper.
+- **Other machines.** The configuration manages only `podman-machine-default`, and every apply deletes any other Podman machine. Create containers, not machines.
+
+### Moving off OrbStack
+
+A Mac set up before this change still has OrbStack installed: the apply no longer lists the cask, and Homebrew cleanup is `"none"`, so nothing removes it. When you no longer need its containers and images, remove it with its data:
+
+```sh
+brew uninstall --zap orbstack
+```
+
+`~/.docker/config.json` stays behind and is harmless: `docker` is Podman now, which reads `auth.json` instead.
 
 ## App notes
 
@@ -201,7 +216,9 @@ A Mac runs containers through OrbStack and gets no Podman or minikube. Productio
 | `nr: no age identity at …` | The identity is not recovered yet. Run the `recover-age-identity` command the message names, from the clone. |
 | `… is not owned by …`, `… must have mode 0600`, or `cannot decrypt …` during activation | The identity file has the wrong owner or mode, or it is not this host's. Recover it again with the same command. |
 | `nr: not inside a git repository; …` | `nr` was run outside the clone. `cd` into it, or pass `--flake-dir <path>`. |
-| The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 8. |
+| `docker` or `podman` reports that the connection is refused, while `podman machine list` shows the machine running | gvproxy, the machine's network helper, died. Run `podman machine stop`; the launch agent starts the machine again within a minute. |
+| The first apply stops in `podmanMachines` | `podman machine init` could not download the machine image. Apply again once the network is back. |
+| The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 7. |
 
 ## Verification
 
