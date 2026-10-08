@@ -8,6 +8,13 @@ This guide covers a Mac from first setup to everyday use. A macOS host is an App
 
 A Mac that has no directory under `hosts/` yet needs one first; [adding a host](adding-a-host.md#macos-hosts) creates the directory, the bootstrap age material, the `tokens.yaml` recipient, and the host SSH key. Run those steps on a machine that already has the checkout and a YubiKey, then push, so the Mac can clone the result.
 
+Before the first setup, have:
+
+- the host directory and its secrets pushed to `main`;
+- an administrator account on the Mac, for `sudo`;
+- one of the three YubiKeys and its PIN, for the identity recovery in step 10;
+- time for the first apply, which downloads Homebrew and every cask.
+
 ## What the configuration manages
 
 The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` and `darwinConfigurations.<host>-bootstrap`. Each is a nix-darwin system with Home Manager inside it, so one activation applies both layers. The bootstrap output holds no secrets.
@@ -40,34 +47,47 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
    Open a new terminal afterwards, so `nix` is on `PATH`.
 
-3. Move the installer's `nix.conf` aside. nix-darwin takes over `/etc/nix/nix.conf` and stops rather than replace a file it did not write:
+3. Move aside the files the installer wrote or edited in `/etc`. nix-darwin takes over `/etc/nix/nix.conf`, `/etc/bashrc`, and `/etc/zshrc`, and its activation stops rather than replace a file it did not write:
 
    ```sh
-   sudo mv /etc/nix/nix.conf /etc/nix/nix.conf.before-nix-darwin
+   for file in /etc/nix/nix.conf /etc/bashrc /etc/zshrc; do
+     sudo mv "$file" "$file.before-nix-darwin"
+   done
    ```
 
-4. Clone the repository. The first time it runs, macOS's `git` may ask to install the Command Line Tools; accept.
+   The installer's lines in `/etc/bashrc` and `/etc/zshrc` are what put `nix` on `PATH`, so run steps 4 to 6 in the terminal that is already open. A terminal opened before step 6 finishes has no `nix`; load it there with `. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`.
+
+4. Clone the repository to `~/src/github.com/hyperlapse122/nix-config`, the path `ghq` uses with the configured root `~/src`. `ghq` is not installed until the bootstrap apply, so clone with `git`. The first time it runs, macOS's `git` may ask to install the Command Line Tools; accept.
 
    ```sh
-   git clone https://github.com/hyperlapse122/nix-config.git
-   cd nix-config
+   git clone https://github.com/hyperlapse122/nix-config.git ~/src/github.com/hyperlapse122/nix-config
+   cd ~/src/github.com/hyperlapse122/nix-config
    ```
 
-5. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
+5. Find the host directory for this Mac. A Mac's host name contains its model identifier with the comma replaced by a hyphen, such as `Mac17-9` in `MacBook-Pro-Mac17-9`, so look it up from `sysctl`:
+
+   ```sh
+   host=$(ls hosts | grep -x ".*$(sysctl -n hw.model | tr , -).*")
+   echo "$host"
+   ```
+
+   It must print exactly one name. When it prints none, the Mac has no host directory yet; see [adding a host](adding-a-host.md#macos-hosts). When it prints more than one, set `host` to the right one by hand.
+
+6. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
 
    ```sh
    sudo nix --extra-experimental-features 'nix-command flakes' \
      run github:nix-darwin/nix-darwin/master#darwin-rebuild -- \
-     switch --flake .#<host>-bootstrap
+     switch --flake ".#$host-bootstrap"
    ```
 
-   This apply also installs Homebrew and the casks, so it takes a while. It writes `/etc/nix-config-host` and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+   This apply also installs Homebrew and the casks, so it takes a while. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
 
-6. Launch OrbStack once from Applications, so it sets up its virtual machine and the `docker` CLI.
+7. Launch OrbStack once from Applications, so it sets up its virtual machine and the `docker` CLI.
 
-7. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
+8. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
 
-8. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
+9. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
 
    ```sh
    for dir in ~/.config/nix-config/age ~/.local/state/cli-auth ~/.config/gh ~/.config/glab-cli; do
@@ -77,50 +97,65 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
    done
    ```
 
-9. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd:
-
-   ```sh
-   ./scripts/recover-age-identity --user --host <host>
-   ```
-
-   It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
-
-10. Apply the production output. `nr` refuses to move a bootstrap generation to production unless you name the host:
+10. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd. The new terminal does not have `host` from step 5, so read it from the marker the bootstrap apply wrote:
 
     ```sh
-    nr switch --host <host>
+    cd ~/src/github.com/hyperlapse122/nix-config
+    host=$(sed -n 's/^host=//p' /etc/nix-config-host)
+    ./scripts/recover-age-identity --user --host "$host"
+    ```
+
+    It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
+
+11. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
+
+    ```sh
+    nr switch --host "$host"
     ```
 
     It publishes the gh and glab configuration, the tokens, and the host's SSH key.
 
-11. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
+12. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
 
     ```sh
     sudo tmutil addexclusion -p ~/.ssh/id_ed25519_nix_config
     ```
 
-12. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
+13. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
 
 ## Everyday use
 
 Pull, then apply from the clone. Routine applies need no YubiKey:
 
 ```sh
+cd ~/src/github.com/hyperlapse122/nix-config
 git pull
 nr switch
 ```
 
-`nr switch` builds the nix-darwin system as your user, registers it as the system profile, and activates it through `sudo`. Run it from the terminal that holds the App Management permission.
+`nr switch` builds the nix-darwin system as your user, registers it as the system profile, and activates it through `sudo`. Run it from the terminal that holds the App Management permission. `nr` builds the flake of the Git checkout it runs in; from anywhere else, name the checkout with `--flake-dir`.
 
 | Command | Effect |
 | --- | --- |
 | `nr switch` | Build and activate the production output for the host in `/etc/nix-config-host`. |
 | `nr switch --host <host>` | Name the host explicitly. Required for the first move from bootstrap to production. |
 | `nr switch --bootstrap` | Apply the secret-free bootstrap output again. |
+| `nr switch --flake-dir <path>` | Build from the checkout at `<path>` instead of the current one. |
 | `nr build` | Build the system without activating it and without `sudo`. |
 | `nr boot`, `nr test` | Refused: a Mac has no boot generation. |
 
-Before activating, `nr` checks the age identity. When it is missing, has the wrong owner or mode, or cannot decrypt the secrets, the apply stops, names the file and the recovery command, and prints no secret.
+The age identity is checked twice, and either check stops the apply before anything is published. Before building, `nr` stops when `~/.config/nix-config/age/key.txt` is missing. During activation, before Home Manager changes a single link, `host-secrets` stops when the identity is not owned by you, does not have mode 0600, or cannot decrypt every secret. Both name the file and the recovery command, and neither prints a secret.
+
+### Rolling back
+
+Every `nr switch` adds a generation to the system profile, `/nix/var/nix/profiles/system`. To return to the previous one, point the profile back at it and activate it, as `nr` does for a new generation:
+
+```sh
+sudo nix-env -p /nix/var/nix/profiles/system --rollback
+sudo /nix/var/nix/profiles/system/activate
+```
+
+The next `nr switch` from the checkout builds a new generation again, so fix the checkout before applying once more.
 
 ## Secrets and authentication
 
@@ -156,9 +191,21 @@ A Mac runs containers through OrbStack and gets no Podman or minikube. Productio
 - The T3 Code desktop app is the flake's pinned nightly, `T3 Code (Nightly).app`. A launch agent sets `T3CODE_DISABLE_AUTO_UPDATE=1` at login, so the app does not update itself off the pin. See [T3 Code](provisioning.md#t3-code).
 - An app added to the NixOS user environment needs a macOS decision in `modules/shared/darwin-apps.nix`: a cask, a Nix package, or a reason to leave it out. The `darwin-config` check fails without one.
 
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The first apply stops on unexpected files in `/etc` | A file the installer wrote is still in place. Move it aside as step 3 does, then apply again. |
+| `nix: command not found` in a new terminal during setup | `/etc/bashrc` and `/etc/zshrc` are moved aside and nix-darwin has not replaced them yet. Run `. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`. |
+| `nr: running the bootstrap generation; …` | A bare `nr switch` will not move a bootstrap generation to production. Recover the identity, then run the `nr switch --host` command the message names, or reapply with `nr switch --bootstrap`. |
+| `nr: no age identity at …` | The identity is not recovered yet. Run the `recover-age-identity` command the message names, from the clone. |
+| `… is not owned by …`, `… must have mode 0600`, or `cannot decrypt …` during activation | The identity file has the wrong owner or mode, or it is not this host's. Recover it again with the same command. |
+| `nr: not inside a git repository; …` | `nr` was run outside the clone. `cd` into it, or pass `--flake-dir <path>`. |
+| The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 8. |
+
 ## Verification
 
-The repository checks for macOS evaluate the fixture host on Linux and build it on CI's `macos-15` runner; none of them activates a Mac. After the first setup, work through the [macOS hardware checklist](verification.md#macos-hosts) and record the results there.
+The repository checks for macOS evaluate the fixture host on Linux and build it on CI's `macos-15` runner; none of them activates a Mac. An activation that exits 0 is not proof that every step applied, so confirm the state each step names. After the first setup, work through the [macOS hardware checklist](verification.md#macos-hosts) and record the results there.
 
 ## Losing or retiring the Mac
 
