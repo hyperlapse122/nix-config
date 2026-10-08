@@ -80,6 +80,10 @@ let
   # sandboxed repository check can drive it with fixtures.
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
 
+  # Runs from home activation and links the pinned Antigravity runtime into
+  # T3 Code's managed runtime directory, which T3 Code checks on disk.
+  t3codeAntigravityInstall = pythonHelper "t3code-antigravity-install" ../scripts/t3code-antigravity-install;
+
   # Pins the Android SDK packages from Google's repository XML. Its network
   # call goes through an overridable command for the same reason. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
@@ -100,6 +104,7 @@ in
     miseRelease
     codexRelease
     t3codeRelease
+    t3codeAntigravityInstall
     androidSdkRelease
     ;
 }

@@ -8,9 +8,12 @@ excludes stable releases (not prereleases) and preview builds (-preview. tags)
 the sha256 digest GitHub records for the desktop app (an AppImage on Linux, a
 zipped app bundle on macOS) and the t3 CLI tarball of each supported system,
 and writes or checks the pin file both T3 Code packages
-consume, so the two artifacts always come from the same nightly. Refuses to
-write a pin for a release missing any of those assets or their digests, or a
-version that is not strictly newer than the one already pinned.
+consume, so the two artifacts always come from the same nightly. The same pin
+holds the Antigravity ACP runtime that nightly requires on each system, read
+from the release table in the T3 Code source at the nightly's tag. Refuses to
+write a pin for a release missing any of those assets or their digests, a
+source table missing a system or holding a malformed sha256, or a version that
+is not strictly newer than the one already pinned.
 """
 
 import argparse
@@ -21,6 +24,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
 # -H @- reads extra request headers from stdin, so a GH_TOKEN never appears
@@ -44,9 +48,29 @@ TARGET_ASSETS = {
     },
 }
 
+# The T3 Code source file that declares the Antigravity runtime release T3
+# Code requires, and the Node platform key of each system in its table.
+ANTIGRAVITY_SOURCE_URL = (
+    "https://raw.githubusercontent.com/pingdotgg/t3code/{tag}/"
+    "apps/server/src/provider/antigravityRelease.ts"
+)
+ANTIGRAVITY_PLATFORMS = {
+    "x86_64-linux": "linux-x64",
+    "aarch64-linux": "linux-arm64",
+    "aarch64-darwin": "darwin-arm64",
+}
+
 TAG_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)$")
 VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$")
 DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+AGY_VERSION_PATTERN = re.compile(r'const ANTIGRAVITY_RELEASE_VERSION = "([^"]+)";')
+# One releaseAssets entry: ["<platform>", { ... }], whose object nests one
+# level of braces for executable and harness.
+AGY_ENTRY_PATTERN = r'\[\s*"{key}",\s*\{{((?:[^{{}}]|\{{[^{{}}]*\}})*)\}}\s*,?\s*\]'
+AGY_STRING_FIELD = r'\b{field}:\s*"([^"]*)"'
+AGY_NUMBER_FIELD = r"\b{field}:\s*([0-9][0-9_]*)\b"
+AGY_BINARY_FIELD = r'\b{field}:\s*\{{\s*name:\s*"([^"]+)",\s*bytes:\s*([0-9][0-9_]*)\s*,?\s*\}}'
 
 
 class Failure(Exception):
@@ -145,6 +169,49 @@ def parse_release(version, data):
     return {"version": version, "tag": tag, "platforms": platforms}
 
 
+def parse_antigravity(tag, source):
+    """Return the Antigravity runtime pin of each system from antigravityRelease.ts."""
+    where = f"antigravityRelease.ts at {tag}"
+    match = AGY_VERSION_PATTERN.search(source)
+    if not match:
+        raise Failure(f"{where} declares no ANTIGRAVITY_RELEASE_VERSION")
+    release_version = match.group(1)
+
+    def field(pattern, name, body, key):
+        found = re.findall(pattern.format(field=name), body)
+        if len(found) != 1:
+            raise Failure(f"{where}: cannot parse {name} of {key}")
+        return found[0]
+
+    pins = {}
+    for system, key in ANTIGRAVITY_PLATFORMS.items():
+        bodies = re.findall(AGY_ENTRY_PATTERN.format(key=re.escape(key)), source)
+        if len(bodies) != 1:
+            raise Failure(
+                f"{where} lists {len(bodies)} {key} entries, expected exactly one; "
+                "refusing to write an incomplete pin"
+            )
+        body = bodies[0]
+        if len(re.findall(r"\bversion:\s*ANTIGRAVITY_RELEASE_VERSION\b", body)) != 1:
+            raise Failure(f"{where}: {key} does not use ANTIGRAVITY_RELEASE_VERSION")
+        sha256_hex = field(AGY_STRING_FIELD, "sha256", body, key)
+        if not SHA256_PATTERN.match(sha256_hex):
+            raise Failure(f"{where}: invalid sha256 for {key}: {sha256_hex!r}")
+        executable = field(AGY_BINARY_FIELD, "executable", body, key)
+        harness = field(AGY_BINARY_FIELD, "harness", body, key)
+        pins[system] = {
+            "platform": key,
+            "version": release_version,
+            "url": field(AGY_STRING_FIELD, "url", body, key),
+            "sha256": sha256_hex,
+            "hash": hex_to_sri(sha256_hex),
+            "archiveBytes": int(field(AGY_NUMBER_FIELD, "archiveBytes", body, key)),
+            "executable": {"name": executable[0], "bytes": int(executable[1])},
+            "harness": {"name": harness[0], "bytes": int(harness[1])},
+        }
+    return pins
+
+
 def pinned_version(path):
     """Return the version already pinned at path, or None when unreadable."""
     try:
@@ -176,13 +243,9 @@ def main(argv=None):
 
     try:
         resolved = parse_release(*newest_nightly(fetch(args.source_url)))
-        out_json = json.dumps(resolved, indent=2) + "\n"
+        writing = bool(args.output) and not args.dry_run
 
-        if args.dry_run or not args.output:
-            sys.stdout.write(out_json)
-            return 0
-
-        current_version = pinned_version(args.output)
+        current_version = pinned_version(args.output) if writing else None
         if current_version is not None:
             try:
                 is_newer = version_key(resolved["version"]) > version_key(current_version)
@@ -195,8 +258,29 @@ def main(argv=None):
                 )
                 return 0
 
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(out_json)
+        # Fetched only once the release is worth pinning, so an up-to-date
+        # run makes one request.
+        tag = resolved["tag"]
+        source = fetch(ANTIGRAVITY_SOURCE_URL.format(tag=tag))
+        resolved["antigravity"] = parse_antigravity(tag, source)
+        out_json = json.dumps(resolved, indent=2) + "\n"
+
+        if not writing:
+            sys.stdout.write(out_json)
+            return 0
+
+        # Written beside the pin and renamed over it, so an interrupted run
+        # never leaves a truncated pin that breaks flake evaluation.
+        directory = os.path.dirname(os.path.abspath(args.output))
+        fd, temporary = tempfile.mkstemp(dir=directory, prefix=".t3code-release.")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(out_json)
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, args.output)
+        except BaseException:
+            os.unlink(temporary)
+            raise
         print(f"updated {args.output} to version {resolved['version']}")
         return 0
 
