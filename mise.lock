@@ -3,3 +3,7 @@
 [[tools."npm:@sentry/dotagents"]]
 version = "3.1.0"
 backend = "npm:@sentry/dotagents"
+
+[[tools."npm:markdownlint-cli2"]]
+version = "0.23.3"
+backend = "npm:markdownlint-cli2"

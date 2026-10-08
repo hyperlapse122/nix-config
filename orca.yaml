@@ -3,4 +3,5 @@ scripts:
   setup: |
     mise trust -yq
     mise install -yq
+    git config core.hooksPath .githooks
   archive: mise untrust -yq

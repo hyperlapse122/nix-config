@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Lints the staged Markdown, not the working tree. When any Markdown is
+# staged, the whole index is checked out into a scratch directory and bare
+# markdownlint-cli2 runs there, so the result matches CI's markdown-lint check
+# on this commit: same config globs, nested configs, and symlink targets.
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if git diff --cached --quiet --diff-filter=ACMR -- '*.md'; then
+  exit 0
+fi
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+git checkout-index --all --prefix="$tmpdir/"
+
+status=0
+(cd "$tmpdir" && markdownlint-cli2) || status=$?
+
+if [[ $status -ne 0 ]]; then
+  printf "To fix: mise exec -- markdownlint-cli2 --no-globs --fix <file> (skip with git commit --no-verify)\n" >&2
+  exit "$status"
+fi
