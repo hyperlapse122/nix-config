@@ -89,6 +89,8 @@ let
       grep -q 'DOCKER_HOST=.*podman/podman-machine-default-api.sock' "$vars" \
         || bad "DOCKER_HOST does not name the Podman machine's API socket"
       grep -q 'REGISTRY_AUTH_FILE=' "$vars" || bad "REGISTRY_AUTH_FILE is not in the session"
+      grep -q 'TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=.*/var/run/docker.sock' "$vars" \
+        || bad "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE does not name the VM's Docker socket"
       for v in TESTCONTAINERS_RYUK_PRIVILEGED TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED; do
         if grep -q "$v=" "$vars"; then bad "the Linux Ryuk variable $v reached the session"; fi
       done
@@ -111,13 +113,21 @@ let
       watchdog=$(agent podman-machine-podman-machine-default)
       case $watchdog in *'<key>AbandonProcessGroup</key><true/>'*) ;; *) bad "the machine watchdog does not abandon its process group" ;; esac
       case $watchdog in *'<key>ProcessType</key><string>Interactive</string>'*) ;; *) bad "the machine watchdog does not run at interactive priority" ;; esac
-      case $(agent container-environment) in
+      guienv=$(agent container-environment)
+      case $guienv in
         *'launchctlsetenvDOCKER_HOST'*podman/podman-machine-default-api.sock*) ;;
         *) bad "no login agent exports the machine's socket to GUI apps" ;;
+      esac
+      case $guienv in
+        *'launchctlsetenvTESTCONTAINERS_DOCKER_SOCKET_OVERRIDE/var/run/docker.sock'*) ;;
+        *) bad "no login agent exports the VM's Docker socket to GUI apps" ;;
       esac
       minikube=$(agent minikube)
       if [ "$production" = 1 ]; then
         case $minikube in *minikube-darwin-start*'<key>RunAtLoad</key><true/>'*) ;; *) bad "the minikube login agent is missing" ;; esac
+        case $minikube in *'<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>'*) ;; *) bad "the minikube login agent is not retried after a failure" ;; esac
+        case $minikube in *'<key>AbandonProcessGroup</key><true/>'*) ;; *) bad "the minikube login agent does not abandon its process group" ;; esac
+        case $minikube in *'<key>PATH</key><string>/nix/store/'*-podman-*'/bin:/nix/store/'*-minikube-*'/bin:/usr/bin:/bin</string>'*) ;; *) bad "the minikube login agent's PATH lacks podman or minikube" ;; esac
       else
         [ -z "$minikube" ] || bad "bootstrap has a minikube login agent"
       fi

@@ -174,6 +174,13 @@ let
       machinesData = plain (activation.podmanMachines.data or "");
       machineInits = lib.length (lib.filter lib.isList (builtins.split "machine init " machinesData));
       resourcesStep = activation.podmanMachineResources or { };
+      # The helper stops the machine, so a dry run must reach only the echo.
+      resourcesBranches = lib.splitString "else" (plain (resourcesStep.data or ""));
+      resourcesGuarded =
+        lib.length resourcesBranches == 2
+        && lib.hasInfix "if [[ -v DRY_RUN ]]; then" (lib.head resourcesBranches)
+        && !lib.hasInfix "podman-machine-resources/bin" (lib.head resourcesBranches)
+        && lib.hasInfix "podman-machine-resources/bin" (lib.last resourcesBranches);
       nixApps = lib.attrNames (lib.filterAttrs (_: app: app ? nix) mapping.apps);
       missingNixApps = lib.filter (
         name: !lib.elem name pnames && (name != "t3code-desktop" || user.my.t3.desktop.enable)
@@ -248,6 +255,8 @@ let
         )
         "${entry.name}: activation must reconcile the machine to 8192 MiB and 4 CPUs after podmanMachines"
       )
+      (check resourcesGuarded "${entry.name}: a dry run must not run the machine reconciliation helper")
+      (check (lib.hasInfix "TMPDIR=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR)" (lib.last resourcesBranches)) "${entry.name}: the reconciliation helper must run with the user's temporary directory")
       (check
         (
           (watchdog.AbandonProcessGroup or null) == true
@@ -280,6 +289,8 @@ let
         (
           if production then
             lib.hasInfix "minikube-darwin-start" minikubeArgs
+            # The node gets half of the machine: 4096 MiB and 2 CPUs, last.
+            && lib.hasSuffix " 4096 2" minikubeArgs
             && (minikubeAgent.RunAtLoad or null) == true
             && (minikubeAgent.KeepAlive.SuccessfulExit or null) == false
             && (minikubeAgent.AbandonProcessGroup or null) == true

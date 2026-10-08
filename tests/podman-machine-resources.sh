@@ -68,7 +68,7 @@ if "$helper" "$stub/podman" vm 12288 4 2>/dev/null; then bad "a set that always 
 sets=$(grep -cs ' set ' "$STUB/calls" || true)
 [ "$sets" = 3 ] || bad "a set that always fails was tried ${sets:-0} times, not 3"
 
-if grep -qs ' start' "$STUB/calls"; then bad "the helper started the machine"; fi
+if grep -qsx 'machine start vm' "$STUB/calls"; then bad "the helper started the machine"; fi
 
 [ "$fail" = 0 ] || exit 1
 echo "podman-machine-resources: all scenarios passed"

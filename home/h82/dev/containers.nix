@@ -103,11 +103,14 @@ lib.mkMerge [
 
     # The module applies memory and CPUs only when it creates the machine.
     # The watchdog restarts the machine once the helper has stopped it.
+    # Activation runs under sudo, which drops TMPDIR, and Podman keeps the
+    # running machine's state under the per-user temporary directory the
+    # watchdog's launchd job sees, so the helper is given that directory.
     home.activation.podmanMachineResources = lib.hm.dag.entryAfter [ "podmanMachines" ] ''
       if [[ -v DRY_RUN ]]; then
         echo "Reconciling ${machineName} to ${toString machine.memory} MiB and ${toString machine.cpus} CPUs"
       else
-        ${lib.getExe resources} ${lib.getExe podman} ${machineName} ${toString machine.memory} ${toString machine.cpus}
+        TMPDIR=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR) ${lib.getExe resources} ${lib.getExe podman} ${machineName} ${toString machine.memory} ${toString machine.cpus}
       fi
     '';
 

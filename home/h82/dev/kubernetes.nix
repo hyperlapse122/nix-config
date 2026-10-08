@@ -8,6 +8,16 @@ let
   podman = config.services.podman.package;
   start = import ../../../packages/minikube-darwin-start.nix { inherit pkgs; };
   logFile = "${config.home.homeDirectory}/Library/Logs/minikube.log";
+  # How long the agent waits for the Podman machine to answer, polling every
+  # few seconds, before it fails and launchd retries it.
+  startTimeout = 300;
+  pollInterval = 5;
+  # Half of the Podman machine's 8 GiB and 4 CPUs in containers.nix, so
+  # containers outside the cluster keep headroom.
+  node = {
+    memory = 4096;
+    cpus = 2;
+  };
 in
 lib.mkMerge [
   {
@@ -40,8 +50,10 @@ lib.mkMerge [
           (lib.getExe start)
           (lib.getExe podman)
           (lib.getExe pkgs.minikube)
-          "300"
-          "5"
+          (toString startTimeout)
+          (toString pollInterval)
+          (toString node.memory)
+          (toString node.cpus)
         ];
         # minikube runs podman by name.
         EnvironmentVariables.PATH = "${
