@@ -153,6 +153,7 @@
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
+        antigravity-acp = import ./packages/antigravity-acp.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
