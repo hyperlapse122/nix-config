@@ -440,7 +440,7 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.assertEqual(pin["antigravity"], expected_antigravity())
         self.assertEqual(
             pin["antigravity"]["x86_64-linux"]["hash"],
-            "sha256-" + base64.b64encode(bytes.fromhex(AGY_PLATFORMS["linux-x64"][2])).decode(),
+            sri(AGY_PLATFORMS["linux-x64"][2]),
         )
 
     def test_source_is_fetched_at_the_selected_tag(self):

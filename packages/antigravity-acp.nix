@@ -37,8 +37,10 @@ pkgs.stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
 
-    install -Dm555 ${pin.executable.name} -t $out/libexec/antigravity-acp
-    install -Dm555 ${pin.harness.name} -t $out/libexec/antigravity-acp
+    # Moved rather than copied: the binaries are about 1 GB unpacked on Linux.
+    mkdir -p $out/libexec/antigravity-acp
+    mv ${pin.executable.name} ${pin.harness.name} $out/libexec/antigravity-acp/
+    chmod 555 $out/libexec/antigravity-acp/*
 
     runHook postInstall
   '';
