@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""Install the pinned Antigravity ACP runtime where T3 Code looks for it.
+
+T3 Code reports the Antigravity provider as installed when
+<base>/tools/antigravity-acp/<platform>/active.json names a release whose
+versions/<sha256>/ directory holds .install-complete.json and the two binaries
+that record names, each a regular file of the recorded size with an execute
+bit. T3 Code checks them with stat, which follows symbolic links, so the
+binaries are links into the Nix store package rather than copies of a runtime
+that is about 1 GB unpacked on Linux. The directory and the records are real
+files T3 Code can rewrite or remove.
+
+A version directory T3 Code installed itself, with real binaries and a
+matching record, is left alone. One linked to another package path is
+replaced, because only the current generation keeps its package from garbage
+collection. Other version directories belong to T3 Code and are never
+touched.
+"""
+
+import argparse
+import json
+import os
+import shutil
+import stat
+import sys
+import tempfile
+from pathlib import Path
+
+
+def expected_record(pin):
+    return {
+        "releaseId": pin["sha256"],
+        "version": pin["version"],
+        "executable": pin["executable"],
+        "harness": pin["harness"],
+    }
+
+
+def write_private(path, data):
+    """Write data to path through a temporary file, which mkstemp creates with
+    mode 0600, then rename."""
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def read_record(directory):
+    try:
+        return json.loads((directory / ".install-complete.json").read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def is_current(directory, record, runtime):
+    """True when directory is a complete install T3 Code accepts and that the
+    current generation keeps alive: real binaries, or links to runtime."""
+    if directory.is_symlink() or not directory.is_dir():
+        return False
+    if read_record(directory) != record:
+        return False
+    for binary in (record["executable"], record["harness"]):
+        path = directory / binary["name"]
+        if path.is_symlink():
+            if Path(os.readlink(path)) != runtime / binary["name"]:
+                return False
+        try:
+            info = path.stat()
+        except OSError:
+            return False
+        if not stat.S_ISREG(info.st_mode) or info.st_size != binary["bytes"]:
+            return False
+        if not info.st_mode & 0o111:
+            return False
+    return True
+
+
+def install(versions, record, runtime):
+    """Stage a linked version directory and rename it over the old one.
+
+    The old directory is deleted only once the new one is in place, so a
+    failed or interrupted deletion never leaves active.json naming a missing
+    release."""
+    destination = versions / record["releaseId"]
+    staging = Path(tempfile.mkdtemp(dir=versions, prefix=".install-"))
+    retired = None
+    try:
+        for binary in (record["executable"], record["harness"]):
+            (staging / binary["name"]).symlink_to(runtime / binary["name"])
+        write_private(staging / ".install-complete.json", json.dumps(record))
+        os.chmod(staging, 0o755)
+        if destination.is_symlink() or destination.is_file():
+            destination.unlink()
+        elif destination.exists():
+            retired = Path(tempfile.mkdtemp(dir=versions, prefix=".retired-"))
+            os.replace(destination, retired / "release")
+        os.replace(staging, destination)
+    except BaseException:
+        if retired is not None and not destination.exists():
+            os.replace(retired / "release", destination)
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    if retired is not None:
+        shutil.rmtree(retired, ignore_errors=True)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base-dir", required=True, type=Path, help="T3 Code's base directory, ~/.t3")
+    parser.add_argument("--runtime", required=True, type=Path, help="directory holding the two binaries")
+    parser.add_argument("--pin", required=True, type=Path, help="the runtime's pin record")
+    args = parser.parse_args(argv)
+
+    try:
+        pin = json.loads(args.pin.read_text())
+        record = expected_record(pin)
+
+        managed = args.base_dir / "tools" / "antigravity-acp" / pin["platform"]
+        versions = managed / "versions"
+        versions.mkdir(parents=True, exist_ok=True)
+
+        if not is_current(versions / record["releaseId"], record, args.runtime):
+            install(versions, record, args.runtime)
+
+        active = managed / "active.json"
+        try:
+            current = json.loads(active.read_text()).get("releaseId")
+        except (OSError, ValueError, AttributeError):
+            current = None
+        if current != record["releaseId"]:
+            write_private(active, json.dumps({"releaseId": record["releaseId"]}))
+    except (OSError, KeyError, ValueError) as error:
+        print(f"t3code-antigravity-install: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
