@@ -17,6 +17,8 @@
     it, has a macOS decision, and each decision is exactly one of a cask, a
     Nix package, or left out. The set is derived from the evaluated
     configurations, so a package added on NixOS fails here until it has one.
+    Telegram maps to the telegram-desktop cask, the NixOS client, and the
+    telegram cask (Telegram for macOS) is absent.
   - Homebrew: the casks are exactly the mapping's casks plus its macOS-only
     ones; an apply never removes an unlisted app and upgrades listed ones;
     every third-party cask's tap is tapped and trusted.
@@ -139,6 +141,11 @@ let
       ]
     )
     (check (!lib.elem "orbstack" mapping.casks) "orbstack is still among the macOS casks")
+    # macOS runs the NixOS Telegram client, not Telegram for macOS.
+    (check (
+      mapping.apps.telegram-desktop or null == { cask = "telegram-desktop"; }
+    ) "telegram-desktop: the macOS decision must be the telegram-desktop cask")
+    (check (!lib.elem "telegram" mapping.casks) "telegram is still among the macOS casks")
   ];
 
   sort = lib.sort lib.lessThan;

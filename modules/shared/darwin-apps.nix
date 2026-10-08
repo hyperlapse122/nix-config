@@ -24,7 +24,7 @@ let
     google-chrome.cask = "google-chrome";
     libreoffice.cask = "libreoffice";
     orca-ide.cask = "stablyai/orca/orca";
-    telegram-desktop.cask = "telegram";
+    telegram-desktop.cask = "telegram-desktop";
     yubioath-flutter.cask = "yubico-authenticator";
 
     code.nix = "home/h82/dev/vscodium.nix";
