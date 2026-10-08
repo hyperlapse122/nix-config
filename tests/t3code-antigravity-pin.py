@@ -9,15 +9,17 @@ JavaScript text. The repository pins the same runtime under the `antigravity`
 key of packages/t3code-release.json so Nix can fetch it ahead of time. When
 the two disagree, T3 Code rejects or replaces the runtime Nix provides.
 
-Every pinned system must name the Node platform key T3 Code looks up on that
-system, the key must be present in the binary's table, and the version, url,
-sha256, archiveBytes, executable, and harness must equal that entry. The pin's `hash` is what the Nix fetch uses, so it
-must also be the SRI form of the pinned sha256. A binary without a parseable
+Every system the flake supports must be pinned, each pin must name the Node
+platform key T3 Code looks up on that system, the key must be present in the
+binary's table, and the version, url, sha256, archiveBytes, executable, and
+harness must equal that entry. The pin's `hash` is what the Nix fetch uses, so
+it must also be the SRI form of the pinned sha256. A binary without a parseable
 table, or a pin with no entry compared, fails rather than passing vacuously.
 """
 
 import base64
 import json
+import mmap
 import re
 import sys
 
@@ -83,8 +85,9 @@ def sri(sha256):
 
 
 def main(binary_path, release_path):
-    with open(binary_path, "rb") as f:
-        assets, error = release_assets(f.read())
+    # Mapped rather than read, so the 150 MB binary is not copied into memory.
+    with open(binary_path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as binary:
+        assets, error = release_assets(binary)
     with open(release_path, encoding="utf-8") as f:
         pins = json.load(f).get("antigravity", {})
     if error:
@@ -93,8 +96,12 @@ def main(binary_path, release_path):
 
     compared = []
     failures = []
-    for system, pin in sorted(pins.items()):
+    for system in sorted(set(NODE_PLATFORMS) | set(pins)):
         platform = NODE_PLATFORMS.get(system)
+        pin = pins.get(system)
+        if pin is None:
+            failures.append(f"{system} ({platform}): the pin has no Antigravity entry")
+            continue
         if pin.get("platform") != platform:
             failures.append(f"{system} ({platform}): platform is {pin.get('platform')!r}")
         try:

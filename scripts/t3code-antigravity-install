@@ -37,12 +37,12 @@ def expected_record(pin):
 
 
 def write_private(path, data):
-    """Write data to path through a temporary file, mode 0600, then rename."""
+    """Write data to path through a temporary file, which mkstemp creates with
+    mode 0600, then rename."""
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(data)
-        os.chmod(temporary, 0o600)
         os.replace(temporary, path)
     except BaseException:
         Path(temporary).unlink(missing_ok=True)
@@ -80,9 +80,14 @@ def is_current(directory, record, runtime):
 
 
 def install(versions, record, runtime):
-    """Stage a linked version directory and rename it over the old one."""
+    """Stage a linked version directory and rename it over the old one.
+
+    The old directory is deleted only once the new one is in place, so a
+    failed or interrupted deletion never leaves active.json naming a missing
+    release."""
     destination = versions / record["releaseId"]
     staging = Path(tempfile.mkdtemp(dir=versions, prefix=".install-"))
+    retired = None
     try:
         for binary in (record["executable"], record["harness"]):
             (staging / binary["name"]).symlink_to(runtime / binary["name"])
@@ -93,11 +98,14 @@ def install(versions, record, runtime):
         elif destination.exists():
             retired = Path(tempfile.mkdtemp(dir=versions, prefix=".retired-"))
             os.replace(destination, retired / "release")
-            shutil.rmtree(retired)
         os.replace(staging, destination)
     except BaseException:
+        if retired is not None and not destination.exists():
+            os.replace(retired / "release", destination)
         shutil.rmtree(staging, ignore_errors=True)
         raise
+    if retired is not None:
+        shutil.rmtree(retired, ignore_errors=True)
 
 
 def main(argv=None):

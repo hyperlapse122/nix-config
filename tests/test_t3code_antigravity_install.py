@@ -8,6 +8,7 @@ holding .install-complete.json and the two binaries.
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -66,6 +67,9 @@ class InstallTest(unittest.TestCase):
         self.version_dir = self.managed / "versions" / SHA
 
     def tearDown(self):
+        # A test may leave a directory without write permission behind.
+        for directory, _, _ in os.walk(self.root):
+            os.chmod(directory, 0o755)
         self.tmp.cleanup()
 
     def run_installer(self, runtime=None):
@@ -170,6 +174,76 @@ class InstallTest(unittest.TestCase):
         self.run_installer()
         self.assert_linked_to(self.runtime)
         self.assertEqual(self.record(), RECORD)
+
+    def test_new_release_is_in_place_even_when_the_old_one_cannot_be_deleted(self):
+        self.version_dir.mkdir(parents=True)
+        locked = self.version_dir / "locked"
+        locked.mkdir()
+        (locked / "file").write_text("held")
+        locked.chmod(0o500)
+        self.run_installer()
+        self.assertEqual(self.record(), RECORD)
+        self.assert_linked_to(self.runtime)
+
+    def test_wrong_size_or_non_executable_binary_is_replaced(self):
+        for name, content, mode in (
+            ("agy_acp_server.par", EXECUTABLE + b"#", 0o755),
+            ("agy_acp_server.par", EXECUTABLE, 0o644),
+        ):
+            with self.subTest(content=len(content), mode=oct(mode)):
+                shutil.rmtree(self.base, ignore_errors=True)
+                self.version_dir.mkdir(parents=True)
+                for file, body in (
+                    ("agy_acp_server.par", EXECUTABLE),
+                    ("localharness_external", HARNESS),
+                ):
+                    (self.version_dir / file).write_bytes(body)
+                    (self.version_dir / file).chmod(0o755)
+                (self.version_dir / name).write_bytes(content)
+                (self.version_dir / name).chmod(mode)
+                (self.version_dir / ".install-complete.json").write_text(json.dumps(RECORD))
+                self.run_installer()
+                self.assert_linked_to(self.runtime)
+
+    def test_record_for_another_version_is_replaced(self):
+        self.version_dir.mkdir(parents=True)
+        (self.version_dir / ".install-complete.json").write_text(
+            json.dumps(dict(RECORD, version="1.2.9"))
+        )
+        self.run_installer()
+        self.assertEqual(self.record(), RECORD)
+
+    def test_version_path_that_is_a_file_or_dangling_link_is_replaced(self):
+        for make in (
+            lambda path: path.write_text("not a directory"),
+            lambda path: path.symlink_to(self.root / "nowhere"),
+        ):
+            with self.subTest():
+                shutil.rmtree(self.base, ignore_errors=True)
+                self.version_dir.parent.mkdir(parents=True)
+                make(self.version_dir)
+                self.run_installer()
+                self.assertFalse(self.version_dir.is_symlink())
+                self.assert_linked_to(self.runtime)
+
+    def test_corrupt_active_json_is_rewritten(self):
+        self.managed.mkdir(parents=True)
+        for content in ("not json", "[1, 2]"):
+            with self.subTest(content=content):
+                (self.managed / "active.json").write_text(content)
+                self.run_installer()
+                self.assertEqual(self.active(), {"releaseId": SHA})
+
+    def test_unreadable_pin_fails_without_touching_the_base(self):
+        self.pin.write_text("{}")
+        result = subprocess.run(
+            [str(SCRIPT), "--base-dir", str(self.base), "--runtime", str(self.runtime), "--pin", str(self.pin)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("t3code-antigravity-install:", result.stderr)
+        self.assertFalse(self.base.exists())
 
 
 if __name__ == "__main__":

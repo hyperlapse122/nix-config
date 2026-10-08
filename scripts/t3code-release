@@ -24,6 +24,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
 # -H @- reads extra request headers from stdin, so a GH_TOKEN never appears
@@ -242,7 +243,7 @@ def main(argv=None):
 
     try:
         resolved = parse_release(*newest_nightly(fetch(args.source_url)))
-        writing = not args.dry_run and args.output
+        writing = bool(args.output) and not args.dry_run
 
         current_version = pinned_version(args.output) if writing else None
         if current_version is not None:
@@ -268,8 +269,18 @@ def main(argv=None):
             sys.stdout.write(out_json)
             return 0
 
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(out_json)
+        # Written beside the pin and renamed over it, so an interrupted run
+        # never leaves a truncated pin that breaks flake evaluation.
+        directory = os.path.dirname(os.path.abspath(args.output))
+        fd, temporary = tempfile.mkstemp(dir=directory, prefix=".t3code-release.")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(out_json)
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, args.output)
+        except BaseException:
+            os.unlink(temporary)
+            raise
         print(f"updated {args.output} to version {resolved['version']}")
         return 0
 
