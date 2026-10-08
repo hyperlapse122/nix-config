@@ -125,7 +125,7 @@ U1 deletes the host. U2 and U3 remove the trait code and its checks together, be
 ## Verification Contract
 
 | Command | Proves |
-|---|---|
+| --- | --- |
 | `nix fmt -- --ci` | formatting |
 | `nix flake check` | every declared check, including the guard checks and the x86_64 fixtures (R4) |
 | `nix build --no-link .#vmChecks.all` | the remaining NixOS VM tests (needs `/dev/kvm`) |
