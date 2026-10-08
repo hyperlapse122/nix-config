@@ -311,7 +311,7 @@
               # Activation runs the packaged binary, not this source copy, and its
               # unit's PATH carries no python3. Exercise the built file so a lost
               # +x bit or an unpatched `#!/usr/bin/env python3` fails here rather
-              # than on a host.
+              # than at activation.
               interpreter=$(head -1 ${packaged}/bin/agent-settings)
               case "$interpreter" in
                 '#!'/nix/store/*) ;;

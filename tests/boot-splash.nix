@@ -96,7 +96,7 @@ let
 
   # A production configuration re-evaluated with the Intel driver in place of
   # NVIDIA, for a fleet in which every production configuration uses NVIDIA.
-  withoutNvidia =
+  withIntelDriver =
     entry:
     configurations.entryOf "${entry.name} with the Intel driver in place of NVIDIA" (
       self.nixosConfigurations.${entry.name}.extendModules {
@@ -114,7 +114,7 @@ let
   production =
     configurations.production
     ++ lib.optionals (lib.all (entry: usesNvidia entry.config) configurations.production) (
-      map withoutNvidia configurations.production
+      map withIntelDriver configurations.production
     );
 
   initrdFile = config: path: config.boot.initrd.systemd.contents.${path}.source or null;
@@ -305,7 +305,7 @@ pkgs.runCommand "boot-splash-tests"
       fail "no production configuration uses the NVIDIA driver, so the NVIDIA initrd assertions would cover nothing"
     )}
     ${lib.optionalString (lib.all (entry: usesNvidia entry.config) production) (
-      fail "every production configuration uses the NVIDIA driver, so the assertion that others load no nvidia module would cover nothing"
+      fail "every production configuration uses the NVIDIA driver, even the one re-evaluated with the Intel driver, so the assertion that others load no nvidia module would cover nothing"
     )}
     ${lib.concatMapStringsSep "\n" assertProduction production}
     ${lib.concatMapStringsSep "\n" assertBootstrap configurations.bootstraps}

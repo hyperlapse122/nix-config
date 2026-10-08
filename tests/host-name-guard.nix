@@ -13,8 +13,8 @@
   The search is a case-insensitive fixed-string match on the full host name,
   so prose that uses part of a name, such as a vendor or model, stays legal.
   The builder lists every `file:line` hit before it fails, and it also fails
-  when no host is
-  discovered or a scanned path is missing, so it never passes vacuously.
+  when no host is discovered or a scanned path is missing, so it never passes
+  vacuously.
 */
 { pkgs, self }:
 let
