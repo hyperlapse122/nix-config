@@ -61,7 +61,7 @@ Use the same command for later applies. It works with the YubiKey disconnected o
 
 ## Recover once on a non-NixOS host
 
-A non-NixOS host keeps its age identity in the user's home, not under `/var/lib/sops-nix`. Recover it once, after the bootstrap output is applied. [Adding a host](adding-a-host.md#first-setup-on-the-machine) gives the full first-setup order. A macOS host recovers its identity the same way; its first-setup order is in [first setup on the Mac](adding-a-host.md#first-setup-on-the-mac).
+A non-NixOS host keeps its age identity in the user's home, not under `/var/lib/sops-nix`. Recover it once, after the bootstrap output is applied. [Adding a host](adding-a-host.md#first-setup-on-the-machine) gives the full first-setup order. A macOS host recovers its identity the same way; its first-setup order is in [first setup on the Mac](macos.md#first-setup-on-the-mac).
 
 The bootstrap user environment installs the public GPG key, the card tools, and `install-user-age-identity`, and on Linux the bootstrap system layer runs pcscd. On macOS, GPG reaches the card through the system's own PC/SC framework, with no pcscd. With a YubiKey inserted, run the recovery helper from the clone in user mode. User mode needs `--host`, because the distribution owns the hostname:
 
