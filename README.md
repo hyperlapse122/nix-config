@@ -18,7 +18,7 @@ nr switch
 
 It applies the system layer through system-manager and `sudo`, then the standalone Home Manager configuration, which publishes the gh/glab files, the tokens, and the host's own SSH key. Routine applies use the user-owned age identity at `~/.config/nix-config/age/key.txt`. [Adding a host](docs/adding-a-host.md#non-nixos-hosts) covers the first setup.
 
-On a macOS host, `nr switch` from the clone builds the nix-darwin system, which holds the Home Manager configuration, and activates it through `sudo`. The first apply installs Homebrew and the casks. Secrets work as on a non-NixOS Linux host, with FileVault protecting the user-owned identity. [Adding a host](docs/adding-a-host.md#macos-hosts) covers the first setup.
+On a macOS host, `nr switch` from the clone builds the nix-darwin system, which holds the Home Manager configuration, and activates it through `sudo`. The first apply installs Homebrew and the casks. Secrets work as on a non-NixOS Linux host, with FileVault protecting the user-owned identity. [macOS hosts](docs/macos.md) covers the first setup and everyday use.
 
 ## Hosts
 
@@ -26,6 +26,7 @@ On a macOS host, `nr switch` from the clone builds the nix-darwin system, which 
 | --- | --- |
 | `ThinkPad-X1-Carbon-Gen-11` | Lenovo ThinkPad X1 Carbon Gen 11 laptop |
 | `MS-7D91` | MSI MS-7D91 desktop workstation (Intel i7-13700F + NVIDIA RTX 3060) |
+| `MacBook-Pro-Mac17-9` | Apple silicon MacBook Pro (model identifier `Mac17,9`), macOS |
 
 [Adding a host](docs/adding-a-host.md) covers a new machine.
 
@@ -39,6 +40,7 @@ zsh, Git, Ghostty, Claude Code, Claude Desktop, Codex, the ChatGPT desktop app, 
 - [Authentication preparation and recovery](docs/provisioning.md): prepare encrypted repository files and recover secrets with a YubiKey for the first time.
 - [Updates and recovery](docs/recovery.md): retry failures, roll back, and recover TPM, card, and signing-key access.
 - [Verification](docs/verification.md): automated checks and hardware checks.
+- [macOS hosts](docs/macos.md): set up a Mac with nix-darwin, recover its secrets, and apply routine updates.
 - [Adding a host](docs/adding-a-host.md): create a host directory, its bootstrap age material, and its `.sops.yaml` recipient, for a NixOS, a non-NixOS, or a macOS host.
 - [Secret file conventions](secrets/README.md)
 
