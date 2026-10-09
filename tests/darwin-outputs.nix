@@ -23,6 +23,12 @@
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
   - the VSCodium settings merge targets Application Support;
+  - ~/Library/Android/sdk holds what T3 Code's device hub needs:
+    cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
+    Google APIs system.img for every platform the pin file names, and an
+    emulator/emulator wrapper that defaults ANDROID_HOME and ANDROID_SDK_ROOT
+    to ~/Library/Android/sdk before it execs the store emulator; PATH gains
+    the emulator directory;
   - with my.t3.desktop.enable, the T3 Code nightly bundle is in the profile,
     its main executable is byte-identical to the release zip's, and a launch
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
@@ -41,6 +47,11 @@ let
 
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
+
+  # Read from the pin, not the module: androidenv silently drops an ABI the
+  # pin lacks, so every pinned platform must still carry its arm64 image.
+  androidPlatforms = lib.attrNames (lib.importJSON ../packages/android-sdk-repo.json)
+    .packages.platforms;
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -179,6 +190,28 @@ let
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \
         || bad "the VSCodium settings merge does not target Application Support"
+
+      # The paths T3 Code's device hub requires under the SDK root.
+      sdk=$gen/home-files/Library/Android/sdk
+      [ -x "$sdk/cmdline-tools/latest/bin/avdmanager" ] \
+        || bad "the Android SDK has no cmdline-tools/latest/bin/avdmanager"
+      [ -x "$sdk/platform-tools/adb" ] || bad "the Android SDK has no platform-tools/adb"
+      for api in ${lib.escapeShellArgs androidPlatforms}; do
+        [ -f "$sdk/system-images/android-$api/google_apis/arm64-v8a/system.img" ] \
+          || bad "the Android SDK has no arm64-v8a Google APIs system.img for API $api"
+      done
+      # A Dock-launched T3 Code starts the emulator with no SDK variables set.
+      emulator=$sdk/emulator/emulator
+      if ! grep -qsxF 'export ANDROID_HOME="''${ANDROID_HOME:-$HOME/Library/Android/sdk}"' "$emulator" \
+        || ! grep -qsxF 'export ANDROID_SDK_ROOT="''${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"' "$emulator"; then
+        bad "emulator/emulator is not the wrapper that defaults ANDROID_HOME and ANDROID_SDK_ROOT to ~/Library/Android/sdk"
+      else
+        real=$(sed -n 's|^exec \(/nix/store/[^ ]*/emulator/emulator\) "\$@"$|\1|p' "$emulator")
+        if [ -z "$real" ] || [ ! -x "$real" ] || [ "$(head -c 2 "$real")" = "#!" ]; then
+          bad "the emulator wrapper does not exec the store emulator binary"
+        fi
+      fi
+      grep -q 'Library/Android/sdk/emulator' "$vars" || bad "PATH does not gain the SDK's emulator directory"
 
       ${lib.optionalString (t3Desktop != null) ''
         app=${t3Desktop}/Applications/'T3 Code (Nightly).app'

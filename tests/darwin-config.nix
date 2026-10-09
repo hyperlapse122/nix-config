@@ -43,6 +43,10 @@
     xcode-select, and xcodebuild action sits in an `if !` guard, so none can
     abort the `set -e` activate script. homebrew.masApps stays empty and
     programs.mas off.
+  - Android SDK: Home Manager links it at ~/Library/Android/sdk and declares
+    no android-sdk data file; ANDROID_HOME and ANDROID_SDK_ROOT name that
+    path and PATH gains its emulator directory; the linked SDK builds one
+    arm64-v8a Google APIs image per pinned platform and no x86_64 image.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -229,6 +233,19 @@ let
         || lib.hasInfix "-runFirstLaunch" line
         || lib.hasInfix "xcode-select -s" line
       ) xcodeLines;
+      # Where T3 Code's device hub looks when ANDROID_HOME is unset.
+      androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
+      # By target, so an entry renamed onto the path is still found.
+      androidSdkFile = lib.findFirst (file: file.enable && file.target == "Library/Android/sdk") null (
+        lib.attrValues user.home.file
+      );
+      # One derivation per API level and image type, named after its ABIs.
+      androidImages = map (image: image.name) (androidSdkFile.source.systemImages or [ ]);
+      androidPlatforms = lib.attrNames (lib.importJSON ../packages/android-sdk-repo.json)
+        .packages.platforms;
+      androidDataFiles = lib.filter (file: file.enable && file.target == "android-sdk") (
+        lib.attrValues user.xdg.dataFile
+      );
     in
     lib.concatStrings [
       (check (sort casks == sort expectedCasks)
@@ -399,6 +416,26 @@ let
       )
       (check (config.homebrew.masApps == { } && !(config.programs.mas.enable or false))
         "${entry.name}: homebrew.masApps must stay empty and programs.mas off; both can abort or end activation"
+      )
+      (check (androidSdkFile != null && androidDataFiles == [ ])
+        "${entry.name}: the Android SDK must be linked at ~/Library/Android/sdk, and no android-sdk data file declared"
+      )
+      (check
+        (
+          (sessionVariables.ANDROID_HOME or null) == androidSdkRoot
+          && (sessionVariables.ANDROID_SDK_ROOT or null) == androidSdkRoot
+          && lib.hasInfix "${androidSdkRoot}/emulator" (plain user.home.sessionVariablesExtra)
+        )
+        "${entry.name}: ANDROID_HOME and ANDROID_SDK_ROOT must be ${androidSdkRoot}, and PATH must gain its emulator directory"
+      )
+      (check
+        (
+          lib.length androidImages == lib.length androidPlatforms
+          && lib.all (
+            name: lib.hasInfix "-google_apis-arm64-v8a" name && !lib.hasInfix "x86_64" name
+          ) androidImages
+        )
+        "${entry.name}: the Android SDK must build one arm64-v8a Google APIs image per pinned platform and no x86_64 image, got ${builtins.toJSON androidImages}"
       )
     ];
 in
