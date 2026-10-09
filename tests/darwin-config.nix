@@ -37,6 +37,12 @@
     or Docker Hub index alias remains.
   - The system layer turns off store auto-optimisation, installs the shared
     font list, and records the host and variant in /etc/nix-config-host.
+  - Xcode: postActivation installs (mas install, then mas get) or upgrades
+    App Store id 497799835 before Home Manager runs, every mas call runs in
+    the primary user's session with SUDO_UID and SUDO_GID, and every mas,
+    xcode-select, and xcodebuild action sits in an `if !` guard, so none can
+    abort the `set -e` activate script. homebrew.masApps stays empty and
+    programs.mas off.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -202,6 +208,27 @@ let
       vscodiumData = plain (activation.vscodiumSettings.data or "");
       marker = config.environment.etc."nix-config-host".text or "";
       production = !entry.bootstrap;
+      # The Xcode step runs as root inside the activate script, which is
+      # `set -e`; every command that can fail must sit in an `if !` condition.
+      xcodeUser = config.system.primaryUser;
+      masExe = plain (lib.getExe entry.host.pkgs.mas);
+      postActivation = plain config.system.activationScripts.postActivation.text;
+      homeManagerCall = "Activating home-manager configuration";
+      beforeHomeManager = lib.head (lib.splitString homeManagerCall postActivation);
+      xcodeLines = map lib.trim (lib.splitString "\n" beforeHomeManager);
+      guarded = line: lib.hasPrefix "if ! " line || lib.hasPrefix "elif ! " line;
+      masAsUser = ''/bin/launchctl asuser "$xcodeUid" /usr/bin/env SUDO_UID="$xcodeUid" SUDO_GID="$xcodeGid" ${masExe} '';
+      masLines = lib.filter (lib.hasInfix masExe) xcodeLines;
+      # Calls through the wrapper function, not its definition.
+      masCalls = lib.filter (
+        line: lib.hasInfix "xcodeMas " line && !lib.hasPrefix "xcodeMas()" line
+      ) xcodeLines;
+      xcodebuildActions = lib.filter (
+        line:
+        lib.hasInfix "-license accept" line
+        || lib.hasInfix "-runFirstLaunch" line
+        || lib.hasInfix "xcode-select -s" line
+      ) xcodeLines;
     in
     lib.concatStrings [
       (check (sort casks == sort expectedCasks)
@@ -340,6 +367,39 @@ let
         lib.hasInfix "host=${entry.fixture}\n" marker
         && lib.hasInfix "variant=${if entry.bootstrap then "bootstrap" else "production"}\n" marker
       ) "${entry.name}: /etc/nix-config-host must record the host and variant")
+      (check (lib.hasInfix homeManagerCall postActivation && masLines != [ ])
+        "${entry.name}: postActivation must run the Xcode step, with mas, before Home Manager's activation"
+      )
+      (check (lib.all (lib.hasInfix masAsUser) masLines) "${entry.name}: every mas call must run through launchctl asuser with SUDO_UID and SUDO_GID of the primary user")
+      (check (
+        lib.elem "xcodeUid=$(/usr/bin/id -u ${xcodeUser} 2>/dev/null) || xcodeUid=" xcodeLines
+        && lib.elem "xcodeGid=$(/usr/bin/id -g ${xcodeUser} 2>/dev/null) || xcodeGid=" xcodeLines
+      ) "${entry.name}: the Xcode step must resolve the uid and gid of ${xcodeUser} at activation time")
+      (check
+        (
+          lib.all (line: lib.hasSuffix " \"$@\"" line) masLines && masCalls != [ ] && lib.all guarded masCalls
+        )
+        "${entry.name}: every mas call must be guarded by if !, so a failed App Store call cannot abort activation"
+      )
+      (check (lib.elem "if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then" xcodeLines) "${entry.name}: Xcode (497799835) must be installed with mas install, falling back to mas get")
+      (check (lib.elem "elif ! xcodeMas upgrade 497799835; then" xcodeLines) "${entry.name}: an installed Xcode must be upgraded with mas upgrade 497799835")
+      (check (lib.any (lib.hasInfix "sign in to the App Store") xcodeLines) "${entry.name}: a failed App Store install must print a message naming the App Store sign-in")
+      (check
+        (
+          lib.length xcodebuildActions == 3
+          && lib.all (
+            line:
+            guarded line
+            && (lib.hasInfix "/usr/bin/xcodebuild " line || lib.hasInfix "/usr/bin/xcode-select " line)
+          ) xcodebuildActions
+          && lib.elem "if ! /usr/bin/xcodebuild -license check >/dev/null 2>&1; then" xcodeLines
+          && lib.elem "if ! /usr/bin/xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then" xcodeLines
+        )
+        "${entry.name}: xcode-select, the license, and first launch must run by absolute path, only when pending, guarded by if !"
+      )
+      (check (config.homebrew.masApps == { } && !(config.programs.mas.enable or false))
+        "${entry.name}: homebrew.masApps must stay empty and programs.mas off; both can abort or end activation"
+      )
     ];
 in
 pkgs.runCommand "darwin-config" { } ''
