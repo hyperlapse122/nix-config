@@ -138,6 +138,7 @@ let
       [
         "ghostty"
         "1password"
+        "parallels"
       ]
     )
     (check (!lib.elem "orbstack" mapping.casks) "orbstack is still among the macOS casks")
