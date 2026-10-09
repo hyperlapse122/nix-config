@@ -67,7 +67,7 @@ These are the user's default models for each role in Compound Engineering (CE) w
 - A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row.
 - A short scout is one whose result you need before your next step. A broad scout can run in the background while you continue.
 - When Antigravity is not runnable through T3 Code, a broad scout uses the short scout's class.
-- Never route work to Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), to any Codex Terra model, or to any Claude Fable model.
+- Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it.
 - Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one. An Antigravity model carries its effort in its id, such as the `low` in `gemini-3.8-flash-low`.
 - Apply the same-provider cells in every session, and route to another provider only through T3 Code, as Cross-model delegation below describes.
 - When your native subagent tool cannot select the table's class and T3 Code is unavailable, let the subagent inherit your session model and say so in one line.

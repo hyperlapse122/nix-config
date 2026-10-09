@@ -30,16 +30,20 @@
     leaving the table, the tier-to-row mapping, the broad-scout fallback, the
     excluded models, default effort, where same-provider and cross-provider
     routing apply, the inherit-and-say rule, and each row of the role table
-    matched whole, so any cell changed fails.
+    matched whole, so any sentence dropped, reworded, or moved into one
+    harness's branch, or any cell changed, fails.
   - it carries the shared cross-model delegation rules through the T3 Code
     MCP server: when they apply, that a skill's gates decide before T3 Code
     replaces its launch route, choosing the latest runnable version of a
     model class and when an older one is allowed, taking a cross-model pass's
     model and effort from the skill, full-access runtime mode, running a
     skill's cross-model review pass alongside its in-process reviewers, the
-    retry and fallback order, and verifying a delegated result.
-  - either list's sentences dropped, reworded, or moved into one harness's
-    branch fails.
+    retry and fallback order, and verifying a delegated result, so any of
+    those sentences dropped, reworded, or moved into one harness's branch
+    fails.
+  - it carries neither superseded directive: delegating before a skill's own
+    gates, or setting effort instead of inheriting a model's default, so
+    either one added back beside its replacement fails.
   - it exists and is non-empty.
   - it carries the shared branch-name rule: rename a placeholder before the
     first push, what counts as a tool-generated placeholder (including a
@@ -90,10 +94,11 @@ let
     "Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why."
     "A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row."
     "When Antigravity is not runnable through T3 Code, a broad scout uses the short scout's class."
-    "Never route work to Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), to any Codex Terra model, or to any Claude Fable model."
+    "Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it."
     "Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one."
     "Apply the same-provider cells in every session, and route to another provider only through T3 Code, as Cross-model delegation below describes."
     "When your native subagent tool cannot select the table's class and T3 Code is unavailable, let the subagent inherit your session model and say so in one line."
+    # Role table rows, each matched whole so a changed cell fails.
     "| Short scout | Haiku | Luna | Flash low |"
     "| Broad scout | Flash low through T3 Code | Flash low through T3 Code | Flash low |"
     "| Worker | Sonnet | Luna | Flash medium |"
@@ -112,6 +117,13 @@ let
     "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Flash at high effort on Antigravity, which the skills do not map."
     "Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
     "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
+  ];
+
+  # Fragments of directives this template replaced; each contradicts a rule
+  # above, so its return must fail even while the replacement is present.
+  supersededDirectives = [
+    "before any of the skill's own discovery or launch steps"
+    "for the task instead of inheriting its defaults"
   ];
 
   claudeTools = [
@@ -219,6 +231,12 @@ let
         ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
         ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+        for directive in ${lib.escapeShellArgs supersededDirectives}; do
+          if grep -qF -- "$directive" "$file"; then
+            echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
+            failed=1
+          fi
+        done
         for tool in ${lib.escapeShellArgs harness.present}; do
           if ! grep -qF -- "$tool" "$file"; then
             echo ${esc "${label} does not name"} "$tool" >&2
