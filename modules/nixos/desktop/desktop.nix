@@ -202,17 +202,12 @@
         Theme=breeze
 
         [KDE]
-        AutomaticLookAndFeel=true
-        DefaultDarkLookAndFeel=org.kde.breezedark.desktop
+        DefaultDarkLookAndFeel=org.kde.breeze.desktop
         DefaultLightLookAndFeel=org.kde.breeze.desktop
         LookAndFeelPackage=org.kde.breeze.desktop
 
         [Locale]
         Language=ko:en_US
         EOF
-        awk '
-          /^\[/ { keep = ($0 ~ /^\[(Colors|ColorEffects):/ || $0 == "[WM]") }
-          keep { print }
-        ' ${pkgs.kdePackages.breeze}/share/color-schemes/BreezeLight.colors >> $out
       '';
 }
