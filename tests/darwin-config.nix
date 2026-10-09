@@ -494,6 +494,7 @@ let
         )
         "${entry.name}: the mobile-devices helper must get /usr/bin/xcrun, ${androidSdkRoot}, and every declared device"
       )
+      (check (lib.hasInfix "--java-home ${lib.escapeShellArg (plain user.programs.java.package.home)} " devicesCall) "${entry.name}: the mobile-devices helper must get --java-home ${user.programs.java.package.home}, the JDK programs.java installs, because activation does not set JAVA_HOME")
       (check (lib.hasInfix "--android-api ${lib.escapeShellArg androidPin.newestArm64Api} " devicesCall) "${entry.name}: the mobile-devices helper must get --android-api ${androidPin.newestArm64Api}, the newest pinned API with an arm64-v8a image")
     ];
 

@@ -6,7 +6,8 @@
 # declared devices whose versioned names do not exist yet, keeps devices of an
 # older version, a hand-made device, and an undeclared one, skips a platform
 # whose tool is missing with one message, reports a device it cannot create or
-# a platform step that stops early, and always exits 0. No scenario may delete, erase, rename, or move anything.
+# a platform step that stops early, and always exits 0. avdmanager runs only
+# with the JDK --java-home names. No scenario may delete, erase, rename, or move anything.
 set -euo pipefail
 
 helper=$1
@@ -25,7 +26,7 @@ bad() { echo "mobile-devices: $*" >&2; fail=1; }
 #   calls      every call, its arguments joined with |
 #   stdin      what avdmanager create read from stdin
 tools=$(mktemp -d)
-mkdir -p "$tools/sdk/cmdline-tools/latest/bin" "$tools/no-avdmanager"
+mkdir -p "$tools/sdk/cmdline-tools/latest/bin" "$tools/no-avdmanager" "$tools/jdk/bin"
 # The build sandbox has no /usr/bin/env, so the stubs name this bash.
 printf '#!%s\n' "$BASH" > "$tools/xcrun"
 cat >> "$tools/xcrun" <<'EOF'
@@ -93,6 +94,13 @@ EOF
 printf '#!%s\n' "$BASH" > "$tools/sdk/cmdline-tools/latest/bin/avdmanager"
 cat >> "$tools/sdk/cmdline-tools/latest/bin/avdmanager" <<'EOF'
 (IFS='|'; echo "avdmanager|$*") >> "$STUB/calls"
+# Like the real start script, it needs $JAVA_HOME/bin/java: with JAVA_HOME
+# unset it falls back to `which java`, and activation's PATH has neither
+# which nor java. It reports the failure on stdout.
+if [ ! -x "${JAVA_HOME:-}/bin/java" ]; then
+  echo "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH."
+  exit 1
+fi
 case "$1 $2" in
   "list avd") cat "$STUB/avds" ;;
   "create avd")
@@ -106,7 +114,8 @@ case "$1 $2" in
     ;;
 esac
 EOF
-chmod +x "$tools/xcrun" "$tools/sdk/cmdline-tools/latest/bin/avdmanager"
+printf '#!%s\n' "$BASH" > "$tools/jdk/bin/java"
+chmod +x "$tools/xcrun" "$tools/sdk/cmdline-tools/latest/bin/avdmanager" "$tools/jdk/bin/java"
 
 scenario() {
   STUB=$(mktemp -d)
@@ -116,12 +125,14 @@ scenario() {
 }
 # Clears the call log and keeps the state, for a second apply.
 again() { : > "$STUB/calls"; }
-# Runs the helper on the stub tools. A caller points one call at another xcrun
-# or SDK root with an xcrun= or sdk= prefix, which bash scopes to that call;
-# an empty value keeps the stub.
+# Runs the helper on the stub tools with JAVA_HOME unset, as activation does.
+# A caller points one call at another xcrun, SDK root, or JDK with an xcrun=,
+# sdk=, or jdk= prefix, which bash scopes to that call; an empty value keeps
+# the stub.
 run() {
   local status=0
-  "$helper" --xcrun "${xcrun:-$tools/xcrun}" --sdk-root "${sdk:-$tools/sdk}" "$@" > "$STUB/out" 2> "$STUB/err" || status=$?
+  env -u JAVA_HOME "$helper" --xcrun "${xcrun:-$tools/xcrun}" --sdk-root "${sdk:-$tools/sdk}" \
+    --java-home "${jdk:-$tools/jdk}" "$@" > "$STUB/out" 2> "$STUB/err" || status=$?
   [ "$status" = 0 ] || bad "$label: the helper exited $status: $(cat "$STUB/err")"
 }
 count() {
@@ -212,6 +223,16 @@ sdk=$tools/no-avdmanager run --android-api 37.0 \
 [ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] || bad "$label: the iOS device was not created"
 said avdmanager || bad "$label: the message does not name avdmanager: $(cat "$STUB/err")"
 [ "$(grep -c avdmanager "$STUB/err")" = 1 ] || bad "$label: the missing avdmanager was reported $(grep -c avdmanager "$STUB/err") times, not once"
+nothing_removed
+
+label="a JDK avdmanager cannot run"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+jdk=$tools/no-such-jdk run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] || bad "$label: the iOS device was not created"
+said "avdmanager could not list AVDs" || bad "$label: the failed listing was not reported: $(cat "$STUB/err")"
+said "JAVA_HOME is not set" || bad "$label: the report does not carry avdmanager's own error: $(cat "$STUB/err")"
+[ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
 nothing_removed
 
 label="unknown model and a failing create"
