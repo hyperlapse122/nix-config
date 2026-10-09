@@ -178,7 +178,7 @@ U1 first, because U2 through U4 edit files whose Orca references depend on the p
 ## Verification Contract
 
 | Gate | Command | Applies to |
-|---|---|---|
+| --- | --- | --- |
 | Formatting | `nix fmt -- --ci` | all units |
 | Evaluation and checks | `nix flake check` (on this macOS builder, the Linux checks evaluate; CI's `check-shards` jobs build them) | U1-U4 |
 | macOS output | `nix build --no-link .#darwinConfigurations.<host>.system` for each host | U1 |
