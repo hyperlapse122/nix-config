@@ -259,6 +259,12 @@
             }
             touch $out
           '';
+          mobile-devices = pkgs.runCommand "mobile-devices-tests" { } ''
+            bash ${./tests/mobile-devices.sh} ${
+              pkgs.lib.getExe (import ./packages/mobile-devices.nix { inherit pkgs; })
+            }
+            touch $out
+          '';
           darwin-config = import ./tests/darwin-config.nix {
             inherit
               pkgs

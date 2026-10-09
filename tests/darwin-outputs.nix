@@ -23,6 +23,17 @@
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
   - the VSCodium settings merge targets Application Support;
+  - ~/Library/Android/sdk holds what T3 Code's device hub needs:
+    cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
+    Google APIs system.img for every platform the pin file names, and an
+    emulator/emulator wrapper that defaults ANDROID_HOME and ANDROID_SDK_ROOT
+    to ~/Library/Android/sdk before it execs the store emulator; the session
+    sets ANDROID_HOME and ANDROID_SDK_ROOT to that path, and its PATH
+    assignment gains the emulator directory;
+  - the activation script runs the mobileDevices step after linkGeneration,
+    and it calls the built mobile-devices helper with /usr/bin/xcrun, the SDK
+    root, every declared device, and the newest pinned API with an arm64-v8a
+    image;
   - with my.t3.desktop.enable, the T3 Code nightly bundle is in the profile,
     its main executable is byte-identical to the release zip's, and a launch
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
@@ -30,6 +41,9 @@
     /etc/nix-config-host records the host and variant, the Brewfile lists the
     expected casks, the shared fonts are installed, and activation turns on
     automatic appearance without pinning AppleInterfaceStyle;
+  - the system activate script runs the Xcode step, mas through launchctl
+    asuser for App Store id 497799835, after brew bundle and before the Home
+    Manager activation call;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
     apply takes over an existing /opt/homebrew instead of stopping.
 
@@ -42,6 +56,8 @@ let
 
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
+
+  androidPin = import ./lib/android-pin.nix { inherit lib; };
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -59,6 +75,9 @@ let
       system = entry.host.system;
       t3Desktop = lib.findFirst (p: (p.pname or "") == "t3code-desktop") null user.home.packages;
       production = if entry.bootstrap then "0" else "1";
+      deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
+      androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
+      masExe = lib.getExe entry.host.pkgs.mas;
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -181,6 +200,58 @@ let
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \
         || bad "the VSCodium settings merge does not target Application Support"
 
+      # The paths T3 Code's device hub requires under the SDK root.
+      sdk=$gen/home-files/Library/Android/sdk
+      [ -x "$sdk/cmdline-tools/latest/bin/avdmanager" ] \
+        || bad "the Android SDK has no cmdline-tools/latest/bin/avdmanager"
+      [ -x "$sdk/platform-tools/adb" ] || bad "the Android SDK has no platform-tools/adb"
+      for api in ${lib.escapeShellArgs androidPin.platforms}; do
+        [ -f "$sdk/system-images/android-$api/google_apis/arm64-v8a/system.img" ] \
+          || bad "the Android SDK has no arm64-v8a Google APIs system.img for API $api"
+      done
+      # A Dock-launched T3 Code starts the emulator with no SDK variables set.
+      emulator=$sdk/emulator/emulator
+      if ! grep -qsxF 'export ANDROID_HOME="''${ANDROID_HOME:-$HOME/Library/Android/sdk}"' "$emulator" \
+        || ! grep -qsxF 'export ANDROID_SDK_ROOT="''${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}"' "$emulator"; then
+        bad "emulator/emulator is not the wrapper that defaults ANDROID_HOME and ANDROID_SDK_ROOT to ~/Library/Android/sdk"
+      else
+        real=$(sed -n 's|^exec \(/nix/store/[^ ]*/emulator/emulator\) "\$@"$|\1|p' "$emulator")
+        if [ -z "$real" ] || [ ! -x "$real" ] || [ "$(head -c 2 "$real")" = "#!" ]; then
+          bad "the emulator wrapper does not exec the store emulator binary"
+        fi
+      fi
+      sdkroot=${lib.escapeShellArg androidSdkRoot}
+      for v in ANDROID_HOME ANDROID_SDK_ROOT; do
+        grep -qxF "export $v=\"$sdkroot\"" "$vars" || bad "the session does not set $v to $sdkroot"
+      done
+      # Only a PATH assignment counts, so another line naming the directory
+      # cannot stand in for it.
+      pathlines=$(grep '^export PATH=' "$vars" || true)
+      case $pathlines in
+        *":$sdkroot/emulator\""* | *":$sdkroot/emulator:"*) ;;
+        *) bad "no PATH assignment gains the SDK's emulator directory" ;;
+      esac
+
+      devices=$(step mobileDevices); devices=''${devices:-0}
+      [ "$devices" -gt "$link" ] || bad "the mobileDevices step does not run after linkGeneration"
+      helper=$(grep -m1 '/nix/store/[^ ]*/bin/mobile-devices --xcrun ' "$gen/activate" || true)
+      helperexe=$(grep -o '/nix/store/[^ ]*/bin/mobile-devices' <<<"$helper" || true)
+      if [ -z "$helper" ] || [ ! -x "$helperexe" ]; then
+        bad "activation does not call the built mobile-devices helper"
+      else
+        ${lib.optionalString (deviceArgs == [ ]) ''bad "my.mobileDevices declares no device"''}
+        for arg in \
+          '--xcrun /usr/bin/xcrun ' \
+          ${lib.escapeShellArg "--sdk-root ${lib.escapeShellArg androidSdkRoot} "} \
+          ${lib.escapeShellArg "--android-api ${lib.escapeShellArg androidPin.newestArm64Api} "} \
+          ${lib.escapeShellArgs deviceArgs}; do
+          case $helper in
+            *"$arg"*) ;;
+            *) bad "the mobile-devices helper call lacks $arg" ;;
+          esac
+        done
+      fi
+
       ${lib.optionalString (t3Desktop != null) ''
         app=${t3Desktop}/Applications/'T3 Code (Nightly).app'
         if [ ! -d "$app" ]; then
@@ -219,6 +290,21 @@ let
       elif ! grep -qF 'if [[ -z "1" ]]' "$setup"; then
         bad "the nix-homebrew setup would stop on an existing Homebrew installation"
       fi
+      # The Xcode step runs after brew bundle and before Home Manager, the last
+      # point that still runs as root; mas runs in the primary user's session.
+      lineof() { grep -nF -m1 -- "$1" "$sys/activate" | cut -d: -f1 || true; }
+      bundleline=$(lineof "brew bundle --file="); bundleline=''${bundleline:-0}
+      masline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$xcodeUid" /usr/bin/env SUDO_UID="$xcodeUid" SUDO_GID="$xcodeGid" ${masExe} "$@"''}); masline=''${masline:-0}
+      installline=$(lineof 'if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then'); installline=''${installline:-0}
+      hmline=$(lineof "echo Activating home-manager configuration for "); hmline=''${hmline:-0}
+      if [ "$bundleline" = 0 ] || [ "$hmline" = 0 ]; then
+        bad "the system activation has no brew bundle or Home Manager activation call"
+      elif [ "$masline" = 0 ] || [ "$installline" = 0 ]; then
+        bad "the system activation has no Xcode step running mas through launchctl asuser for 497799835"
+      elif ! [ "$bundleline" -lt "$masline" ] || ! [ "$masline" -lt "$installline" ] || ! [ "$installline" -lt "$hmline" ]; then
+        bad "the Xcode step does not run after brew bundle and before Home Manager"
+      fi
+
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
         || bad "no fonts under Library/Fonts/Nix Fonts"
       # The value is a multi-line plist, so read up to its closing tag.

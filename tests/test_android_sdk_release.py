@@ -5,7 +5,8 @@ serve a fixture repository instead. The fixture holds a stable and a preview
 release of each tracked package, an obsolete duplicate revision, and a
 `;latest` alias, which are the cases the selection rules have to tell apart.
 A second fixture stands in for the Google APIs system image XML, served for
-any URL under sys-img/.
+any URL under sys-img/; it lists both the arm64-v8a and x86_64 image of each
+platform.
 """
 
 import json
@@ -144,7 +145,10 @@ IMAGES = [
     image(36, "x86_64", 7, "x86_64-36_r07.zip", "i36x"),
     image("37.0", "x86_64", 6, "x86_64-37.0_r06.zip", "i370x"),
     image(36, "arm64-v8a", 7, "arm64-v8a-36_r07.zip", "i36a", license_ref="android-sdk-arm-dbt-license"),
+    image("37.0", "arm64-v8a", 6, "arm64-v8a-37.0_r06.zip", "i370a", license_ref="android-sdk-arm-dbt-license"),
     image(34, "x86_64", 14, "x86_64-34_r14.zip", "i34x"),
+    image(34, "arm64-v8a", 14, "arm64-v8a-34_r14.zip", "i34a", license_ref="android-sdk-arm-dbt-license"),
+    image(33, "x86_64", 9, "x86_64-33_r09.zip", "i33x"),
 ]
 
 IMAGE_URL = "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
@@ -291,11 +295,11 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.assertIn("pass --ndk", result.stderr)
         self.assertFalse(self.output.exists())
 
-    def test_pins_the_x86_64_google_apis_image_of_each_declared_platform(self):
+    def test_pins_the_arm64_and_x86_64_google_apis_images_of_each_declared_platform(self):
         pin = self.write_pin()
         self.assertEqual(list(pin["images"]), ["36"])
         self.assertEqual(list(pin["images"]["36"]), ["google_apis"])
-        self.assertEqual(list(pin["images"]["36"]["google_apis"]), ["x86_64"])
+        self.assertEqual(list(pin["images"]["36"]["google_apis"]), ["arm64-v8a", "x86_64"])
         entry = pin["images"]["36"]["google_apis"]["x86_64"]
         self.assertEqual(entry["name"], "system-image-36-google_apis-x86_64")
         self.assertEqual(entry["path"], "system-images/android-36/google_apis/x86_64")
@@ -321,10 +325,24 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         )
         self.assertIn(IMAGE_URL, self.log.read_text().split())
 
+    def test_pins_the_arm64_v8a_image_beside_the_x86_64_one(self):
+        pin = self.write_pin()
+        entry = pin["images"]["36"]["google_apis"]["arm64-v8a"]
+        self.assertEqual(entry["name"], "system-image-36-google_apis-arm64-v8a")
+        self.assertEqual(entry["path"], "system-images/android-36/google_apis/arm64-v8a")
+        self.assertEqual(entry["license"], "android-sdk-arm-dbt-license")
+        self.assertEqual(entry["type-details"]["abi:3"], "arm64-v8a")
+        self.assertEqual(
+            entry["archives"][0]["url"],
+            "https://dl.google.com/android/repository/sys-img/google_apis/arm64-v8a-36_r07.zip",
+        )
+
     def test_image_follows_a_second_declared_platform(self):
         pin = self.write_pin("--platforms", "34")
         self.assertEqual(sorted(pin["images"]), ["34", "36"])
+        self.assertEqual(sorted(pin["images"]["34"]["google_apis"]), ["arm64-v8a", "x86_64"])
         self.assertEqual(pin["images"]["34"]["google_apis"]["x86_64"]["archives"][0]["sha1"], "i34x")
+        self.assertEqual(pin["images"]["34"]["google_apis"]["arm64-v8a"]["archives"][0]["sha1"], "i34a")
 
     def test_pins_a_minor_level_platform_beside_a_major_one(self):
         # API 37 ships only as platforms;android-37.0, keyed "37.0".
@@ -332,9 +350,14 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.assertEqual(sorted(pin["packages"]["platforms"]), ["36", "37.0"])
         self.assertEqual(pin["packages"]["platforms"]["37.0"]["path"], "platforms/android-37.0")
         self.assertEqual(sorted(pin["images"]), ["36", "37.0"])
+        self.assertEqual(sorted(pin["images"]["37.0"]["google_apis"]), ["arm64-v8a", "x86_64"])
         self.assertEqual(
             pin["images"]["37.0"]["google_apis"]["x86_64"]["path"],
             "system-images/android-37.0/google_apis/x86_64",
+        )
+        self.assertEqual(
+            pin["images"]["37.0"]["google_apis"]["arm64-v8a"]["path"],
+            "system-images/android-37.0/google_apis/arm64-v8a",
         )
         self.assertEqual(pin["latest"]["platforms"], "37.0")
 
@@ -364,6 +387,17 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.assertIn("no google_apis x86_64 system image for platform 36", result.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_refuses_a_declared_platform_without_an_arm64_image(self):
+        # API 33 lists only its x86_64 image.
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36", "--platforms", "33"],
+            body=repository(*BASE, platform(33, 3, "platform-33_r03.zip", "a33")),
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no google_apis arm64-v8a system image for platform 33", result.stderr)
+        self.assertFalse(self.output.exists())
+
     def test_refuses_to_downgrade_the_emulator(self):
         self.write_pin()
         before = self.output.read_text()
@@ -388,6 +422,23 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.assertIn("needs emulator 38 or newer, but the pinned emulator is 37.1.11", result.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_refuses_an_arm64_image_that_needs_a_newer_emulator(self):
+        needy = [p for p in IMAGES if "android-36;google_apis;arm64-v8a" not in p] + [
+            image(36, "arm64-v8a", 8, "arm64-v8a-36_r08.zip", "i36a8",
+                  license_ref="android-sdk-arm-dbt-license", emulator_min=38)
+        ]
+        result = self.run_release(
+            ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
+             "--platforms", "36"],
+            image_body=images(*needy),
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "system image 36 google_apis arm64-v8a needs emulator 38 or newer, but the pinned emulator is 37.1.11",
+            result.stderr,
+        )
+        self.assertFalse(self.output.exists())
+
     def test_bumps_an_image_when_upstream_moves(self):
         self.write_pin()
         newer = [p for p in IMAGES if "android-36;google_apis;x86_64" not in p] + [
@@ -409,6 +460,18 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.assertIn("system image 36 google_apis x86_64 revision 6 is older than the pinned 7", result.stderr)
         self.assertEqual(self.output.read_text(), before)
 
+    def test_refuses_to_downgrade_an_arm64_image_while_x86_64_moves_up(self):
+        self.write_pin()
+        before = self.output.read_text()
+        moved = [p for p in IMAGES if "android-36;google_apis;" not in p] + [
+            image(36, "x86_64", 8, "x86_64-36_r08.zip", "i36x8"),
+            image(36, "arm64-v8a", 6, "arm64-v8a-36_r06.zip", "i36a6", license_ref="android-sdk-arm-dbt-license"),
+        ]
+        result = self.run_release(["-o", str(self.output)], image_body=images(*moved))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("system image 36 google_apis arm64-v8a revision 6 is older than the pinned 7", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+
     def test_image_fetch_failure_writes_nothing(self):
         result = self.run_release(
             ["-o", str(self.output), "--build-tools", "36.0.0", "--cmake", "3.22.1", "--ndk", "29.0.14206865",
@@ -428,7 +491,11 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
     def test_keeps_only_referenced_licenses_normalized(self):
         pin = self.write_pin()
         self.assertEqual(
-            pin["licenses"], {"android-sdk-license": ["Terms and Conditions\n\nSecond paragraph."]}
+            pin["licenses"],
+            {
+                "android-sdk-arm-dbt-license": ["ARM terms"],
+                "android-sdk-license": ["Terms and Conditions\n\nSecond paragraph."],
+            },
         )
 
     def test_duplicate_revision_fills_obsolete_and_merges_archives(self):

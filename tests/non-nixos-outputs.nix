@@ -7,8 +7,8 @@
   assembly produces for every fixture host, both variants:
 
   - every fixture yields a production and a bootstrap output;
-  - the x86_64-only Android SDK reaches x86_64 hosts only, so an aarch64 host
-    gets no tools it cannot execute;
+  - among Linux hosts, the Android SDK reaches x86_64 hosts only, so an
+    aarch64 host gets no tools it cannot execute;
   - the account and home directory follow the host's `my.user` values;
   - no desktop configuration reaches the user environment: no Plasma or
     autostart files, no GUI packages, the T3 Code desktop app included;

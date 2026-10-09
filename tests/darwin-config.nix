@@ -38,6 +38,25 @@
   - The system layer turns off store auto-optimisation, installs the shared
     font list, switches appearance automatically with AppleInterfaceStyle
     unset, and records the host and variant in /etc/nix-config-host.
+  - Xcode: postActivation installs (mas install, then mas get) or upgrades
+    App Store id 497799835 before Home Manager runs, every mas call runs in
+    the primary user's session with SUDO_UID and SUDO_GID, and every mas,
+    xcode-select, and xcodebuild action sits in an `if !` guard, so none can
+    abort the `set -e` activate script. homebrew.masApps stays empty and
+    programs.mas off.
+  - Android SDK: Home Manager links it at ~/Library/Android/sdk and declares
+    no android-sdk data file; ANDROID_HOME and ANDROID_SDK_ROOT name that
+    path, and the PATH assignment gains its emulator directory; the linked
+    SDK builds one arm64-v8a Google APIs image per pinned platform and no
+    x86_64 image.
+  - Mobile devices: my.mobileDevices defaults to one ios and one android
+    device and rejects an empty model or version; the mobileDevices step runs
+    after linkGeneration and calls the mobile-devices helper only outside a
+    dry run, from an `elif !` condition whose branch only echoes, so a
+    failing helper cannot abort activation. The call passes /usr/bin/xcrun,
+    the SDK root, every declared device, and the newest pinned API with an
+    arm64-v8a image, which tests/lib/android-pin.nix reads from the pin. No
+    non-NixOS Linux fixture has the step.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -62,6 +81,8 @@ let
   plain = builtins.unsafeDiscardStringContext;
 
   namesOf = packages: lib.unique (map (p: p.pname or (lib.getName p)) packages);
+
+  androidPin = import ./lib/android-pin.nix { inherit lib; };
 
   hosts = import ../lib/hosts.nix { inherit lib; } ./fixtures/hosts;
   kindOf = fixture: (import (./fixtures/hosts + "/${fixture}/host.nix")).kind or null;
@@ -203,6 +224,66 @@ let
       vscodiumData = plain (activation.vscodiumSettings.data or "");
       marker = config.environment.etc."nix-config-host".text or "";
       production = !entry.bootstrap;
+      # The Xcode step runs as root inside the activate script, which is
+      # `set -e`; every command that can fail must sit in an `if !` condition.
+      xcodeUser = config.system.primaryUser;
+      masExe = plain (lib.getExe entry.host.pkgs.mas);
+      postActivation = plain config.system.activationScripts.postActivation.text;
+      homeManagerCall = "Activating home-manager configuration";
+      beforeHomeManager = lib.head (lib.splitString homeManagerCall postActivation);
+      xcodeLines = map lib.trim (lib.splitString "\n" beforeHomeManager);
+      guarded = line: lib.hasPrefix "if ! " line || lib.hasPrefix "elif ! " line;
+      masAsUser = ''/bin/launchctl asuser "$xcodeUid" /usr/bin/env SUDO_UID="$xcodeUid" SUDO_GID="$xcodeGid" ${masExe} '';
+      masLines = lib.filter (lib.hasInfix masExe) xcodeLines;
+      # Calls through the wrapper function, not its definition.
+      masCalls = lib.filter (
+        line: lib.hasInfix "xcodeMas " line && !lib.hasPrefix "xcodeMas()" line
+      ) xcodeLines;
+      xcodebuildActions = lib.filter (
+        line:
+        lib.hasInfix "-license accept" line
+        || lib.hasInfix "-runFirstLaunch" line
+        || lib.hasInfix "xcode-select -s" line
+      ) xcodeLines;
+      # Where T3 Code's device hub looks when ANDROID_HOME is unset.
+      androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
+      # By target, so an entry renamed onto the path is still found.
+      androidSdkFile = lib.findFirst (file: file.enable && file.target == "Library/Android/sdk") null (
+        lib.attrValues user.home.file
+      );
+      # One derivation per API level and image type, named after its ABIs.
+      androidImages = map (image: image.name) (androidSdkFile.source.systemImages or [ ]);
+      androidDataFiles = lib.filter (file: file.enable && file.target == "android-sdk") (
+        lib.attrValues user.xdg.dataFile
+      );
+      # The PATH assignment itself, so another line naming the directory
+      # cannot stand in for it.
+      pathLines = lib.filter (lib.hasPrefix "export PATH=") (
+        map lib.trim (lib.splitString "\n" (plain user.home.sessionVariablesExtra))
+      );
+      devicesStep = activation.mobileDevices or { };
+      devicesData = plain (devicesStep.data or "");
+      # The helper creates devices, so a dry run must reach only the echo:
+      # its one call is the `elif !` condition after the DRY_RUN branch, and
+      # activation is `set -e`, so a non-zero exit must reach only the one
+      # echo of that branch, right before fi.
+      devicesLines = lib.filter (line: line != "") (map lib.trim (lib.splitString "\n" devicesData));
+      devicesCount = lib.length devicesLines;
+      devicesLine =
+        offset: if devicesCount > offset then lib.elemAt devicesLines (devicesCount - 1 - offset) else "";
+      devicesCall = devicesLine 2;
+      devicesGuarded =
+        devicesCount >= 5
+        && lib.head devicesLines == "if [[ -v DRY_RUN ]]; then"
+        && lib.filter (lib.hasInfix "mobile-devices/bin/mobile-devices ") devicesLines == [ devicesCall ];
+      devicesContained =
+        lib.hasPrefix "elif ! " devicesCall
+        && lib.hasSuffix "; then" devicesCall
+        && lib.hasPrefix "echo \"mobileDevices: " (devicesLine 1)
+        && lib.hasSuffix " >&2" (devicesLine 1)
+        && devicesLine 0 == "fi";
+      devices = user.my.mobileDevices or [ ];
+      platformCount = platform: lib.length (lib.filter (device: device.platform == platform) devices);
     in
     lib.concatStrings [
       (check (sort casks == sort expectedCasks)
@@ -345,7 +426,141 @@ let
         lib.hasInfix "host=${entry.fixture}\n" marker
         && lib.hasInfix "variant=${if entry.bootstrap then "bootstrap" else "production"}\n" marker
       ) "${entry.name}: /etc/nix-config-host must record the host and variant")
+      (check (lib.hasInfix homeManagerCall postActivation && masLines != [ ])
+        "${entry.name}: postActivation must run the Xcode step, with mas, before Home Manager's activation"
+      )
+      (check (lib.all (lib.hasInfix masAsUser) masLines) "${entry.name}: every mas call must run through launchctl asuser with SUDO_UID and SUDO_GID of the primary user")
+      (check (
+        lib.elem "xcodeUid=$(/usr/bin/id -u ${xcodeUser} 2>/dev/null) || xcodeUid=" xcodeLines
+        && lib.elem "xcodeGid=$(/usr/bin/id -g ${xcodeUser} 2>/dev/null) || xcodeGid=" xcodeLines
+      ) "${entry.name}: the Xcode step must resolve the uid and gid of ${xcodeUser} at activation time")
+      (check
+        (
+          lib.all (line: lib.hasSuffix " \"$@\"" line) masLines && masCalls != [ ] && lib.all guarded masCalls
+        )
+        "${entry.name}: every mas call must be guarded by if !, so a failed App Store call cannot abort activation"
+      )
+      (check (lib.elem "if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then" xcodeLines) "${entry.name}: Xcode (497799835) must be installed with mas install, falling back to mas get")
+      (check (lib.elem "elif ! xcodeMas upgrade 497799835; then" xcodeLines) "${entry.name}: an installed Xcode must be upgraded with mas upgrade 497799835")
+      (check (lib.any (lib.hasInfix "sign in to the App Store") xcodeLines) "${entry.name}: a failed App Store install must print a message naming the App Store sign-in")
+      (check
+        (
+          lib.length xcodebuildActions == 3
+          && lib.all (
+            line:
+            guarded line
+            && (lib.hasInfix "/usr/bin/xcodebuild " line || lib.hasInfix "/usr/bin/xcode-select " line)
+          ) xcodebuildActions
+          && lib.elem "if ! /usr/bin/xcodebuild -license check >/dev/null 2>&1; then" xcodeLines
+          && lib.elem "if ! /usr/bin/xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then" xcodeLines
+        )
+        "${entry.name}: xcode-select, the license, and first launch must run by absolute path, only when pending, guarded by if !"
+      )
+      (check (config.homebrew.masApps == { } && !(config.programs.mas.enable or false))
+        "${entry.name}: homebrew.masApps must stay empty and programs.mas off; both can abort or end activation"
+      )
+      (check (androidSdkFile != null && androidDataFiles == [ ])
+        "${entry.name}: the Android SDK must be linked at ~/Library/Android/sdk, and no android-sdk data file declared"
+      )
+      (check
+        (
+          (sessionVariables.ANDROID_HOME or null) == androidSdkRoot
+          && (sessionVariables.ANDROID_SDK_ROOT or null) == androidSdkRoot
+          && lib.any (
+            line:
+            lib.hasInfix ":${androidSdkRoot}/emulator:" line
+            || lib.hasInfix ":${androidSdkRoot}/emulator\"" line
+          ) pathLines
+        )
+        "${entry.name}: ANDROID_HOME and ANDROID_SDK_ROOT must be ${androidSdkRoot}, and PATH must gain its emulator directory"
+      )
+      (check
+        (
+          lib.length androidImages == lib.length androidPin.platforms
+          && lib.all (
+            name: lib.hasInfix "-google_apis-arm64-v8a" name && !lib.hasInfix "x86_64" name
+          ) androidImages
+        )
+        "${entry.name}: the Android SDK must build one arm64-v8a Google APIs image per pinned platform and no x86_64 image, got ${builtins.toJSON androidImages}"
+      )
+      (check (
+        devicesStep != { } && lib.elem "linkGeneration" (devicesStep.after or [ ])
+      ) "${entry.name}: activation must run the mobileDevices step after linkGeneration")
+      (check devicesGuarded "${entry.name}: a dry run must not run the mobile-devices helper")
+      (check devicesContained "${entry.name}: the mobile-devices helper call must be an elif ! condition whose branch only echoes, so a non-zero exit cannot abort activation")
+      (check (platformCount "ios" == 1 && platformCount "android" == 1)
+        "${entry.name}: my.mobileDevices must default to one ios and one android device, got ${builtins.toJSON devices}"
+      )
+      (check
+        (
+          lib.hasInfix "--xcrun /usr/bin/xcrun " devicesCall
+          && lib.hasInfix "--sdk-root ${lib.escapeShellArg androidSdkRoot} " devicesCall
+          && lib.all (device: lib.hasInfix (androidPin.deviceArg device) devicesCall) devices
+        )
+        "${entry.name}: the mobile-devices helper must get /usr/bin/xcrun, ${androidSdkRoot}, and every declared device"
+      )
+      (check (lib.hasInfix "--android-api ${lib.escapeShellArg androidPin.newestArm64Api} " devicesCall) "${entry.name}: the mobile-devices helper must get --android-api ${androidPin.newestArm64Api}, the newest pinned API with an arm64-v8a image")
     ];
+
+  # An empty model or version would render `--device ios:`, which the helper
+  # rejects as a usage error before it reaches any device, so the option
+  # types must refuse it at evaluation. The module is evaluated alone, with
+  # option checking off so its other definitions stay unforced; the valid
+  # list is the control that keeps the two rejections from passing vacuously.
+  mobileDevicesWith =
+    devices:
+    let
+      evaluated = lib.evalModules {
+        modules = [
+          ../home/h82/dev/mobile-devices.nix
+          {
+            _module.check = false;
+            my.mobileDevices = devices;
+          }
+        ];
+        specialArgs = { inherit pkgs; };
+      };
+    in
+    (builtins.tryEval (builtins.deepSeq evaluated.config.my.mobileDevices true)).success;
+  assertMobileDeviceTypes = lib.concatStrings [
+    (check (mobileDevicesWith [
+      {
+        platform = "ios";
+        model = "iPhone 18 Pro";
+        version = "27.0";
+      }
+    ]) "my.mobileDevices rejects a valid device, so the empty-value checks below prove nothing")
+    (check (
+      !mobileDevicesWith [
+        {
+          platform = "ios";
+          model = "";
+        }
+      ]
+    ) "my.mobileDevices accepts an empty model, which renders --device ios: and fails the helper")
+    (check (
+      !mobileDevicesWith [
+        {
+          platform = "android";
+          model = "pixel_9";
+          version = "";
+        }
+      ]
+    ) "my.mobileDevices accepts an empty version")
+  ];
+
+  # Device creation is macOS-only; the module must not reach other hosts.
+  assertNoDevicesElsewhere = lib.concatStrings [
+    (check (
+      linuxFixtures != [ ]
+    ) "no non-NixOS Linux fixture, so the mobileDevices absence check would pass vacuously")
+    (lib.concatMapStrings (
+      e:
+      check (
+        !e.host.home.config.home.activation ? mobileDevices
+      ) "${e.name}: a non-NixOS Linux host runs the mobileDevices activation step"
+    ) linuxFixtures)
+  ];
 in
 pkgs.runCommand "darwin-config" { } ''
   fail=0
@@ -355,6 +570,8 @@ pkgs.runCommand "darwin-config" { } ''
   ${assertDiscovery}
   ${assertMapping}
   ${lib.concatMapStrings assertEntry darwinFixtures}
+  ${assertNoDevicesElsewhere}
+  ${assertMobileDeviceTypes}
   [ "$fail" = 0 ] || exit 1
   touch "$out"
 ''
