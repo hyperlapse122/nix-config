@@ -9,6 +9,7 @@
     ./defaults.nix
     ./homebrew.nix
     ./fonts.nix
+    ./xcode.nix
   ];
 
   # nix-darwin applies user-scoped settings, Homebrew included, for this
