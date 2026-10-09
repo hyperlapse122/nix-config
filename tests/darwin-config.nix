@@ -159,6 +159,7 @@ let
       [
         "ghostty"
         "1password"
+        "parallels"
       ]
     )
     (check (!lib.elem "orbstack" mapping.casks) "orbstack is still among the macOS casks")
@@ -285,6 +286,7 @@ let
       platformCount = platform: lib.length (lib.filter (device: device.platform == platform) devices);
     in
     lib.concatStrings [
+      (check config.homebrew.enable "${entry.name}: homebrew is off, so an apply installs none of the casks")
       (check (sort casks == sort expectedCasks)
         "${entry.name}: homebrew.casks is ${builtins.toJSON (sort casks)}, the mapping gives ${builtins.toJSON (sort expectedCasks)}"
       )
