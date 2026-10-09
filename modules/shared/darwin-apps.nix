@@ -42,7 +42,10 @@ let
     nr.leftOut = "the NixOS apply helper; macOS gets nr-darwin";
   };
 
-  darwinOnly = [ "parallels" ];
+  darwinOnly = [
+    "parallels"
+    "tailscale-app"
+  ];
 
   tapOf =
     cask:

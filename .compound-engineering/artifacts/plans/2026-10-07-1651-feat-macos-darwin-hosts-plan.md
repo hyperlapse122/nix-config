@@ -116,7 +116,7 @@ Several parts of the current user environment assume Linux. Desktop modules, Gho
 - Mac App Store apps.
 - Holding secrets other than the GPG PIN in the macOS Keychain.
 - Activating a real Mac. The first `nr switch` on real hardware is reported separately from CI evidence, per `docs/verification.md`.
-- System-level NixOS apps outside the agreed GUI list: Tailscale, Proton VPN, and WinBox. The NixOS hosts run them as system services or system modules, and the brainstorm's app list did not include them.
+- System-level NixOS apps outside the agreed GUI list: Proton VPN and WinBox. The NixOS hosts run them as system services or system modules, and the brainstorm's app list did not include them. Tailscale was also left out here; `2026-10-10-0328-feat-darwin-tailscale-cask-plan.md` later installs the Tailscale app as a cask.
 
 ### Dependencies / Assumptions
 
