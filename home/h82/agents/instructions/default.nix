@@ -17,7 +17,6 @@ let
       name = "Antigravity";
       target = ".gemini/config/AGENTS.md";
     };
-    # Codex's default home.
     codex = {
       name = "Codex";
       target = ".codex/AGENTS.md";
