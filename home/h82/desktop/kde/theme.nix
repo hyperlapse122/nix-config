@@ -11,6 +11,9 @@ in
   # ~/.config/kdedefaults, which a user-file entry outranks, and re-applies
   # colors only when ColorSchemeHash no longer matches the scheme. Deleting
   # those user entries lets the next login apply the scheduled theme in full.
+  # The deletes run with no system config dirs: KConfig records a deleted key
+  # that has a cascaded default as Key[$d], which would mask kdedefaults too,
+  # and erases the key only when no default exists.
   # This runs only when the Home Manager generation changes, not on every
   # rebuild.
   home.activation.kdeTheme = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -19,9 +22,9 @@ in
       ${kwrite} --file kdeglobals --group KDE --key DefaultLightLookAndFeel org.kde.breeze.desktop
       ${kwrite} --file kdeglobals --group KDE --key DefaultDarkLookAndFeel org.kde.breezedark.desktop
 
-      ${kwrite} --file kdeglobals --group General --key ColorScheme --delete
-      ${kwrite} --file kdeglobals --group General --key ColorSchemeHash --delete
-      ${kwrite} --file kdeglobals --group Icons --key Theme --delete
+      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group General --key ColorScheme --delete
+      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group General --key ColorSchemeHash --delete
+      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group Icons --key Theme --delete
     fi
   '';
 }

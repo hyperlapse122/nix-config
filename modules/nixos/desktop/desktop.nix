@@ -189,8 +189,7 @@
   # KColorScheme reads colors from kdeglobals groups and falls back to its
   # built-in defaults when they are absent, so the ColorScheme name alone does
   # not set Qt app colors. Append the scheme's color groups from the packaged
-  # file. Breeze Light is the baseline; AutomaticLookAndFeel lets Plasma's
-  # lookandfeelautoswitcher move between Breeze and Breeze Dark by time of day.
+  # file. Breeze Light is only the baseline; Plasma switches by time of day.
   environment.etc."xdg/kdeglobals".source =
     pkgs.runCommand "kdeglobals" { nativeBuildInputs = [ pkgs.gawk ]; }
       ''

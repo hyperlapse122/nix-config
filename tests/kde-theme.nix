@@ -28,7 +28,9 @@
 
   Verifies, on every configuration as well (home/h82/desktop/kde/theme.nix is
   not gated on my.bootstrap), by running the kdeTheme Home Manager activation
-  against three fixture HOMEs, with the built /etc/xdg in XDG_CONFIG_DIRS.
+  against three fixture HOMEs, with XDG_CONFIG_DIRS set as in a session: a
+  ~/.config/kdedefaults holding the Breeze Dark scheme and icon theme, as
+  startplasma writes them for a night login, then the built /etc/xdg.
   Each seeds AutomaticLookAndFeel false, stale light and dark package names,
   and a ColorSchemeHash, so the system defaults cannot mask a missing write:
   one holds the Breeze Dark identity and color groups, one holds a value no
@@ -38,9 +40,12 @@
   - the effective (user, else system) values are AutomaticLookAndFeel true
     and the Breeze and Breeze Dark packages.
   - [General] ColorScheme, [General] ColorSchemeHash, and [Icons] Theme are
-    gone from the user file. Login writes the scheduled package's scheme and
-    icon theme to ~/.config/kdedefaults, which a user entry outranks, and
+    gone from the user file, with no Key[$d] deletion marker left either.
+    Login writes the scheduled package's scheme and icon theme to
+    ~/.config/kdedefaults, which a user entry or marker outranks, and
     re-applies colors only when the hash no longer matches.
+  - kreadconfig6 resolves ColorScheme and the icon theme to the kdedefaults
+    values, so nothing in the user file masks them.
   - an unrelated user key survives.
   On the Breeze Dark fixture, the user's LookAndFeelPackage and the effective
   value of every copied color entry stay dark, so an activation that forces
@@ -51,13 +56,20 @@
 */
 { pkgs, self }:
 let
-  inherit (pkgs.lib) attrNames concatMapStringsSep escapeShellArg;
+  inherit (pkgs.lib)
+    attrNames
+    concatMapStringsSep
+    escapeShellArg
+    optionalString
+    ;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: escapeShellArg (toString value);
 
   colorSchemes = "${pkgs.kdePackages.breeze}/share/color-schemes";
+
+  kread = "${pkgs.kdePackages.kconfig}/bin/kreadconfig6";
 
   lightPackage = "org.kde.breeze.desktop";
   darkPackage = "org.kde.breezedark.desktop";
@@ -94,16 +106,31 @@ let
         ${expectKey "Icons" "Theme" "breeze"}
         ${expectKey "General" "TerminalApplication" "ghostty"}
         ${expectKey "Locale" "Language" "ko:en_US"}
-        expect_scheme ${esc "${entry.name}: /etc/xdg/kdeglobals"} "$light_entries" Light ini_get ${esc kdeglobals}
+        expect_scheme ${esc "${entry.name}: /etc/xdg/kdeglobals"} "$light_entries" ini_get ${esc kdeglobals}
       fi
       if [ ! -f ${esc switcher} ]; then
         ${fail "${entry.name}: the system path ships no lookandfeelautoswitcher kded module"}
       fi
     '';
 
-  # The [KDE] keys every fixture seeds with values the activation must replace.
-  staleAutomatic = ''
-    printf 'AutomaticLookAndFeel=false\nDefaultDarkLookAndFeel=stale\nDefaultLightLookAndFeel=stale\n'
+  # A user kdeglobals with the given identity, automatic switching off, stale
+  # package names, and a ColorSchemeHash, followed by the given color groups.
+  userFixture =
+    {
+      scheme,
+      icons,
+      package,
+      colors,
+    }:
+    ''
+      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=%s\nColorSchemeHash=stale\n\n' ${esc scheme}
+      printf '[Icons]\nTheme=%s\n\n' ${esc icons}
+      printf '[KDE]\nAutomaticLookAndFeel=false\nDefaultDarkLookAndFeel=stale\nDefaultLightLookAndFeel=stale\nLookAndFeelPackage=%s\n\n' ${esc package}
+      ${colors}
+    '';
+
+  darkColorGroups = ''
+    awk ${esc "${copiedGroups} keep { print }"} ${esc "${colorSchemes}/BreezeDark.colors"}
   '';
 
   # User kdeglobals fixtures the activation must convert. Breeze Dark and
@@ -111,26 +138,26 @@ let
   # `stale` seeds every copied entry and identity key with a value no light
   # entry has.
   fixtures = {
-    dark = ''
-      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=BreezeDark\nColorSchemeHash=stale\n\n'
-      printf '[Icons]\nTheme=breeze-dark\n\n[KDE]\nLookAndFeelPackage=${darkPackage}\n'
-      ${staleAutomatic}
-      printf '\n'
-      awk ${esc "${copiedGroups} keep { print }"} ${esc "${colorSchemes}/BreezeDark.colors"}
-    '';
-    stale = ''
-      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=stale\nColorSchemeHash=stale\n\n'
-      printf '[Icons]\nTheme=stale\n\n[KDE]\nLookAndFeelPackage=stale\n'
-      ${staleAutomatic}
-      awk -F '\t' '$1 != group { group = $1; printf "\n[%s]\n", group } { printf "%s=stale\n", $2 }' "$light_entries"
-    '';
-    mismatch = ''
-      printf '[General]\nBrowserApplication=fixture.desktop\nColorScheme=BreezeLight\nColorSchemeHash=stale\n\n'
-      printf '[Icons]\nTheme=breeze\n\n[KDE]\nLookAndFeelPackage=${lightPackage}\n'
-      ${staleAutomatic}
-      printf '\n'
-      awk ${esc "${copiedGroups} keep { print }"} ${esc "${colorSchemes}/BreezeDark.colors"}
-    '';
+    dark = userFixture {
+      scheme = "BreezeDark";
+      icons = "breeze-dark";
+      package = darkPackage;
+      colors = darkColorGroups;
+    };
+    stale = userFixture {
+      scheme = "stale";
+      icons = "stale";
+      package = "stale";
+      colors = ''
+        awk -F '\t' '$1 != group { group = $1; printf "[%s]\n", group } { printf "%s=stale\n", $2 }' "$light_entries"
+      '';
+    };
+    mismatch = userFixture {
+      scheme = "BreezeLight";
+      icons = "breeze";
+      package = lightPackage;
+      colors = darkColorGroups;
+    };
   };
 
   activationAssertions =
@@ -142,14 +169,25 @@ let
       home = "$TMPDIR/${entry.name}-${fixture}-home";
       userGlobals = "${home}/.config/kdeglobals";
       systemGlobals = "${entry.config.system.build.etc}/etc/xdg/kdeglobals";
+      # A session's XDG_CONFIG_DIRS, with the kdedefaults dir startplasma
+      # prepends holding the scheduled Breeze Dark scheme and icon theme.
+      configDirs = "${home}/.config/kdedefaults:${entry.config.system.build.etc}/etc/xdg";
+      kdeEnv = ''HOME="${home}" XDG_CONFIG_HOME="${home}/.config" XDG_CONFIG_DIRS="${configDirs}"'';
       expectEffective = group: key: expected: message: ''
         if [ "$(ini_effective "${userGlobals}" ${esc systemGlobals} ${esc group} ${esc key})" != ${esc expected} ]; then
           ${fail "${label} ${message}"}
         fi
       '';
+      # A Key[$d] marker counts: it masks the cascaded value as a pin does.
       expectDeleted = group: key: ''
-        if ini_has "${userGlobals}" ${esc group} ${esc key}; then
-          ${fail "${label} the user file still sets [${group}] ${key}"}
+        if ini_mentions "${userGlobals}" ${esc group} ${esc key}; then
+          ${fail "${label} the user file still sets or masks [${group}] ${key}"}
+        fi
+      '';
+      # What KConfig itself resolves through the session's config dirs.
+      expectResolved = group: key: expected: ''
+        if [ "$(${kdeEnv} ${kread} --file kdeglobals --group ${esc group} --key ${esc key})" != ${esc expected} ]; then
+          ${fail "${label} KConfig does not resolve [${group}] ${key} to the kdedefaults value ${expected}"}
         fi
       '';
     in
@@ -157,13 +195,13 @@ let
       if [ ! -s ${esc script} ]; then
         ${fail "${entry.name}: kdeTheme activation script is missing or empty"}
       else
-        mkdir -p "${home}/.config"
+        mkdir -p "${home}/.config/kdedefaults"
         {
           ${fixtures.${fixture}}
         } > "${userGlobals}"
-        if ! HOME="${home}" XDG_CONFIG_HOME="${home}/.config" \
-          XDG_CONFIG_DIRS=${esc "${entry.config.system.build.etc}/etc/xdg"} \
-          bash ${esc script} >/dev/null 2>&1; then
+        printf '[General]\nColorScheme=BreezeDark\n\n[Icons]\nTheme=breeze-dark\n' \
+          > "${home}/.config/kdedefaults/kdeglobals"
+        if ! ${kdeEnv} bash ${esc script} >/dev/null 2>&1; then
           ${fail "${label} the activation exited non-zero"}
         fi
         ${expectEffective "KDE" "AutomaticLookAndFeel" "true" "automatic switching is not on"}
@@ -174,14 +212,16 @@ let
         ${expectDeleted "General" "ColorScheme"}
         ${expectDeleted "General" "ColorSchemeHash"}
         ${expectDeleted "Icons" "Theme"}
+        ${expectResolved "General" "ColorScheme" "BreezeDark"}
+        ${expectResolved "Icons" "Theme" "breeze-dark"}
         ${expectEffective "General" "BrowserApplication" "fixture.desktop"
           "an unrelated user key was lost"
         }
-        ${pkgs.lib.optionalString (fixture == "dark") ''
+        ${optionalString (fixture == "dark") ''
           if [ "$(ini_get "${userGlobals}" KDE LookAndFeelPackage)" != ${esc darkPackage} ]; then
             ${fail "${label} the user LookAndFeelPackage was rewritten"}
           fi
-          expect_scheme ${esc "${label} the effective"} "$dark_entries" Dark \
+          expect_scheme ${esc "${label} the effective"} "$dark_entries" \
             ini_effective "${userGlobals}" ${esc systemGlobals}
         ''}
       fi
@@ -212,6 +252,16 @@ pkgs.runCommand "kde-theme-tests"
       awk -v group="[$2]" -v key="$3" '
         /^\[/ { in_group = ($0 == group); next }
         in_group && index($0, key "=") == 1 { found = 1; exit }
+        END { exit !found }
+      ' "$1"
+    }
+
+    # Succeeds when [group] of an INI file sets key or carries a key[...]
+    # entry, such as the Key[$d] deletion marker.
+    ini_mentions() {
+      awk -v group="[$2]" -v key="$3" '
+        /^\[/ { in_group = ($0 == group); next }
+        in_group && (index($0, key "=") == 1 || index($0, key "[") == 1) { found = 1; exit }
         END { exit !found }
       ' "$1"
     }
@@ -253,11 +303,10 @@ pkgs.runCommand "kde-theme-tests"
     expect_scheme() {
       label="$1"
       entries="$2"
-      scheme="$3"
-      shift 3
+      shift 2
       while IFS=$'\t' read -r group key value; do
         if [ "$("$@" "$group" "$key")" != "$value" ]; then
-          echo "$label [$group] $key is not the Breeze $scheme value" >&2
+          echo "$label [$group] $key is not the packaged value" >&2
           failed=1
         fi
       done < "$entries"
