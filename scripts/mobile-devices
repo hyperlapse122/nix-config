@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Creates the declared iOS Simulators and Android Virtual Devices that do not
+# exist yet, on a macOS host, from Home Manager activation as the user.
+#
+#   mobile-devices --xcrun <path> --sdk-root <path> --android-api <api>
+#                  [--device ios:<model>[:<version>]]...
+#                  [--device android:<device id>[:<api>]]...
+#
+# An iOS device without a version uses the newest iOS Simulator SDK the
+# installed Xcode reports, and that runtime is downloaded when it is missing.
+# An Android device without an API uses --android-api, the pin's platform key
+# (37.0). Names carry the version, `<model> (iOS <version>)` and
+# `<device id>_API_<api>`, so a newer version creates new devices beside the
+# old ones. A device whose name exists is left alone. Nothing is ever deleted,
+# erased, or renamed, so devices dropped from the list or made by hand stay.
+#
+# A missing Xcode or avdmanager skips that platform with one message, a device
+# that cannot be created is reported, and the helper exits 0 either way, so it
+# never fails an apply.
+set -euo pipefail
+
+usage() {
+  echo "usage: mobile-devices --xcrun <path> --sdk-root <path> --android-api <api> [--device ios:<model>[:<version>] | --device android:<device id>[:<api>]]..." >&2
+  exit 2
+}
+say() { echo "mobile-devices: $*" >&2; }
+
+xcrun=
+sdk_root=
+android_api=
+ios=()
+android=()
+while [ $# -gt 0 ]; do
+  [ $# -ge 2 ] || usage
+  case $1 in
+    --xcrun) xcrun=$2 ;;
+    --sdk-root) sdk_root=$2 ;;
+    --android-api) android_api=$2 ;;
+    --device)
+      case $2 in
+        ios:?*) ios+=("${2#ios:}") ;;
+        android:?*) android+=("${2#android:}") ;;
+        *) usage ;;
+      esac
+      ;;
+    *) usage ;;
+  esac
+  shift 2
+done
+[ -n "$xcrun" ] && [ -n "$sdk_root" ] && [ -n "$android_api" ] || usage
+
+# The id of an installed iOS runtime for version $1; a runtime's version may
+# carry a patch level the SDK version lacks (26.0.1 for the 26.0 SDK).
+ios_runtime() {
+  local runtimes
+  runtimes=$("$xcrun" simctl list runtimes -j) || return 0
+  jq -r --arg v "$1" '
+    last(.runtimes[]
+      | select(.identifier | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
+      | select(.isAvailable != false)
+      | select(.version == $v or (.version | startswith($v + ".")))
+      | .identifier) // empty' <<<"$runtimes"
+}
+
+ios_devices() {
+  local sdks newest types devices spec model version name type runtime downloaded=
+  if ! sdks=$("$xcrun" xcodebuild -showsdks -json 2>/dev/null) \
+    || ! newest=$(jq -r '[.[] | select(.platform == "iphonesimulator") | .platformVersion]
+        | sort_by(split(".") | map(tonumber)) | last // empty' <<<"$sdks") \
+    || [ -z "$newest" ]; then
+    say "Xcode is not installed or not set up, so the iOS Simulators were skipped. Sign in to the Mac App Store so apply can install Xcode, then apply again."
+    return 0
+  fi
+  if ! types=$("$xcrun" simctl list devicetypes -j); then
+    say "simctl could not list device types, so the iOS Simulators were skipped"
+    return 0
+  fi
+  for spec in "${ios[@]}"; do
+    model=${spec%%:*}
+    version=${spec#"$model"}
+    version=${version#:}
+    version=${version:-$newest}
+    name="$model (iOS $version)"
+    if ! devices=$("$xcrun" simctl list devices -j); then
+      say "simctl could not list simulators, so $name was skipped"
+      continue
+    fi
+    if jq -e --arg n "$name" 'any(.devices[][]; .name == $n)' <<<"$devices" >/dev/null; then
+      continue
+    fi
+    type=$(jq -r --arg m "$model" 'first(.devicetypes[] | select(.name == $m) | .identifier) // empty' <<<"$types")
+    if [ -z "$type" ]; then
+      say "Xcode has no simulator device type named \"$model\", so $name was skipped"
+      continue
+    fi
+    runtime=$(ios_runtime "$version")
+    if [ -z "$runtime" ] && [ "$version" = "$newest" ] && [ -z "$downloaded" ]; then
+      downloaded=1
+      say "downloading the iOS $version Simulator runtime"
+      "$xcrun" xcodebuild -downloadPlatform iOS >&2 || say "downloading the iOS $version Simulator runtime failed"
+      runtime=$(ios_runtime "$version")
+    fi
+    if [ -z "$runtime" ]; then
+      say "no iOS $version Simulator runtime is installed, so $name was skipped"
+      continue
+    fi
+    if "$xcrun" simctl create "$name" "$type" "$runtime" >/dev/null; then
+      say "created $name"
+    else
+      say "creating $name failed"
+    fi
+  done
+}
+
+android_devices() {
+  local avdmanager=$sdk_root/cmdline-tools/latest/bin/avdmanager avds spec model api name
+  if [ ! -x "$avdmanager" ]; then
+    say "$avdmanager is missing, so the Android Virtual Devices were skipped"
+    return 0
+  fi
+  export ANDROID_HOME=$sdk_root ANDROID_SDK_ROOT=$sdk_root
+  for spec in "${android[@]}"; do
+    model=${spec%%:*}
+    api=${spec#"$model"}
+    api=${api#:}
+    api=${api:-$android_api}
+    name=${model}_API_$api
+    if ! avds=$("$avdmanager" list avd -c); then
+      say "avdmanager could not list AVDs, so $name was skipped"
+      continue
+    fi
+    if grep -qFx "$name" <<<"$avds"; then
+      continue
+    fi
+    # "no" answers the custom hardware profile prompt.
+    if "$avdmanager" create avd -n "$name" -k "system-images;android-$api;google_apis;arm64-v8a" -d "$model" <<<no >&2; then
+      say "created $name"
+    else
+      say "creating $name failed"
+    fi
+  done
+}
+
+# Each platform runs in a subshell with errexit back on, so an unexpected
+# failure ends that platform only and the helper still exits 0. Neither
+# subshell may run from an || or && list: errexit is ignored throughout one,
+# the subshell's own `set -e` included.
+set +e
+if [ ${#ios[@]} -gt 0 ]; then
+  (
+    set -e
+    ios_devices
+  )
+  status=$?
+  [ "$status" = 0 ] || say "the iOS step stopped early with status $status"
+fi
+if [ ${#android[@]} -gt 0 ]; then
+  (
+    set -e
+    android_devices
+  )
+  status=$?
+  [ "$status" = 0 ] || say "the Android step stopped early with status $status"
+fi
+exit 0
