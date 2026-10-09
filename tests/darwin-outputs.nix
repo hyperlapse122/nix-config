@@ -39,7 +39,8 @@
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
   - the system's nix.conf keeps store auto-optimisation off,
     /etc/nix-config-host records the host and variant, the Brewfile lists the
-    expected casks, and the shared fonts are installed;
+    expected casks, the shared fonts are installed, and activation turns on
+    automatic appearance without pinning AppleInterfaceStyle;
   - the system activate script runs the Xcode step, mas through launchctl
     asuser for App Store id 497799835, after brew bundle and before the Home
     Manager activation call;
@@ -306,6 +307,19 @@ let
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
         || bad "no fonts under Library/Fonts/Nix Fonts"
+      # The value is a multi-line plist, so read up to its closing tag.
+      autoAppearance=$(awk '
+        /defaults write -g .?AppleInterfaceStyleSwitchesAutomatically/ { on = 1 }
+        on { print }
+        on && /<\/plist>/ { exit }
+      ' "$sys/activate")
+      case "$autoAppearance" in
+        *"<true/>"*) ;;
+        *) bad "the system activation does not turn on automatic appearance" ;;
+      esac
+      if grep -Eq "defaults write -g '?AppleInterfaceStyle'? " "$sys/activate"; then
+        bad "the system activation pins AppleInterfaceStyle"
+      fi
     '';
 in
 pkgs.runCommand "darwin-outputs" { nativeBuildInputs = [ pkgs.unzip ]; } ''

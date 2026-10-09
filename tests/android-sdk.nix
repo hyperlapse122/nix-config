@@ -15,8 +15,9 @@
     only when it does, so a removed user fails inside the builder rather than
     during evaluation.
   - ~/.local/share/android-sdk is a link into a store SDK that carries every
-    pinned package's and system image's package.xml at its repository path,
-    and the accepted android-sdk-license.
+    pinned package's and x86_64 system image's package.xml at its repository
+    path, and the accepted android-sdk-license. The pin's arm64-v8a images
+    are for macOS hosts, which tests/darwin-outputs.nix checks.
   - the SDK holds the platform (with its android.jar), Google APIs x86_64
     system image (with its system.img), and build-tools of every API level
     in requiredApiLevels. The list is fixed here rather than read from the
@@ -54,15 +55,21 @@ let
     concatMapStrings
     escapeShellArg
     concatMapStringsSep
+    optional
     ;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   repo = builtins.fromJSON (builtins.readFile ../packages/android-sdk-repo.json);
   # images nest api -> tag -> abi -> entry, one level deeper than packages.
+  # The pin also carries the arm64-v8a images macOS hosts use; a NixOS SDK
+  # builds only x86_64 (packages/android-sdk.nix abiVersions).
+  linuxAbi = "x86_64";
   pinned =
     concatMap attrValues (attrValues repo.packages)
-    ++ concatMap attrValues (concatMap attrValues (attrValues repo.images));
+    ++ concatMap (
+      tags: concatMap (abis: optional (abis ? ${linuxAbi}) abis.${linuxAbi}) (attrValues tags)
+    ) (attrValues repo.images);
   platformTools = repo.latest.platform-tools;
   emulator = repo.latest.emulator;
   cmdlineTools = repo.latest.cmdline-tools;
