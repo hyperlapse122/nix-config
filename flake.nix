@@ -98,7 +98,7 @@
           "desktop-ssh"
           "emoji-font"
           "iphone-restore"
-          "kde-light-theme"
+          "kde-theme"
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
@@ -1168,7 +1168,7 @@
           desktop-ssh = import ./tests/desktop-ssh.nix { inherit pkgs self; };
           desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
-          kde-light-theme = import ./tests/kde-light-theme.nix { inherit pkgs self; };
+          kde-theme = import ./tests/kde-theme.nix { inherit pkgs self; };
           emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
           logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
