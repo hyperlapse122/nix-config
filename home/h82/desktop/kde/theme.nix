@@ -18,13 +18,12 @@ in
   # rebuild.
   home.activation.kdeTheme = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     if [ -x "${kwrite}" ]; then
-      ${kwrite} --file kdeglobals --group KDE --key AutomaticLookAndFeel --type bool true
       ${kwrite} --file kdeglobals --group KDE --key DefaultLightLookAndFeel org.kde.breeze.desktop
-      ${kwrite} --file kdeglobals --group KDE --key DefaultDarkLookAndFeel org.kde.breezedark.desktop
+      ${kwrite} --file kdeglobals --group KDE --key DefaultDarkLookAndFeel org.kde.breeze.desktop
 
-      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group General --key ColorScheme --delete
-      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group General --key ColorSchemeHash --delete
-      XDG_CONFIG_DIRS=/var/empty ${kwrite} --file kdeglobals --group Icons --key Theme --delete
+      ${kwrite} --file kdeglobals --group General --key ColorScheme --delete
+      ${kwrite} --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breeze.desktop
+      ${kwrite} --file kdeglobals --group Icons --key Theme --delete
     fi
   '';
 }
