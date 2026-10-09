@@ -205,6 +205,7 @@ let
       production = !entry.bootstrap;
     in
     lib.concatStrings [
+      (check config.homebrew.enable "${entry.name}: homebrew is off, so an apply installs none of the casks")
       (check (sort casks == sort expectedCasks)
         "${entry.name}: homebrew.casks is ${builtins.toJSON (sort casks)}, the mapping gives ${builtins.toJSON (sort expectedCasks)}"
       )
