@@ -52,7 +52,6 @@ let
     "winbox"
     "yubioath-flutter"
     "claude-desktop"
-    "orca-ide"
     "t3code-desktop"
     "vscodium"
     "ghostty"

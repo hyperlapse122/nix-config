@@ -17,8 +17,6 @@ let
       name = "Antigravity";
       target = ".gemini/config/AGENTS.md";
     };
-    # Codex's default home. Orca-launched sessions use Orca's own CODEX_HOME
-    # and never see this file.
     codex = {
       name = "Codex";
       target = ".codex/AGENTS.md";

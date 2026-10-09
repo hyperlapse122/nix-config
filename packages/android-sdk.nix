@@ -21,8 +21,8 @@ let
     platformToolsVersion = repo.latest.platform-tools;
     buildToolsVersions = builtins.attrNames repo.packages.build-tools;
     platformVersions = builtins.attrNames repo.packages.platforms;
-    # Orca accepts an SDK root only when it holds emulator/emulator, and an
-    # AVD needs a system image the read-only SDK cannot download later.
+    # The emulator runs AVDs, and an AVD needs a system image the read-only
+    # SDK cannot download later.
     # platformVersions selects the images' API levels.
     includeEmulator = true;
     emulatorVersion = repo.latest.emulator;

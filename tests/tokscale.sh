@@ -250,9 +250,10 @@ if [[ $mode == source ]]; then
   echo 0 >"$scratch/status"
 fi
 
-# --- Codex session directories --------------------------------------------
+# --- Antigravity ACP conversation directories --------------------------------
 
-accounts=$home/.config/orca/codex-accounts
+providers=$home/.t3/userdata/providers/antigravity
+acp_default=$home/.gemini/antigravity-acp/conversations
 
 run
 if [[ -f $rec/extra ]]; then fail "TOKSCALE_EXTRA_DIRS was set to '$(recorded extra)'"; fi
@@ -261,35 +262,8 @@ run TOKSCALE_EXTRA_DIRS="$caller"
 [[ $(recorded extra) == "$caller" ]] || fail "the caller value changed: '$(recorded extra)'"
 run TOKSCALE_EXTRA_DIRS=
 [[ -f $rec/extra && -z $(recorded extra) ]] || fail 'an empty caller value was not kept'
-[[ $rc -eq 0 ]] || fail "with no codex-accounts directory the wrapper exited $rc"
-pass 'with no codex-accounts directory TOKSCALE_EXTRA_DIRS is untouched'
-
-mkdir -p "$accounts/first/home/sessions" "$accounts/second/home/sessions" \
-  "$accounts/nosessions/home" "$accounts/filed/home"
-touch "$accounts/filed/home/sessions"
-run TOKSCALE_EXTRA_DIRS=claude:/x
-want="claude:/x,codex:$accounts/first/home/sessions,codex:$accounts/second/home/sessions"
-[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
-pass 'each existing sessions directory is appended after the caller value'
-
-run
-want="codex:$accounts/first/home/sessions,codex:$accounts/second/home/sessions"
-[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
-run TOKSCALE_EXTRA_DIRS=
-[[ $(recorded extra) == "$want" ]] || fail "an empty caller value left a leading comma: '$(recorded extra)'"
-pass 'with no caller value only the sessions directories are listed'
-
-mkdir -p "$accounts/a,b/home/sessions"
-run
-[[ $(recorded extra) == "$want" ]] || fail "a path with a comma was not skipped: '$(recorded extra)'"
-pass 'a sessions path containing a comma is skipped'
-
-# --- Antigravity ACP conversation directories --------------------------------
-
-rm -rf -- "$home/.config"
-
-providers=$home/.t3/userdata/providers/antigravity
-acp_default=$home/.gemini/antigravity-acp/conversations
+[[ $rc -eq 0 ]] || fail "with no conversations directory the wrapper exited $rc"
+pass 'with no conversations directory TOKSCALE_EXTRA_DIRS is untouched'
 
 mkdir -p "$providers/empty" "$providers/filed/antigravity-acp" "$home/.gemini/antigravity-acp"
 touch "$providers/filed/antigravity-acp/conversations" "$acp_default"
@@ -310,16 +284,14 @@ want="antigravity-cli:$providers/first/antigravity-acp/conversations,antigravity
 [[ $(recorded extra) == "$want" ]] || fail "a path with a comma was not skipped: '$(recorded extra)'"
 pass 'a T3 conversations path containing a comma is skipped'
 
+run TOKSCALE_EXTRA_DIRS=
+[[ $(recorded extra) == "$want" ]] || fail "an empty caller value left a leading comma: '$(recorded extra)'"
+pass 'with an empty caller value only the conversations directories are listed'
+
 mkdir -p "$acp_default"
 run
 want+=",antigravity-cli:$acp_default"
 [[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
 pass 'the standalone ACP conversations directory follows the T3 ones'
-
-mkdir -p "$accounts/first/home/sessions"
-run TOKSCALE_EXTRA_DIRS=
-want="codex:$accounts/first/home/sessions,$want"
-[[ $(recorded extra) == "$want" ]] || fail "extra dirs '$(recorded extra)', want '$want'"
-pass 'Codex sessions come before Antigravity conversations'
 
 printf 'tokscale: all checks passed (%s)\n' "$mode"

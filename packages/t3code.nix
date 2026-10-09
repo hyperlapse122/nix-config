@@ -72,7 +72,7 @@ else
     # the setuid newuidmap. A local rootless Podman started here builds its pause
     # process from that view, and the host's Podman service then joins it and
     # fails image pulls. Remote mode sends every podman and docker call to the
-    # host service instead, as packages/orca.nix does.
+    # host service instead.
     extraBwrapArgs = [
       "--setenv T3CODE_DISABLE_AUTO_UPDATE 1"
       ''--setenv CONTAINER_HOST "unix://$XDG_RUNTIME_DIR/podman/podman.sock"''

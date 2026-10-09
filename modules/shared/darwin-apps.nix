@@ -23,7 +23,6 @@ let
     ghostty.cask = "ghostty";
     google-chrome.cask = "google-chrome";
     libreoffice.cask = "libreoffice";
-    orca-ide.cask = "stablyai/orca/orca";
     telegram-desktop.cask = "telegram-desktop";
     yubioath-flutter.cask = "yubico-authenticator";
 

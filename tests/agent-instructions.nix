@@ -33,8 +33,7 @@
     pass alongside its in-process reviewers, the fallback order, and verifying
     a delegated result, so any of those sentences dropped, reworded, or moved
     into one harness's branch fails.
-  - it exists, is non-empty, and mentions Orca in no letter case, so the
-    shared instructions stay tool-neutral for every orchestrator.
+  - it exists and is non-empty.
   - it carries the shared branch-name rule: rename a placeholder before the
     first push, what counts as a tool-generated placeholder (including a
     random-hex branch), only a branch never pushed, and the
@@ -187,10 +186,6 @@ let
         file=${source}
         if [ ! -s "$file" ]; then
           echo ${esc "${label} is missing or empty"} >&2
-          failed=1
-        fi
-        if grep -qi -- orca "$file"; then
-          echo ${esc "${label} mentions Orca"} >&2
           failed=1
         fi
         if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then

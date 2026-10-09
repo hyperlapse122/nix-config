@@ -585,8 +585,8 @@ class NestedPathTests(unittest.TestCase):
         self.assertIn('scanner', result.stderr)
 
 
-# A hooks.json-shaped file maps a hook name to its events. Orca owns
-# `orca-status` and rewrites it at run time; the declaration owns
+# A hooks.json-shaped file maps a hook name to its events. Another writer
+# owns `foreign-status` and rewrites it at run time; the declaration owns
 # `repo-owned`, seeded here with a stale value so a merger that skipped the
 # key could not match by accident.
 OWNED = {
@@ -597,10 +597,10 @@ OWNED = {
 }
 
 OWNED_EXISTING = {
-    'orca-status': {
+    'foreign-status': {
         'enabled': True,
-        'PreInvocation': [{'type': 'command', 'command': 'orca-hook pre', 'timeout': 10}],
-        'Stop': [{'type': 'command', 'command': 'orca-hook stop', 'timeout': 10}],
+        'PreInvocation': [{'type': 'command', 'command': 'foreign-hook pre', 'timeout': 10}],
+        'Stop': [{'type': 'command', 'command': 'foreign-hook stop', 'timeout': 10}],
     },
     'repo-owned': {
         'enabled': False,
@@ -647,8 +647,8 @@ class OwnedKeyTests(unittest.TestCase):
         self.merge()
         result = self.read()
         self.assertEqual(result['repo-owned'], OWNED['repo-owned'])
-        self.assertEqual(result['orca-status'], OWNED_EXISTING['orca-status'])
-        self.assertEqual(sorted(result), ['orca-status', 'repo-owned'])
+        self.assertEqual(result['foreign-status'], OWNED_EXISTING['foreign-status'])
+        self.assertEqual(sorted(result), ['foreign-status', 'repo-owned'])
 
     def test_creates_the_file_with_only_the_owned_key(self):
         self.merge()
@@ -696,7 +696,7 @@ class OwnedKeyTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['repo-owned'], OWNED['repo-owned'])
-        self.assertEqual(self.read()['orca-status'], OWNED_EXISTING['orca-status'])
+        self.assertEqual(self.read()['foreign-status'], OWNED_EXISTING['foreign-status'])
 
 
 # Codex keeps config.toml, which it and `codex plugin add` both rewrite, and

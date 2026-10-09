@@ -368,10 +368,10 @@
               fi
 
               # An owned key through the packaged binary: the repository's entry
-              # starts stale with an extra event, and Orca's entry beside it must
-              # come through byte for byte.
+              # starts stale with an extra event, and another writer's entry
+              # beside it must come through byte for byte.
               mkdir -p home/.gemini/config
-              printf '{"orca-status":{"enabled":true,"Stop":[{"type":"command","command":"orca-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
+              printf '{"foreign-status":{"enabled":true,"Stop":[{"type":"command","command":"foreign-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
                 > home/.gemini/config/hooks.json
               printf '{"own":{"repo-owned":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
                 > owned.json
@@ -380,7 +380,7 @@
               ${pkgs.python3}/bin/python3 - <<'PY'
               import json
               merged = json.load(open('home/.gemini/config/hooks.json'))
-              assert merged['orca-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'orca-hook', 'timeout': 10}]}, merged
+              assert merged['foreign-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'foreign-hook', 'timeout': 10}]}, merged
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
 
@@ -427,7 +427,6 @@
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
-          retire-orca-skills = import ./tests/retire-orca-skills.nix { inherit pkgs self; };
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -851,60 +850,6 @@
             })}
             touch $out
           '';
-          orca-desktop =
-            let
-              assertConfiguration =
-                entry:
-                let
-                  service = entry.user.systemd.user.services.orca-settings-reconcile or null;
-                  activation = entry.user.home.activation.orcaSettings or null;
-                  package = userPackageOf "orca-ide" entry;
-                  dockerHost = entry.user.home.sessionVariables.DOCKER_HOST or "";
-                  fakeRuntimeDir = "/run/user/4242";
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "orca-ide";
-                    executables = [
-                      "orca-ide"
-                      "orca"
-                    ];
-                    desktopEntries = [ "orca.desktop" ];
-                  } entry}
-                  ${pkgs.lib.optionalString (package != null) ''
-                    # Expand both values under one runtime directory, so a path
-                    # baked in at build time cannot match the session's socket.
-                    containerHost=$(
-                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
-                      line=$(grep -E '^[[:space:]]*--setenv CONTAINER_HOST ' ${package}/bin/orca-ide) || exit 0
-                      eval "set -- $line"
-                      printf '%s' "$3"
-                    )
-                    dockerHost=$(
-                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
-                      printf '%s' "${pkgs.lib.escape [ "\"" "\\" "`" ] dockerHost}"
-                    )
-                    if [ -z "$containerHost" ] || [ "$containerHost" != "$dockerHost" ] \
-                      || [ "$containerHost" = "''${containerHost#*${fakeRuntimeDir}/}" ]; then
-                      echo "orca-ide sandbox CONTAINER_HOST '$containerHost' is not the session Podman socket '$dockerHost' on ${entry.name}" >&2
-                      fail=1
-                    fi
-                  ''}
-                  ${pkgs.lib.optionalString (service != null) ''
-                    echo 'unexpected systemd.user.services.orca-settings-reconcile on ${entry.name}' >&2
-                    fail=1
-                  ''}
-                  ${pkgs.lib.optionalString (activation != null) ''
-                    echo 'unexpected home.activation.orcaSettings on ${entry.name}' >&2
-                    fail=1
-                  ''}
-                '';
-            in
-            pkgs.runCommand "orca-desktop-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
           claude-desktop =
             let
               assertConfiguration =
@@ -1024,8 +969,9 @@
               # given on the claude-code check: versionCheckHook already proves
               # the binary reports that attribute. The wrapper flags are read
               # from the installed bin/codex itself, because they are what keep
-              # Codex from updating itself under Orca's CODEX_HOME, which never
-              # receives the declared config.toml keys.
+              # Codex from updating itself under any other CODEX_HOME, such as
+              # T3 Code's per-provider homes, which never receive the declared
+              # config.toml keys.
               pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
               wrapperFlags = [
                 "-c check_for_update_on_startup=false"
@@ -1151,8 +1097,8 @@
               expect_setenv T3CODE_DISABLE_AUTO_UPDATE 1
               expect_setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
 
-              # Expanded under a fake runtime directory, as the orca-desktop
-              # check does, so a path baked in at build time cannot match.
+              # Expanded under a fake runtime directory, so a path baked in at
+              # build time cannot match.
               containerHost=$(
                 XDG_RUNTIME_DIR=${fakeRuntimeDir}
                 line=$(grep -E '^[[:space:]]*--setenv CONTAINER_HOST ' ${desktop}/bin/t3code-desktop) || exit 0

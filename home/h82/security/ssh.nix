@@ -50,10 +50,10 @@ in
       # Installed as a user-owned copy rather than linked into the store. ssh
       # refuses a ~/.ssh/config owned by anyone but root or the user, and in an
       # unprivileged user namespace, such as the bubblewrap sandbox of the
-      # T3 Code and Orca wrappers, root-owned store files appear owned by
-      # nobody. After linkGeneration, which removes the previous generation's
-      # link at this path. A file without the marker is one the user wrote, so
-      # it is moved aside rather than overwritten.
+      # T3 Code wrapper, root-owned store files appear owned by nobody. After
+      # linkGeneration, which removes the previous generation's link at this
+      # path. A file without the marker is one the user wrote, so it is moved
+      # aside rather than overwritten.
       home.activation.sshConfig = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
         run install -d -m 700 "$HOME/.ssh"
         if [ -f "$HOME/.ssh/config" ] && [ ! -L "$HOME/.ssh/config" ] \

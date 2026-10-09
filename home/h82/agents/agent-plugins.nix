@@ -161,14 +161,7 @@ let
   # its hooks keep firing, on every machine that ran an earlier generation.
   # Move it here instead, and delete the entry once every host has rebuilt
   # past it.
-  retired = [
-    {
-      name = "orca-orchestration";
-      harness = "claude";
-      plugin = "orca-orchestration";
-      marketplace = "orca-orchestration";
-    }
-  ];
+  retired = [ ];
 
   retireInvocation =
     row:

@@ -18,7 +18,7 @@ let
   # installs and updates a background daemon copy of Codex, which nixpkgs
   # disables with a source patch that this prebuilt pin cannot carry. The
   # wrapper in packages/codex.nix passes the same update overrides as flags,
-  # so they also hold under Orca's CODEX_HOME, which never sees this file.
+  # so they also hold under any other CODEX_HOME, which never sees this file.
   declaredPaths = [
     {
       path = [ "check_for_update_on_startup" ];
