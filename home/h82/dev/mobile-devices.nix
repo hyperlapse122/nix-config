@@ -80,7 +80,7 @@ in
   config.home.activation.mobileDevices = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     if [[ -v DRY_RUN ]]; then
       echo "Creating the missing declared iOS Simulators and Android Virtual Devices"
-    elif ! ${lib.getExe helper} --xcrun /usr/bin/xcrun --sdk-root ${lib.escapeShellArg config.home.sessionVariables.ANDROID_HOME} --android-api ${lib.escapeShellArg androidApi} ${deviceArgs}; then
+    elif ! ${lib.getExe helper} --xcrun /usr/bin/xcrun --sdk-root ${lib.escapeShellArg config.home.sessionVariables.ANDROID_HOME} --java-home ${lib.escapeShellArg config.programs.java.package.home} --android-api ${lib.escapeShellArg androidApi} ${deviceArgs}; then
       echo "mobileDevices: the mobile-devices helper failed, so some declared devices may be missing; apply again after fixing the error above" >&2
     fi
   '';

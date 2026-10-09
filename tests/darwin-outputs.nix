@@ -32,8 +32,8 @@
     assignment gains the emulator directory;
   - the activation script runs the mobileDevices step after linkGeneration,
     and it calls the built mobile-devices helper with /usr/bin/xcrun, the SDK
-    root, every declared device, and the newest pinned API with an arm64-v8a
-    image;
+    root, a --java-home whose bin/java runs, every declared device, and the
+    newest pinned API with an arm64-v8a image;
   - with my.t3.desktop.enable, the T3 Code nightly bundle is in the profile,
     its main executable is byte-identical to the release zip's, and a launch
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
@@ -250,6 +250,10 @@ let
             *) bad "the mobile-devices helper call lacks $arg" ;;
           esac
         done
+        javahome=$(sed -n "s|.*--java-home '\{0,1\}\(/nix/store/[^ ']*\).*|\1|p" <<<"$helper")
+        if [ -z "$javahome" ] || ! "$javahome/bin/java" -version >/dev/null 2>&1; then
+          bad "the mobile-devices helper call lacks a --java-home whose bin/java runs: ''${javahome:-none}"
+        fi
       fi
 
       ${lib.optionalString (t3Desktop != null) ''
