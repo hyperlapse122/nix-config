@@ -1,7 +1,7 @@
 ---
 title: "A copied git worktree still writes the real index"
 date: "2026-09-28"
-last_updated: "2026-09-30"
+last_updated: "2026-10-10"
 category: best-practices
 module: NixOS flake checks (mutation testing in scratch copies)
 problem_type: best_practice
@@ -12,6 +12,7 @@ applies_when:
   - "Copying a checkout with cp -r and then running git add, git commit, or git reset inside the copy"
   - "Evaluating or building a flake whose new files are not yet tracked by Git"
   - "Running a command whose cwd is a scratch copy of this checkout, which carries its own untrusted mise.toml"
+  - "A commit that stages Markdown fails in the lint-staged-markdown pre-commit hook with \"mise.toml are not trusted\""
 root_cause: missing_workflow_step
 resolution_type: workflow_improvement
 related_components:
@@ -23,6 +24,7 @@ tags:
   - git-worktree
   - scratch-copy
   - mise
+  - pre-commit
 ---
 
 # A copied git worktree still writes the real index
@@ -41,6 +43,8 @@ A second trap sits next to this one. A flake evaluated from a git checkout sees 
 
 A third trap appeared during the VSCodium work (`.compound-engineering/artifacts/plans/2026-09-30-1221-feat-vscodium-declarative-config-plan.md`). The checkout carries a `mise.toml`, and `python3` on `PATH` is a mise shim. The rsync copy includes that `mise.toml`, and mise has never trusted the file at the new path. A mise shim resolves its configuration from the working directory, so every shim invoked with the copy as its cwd exits non-zero with "Config files in <copy>/mise.toml are not trusted". Changing into the copy only prints the same error through the shell hook. The mutation runner applied each edit with a small Python script from inside the copy. Every edit failed, and the runner reported all ten mutations as a missing anchor without building any of them. Nothing distinguished that from a mutation that could not apply.
 
+The pre-commit hook hits the same trap. `scripts/lint-staged-markdown` checks the whole index out into `mktemp -d` and runs `markdownlint-cli2` with that copy as its working directory (`scripts/lint-staged-markdown:15-21`). The copy includes `mise.toml`. During the macOS Tailscale cask work on 2026-10-10, on a Mac with mise 2026.10.6, every commit that staged Markdown failed with "Config files in /private/var/folders/.../T/tmp.XXXX/mise.toml are not trusted", although the worktree itself was trusted. Earlier Markdown commits had passed the same hook. This session did not establish whether the mise version is what changed.
+
 ## Guidance
 
 Build scratch copies for mutation testing without the `.git` link, and give each copy its own repository:
@@ -58,6 +62,8 @@ rm -rf "$M"
 `git init` plus `git add -A` makes every file, tracked or not, visible to the flake in the copy. Nothing the copy does can reach the real index.
 
 Keep the shell's working directory in the real checkout and address the copy only by absolute path: `git -C "$M"`, file edits on `"$M/<path>"`, and `nix build "path:$M#..."`. Never `cd` into the copy. Any mise shim run from there, including `python3`, fails on the copy's untrusted `mise.toml`. Do not `mise trust` the copy either, because that records a trust entry for every throwaway directory. Make the runner tell an edit that could not be applied apart from a mutation whose anchor is missing, and treat a run where every mutation reports the same non-result as a broken runner, not as ten findings.
+
+When the markdown hook fails this way, trust the temporary directory for that one commit instead of skipping the lint: `MISE_TRUSTED_CONFIG_PATHS="$(cd "${TMPDIR:-/tmp}" && pwd -P)" git commit ...`. Resolve the path with `pwd -P`, because `$TMPDIR` on macOS sits under `/var`, a link to `/private/var`, and the error names the resolved path. The variable lasts only for that command and writes no trust entry. With it, the hook ran markdownlint and reported 0 issues. `git commit --no-verify` also gets past the error, but it skips the lint.
 
 In the real checkout, stage new files (`git add <path>`) before trusting `nix eval`, `nix build`, or `nix flake check` output that should include them. Staging is enough, and no commit is needed.
 
