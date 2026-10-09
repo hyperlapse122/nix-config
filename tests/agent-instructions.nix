@@ -25,14 +25,25 @@
   - it carries the shared rule to apply every review finding and its ban on
     deferring findings, so either sentence dropped from the template or moved
     into one harness's branch fails.
+  - it carries the shared model-routing defaults: their precedence below the
+    conversation, project instructions, and CE config, the one-line reason for
+    leaving the table, the tier-to-row mapping, the broad-scout fallback, the
+    excluded models, default effort, where same-provider and cross-provider
+    routing apply, the inherit-and-say rule, and each row of the role table
+    matched whole, so any sentence dropped, reworded, or moved into one
+    harness's branch, or any cell changed, fails.
   - it carries the shared cross-model delegation rules through the T3 Code
-    MCP server: when they apply, their precedence over a skill's own harness
-    discovery, choosing the latest runnable version of a model class and when
-    an older one is allowed, setting that version's options, full-access
-    runtime mode, running a skill's cross-model review
-    pass alongside its in-process reviewers, the fallback order, and verifying
-    a delegated result, so any of those sentences dropped, reworded, or moved
-    into one harness's branch fails.
+    MCP server: when they apply, that a skill's gates decide before T3 Code
+    replaces its launch route, choosing the latest runnable version of a
+    model class and when an older one is allowed, taking a cross-model pass's
+    model and effort from the skill, full-access runtime mode, running a
+    skill's cross-model review pass alongside its in-process reviewers, the
+    retry and fallback order, and verifying a delegated result, so any of
+    those sentences dropped, reworded, or moved into one harness's branch
+    fails.
+  - it carries neither superseded directive: delegating before a skill's own
+    gates, or setting effort instead of inheriting a model's default, so
+    either one added back beside its replacement fails.
   - it exists and is non-empty.
   - it carries the shared branch-name rule: rename a placeholder before the
     first push, what counts as a tool-generated placeholder (including a
@@ -78,17 +89,41 @@ let
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
   ];
 
+  routingSentences = [
+    "Each routing choice follows this order: the user's conversation, then the project's instructions and its CE config (`.compound-engineering/config.local.yaml`, then `.compound-engineering/config.yaml`) in the order the invoked skill defines, then the table below, then the skill's own default mapping."
+    "Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why."
+    "A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row."
+    "When Antigravity is not runnable through T3 Code, a broad scout uses the short scout's class."
+    "Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it."
+    "Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one."
+    "Apply the same-provider cells in every session, and route to another provider only through T3 Code, as Cross-model delegation below describes."
+    "When your native subagent tool cannot select the table's class and T3 Code is unavailable, let the subagent inherit your session model and say so in one line."
+    # Role table rows, each matched whole so a changed cell fails.
+    "| Short scout | Haiku | Luna | Flash low |"
+    "| Broad scout | Flash low through T3 Code | Flash low through T3 Code | Flash low |"
+    "| Worker | Sonnet | Luna | Flash medium |"
+  ];
+
   delegationSentences = [
     "This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool."
-    "When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps."
-    "Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Pro or Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable."
+    "When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens."
+    "Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable."
     "Compare versions only within that class: a newer model of another class does not outrank the class the task needs."
     "Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model."
-    "Set the chosen version's options, such as reasoning effort, for the task instead of inheriting its defaults, which can differ between versions of one class."
+    "When a skill's cross-model pass runs through T3 Code, take its model and effort from `cross_model_model` and `cross_model_effort` when they are set, otherwise from the skill's own mapping; the latest-version rule does not replace a model the skill names."
     "Run every delegated task in full-access runtime mode."
     "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
-    "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider; fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
+    "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider."
+    "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Flash at high effort on Antigravity, which the skills do not map."
+    "Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
     "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
+  ];
+
+  # Fragments of directives this template replaced; each contradicts a rule
+  # above, so its return must fail even while the replacement is present.
+  supersededDirectives = [
+    "before any of the skill's own discovery or launch steps"
+    "for the task instead of inheriting its defaults"
   ];
 
   claudeTools = [
@@ -193,8 +228,15 @@ let
           failed=1
         fi
         ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
+        ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
         ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+        for directive in ${lib.escapeShellArgs supersededDirectives}; do
+          if grep -qF -- "$directive" "$file"; then
+            echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
+            failed=1
+          fi
+        done
         for tool in ${lib.escapeShellArgs harness.present}; do
           if ! grep -qF -- "$tool" "$file"; then
             echo ${esc "${label} does not name"} "$tool" >&2
