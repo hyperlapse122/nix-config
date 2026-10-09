@@ -12,8 +12,9 @@ Before the first setup, have:
 
 - the host directory and its secrets pushed to `main`;
 - an administrator account on the Mac, for `sudo`;
-- one of the three YubiKeys and its PIN, for the identity recovery in step 9;
-- network and time for the first apply, which downloads Homebrew, every cask, and the Podman machine image.
+- an Apple Account for the Mac App Store, which Xcode comes from;
+- one of the three YubiKeys and its PIN, for the identity recovery in step 10;
+- network and time for the first apply, which downloads Homebrew, every cask, the Podman machine image, Xcode, an iOS Simulator runtime, and the Android SDK.
 
 ## What the configuration manages
 
@@ -22,6 +23,9 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **Nix.** nix-darwin owns `/etc/nix/nix.conf` and keeps `auto-optimise-store` off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - **Host marker.** `/etc/nix-config-host` records the host name and whether the bootstrap or production output is applied. `nr` reads the host from it, so the name macOS shows for the machine does not matter.
 - **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, ChatGPT, and the other GUI apps. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones.
+- **Xcode.** Xcode is the one Mac App Store app the configuration manages. `modules/darwin/xcode.nix` installs it with `mas` after the casks, or upgrades it when the App Store has a newer version, so the App Store decides the version. When `xcode-select` points at the Command Line Tools or nowhere, the step points it at Xcode. The step also accepts the license and runs first-launch setup when either is pending. It needs the App Store signed in; see step 6.
+- **Android SDK.** A Mac gets the same pinned Android SDK as a Linux x86_64 host, from `packages/android-sdk.nix`, built for Apple silicon with `arm64-v8a` system images. It sits at `~/Library/Android/sdk`, a read-only link into the Nix store. `ANDROID_HOME` and `ANDROID_SDK_ROOT` point there.
+- **Mobile devices.** The iOS Simulators and Android Virtual Devices listed in `my.mobileDevices`; see [Mobile devices](#mobile-devices).
 - **Nix apps.** VSCodium and the T3 Code desktop app come from Nix. Home Manager copies their bundles into `~/Applications/Home Manager Apps`.
 - **Containers.** One Podman machine, with minikube inside it on production outputs; see [Containers](#containers).
 - **Fonts.** The NixOS font list is installed system-wide.
@@ -56,7 +60,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
    done
    ```
 
-   The installer's lines in `/etc/bashrc` and `/etc/zshrc` are what put `nix` on `PATH`, so run steps 4 to 6 in the terminal that is already open. A terminal opened before step 6 finishes has no `nix`; load it there with `. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`.
+   The installer's lines in `/etc/bashrc` and `/etc/zshrc` are what put `nix` on `PATH`, so run steps 4 to 7 in the terminal that is already open. A terminal opened before step 7 finishes has no `nix`; load it there with `. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh`.
 
 4. Clone the repository to `~/src/github.com/hyperlapse122/nix-config`, the path `ghq` uses with the configured root `~/src`. `ghq` is not installed until the bootstrap apply, so clone with `git`. The first time it runs, macOS's `git` may ask to install the Command Line Tools; accept.
 
@@ -74,7 +78,11 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
    It must print exactly one name. When it prints none, the Mac has no host directory yet; see [adding a host](adding-a-host.md#macos-hosts). When it prints more than one, set `host` to the right one by hand.
 
-6. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
+6. Open the App Store app and sign in with your Apple Account. The apply downloads Xcode with the App Store account signed in to your login session, so it cannot install Xcode until you sign in. On a Mac where you already installed Xcode from the App Store, apply keeps that copy and upgrades it in place.
+
+   Without the sign-in, the apply still succeeds. It prints a line asking you to sign in to the App Store, skips Xcode and the iOS Simulators, and sets up everything else, the Android SDK and Android Virtual Devices included. Sign in later and apply again to add Xcode and the iOS Simulators.
+
+7. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
 
    ```sh
    sudo nix --extra-experimental-features 'nix-command flakes' \
@@ -82,11 +90,11 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
      switch --flake ".#$host-bootstrap"
    ```
 
-   This apply also installs Homebrew and the casks and creates the Podman machine, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+   This apply also installs Homebrew, the casks, and Xcode, downloads an iOS Simulator runtime, creates the Podman machine, and creates the declared mobile devices, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
 
-7. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
+8. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
 
-8. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
+9. Create the directories that will hold plaintext secrets, with mode 0700, and exclude each from Time Machine. `tmutil addexclusion` needs the path to exist, so create them first:
 
    ```sh
    for dir in ~/.config/nix-config/age ~/.local/state/cli-auth ~/.config/gh ~/.config/glab-cli; do
@@ -96,7 +104,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
    done
    ```
 
-9. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd. The new terminal does not have `host` from step 5, so read it from the marker the bootstrap apply wrote:
+10. With a YubiKey inserted, recover the host's age identity. It is the same helper and installer a non-NixOS Linux host uses; GPG reaches the card through macOS's own smart card support, with no pcscd. The new terminal does not have `host` from step 5, so read it from the marker the bootstrap apply wrote:
 
     ```sh
     cd ~/src/github.com/hyperlapse122/nix-config
@@ -106,7 +114,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
     It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
 
-10. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
+11. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
 
     ```sh
     nr switch --host "$host"
@@ -114,13 +122,13 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
     It publishes the gh and glab configuration, the tokens, and the host's SSH key.
 
-11. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
+12. Exclude the host's SSH key from Time Machine by path. `host-secrets` replaces that file on every apply, and an ordinary exclusion is attached to the file, so it would be lost with the first replacement. A path exclusion (`-p`) needs `sudo`:
 
     ```sh
     sudo tmutil addexclusion -p ~/.ssh/id_ed25519_nix_config
     ```
 
-12. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
+13. Register the host's SSH public key with GitHub and every server the host must reach; see [SSH key](#ssh-key) below.
 
 ## Everyday use
 
@@ -205,6 +213,44 @@ brew uninstall --zap orbstack
 - VSCodium's user directory is `~/Library/Application Support/VSCodium/User`. Its keybindings file is a read-only store link; add a keybinding to `home/h82/dev/vscodium.nix` instead. See [VSCodium](provisioning.md#vscodium).
 - The T3 Code desktop app is the flake's pinned nightly, `T3 Code (Nightly).app`. A launch agent sets `T3CODE_DISABLE_AUTO_UPDATE=1` at login, so the app does not update itself off the pin. See [T3 Code](provisioning.md#t3-code).
 - An app added to the NixOS user environment needs a macOS decision in `modules/shared/darwin-apps.nix`: a cask, a Nix package, or a reason to leave it out. The `darwin-config` check fails without one.
+- T3 Code finds the Android SDK at `~/Library/Android/sdk` even when started from the Dock or Finder, where `ANDROID_HOME` is not set. The `emulator` in that tree sets `ANDROID_HOME` and `ANDROID_SDK_ROOT` itself before it starts the store emulator, so an AVD boots from T3 Code's Device panel.
+
+### Mobile devices
+
+The option `my.mobileDevices`, in `home/h82/dev/mobile-devices.nix`, lists the iOS Simulators and Android Virtual Devices (AVDs) a Mac gets. The default list is one `iPhone 18 Pro` and one `pixel_10_pro`. Each entry has three fields:
+
+- `platform`: `"ios"` or `"android"`.
+- `model`: for iOS, a device type name from `xcrun simctl list devicetypes`, such as `iPhone 18 Pro`; for Android, a device id from `avdmanager list device -c`, such as `pixel_10_pro`.
+- `version`: optional. For iOS, an iOS version such as `"27.0"`; left out, it is the newest iOS Simulator SDK the installed Xcode carries. For Android, a pinned API key from `packages/android-sdk-repo.json`, such as `"36"` or `"37.0"`; left out, it is the newest pinned API level.
+
+Every apply, bootstrap included, runs `mobile-devices` as your user and creates each listed device that does not exist yet. The name carries the version: an iOS Simulator is named `<model> (iOS <version>)`, such as `iPhone 18 Pro (iOS 27.0)`, and an AVD `<model>_API_<api>`, such as `pixel_10_pro_API_37.0`. A device with that name is left as it is. When the newest iOS Simulator runtime is missing, the apply downloads it first. It downloads no other iOS version, so an entry pinned to an older iOS version whose runtime is not installed is skipped with a message. A device that cannot be created is reported and the apply continues.
+
+To add a device, add an entry to the option's `default` list in `home/h82/dev/mobile-devices.nix` and apply. These two entries add an iPad on the newest iOS and a Pixel on API 36:
+
+```nix
+{
+  platform = "ios";
+  model = "iPad Pro 13-inch (M5)";
+}
+{
+  platform = "android";
+  model = "pixel_10_pro";
+  version = "36";
+}
+```
+
+The apply never deletes, erases, or renames a device. A device you remove from the list, or one you created by hand, stays. When an App Store upgrade of Xcode brings a newer iOS runtime, or the SDK pin gains a newer API level, the next apply creates the listed devices again on the new version, and the old devices and runtimes stay. Each iOS runtime takes about 8 GB. Remove what you no longer need by hand:
+
+```sh
+xcrun simctl list devices            # names and UDIDs
+xcrun simctl delete <udid>
+xcrun simctl runtime list            # installed runtimes and their identifiers
+xcrun simctl runtime delete <identifier>
+avdmanager list avd -c               # AVD names
+avdmanager delete avd -n <name>
+```
+
+AVDs live in `~/.android/avd` and name their system image by its SDK path. When the pin drops an API level, the AVDs for that level no longer boot; delete them.
 
 ## Troubleshooting
 
@@ -218,7 +264,8 @@ brew uninstall --zap orbstack
 | `nr: not inside a git repository; …` | `nr` was run outside the clone. `cd` into it, or pass `--flake-dir <path>`. |
 | `docker` or `podman` reports that the connection is refused, while `podman machine list` shows the machine running | gvproxy, the machine's network helper, died. Run `podman machine stop`; the launch agent starts the machine again within a minute. |
 | The first apply stops in `podmanMachines` | `podman machine init` could not download the machine image. Apply again once the network is back. |
-| The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 7. |
+| The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 8. |
+| The apply prints `xcode: App Store install failed; sign in to the App Store …`, and `mobile-devices` reports that the iOS Simulators were skipped | The App Store is not signed in, so the apply skipped Xcode and the iOS Simulators and set up everything else. Open the App Store, sign in with your Apple Account, and apply again. `xcode: App Store upgrade failed; …` has the same fix; the installed Xcode stays at its version until then. |
 
 ## Verification
 
