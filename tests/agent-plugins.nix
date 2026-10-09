@@ -222,50 +222,6 @@ let
         fi
       '';
 
-      # A retired plugin must be unregistered on every machine that installed
-      # it, and never installed again. Both halves are read from the rendered
-      # activation script, so dropping the retirement entry, or restoring the
-      # plugin to the registry, turns this red.
-      retiredName = "orca-orchestration";
-      retiredRegistered = userConfig.my.agentPlugins ? ${retiredName};
-      retiredBase = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${retiredName}";
-
-      retiredStillDeclared = lib.optionalString retiredRegistered ''
-        echo 'my.agentPlugins still declares the retired ${retiredName} on ${hostName}' >&2
-        failed=1
-      '';
-
-      retiredRemoved = lib.optionalString (activation != null) ''
-        retiredBlocks=$(blocksFor ${esc script} ${esc retiredName})
-        # Every invocation naming the plugin, dry-run branch included, must
-        # retire it; one that does not would install it again.
-        if ! grep -qF -- '--retire' <<< "$retiredBlocks"; then
-          echo 'the agentPlugins activation script never retires ${retiredName} on ${hostName}' >&2
-          failed=1
-        fi
-        if grep -vF -- '--retire' <<< "$retiredBlocks" | grep -q .; then
-          echo 'the agentPlugins activation script still syncs the retired ${retiredName} on ${hostName}' >&2
-          failed=1
-        fi
-        # orca-orchestration was a Claude Code plugin: retiring it against any
-        # other agent would leave it registered, its hooks still firing.
-        retiredHarnessArg=$(argValue "$retiredBlocks" harness)
-        if [ "$retiredHarnessArg" != claude ]; then
-          echo "the ${retiredName} retirement must run against claude on ${hostName}, got: '$retiredHarnessArg'" >&2
-          failed=1
-        fi
-        retiredCliArg=$(argValue "$retiredBlocks" cli)
-        if [ -z ${esc claudeCli} ] || [ "$retiredCliArg" != ${esc claudeCli} ]; then
-          echo "the ${retiredName} retirement must use the claude-code package's CLI on ${hostName}, got: '$retiredCliArg'" >&2
-          failed=1
-        fi
-        retiredBaseArg=$(argValue "$retiredBlocks" base)
-        if [ "$retiredBaseArg" != ${esc (lib.escapeShellArg retiredBase)} ]; then
-          echo "the ${retiredName} retirement must delete ${retiredBase} on ${hostName}, got: '$retiredBaseArg'" >&2
-          failed=1
-        fi
-      '';
-
       symlinkPresent = lib.optionalString destinationTargeted ''
         echo 'Home Manager must not link ${destination} on ${hostName}; the activation entry owns it' >&2
         failed=1
@@ -274,7 +230,6 @@ let
     ''
       ${registryAbsent}${registryPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}
-      ${retiredStillDeclared}${retiredRemoved}
     '';
 in
 pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''

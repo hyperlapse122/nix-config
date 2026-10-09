@@ -427,7 +427,6 @@
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
-          retire-orca-skills = import ./tests/retire-orca-skills.nix { inherit pkgs self; };
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;

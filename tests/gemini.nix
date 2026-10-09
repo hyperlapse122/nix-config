@@ -29,13 +29,6 @@
     `target`, which only defaults to the attribute name, so the lookup compares
     resolved targets rather than attribute names.
 
-  - home.activation.antigravityHooks exists, runs after installPackages, points
-    the merger at ~/.gemini/config/hooks.json, and hands it a declaration that
-    only removes the retired `orca-orchestration` entry and declares no hook of
-    its own. Orca writes its own `orca-status` entry in that file, so owning
-    or removing any other key -- or the whole document -- would erase it. The
-    expected declaration is rendered here, not read back from the module.
-
   Whether the merge preserves the keys the agent owns is behaviour of the
   packaged script, not of evaluated configuration; the `agent-settings` check in
   flake.nix drives that script against a seeded settings file.
@@ -143,54 +136,6 @@ let
         fi
       '';
 
-      hooksActivation = userConfig.home.activation.antigravityHooks or null;
-      hooksScript = if hooksActivation == null then "" else (hooksActivation.data or "");
-      hooksAfterPackages = lib.elem "installPackages" (
-        if hooksActivation == null then [ ] else (hooksActivation.after or [ ])
-      );
-      hooksExpected = pkgs.writeText "antigravity-expected-hooks.json" (
-        builtins.toJSON {
-          remove = [ "orca-orchestration" ];
-        }
-      );
-
-      hooksAbsent = lib.optionalString (hooksActivation == null) ''
-        echo 'missing home.activation.antigravityHooks on ${hostName}' >&2
-        failed=1
-      '';
-
-      hooksPresent = lib.optionalString (hooksActivation != null) ''
-        if [ ${esc (lib.boolToString hooksAfterPackages)} != "true" ]; then
-          echo 'home.activation.antigravityHooks must run after installPackages on ${hostName}' >&2
-          failed=1
-        fi
-
-        if printf '%s' ${esc hooksScript} | grep -v '^[[:space:]]*#' \
-          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
-          echo 'the antigravityHooks activation script must not swallow the merger exit status on ${hostName}' >&2
-          failed=1
-        fi
-
-        hooksSettingsArg=$(printf '%s' ${esc hooksScript} \
-          | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
-        if [ "$hooksSettingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/.gemini/config/hooks.json"} ]; then
-          echo "the hooks merger must be pointed at ~/.gemini/config/hooks.json on ${hostName}, got: '$hooksSettingsArg'" >&2
-          failed=1
-        fi
-
-        hooksDeclaredPath=$(printf '%s' ${esc hooksScript} \
-          | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
-        if [ -z "$hooksDeclaredPath" ]; then
-          echo 'the antigravityHooks activation script passes no declared file on ${hostName}' >&2
-          failed=1
-        elif ! diff -u "$hooksDeclaredPath" ${hooksExpected} >&2; then
-          echo 'the declared Antigravity hooks must only remove the retired orca-orchestration entry on ${hostName}' >&2
-          failed=1
-        fi
-      '';
-
       symlinkPresent = lib.optionalString antigravityTargeted ''
         echo 'Home Manager must not target ~/.gemini/antigravity-cli/settings.json on ${hostName}; the Antigravity CLI owns it' >&2
         failed=1
@@ -199,7 +144,6 @@ let
     ''
       ${geminiAbsent}${geminiPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}
-      ${hooksAbsent}${hooksPresent}
     '';
 
   declaredExpected = pkgs.writeText "antigravity-expected-settings.json" (
