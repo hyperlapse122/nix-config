@@ -7,7 +7,8 @@
 # older version, a hand-made device, and an undeclared one, skips a platform
 # whose tool is missing with one message, reports a device it cannot create or
 # a platform step that stops early, and always exits 0. avdmanager runs only
-# with the JDK --java-home names. No scenario may delete, erase, rename, or move anything.
+# with the JDK --java-home names. No scenario may delete, erase, rename, or
+# move anything.
 set -euo pipefail
 
 helper=$1
@@ -230,8 +231,8 @@ scenario 27.0
 echo 27.0 > "$STUB/runtimes"
 jdk=$tools/no-such-jdk run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
 [ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] || bad "$label: the iOS device was not created"
-said "avdmanager could not list AVDs" || bad "$label: the failed listing was not reported: $(cat "$STUB/err")"
-said "JAVA_HOME is not set" || bad "$label: the report does not carry avdmanager's own error: $(cat "$STUB/err")"
+said "avdmanager could not list AVDs, so the Android Virtual Devices were skipped: ERROR: JAVA_HOME is not set" \
+  || bad "$label: the failed listing was not reported with avdmanager's own error: $(cat "$STUB/err")"
 [ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
 nothing_removed
 

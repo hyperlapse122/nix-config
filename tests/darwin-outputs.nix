@@ -249,7 +249,7 @@ let
             *) bad "the mobile-devices helper call lacks $arg" ;;
           esac
         done
-        javahome=$(grep -o -- '--java-home /nix/store/[^ ]*' <<<"$helper" | sed 's/^--java-home //' || true)
+        javahome=$(sed -n "s|.*--java-home '\{0,1\}\(/nix/store/[^ ']*\).*|\1|p" <<<"$helper")
         if [ -z "$javahome" ] || ! "$javahome/bin/java" -version >/dev/null 2>&1; then
           bad "the mobile-devices helper call lacks a --java-home whose bin/java runs: ''${javahome:-none}"
         fi
