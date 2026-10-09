@@ -14,7 +14,8 @@ Before the first setup, have:
 - an administrator account on the Mac, for `sudo`;
 - an Apple Account for the Mac App Store, which Xcode comes from;
 - one of the three YubiKeys and its PIN, for the identity recovery in step 10;
-- network and time for the first apply, which downloads Homebrew, every cask, the Podman machine image, Xcode, an iOS Simulator runtime, and the Android SDK.
+- network and time for the first apply, which downloads Homebrew, every cask, the Podman machine image, Xcode, an iOS Simulator runtime, and the Android SDK;
+- no directory at `~/Library/Android/sdk`, where Android Studio installs its SDK by default. Home Manager links the SDK there and stops the apply when it finds a real directory in the way. Move an existing one aside with `mv ~/Library/Android/sdk ~/Library/Android/sdk.before-nix-config`.
 
 ## What the configuration manages
 
@@ -24,7 +25,7 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **Host marker.** `/etc/nix-config-host` records the host name and whether the bootstrap or production output is applied. `nr` reads the host from it, so the name macOS shows for the machine does not matter.
 - **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, ChatGPT, and the other GUI apps. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones.
 - **Xcode.** Xcode is the one Mac App Store app the configuration manages. `modules/darwin/xcode.nix` installs it with `mas` after the casks, or upgrades it when the App Store has a newer version, so the App Store decides the version. When `xcode-select` points at the Command Line Tools or nowhere, the step points it at Xcode. The step also accepts the license and runs first-launch setup when either is pending. It needs the App Store signed in; see step 6.
-- **Android SDK.** A Mac gets the same pinned Android SDK as a Linux x86_64 host, from `packages/android-sdk.nix`, built for Apple silicon with `arm64-v8a` system images. It sits at `~/Library/Android/sdk`, a read-only link into the Nix store. `ANDROID_HOME` and `ANDROID_SDK_ROOT` point there.
+- **Android SDK.** A Mac gets the same pinned Android SDK as a Linux x86_64 host, from `packages/android-sdk.nix`, built for Apple silicon with `arm64-v8a` system images. It sits at `~/Library/Android/sdk`, a read-only link into the Nix store. `ANDROID_HOME` and `ANDROID_SDK_ROOT` point there. An SDK Android Studio already installed at that path must be moved aside before the first apply; see the prerequisites above.
 - **Mobile devices.** The iOS Simulators and Android Virtual Devices listed in `my.mobileDevices`; see [Mobile devices](#mobile-devices).
 - **Nix apps.** VSCodium and the T3 Code desktop app come from Nix. Home Manager copies their bundles into `~/Applications/Home Manager Apps`.
 - **Containers.** One Podman machine, with minikube inside it on production outputs; see [Containers](#containers).
@@ -265,6 +266,7 @@ AVDs live in `~/.android/avd` and name their system image by its SDK path. When 
 | `docker` or `podman` reports that the connection is refused, while `podman machine list` shows the machine running | gvproxy, the machine's network helper, died. Run `podman machine stop`; the launch agent starts the machine again within a minute. |
 | The first apply stops in `podmanMachines` | `podman machine init` could not download the machine image. Apply again once the network is back. |
 | The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 8. |
+| The apply stops with `Existing file '…/Library/Android/sdk' would be clobbered` | An SDK, usually Android Studio's, is a real directory at `~/Library/Android/sdk`, where Home Manager links the pinned SDK. Run `mv ~/Library/Android/sdk ~/Library/Android/sdk.before-nix-config` and apply again. Point Android Studio at the linked SDK, or delete the old one once nothing uses it. |
 | The apply prints `xcode: App Store install failed; sign in to the App Store …`, and `mobile-devices` reports that the iOS Simulators were skipped | The App Store is not signed in, so the apply skipped Xcode and the iOS Simulators and set up everything else. Open the App Store, sign in with your Apple Account, and apply again. `xcode: App Store upgrade failed; …` has the same fix; the installed Xcode stays at its version until then. |
 
 ## Verification

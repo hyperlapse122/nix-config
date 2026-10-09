@@ -5,8 +5,8 @@
 # downloads the newest iOS runtime only when it is missing, creates only the
 # declared devices whose versioned names do not exist yet, keeps devices of an
 # older version, a hand-made device, and an undeclared one, skips a platform
-# whose tool is missing with one message, reports a device it cannot create,
-# and always exits 0. No scenario may delete, erase, rename, or move anything.
+# whose tool is missing with one message, reports a device it cannot create or
+# a platform step that stops early, and always exits 0. No scenario may delete, erase, rename, or move anything.
 set -euo pipefail
 
 helper=$1
@@ -14,18 +14,21 @@ fail=0
 bad() { echo "mobile-devices: $*" >&2; fail=1; }
 
 # State the stubs read and write, under $STUB:
-#   sdk        the iOS Simulator SDK version xcodebuild reports
+#   sdk        the iOS Simulator SDK versions xcodebuild reports, one per
+#              line; a runtime download installs the first
 #   no-xcode   present when xcrun cannot find xcodebuild or simctl
+#   no-download  present when the runtime download fails
+#   bad-types  present when simctl prints a device type list that is not JSON
 #   runtimes   one installed runtime version per line
 #   sims       one simulator per line: <runtime id>|<name>
 #   avds       one AVD name per line
 #   calls      every call, its arguments joined with |
 #   stdin      what avdmanager create read from stdin
-stub=$(mktemp -d)
-mkdir -p "$stub/sdk/cmdline-tools/latest/bin" "$stub/no-avdmanager"
+tools=$(mktemp -d)
+mkdir -p "$tools/sdk/cmdline-tools/latest/bin" "$tools/no-avdmanager"
 # The build sandbox has no /usr/bin/env, so the stubs name this bash.
-printf '#!%s\n' "$BASH" > "$stub/xcrun"
-cat >> "$stub/xcrun" <<'EOF'
+printf '#!%s\n' "$BASH" > "$tools/xcrun"
+cat >> "$tools/xcrun" <<'EOF'
 (IFS='|'; echo "xcrun|$*") >> "$STUB/calls"
 if [ -e "$STUB/no-xcode" ]; then
   echo "xcrun: error: unable to find utility \"$1\", not a developer tool or in PATH" >&2
@@ -34,12 +37,19 @@ fi
 runtime_id() { echo "com.apple.CoreSimulator.SimRuntime.iOS-${1//./-}"; }
 case "$1 $2" in
   "xcodebuild -showsdks")
-    printf '[{"platform":"iphoneos","platformVersion":"%s"},' "$(cat "$STUB/sdk")"
-    printf '{"platform":"iphonesimulator","platformVersion":"%s"},' "$(cat "$STUB/sdk")"
+    printf '['
+    while read -r v; do
+      printf '{"platform":"iphoneos","platformVersion":"%s"},' "$v"
+      printf '{"platform":"iphonesimulator","platformVersion":"%s"},' "$v"
+    done < "$STUB/sdk"
     printf '{"platform":"macosx","platformVersion":"99.0"}]\n'
     ;;
   "xcodebuild -downloadPlatform")
-    cat "$STUB/sdk" >> "$STUB/runtimes"
+    if [ -e "$STUB/no-download" ]; then
+      echo "xcodebuild: error: the download failed" >&2
+      exit 70
+    fi
+    head -n1 "$STUB/sdk" >> "$STUB/runtimes"
     ;;
   "simctl list")
     case "$3" in
@@ -53,6 +63,10 @@ case "$1 $2" in
         printf ']}\n'
         ;;
       devicetypes)
+        if [ -e "$STUB/bad-types" ]; then
+          echo "CoreSimulator is out of date"
+          exit 0
+        fi
         printf '{"devicetypes":['
         printf '{"name":"iPhone 18","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18"},'
         printf '{"name":"iPhone 18 Pro","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"},'
@@ -76,8 +90,8 @@ case "$1 $2" in
     ;;
 esac
 EOF
-printf '#!%s\n' "$BASH" > "$stub/sdk/cmdline-tools/latest/bin/avdmanager"
-cat >> "$stub/sdk/cmdline-tools/latest/bin/avdmanager" <<'EOF'
+printf '#!%s\n' "$BASH" > "$tools/sdk/cmdline-tools/latest/bin/avdmanager"
+cat >> "$tools/sdk/cmdline-tools/latest/bin/avdmanager" <<'EOF'
 (IFS='|'; echo "avdmanager|$*") >> "$STUB/calls"
 case "$1 $2" in
   "list avd") cat "$STUB/avds" ;;
@@ -92,7 +106,7 @@ case "$1 $2" in
     ;;
 esac
 EOF
-chmod +x "$stub/xcrun" "$stub/sdk/cmdline-tools/latest/bin/avdmanager"
+chmod +x "$tools/xcrun" "$tools/sdk/cmdline-tools/latest/bin/avdmanager"
 
 scenario() {
   STUB=$(mktemp -d)
@@ -102,9 +116,12 @@ scenario() {
 }
 # Clears the call log and keeps the state, for a second apply.
 again() { : > "$STUB/calls"; }
+# Runs the helper on the stub tools. A caller points one call at another xcrun
+# or SDK root with an xcrun= or sdk= prefix, which bash scopes to that call;
+# an empty value keeps the stub.
 run() {
   local status=0
-  "$helper" --xcrun "$stub/xcrun" --sdk-root "$stub/sdk" "$@" > "$STUB/out" 2> "$STUB/err" || status=$?
+  "$helper" --xcrun "${xcrun:-$tools/xcrun}" --sdk-root "${sdk:-$tools/sdk}" "$@" > "$STUB/out" 2> "$STUB/err" || status=$?
   [ "$status" = 0 ] || bad "$label: the helper exited $status: $(cat "$STUB/err")"
 }
 count() {
@@ -140,14 +157,14 @@ run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
 has_line no stdin || bad "$label: avdmanager's custom hardware prompt was not answered no"
 nothing_removed
 
-label="second apply (AE1)"
+label="second apply"
 again
 run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
 [ "$(downloads)" = 0 ] || bad "$label: an installed runtime was downloaded again"
 [ "$(creates)" = 0 ] || bad "$label: existing devices were created again: $(cat "$STUB/calls")"
 nothing_removed
 
-label="newer versions (AE2)"
+label="newer versions"
 scenario 27.1
 echo 27.0 > "$STUB/runtimes"
 echo "com.apple.CoreSimulator.SimRuntime.iOS-27-0|iPhone 18 Pro (iOS 27.0)" > "$STUB/sims"
@@ -162,7 +179,7 @@ has_line 27.0 runtimes || bad "$label: the iOS 27.0 runtime is gone"
 has_line pixel_9_API_36.0 avds || bad "$label: pixel_9_API_36.0 is gone"
 nothing_removed
 
-label="undeclared devices (AE3)"
+label="undeclared devices"
 scenario 27.0
 echo 27.0 > "$STUB/runtimes"
 echo "com.apple.CoreSimulator.SimRuntime.iOS-27-0|My Hand-Made Phone" > "$STUB/sims"
@@ -176,14 +193,11 @@ has_line pixel_8_API_37.0 avds || bad "$label: the undeclared AVD is gone"
 nothing_removed
 
 for broken_xcode in failing missing; do
-  label="no Xcode, xcrun $broken_xcode (AE4)"
+  label="no Xcode, xcrun $broken_xcode"
   scenario 27.0
-  xcrun=$stub/xcrun
-  if [ "$broken_xcode" = failing ]; then touch "$STUB/no-xcode"; else xcrun=$STUB/no-such-xcrun; fi
-  status=0
-  "$helper" --xcrun "$xcrun" --sdk-root "$stub/sdk" --android-api 37.0 \
-    --device "ios:iPhone 18 Pro" --device android:pixel_9 > "$STUB/out" 2> "$STUB/err" || status=$?
-  [ "$status" = 0 ] || bad "$label: the helper exited $status"
+  other_xcrun=
+  if [ "$broken_xcode" = failing ]; then touch "$STUB/no-xcode"; else other_xcrun=$STUB/no-such-xcrun; fi
+  xcrun=$other_xcrun run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
   [ "$(count "$(avd_create pixel_9 37.0)")" = 1 ] || bad "$label: the Android device was not created"
   [ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
   said "App Store" || bad "$label: the message does not name the App Store sign-in: $(cat "$STUB/err")"
@@ -193,10 +207,8 @@ done
 
 label="no avdmanager"
 scenario 27.0
-status=0
-"$helper" --xcrun "$stub/xcrun" --sdk-root "$stub/no-avdmanager" --android-api 37.0 \
-  --device "ios:iPhone 18 Pro" --device android:pixel_9 --device android:pixel_8 > "$STUB/out" 2> "$STUB/err" || status=$?
-[ "$status" = 0 ] || bad "$label: the helper exited $status"
+sdk=$tools/no-avdmanager run --android-api 37.0 \
+  --device "ios:iPhone 18 Pro" --device android:pixel_9 --device android:pixel_8
 [ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] || bad "$label: the iOS device was not created"
 said avdmanager || bad "$label: the message does not name avdmanager: $(cat "$STUB/err")"
 [ "$(grep -c avdmanager "$STUB/err")" = 1 ] || bad "$label: the missing avdmanager was reported $(grep -c avdmanager "$STUB/err") times, not once"
@@ -221,6 +233,70 @@ run --android-api 37.0 --device "ios:iPhone 18 Pro:26.0" --device android:pixel_
   || bad "$label: iPhone 18 Pro (iOS 26.0) was not created on the iOS 26.0 runtime: $(cat "$STUB/calls")"
 [ "$(count "$(avd_create pixel_9 36.0)")" = 1 ] || bad "$label: pixel_9_API_36.0 was not created from the 36.0 image"
 [ "$(creates)" = 2 ] || bad "$label: $(creates) devices were created, not 2"
+nothing_removed
+
+label="a device declared twice"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device "ios:iPhone 18 Pro" \
+  --device android:pixel_9 --device android:pixel_9
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] \
+  || bad "$label: iPhone 18 Pro (iOS 27.0) was not created exactly once: $(cat "$STUB/calls")"
+[ "$(count "$(avd_create pixel_9 37.0)")" = 1 ] \
+  || bad "$label: pixel_9_API_37.0 was not created exactly once: $(cat "$STUB/calls")"
+[ "$(creates)" = 2 ] || bad "$label: $(creates) devices were created, not 2"
+nothing_removed
+
+label="a device type list that is not JSON"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+touch "$STUB/bad-types"
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
+said "the iOS step stopped early" || bad "$label: the iOS step's failure was not reported: $(cat "$STUB/err")"
+[ "$(count "$(avd_create pixel_9 37.0)")" = 1 ] || bad "$label: the Android device was not created after the iOS step failed"
+[ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
+nothing_removed
+
+label="a failed runtime download"
+scenario 27.0
+touch "$STUB/no-download"
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device "ios:iPhone 18"
+[ "$(downloads)" = 1 ] || bad "$label: the runtime download was attempted $(downloads) times, not once"
+said "downloading the iOS 27.0 Simulator runtime failed" || bad "$label: the failed download was not reported: $(cat "$STUB/err")"
+for name in "iPhone 18 Pro (iOS 27.0)" "iPhone 18 (iOS 27.0)"; do
+  said "so $name was skipped" || bad "$label: $name was not reported as skipped: $(cat "$STUB/err")"
+done
+[ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created with no runtime"
+nothing_removed
+
+label="an older iOS version without its runtime"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro:26.0"
+[ "$(downloads)" = 0 ] || bad "$label: a download was attempted for a version older than the SDK"
+said "so iPhone 18 Pro (iOS 26.0) was skipped" || bad "$label: the device was not reported as skipped: $(cat "$STUB/err")"
+[ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created with no runtime"
+nothing_removed
+
+label="a runtime with a patch level"
+scenario 27.0
+echo 27.0.1 > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro"
+[ "$(downloads)" = 0 ] || bad "$label: the installed iOS 27.0.1 runtime was not taken for the 27.0 SDK, so it was downloaded"
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0.1)")" = 1 ] \
+  || bad "$label: iPhone 18 Pro (iOS 27.0) was not created on the iOS 27.0.1 runtime: $(cat "$STUB/calls")"
+nothing_removed
+
+# 27.0 is listed first and sorts before 9.3 as text, so only a numeric
+# comparison picks it.
+label="more than one iOS Simulator SDK"
+scenario 27.0
+echo 9.3 >> "$STUB/sdk"
+echo 27.0 > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro"
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] \
+  || bad "$label: iPhone 18 Pro (iOS 27.0) was not created from the newest SDK, 27.0: $(cat "$STUB/calls")"
+[ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
 nothing_removed
 
 [ "$fail" = 0 ] || exit 1

@@ -39,14 +39,14 @@ in
             description = "Whether the device is an iOS Simulator or an Android Virtual Device.";
           };
           model = lib.mkOption {
-            type = lib.types.str;
+            type = lib.types.nonEmptyStr;
             description = ''
               For iOS, a device type name from `xcrun simctl list devicetypes`;
               for Android, a device id from `avdmanager list device -c`.
             '';
           };
           version = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
+            type = lib.types.nullOr lib.types.nonEmptyStr;
             default = null;
             description = ''
               The iOS version or pinned Android API key (such as `37.0`); null
@@ -74,12 +74,14 @@ in
 
   # Home Manager on nix-darwin activates on every apply, so an App Store
   # Xcode upgrade with no Nix change still gets devices for its new runtime.
-  # The helper reports its own failures and always exits 0.
+  # The helper reports its own failures and exits 0; a usage error or a
+  # crash still exits non-zero, which the `if !` guard turns into one line,
+  # because activation runs under `set -e` and must never stop here.
   config.home.activation.mobileDevices = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     if [[ -v DRY_RUN ]]; then
       echo "Creating the missing declared iOS Simulators and Android Virtual Devices"
-    else
-      ${lib.getExe helper} --xcrun /usr/bin/xcrun --sdk-root ${lib.escapeShellArg "${config.home.homeDirectory}/Library/Android/sdk"} --android-api ${lib.escapeShellArg androidApi} ${deviceArgs}
+    elif ! ${lib.getExe helper} --xcrun /usr/bin/xcrun --sdk-root ${lib.escapeShellArg config.home.sessionVariables.ANDROID_HOME} --android-api ${lib.escapeShellArg androidApi} ${deviceArgs}; then
+      echo "mobileDevices: the mobile-devices helper failed, so some declared devices may be missing; apply again after fixing the error above" >&2
     fi
   '';
 }

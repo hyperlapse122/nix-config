@@ -492,32 +492,34 @@ def emulator_min_revision entry
   nil
 end
 
+# Returns [abi, entry] for the IMAGE_TAG image of one ABI on platform api. The
+# image must not be older than the one already pinned for that ABI, and must
+# boot on the pinned emulator.
+def select_image api, abi, images, emulator, current
+  entry = images.dig(api, IMAGE_TAG, abi)
+  label = "system image #{api} #{IMAGE_TAG} #{abi}"
+  raise Failure, "upstream lists no #{IMAGE_TAG} #{abi} system image for platform #{api}" unless entry
+
+  version = revision_version(entry['revision-details'])
+  pinned = current&.dig('images', api, IMAGE_TAG, abi, 'revision-details')
+  pinned &&= revision_version(pinned)
+  if pinned && compare_versions(version, pinned).negative?
+    raise Failure, "#{label} revision #{version} is older than the pinned #{pinned}; refusing to downgrade"
+  end
+
+  minimum = emulator_min_revision(entry)
+  if minimum && compare_versions(emulator, minimum).negative?
+    raise Failure, "#{label} needs emulator #{minimum} or newer, but the pinned emulator is #{emulator}"
+  end
+
+  [abi, entry]
+end
+
 # Returns the pinned images: the IMAGE_TAG image of every IMAGE_ABIS ABI for
-# every selected platform, keyed as parse_images keys them. Each image must not
-# be older than the one already pinned for its ABI, and must boot on the
-# pinned emulator.
+# every selected platform, keyed as parse_images keys them.
 def select_images images, platforms, emulator, current
   platforms.to_h do |api|
-    abis = IMAGE_ABIS.to_h do |abi|
-      entry = images.dig(api, IMAGE_TAG, abi)
-      label = "system image #{api} #{IMAGE_TAG} #{abi}"
-      raise Failure, "upstream lists no #{IMAGE_TAG} #{abi} system image for platform #{api}" unless entry
-
-      version = revision_version(entry['revision-details'])
-      pinned = current&.dig('images', api, IMAGE_TAG, abi, 'revision-details')
-      pinned &&= revision_version(pinned)
-      if pinned && compare_versions(version, pinned).negative?
-        raise Failure, "#{label} revision #{version} is older than the pinned #{pinned}; refusing to downgrade"
-      end
-
-      minimum = emulator_min_revision(entry)
-      if minimum && compare_versions(emulator, minimum).negative?
-        raise Failure, "#{label} needs emulator #{minimum} or newer, but the pinned emulator is #{emulator}"
-      end
-
-      [abi, entry]
-    end
-
+    abis = IMAGE_ABIS.to_h { |abi| select_image(api, abi, images, emulator, current) }
     [api, { IMAGE_TAG => abis }]
   end
 end
