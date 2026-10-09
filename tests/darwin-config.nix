@@ -36,7 +36,8 @@
     login agent and bootstrap has none. No OrbStack cask, credHelpers merge,
     or Docker Hub index alias remains.
   - The system layer turns off store auto-optimisation, installs the shared
-    font list, and records the host and variant in /etc/nix-config-host.
+    font list, switches appearance automatically with AppleInterfaceStyle
+    unset, and records the host and variant in /etc/nix-config-host.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -336,6 +337,10 @@ let
       (check (
         namesOf config.fonts.packages == namesOf (import ../modules/shared/font-packages.nix pkgs)
       ) "${entry.name}: the macOS font list differs from modules/shared/font-packages.nix")
+      (check (
+        config.system.defaults.NSGlobalDomain.AppleInterfaceStyleSwitchesAutomatically == true
+        && config.system.defaults.NSGlobalDomain.AppleInterfaceStyle == null
+      ) "${entry.name}: appearance must switch automatically, with AppleInterfaceStyle unset")
       (check (
         lib.hasInfix "host=${entry.fixture}\n" marker
         && lib.hasInfix "variant=${if entry.bootstrap then "bootstrap" else "production"}\n" marker
