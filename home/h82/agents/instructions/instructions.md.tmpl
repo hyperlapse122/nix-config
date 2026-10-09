@@ -5,7 +5,7 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 - Read, create, and edit files with the file tools. Do not use `cat`, `head`, `tail`, `sed -n`, `sed -i`, `awk`, `perl -i`, `echo >`, or heredocs for this.
 - Read web pages and documentation, and search the web, with the web tools rather than `curl` or `wget`.
 - When the user's answer changes what you do next, ask with the question tool rather than ending your turn on an open question.
-- Hand independent work that can run in parallel to the subagent tool. When the work needs a different model, follow Cross-model delegation below instead.
+- Hand independent work that can run in parallel to the subagent tool, with its model chosen by Model routing below. When the work needs another provider, follow Cross-model delegation below instead.
 - Keep the shell for work no native tool covers: builds, tests, formatters, `git`, package managers, and searches of the tree.
 - When a native tool fails or cannot express an operation, say so and use the shell for that one operation only. Go back to the native tool for the next one.
 
@@ -57,6 +57,29 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 {{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
 {{- end }}
 
+# Model routing
+
+These are the user's default models for each role in Compound Engineering (CE) work, such as a skill's scouts, workers, and reviewers. They are a starting point, not a rule.
+
+- Each routing choice follows this order: the user's conversation, then the project's instructions and its CE config (`.compound-engineering/config.local.yaml`, then `.compound-engineering/config.yaml`) in the order the invoked skill defines, then the table below, then the skill's own default mapping.
+- Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why.
+- The table picks a model for a role; it does not decide which work you do yourself and which you hand off.
+- A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row.
+- A short scout is one whose result you need before your next step. A broad scout can run in the background while you continue.
+- When Antigravity is not runnable through T3 Code, a broad scout uses the short scout's class.
+- Never route work to Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), to any Codex Terra model, or to any Claude Fable model.
+- Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one. An Antigravity model carries its effort in its id, such as the `low` in `gemini-3.8-flash-low`.
+- Apply the same-provider cells in every session, and route to another provider only through T3 Code, as Cross-model delegation below describes.
+- When your native subagent tool cannot select the table's class and T3 Code is unavailable, let the subagent inherit your session model and say so in one line.
+
+Columns name the harness running the orchestrating session. Cells name a model class, and the latest runnable version of that class serves it.
+
+| Role | Claude Code session | Codex session | Antigravity session |
+| --- | --- | --- | --- |
+| Short scout | Haiku | Luna | Flash low |
+| Broad scout | Flash low through T3 Code | Flash low through T3 Code | Flash low |
+| Worker | Sonnet | Luna | Flash medium |
+
 # Cross-model delegation
 
 When this session runs inside T3 Code, delegate work that needs another model through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you.
@@ -64,20 +87,20 @@ When this session runs inside T3 Code, delegate work that needs another model th
 - This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool.
 - Tools the session lists by name count as available even when the harness must load their schemas before the first call.
 - The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`. A harness may expose them under a prefix such as `mcp__t3-code__`.
-- When a skill tells you to discover, attest, or launch another harness for cross-model work, delegate through T3 Code instead, before any of the skill's own discovery or launch steps.
+- When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens.
 - Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
-- Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose a provider other than your own, a model, and options that suit the task.
-- Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Pro or Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable.
+- Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose a provider other than your own and a model that suit the task, following Model routing above.
+- Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Flash for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable.
 - Compare versions only within that class: a newer model of another class does not outrank the class the task needs.
 - Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model.
-- Set the chosen version's options, such as reasoning effort, for the task instead of inheriting its defaults, which can differ between versions of one class.
+- When a skill's cross-model pass runs through T3 Code, take its model and effort from `cross_model_model` and `cross_model_effort` when they are set, otherwise from the skill's own mapping; the latest-version rule does not replace a model the skill names.
 - Tell the user which provider and model you delegated to.
 - Run every delegated task in full-access runtime mode.
 - Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation.
 - When the delegated work must not change files, such as a review, say so explicitly in the task prompt.
 - Delegate long work asynchronously, then continue other work or end your turn instead of polling. Read `task_status` only when you need the result mid-turn.
 - When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run.
-- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider; fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did.
+- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider. A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Flash at high effort on Antigravity, which the skills do not map. Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did.
 - Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact.
 
 # Review findings
