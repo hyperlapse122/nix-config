@@ -76,8 +76,7 @@ in
         }
         .${hostKind}
       )
-    ]
-    ++ gui [ (import ../../packages/orca.nix { inherit pkgs; }) ];
+    ];
 
   home.sessionVariables.LANGUAGE = "ko_KR:ko:en_US:en";
 }

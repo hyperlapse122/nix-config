@@ -851,60 +851,6 @@
             })}
             touch $out
           '';
-          orca-desktop =
-            let
-              assertConfiguration =
-                entry:
-                let
-                  service = entry.user.systemd.user.services.orca-settings-reconcile or null;
-                  activation = entry.user.home.activation.orcaSettings or null;
-                  package = userPackageOf "orca-ide" entry;
-                  dockerHost = entry.user.home.sessionVariables.DOCKER_HOST or "";
-                  fakeRuntimeDir = "/run/user/4242";
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "orca-ide";
-                    executables = [
-                      "orca-ide"
-                      "orca"
-                    ];
-                    desktopEntries = [ "orca.desktop" ];
-                  } entry}
-                  ${pkgs.lib.optionalString (package != null) ''
-                    # Expand both values under one runtime directory, so a path
-                    # baked in at build time cannot match the session's socket.
-                    containerHost=$(
-                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
-                      line=$(grep -E '^[[:space:]]*--setenv CONTAINER_HOST ' ${package}/bin/orca-ide) || exit 0
-                      eval "set -- $line"
-                      printf '%s' "$3"
-                    )
-                    dockerHost=$(
-                      XDG_RUNTIME_DIR=${fakeRuntimeDir}
-                      printf '%s' "${pkgs.lib.escape [ "\"" "\\" "`" ] dockerHost}"
-                    )
-                    if [ -z "$containerHost" ] || [ "$containerHost" != "$dockerHost" ] \
-                      || [ "$containerHost" = "''${containerHost#*${fakeRuntimeDir}/}" ]; then
-                      echo "orca-ide sandbox CONTAINER_HOST '$containerHost' is not the session Podman socket '$dockerHost' on ${entry.name}" >&2
-                      fail=1
-                    fi
-                  ''}
-                  ${pkgs.lib.optionalString (service != null) ''
-                    echo 'unexpected systemd.user.services.orca-settings-reconcile on ${entry.name}' >&2
-                    fail=1
-                  ''}
-                  ${pkgs.lib.optionalString (activation != null) ''
-                    echo 'unexpected home.activation.orcaSettings on ${entry.name}' >&2
-                    fail=1
-                  ''}
-                '';
-            in
-            pkgs.runCommand "orca-desktop-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
           claude-desktop =
             let
               assertConfiguration =
@@ -1151,8 +1097,8 @@
               expect_setenv T3CODE_DISABLE_AUTO_UPDATE 1
               expect_setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
 
-              # Expanded under a fake runtime directory, as the orca-desktop
-              # check does, so a path baked in at build time cannot match.
+              # Expanded under a fake runtime directory, so a path baked in at
+              # build time cannot match.
               containerHost=$(
                 XDG_RUNTIME_DIR=${fakeRuntimeDir}
                 line=$(grep -E '^[[:space:]]*--setenv CONTAINER_HOST ' ${desktop}/bin/t3code-desktop) || exit 0
