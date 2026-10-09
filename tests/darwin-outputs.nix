@@ -29,6 +29,9 @@
     emulator/emulator wrapper that defaults ANDROID_HOME and ANDROID_SDK_ROOT
     to ~/Library/Android/sdk before it execs the store emulator; PATH gains
     the emulator directory;
+  - the activation script runs the mobileDevices step after linkGeneration,
+    and it calls the built mobile-devices helper with /usr/bin/xcrun, every
+    declared device, and the newest pinned API with an arm64-v8a image;
   - with my.t3.desktop.enable, the T3 Code nightly bundle is in the profile,
     its main executable is byte-identical to the release zip's, and a launch
     agent sets T3CODE_DISABLE_AUTO_UPDATE=1;
@@ -53,6 +56,20 @@ let
   androidPlatforms = lib.attrNames (lib.importJSON ../packages/android-sdk-repo.json)
     .packages.platforms;
 
+  # Computed from the pin rather than taken from the module, so a wrong API
+  # in the module fails. Keys mix "36" and "37.0", hence compareVersions.
+  newestArm64Api =
+    lib.foldl'
+      (newest: api: if newest == null || builtins.compareVersions api newest > 0 then api else newest)
+      null
+      (
+        lib.attrNames (
+          lib.filterAttrs (
+            _: image: lib.elem "arm64-v8a" (lib.attrNames (image.google_apis or { }))
+          ) (lib.importJSON ../packages/android-sdk-repo.json).images
+        )
+      );
+
   fontFamilies = [
     "JetBrainsMono Nerd Font"
     "D2CodingLigature Nerd Font"
@@ -69,6 +86,15 @@ let
       system = entry.host.system;
       t3Desktop = lib.findFirst (p: (p.pname or "") == "t3code-desktop") null user.home.packages;
       production = if entry.bootstrap then "0" else "1";
+      deviceArgs = map (
+        device:
+        "--device ${
+          lib.escapeShellArg (
+            "${device.platform}:${device.model}"
+            + lib.optionalString (device.version != null) ":${device.version}"
+          )
+        }"
+      ) (user.my.mobileDevices or [ ]);
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -212,6 +238,25 @@ let
         fi
       fi
       grep -q 'Library/Android/sdk/emulator' "$vars" || bad "PATH does not gain the SDK's emulator directory"
+
+      devices=$(step mobileDevices); devices=''${devices:-0}
+      [ "$devices" -gt "$link" ] || bad "the mobileDevices step does not run after linkGeneration"
+      helper=$(grep -m1 '/nix/store/[^ ]*/bin/mobile-devices --xcrun ' "$gen/activate" || true)
+      helperexe=$(grep -o '/nix/store/[^ ]*/bin/mobile-devices' <<<"$helper" || true)
+      if [ -z "$helper" ] || [ ! -x "$helperexe" ]; then
+        bad "activation does not call the built mobile-devices helper"
+      else
+        ${lib.optionalString (deviceArgs == [ ]) ''bad "my.mobileDevices declares no device"''}
+        for arg in \
+          '--xcrun /usr/bin/xcrun ' \
+          ${lib.escapeShellArg "--android-api ${lib.escapeShellArg newestArm64Api} "} \
+          ${lib.escapeShellArgs deviceArgs}; do
+          case $helper in
+            *"$arg"*) ;;
+            *) bad "the mobile-devices helper call lacks $arg" ;;
+          esac
+        done
+      fi
 
       ${lib.optionalString (t3Desktop != null) ''
         app=${t3Desktop}/Applications/'T3 Code (Nightly).app'

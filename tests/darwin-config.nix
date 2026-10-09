@@ -47,6 +47,12 @@
     no android-sdk data file; ANDROID_HOME and ANDROID_SDK_ROOT name that
     path and PATH gains its emulator directory; the linked SDK builds one
     arm64-v8a Google APIs image per pinned platform and no x86_64 image.
+  - Mobile devices: my.mobileDevices defaults to one ios and one android
+    device; the mobileDevices step runs after linkGeneration, calls the
+    mobile-devices helper only outside a dry run, and passes /usr/bin/xcrun,
+    the SDK root, every declared device, and the newest pinned API with an
+    arm64-v8a image, computed here from the pin. No non-NixOS Linux fixture
+    has the step.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -246,6 +252,31 @@ let
       androidDataFiles = lib.filter (file: file.enable && file.target == "android-sdk") (
         lib.attrValues user.xdg.dataFile
       );
+      devicesStep = activation.mobileDevices or { };
+      devicesData = plain (devicesStep.data or "");
+      # The helper creates devices, so a dry run must reach only the echo:
+      # its one call is the last line of the else branch, right before fi.
+      devicesLines = lib.filter (line: line != "") (map lib.trim (lib.splitString "\n" devicesData));
+      devicesCount = lib.length devicesLines;
+      devicesLine =
+        offset: if devicesCount > offset then lib.elemAt devicesLines (devicesCount - 1 - offset) else "";
+      devicesCall = devicesLine 1;
+      devicesGuarded =
+        devicesCount >= 4
+        && lib.head devicesLines == "if [[ -v DRY_RUN ]]; then"
+        && devicesLine 0 == "fi"
+        && devicesLine 2 == "else"
+        && lib.filter (lib.hasInfix "mobile-devices/bin/mobile-devices ") devicesLines == [ devicesCall ];
+      devices = user.my.mobileDevices or [ ];
+      platformCount = platform: lib.length (lib.filter (device: device.platform == platform) devices);
+      deviceArg =
+        device:
+        "--device ${
+          lib.escapeShellArg (
+            "${device.platform}:${device.model}"
+            + lib.optionalString (device.version != null) ":${device.version}"
+          )
+        }";
     in
     lib.concatStrings [
       (check (sort casks == sort expectedCasks)
@@ -437,7 +468,50 @@ let
         )
         "${entry.name}: the Android SDK must build one arm64-v8a Google APIs image per pinned platform and no x86_64 image, got ${builtins.toJSON androidImages}"
       )
+      (check (
+        devicesStep != { } && lib.elem "linkGeneration" (devicesStep.after or [ ])
+      ) "${entry.name}: activation must run the mobileDevices step after linkGeneration")
+      (check devicesGuarded "${entry.name}: a dry run must not run the mobile-devices helper")
+      (check (platformCount "ios" == 1 && platformCount "android" == 1)
+        "${entry.name}: my.mobileDevices must default to one ios and one android device, got ${builtins.toJSON devices}"
+      )
+      (check
+        (
+          lib.hasInfix "--xcrun /usr/bin/xcrun " devicesCall
+          && lib.hasInfix "--sdk-root ${lib.escapeShellArg androidSdkRoot} " devicesCall
+          && lib.all (device: lib.hasInfix (deviceArg device) devicesCall) devices
+        )
+        "${entry.name}: the mobile-devices helper must get /usr/bin/xcrun, ${androidSdkRoot}, and every declared device"
+      )
+      (check (lib.hasInfix "--android-api ${lib.escapeShellArg newestArm64Api} " devicesCall) "${entry.name}: the mobile-devices helper must get --android-api ${newestArm64Api}, the newest pinned API with an arm64-v8a image")
     ];
+
+  # Computed here from the pin rather than taken from the module, so a wrong
+  # API in the module fails. Keys mix "36" and "37.0", hence compareVersions.
+  newestArm64Api =
+    lib.foldl'
+      (newest: api: if newest == null || builtins.compareVersions api newest > 0 then api else newest)
+      null
+      (
+        lib.attrNames (
+          lib.filterAttrs (
+            _: image: lib.elem "arm64-v8a" (lib.attrNames (image.google_apis or { }))
+          ) (lib.importJSON ../packages/android-sdk-repo.json).images
+        )
+      );
+
+  # Device creation is macOS-only; the module must not reach other hosts.
+  assertNoDevicesElsewhere = lib.concatStrings [
+    (check (
+      linuxFixtures != [ ]
+    ) "no non-NixOS Linux fixture, so the mobileDevices absence check would pass vacuously")
+    (lib.concatMapStrings (
+      e:
+      check (
+        !e.host.home.config.home.activation ? mobileDevices
+      ) "${e.name}: a non-NixOS Linux host runs the mobileDevices activation step"
+    ) linuxFixtures)
+  ];
 in
 pkgs.runCommand "darwin-config" { } ''
   fail=0
@@ -447,6 +521,7 @@ pkgs.runCommand "darwin-config" { } ''
   ${assertDiscovery}
   ${assertMapping}
   ${lib.concatMapStrings assertEntry darwinFixtures}
+  ${assertNoDevicesElsewhere}
   [ "$fail" = 0 ] || exit 1
   touch "$out"
 ''
