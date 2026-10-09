@@ -368,10 +368,10 @@
               fi
 
               # An owned key through the packaged binary: the repository's entry
-              # starts stale with an extra event, and Orca's entry beside it must
-              # come through byte for byte.
+              # starts stale with an extra event, and another writer's entry
+              # beside it must come through byte for byte.
               mkdir -p home/.gemini/config
-              printf '{"orca-status":{"enabled":true,"Stop":[{"type":"command","command":"orca-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
+              printf '{"foreign-status":{"enabled":true,"Stop":[{"type":"command","command":"foreign-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
                 > home/.gemini/config/hooks.json
               printf '{"own":{"repo-owned":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
                 > owned.json
@@ -380,7 +380,7 @@
               ${pkgs.python3}/bin/python3 - <<'PY'
               import json
               merged = json.load(open('home/.gemini/config/hooks.json'))
-              assert merged['orca-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'orca-hook', 'timeout': 10}]}, merged
+              assert merged['foreign-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'foreign-hook', 'timeout': 10}]}, merged
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
 
@@ -969,8 +969,9 @@
               # given on the claude-code check: versionCheckHook already proves
               # the binary reports that attribute. The wrapper flags are read
               # from the installed bin/codex itself, because they are what keep
-              # Codex from updating itself under Orca's CODEX_HOME, which never
-              # receives the declared config.toml keys.
+              # Codex from updating itself under any other CODEX_HOME, such as
+              # T3 Code's per-provider homes, which never receive the declared
+              # config.toml keys.
               pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
               wrapperFlags = [
                 "-c check_for_update_on_startup=false"

@@ -31,9 +31,7 @@
     toolchain was patched for NixOS.
   - each pinned CMake's cmake and ninja run and cmake reports its version,
     which Gradle's externalNativeBuild matches its cmake version against.
-  - emulator/emulator runs and reports the pinned emulator version. Orca
-    accepts an SDK root only when platform-tools/adb and emulator/emulator
-    both exist under it, so this and the adb check together are its test.
+  - emulator/emulator runs and reports the pinned emulator version.
   - hm-session-vars.sh exports ANDROID_HOME and ANDROID_SDK_ROOT as the link
     and ANDROID_NDK_HOME as the newest pinned NDK under it,
     appends the cmdline-tools bin and platform-tools directories to PATH on

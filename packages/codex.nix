@@ -34,8 +34,8 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pkgs.writableTmpDirAsHomeHook
   ];
 
-  # The update flags hold under any CODEX_HOME, including the one Orca sets in
-  # its terminals, whose config.toml never receives the declared settings.
+  # The update flags hold under any CODEX_HOME, including the per-provider
+  # homes T3 Code sets, whose config.toml never receives the declared settings.
   # daemon_auto_start would install and update a background copy of Codex
   # outside the store; nixpkgs patches it off, which a prebuilt pin cannot.
   # Codex spawns codex-code-mode-host from beside its own executable, never
