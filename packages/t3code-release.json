@@ -1,41 +1,41 @@
 {
-  "version": "0.0.46-nightly.20261009.2861",
-  "tag": "v0.0.46-nightly.20261009.2861",
+  "version": "0.0.46-nightly.20261009.2873",
+  "tag": "v0.0.46-nightly.20261009.2873",
   "platforms": {
     "x86_64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.0.46-nightly.20261009.2861-x86_64.AppImage",
-        "sha256": "4e39df58087048664a318fc69a83952677265cb9f6b13501fe01b815f2f4bb1e",
-        "hash": "sha256-TjnfWAhwSGZKMY/GmoOVJncmXLn2sTUB/gG4FfL0ux4="
+        "asset": "T3-Code-0.0.46-nightly.20261009.2873-x86_64.AppImage",
+        "sha256": "5fb05fcc33cee52ea29df1462569da4a2b569645015e85576856ab24651f797e",
+        "hash": "sha256-X7BfzDPO5S6infFGJWnaSitWlkUBXoVXaFarJGUfeX4="
       },
       "cli": {
-        "asset": "t3-0.0.46-nightly.20261009.2861-linux-x64.tar.gz",
-        "sha256": "7537ed1d49fc1b8eb8127141b33a9f0b5fc53ec03a83cb765732a1dced39dd2e",
-        "hash": "sha256-dTftHUn8G464EnFBszqfC1/FPsA6g8t2VzKh3O053S4="
+        "asset": "t3-0.0.46-nightly.20261009.2873-linux-x64.tar.gz",
+        "sha256": "9274376802b95091e6f601c488839cf1b264a32bc8904077c4cf641a60f05fd3",
+        "hash": "sha256-knQ3aAK5UJHm9gHEiIOc8bJkoyvIkEB3xM9kGmDwX9M="
       }
     },
     "aarch64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.0.46-nightly.20261009.2861-arm64.AppImage",
-        "sha256": "d6b8201a6fb54fbb71b2916c470d74fc96f215cd53a44cbf03d49c2c129c9946",
-        "hash": "sha256-1rggGm+1T7txspFsRw10/JbyFc1TpEy/A9ScLBKcmUY="
+        "asset": "T3-Code-0.0.46-nightly.20261009.2873-arm64.AppImage",
+        "sha256": "bb113a8091ba9fb00520b459a46c2fc6725684d4d591bb6eb35df98b7c66d311",
+        "hash": "sha256-uxE6gJG6n7AFILRZpGwvxnJWhNTVkbtus135i3xm0xE="
       },
       "cli": {
-        "asset": "t3-0.0.46-nightly.20261009.2861-linux-arm64.tar.gz",
-        "sha256": "ddb0e758b4c281cd68181bc495c501d3afdd7a6453df25d093d8bdb588aea9e1",
-        "hash": "sha256-3bDnWLTCgc1oGBvElcUB06/demRT3yXQk9i9tYiuqeE="
+        "asset": "t3-0.0.46-nightly.20261009.2873-linux-arm64.tar.gz",
+        "sha256": "bbe9004eded45772730046e016b8c6b0bff8c5eb75376dcb0037fdf40994450b",
+        "hash": "sha256-u+kATt7UV3JzAEbgFrjGsL/4xet1N23LADf99AmURQs="
       }
     },
     "aarch64-darwin": {
       "desktop": {
-        "asset": "T3-Code-0.0.46-nightly.20261009.2861-arm64.zip",
-        "sha256": "3b87a3a1ae4e6a70d98366a0164bd0e2d5f8d7038d09fc72558b5f8898c0025f",
-        "hash": "sha256-O4ejoa5OanDZg2agFkvQ4tX41wONCfxyVYtfiJjAAl8="
+        "asset": "T3-Code-0.0.46-nightly.20261009.2873-arm64.zip",
+        "sha256": "250d55086d1156af28e4e73ef2dc018d0364945e4cee163543e4128d8a529f35",
+        "hash": "sha256-JQ1VCG0RVq8o5Oc+8twBjQNklF5M7hY1Q+QSjYpSnzU="
       },
       "cli": {
-        "asset": "t3-0.0.46-nightly.20261009.2861-darwin-arm64.tar.gz",
-        "sha256": "443e0bc2440213278346276c5715fc6d1457ee811a392156d46834e20d5a878a",
-        "hash": "sha256-RD4LwkQCEyeDRidsVxX8bRRX7oEaOSFW1Gg04g1ah4o="
+        "asset": "t3-0.0.46-nightly.20261009.2873-darwin-arm64.tar.gz",
+        "sha256": "6a5814b279c31e24f02962c1c5ccb737246c8192a07e189efe6cab8b9ff38a31",
+        "hash": "sha256-algUsnnDHiTwKWLBxcy3NyRsgZKgfhie/myri5/zijE="
       }
     }
   },
