@@ -14,11 +14,12 @@
 # build-tools, cmake, ndk, and platforms are the versions a project compiles
 # against, so they stay at the versions already pinned (or the ones passed on
 # the command line) and only their archive data is refreshed. Each declared
-# platform also pins its Google APIs x86_64 system image, read from the system
-# image XML beside the repository XML, so an emulator AVD can be created from
-# the read-only SDK. The helper refuses to write a pin that would downgrade a
+# platform also pins its Google APIs arm64-v8a and x86_64 system images, read
+# from the system image XML beside the repository XML, so an emulator AVD can
+# be created from the read-only SDK on an Apple silicon Mac and on an x86_64
+# host alike. The helper refuses to write a pin that would downgrade a
 # tracked package, drop a declared version upstream no longer lists, or leave a
-# declared platform without its system image.
+# declared platform without either of its system images.
 #
 # The XML-to-repo.json conversion is vendored from nixpkgs'
 # pkgs/development/mobile/androidenv/update.rb rather than loaded from
@@ -43,7 +44,7 @@ TRACKED = %w[cmdline-tools emulator platform-tools].freeze
 DECLARED = %w[build-tools cmake ndk platforms].freeze
 
 IMAGE_TAG = 'google_apis'
-IMAGE_ABI = 'x86_64'
+IMAGE_ABIS = %w[arm64-v8a x86_64].freeze
 IMAGE_XML = "sys-img/#{IMAGE_TAG}/sys-img2-3.xml"
 
 STABLE_CHANNEL = 'channel-0'
@@ -491,28 +492,35 @@ def emulator_min_revision entry
   nil
 end
 
-# Returns the pinned images: the IMAGE_TAG IMAGE_ABI image of every selected
-# platform, keyed as parse_images keys them. An image must not be older than
-# the one already pinned, and must boot on the pinned emulator.
+# Returns [abi, entry] for the IMAGE_TAG image of one ABI on platform api. The
+# image must not be older than the one already pinned for that ABI, and must
+# boot on the pinned emulator.
+def select_image api, abi, images, emulator, current
+  entry = images.dig(api, IMAGE_TAG, abi)
+  label = "system image #{api} #{IMAGE_TAG} #{abi}"
+  raise Failure, "upstream lists no #{IMAGE_TAG} #{abi} system image for platform #{api}" unless entry
+
+  version = revision_version(entry['revision-details'])
+  pinned = current&.dig('images', api, IMAGE_TAG, abi, 'revision-details')
+  pinned &&= revision_version(pinned)
+  if pinned && compare_versions(version, pinned).negative?
+    raise Failure, "#{label} revision #{version} is older than the pinned #{pinned}; refusing to downgrade"
+  end
+
+  minimum = emulator_min_revision(entry)
+  if minimum && compare_versions(emulator, minimum).negative?
+    raise Failure, "#{label} needs emulator #{minimum} or newer, but the pinned emulator is #{emulator}"
+  end
+
+  [abi, entry]
+end
+
+# Returns the pinned images: the IMAGE_TAG image of every IMAGE_ABIS ABI for
+# every selected platform, keyed as parse_images keys them.
 def select_images images, platforms, emulator, current
   platforms.to_h do |api|
-    entry = images.dig(api, IMAGE_TAG, IMAGE_ABI)
-    label = "system image #{api} #{IMAGE_TAG} #{IMAGE_ABI}"
-    raise Failure, "upstream lists no #{IMAGE_TAG} #{IMAGE_ABI} system image for platform #{api}" unless entry
-
-    version = revision_version(entry['revision-details'])
-    pinned = current&.dig('images', api, IMAGE_TAG, IMAGE_ABI, 'revision-details')
-    pinned &&= revision_version(pinned)
-    if pinned && compare_versions(version, pinned).negative?
-      raise Failure, "#{label} revision #{version} is older than the pinned #{pinned}; refusing to downgrade"
-    end
-
-    minimum = emulator_min_revision(entry)
-    if minimum && compare_versions(emulator, minimum).negative?
-      raise Failure, "#{label} needs emulator #{minimum} or newer, but the pinned emulator is #{emulator}"
-    end
-
-    [api, { IMAGE_TAG => { IMAGE_ABI => entry } }]
+    abis = IMAGE_ABIS.to_h { |abi| select_image(api, abi, images, emulator, current) }
+    [api, { IMAGE_TAG => abis }]
   end
 end
 
