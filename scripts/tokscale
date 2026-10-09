@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the latest Tokscale through bun with the device name, the API token,
-# and the Orca Codex and Antigravity ACP session directories supplied. The
-# Nix package replaces the @...@ constants. Builtins only apart from bun, so
+# and the Antigravity ACP session directories supplied. The Nix package
+# replaces the @...@ constants. Builtins only apart from bun, so
 # the wrapper needs nothing else on PATH.
 set -euo pipefail
 
@@ -32,9 +32,9 @@ if [[ -z ${TOKSCALE_API_TOKEN:-} ]]; then
   unset token
 fi
 
-# Orca's Codex accounts and the Antigravity ACP server (T3 Code gives each
-# provider instance its own GEMINI_HOME) keep sessions where Tokscale does not
-# look. The ACP conversations share the Antigravity CLI's format.
+# The Antigravity ACP server (T3 Code gives each provider instance its own
+# GEMINI_HOME) keeps sessions where Tokscale does not look. The ACP
+# conversations share the Antigravity CLI's format.
 extra_dirs=()
 add_dirs() {
   local client=$1 dir
@@ -48,7 +48,6 @@ add_dirs() {
 }
 if [[ -n ${HOME:-} ]]; then
   shopt -s nullglob
-  add_dirs codex "$HOME"/.config/orca/codex-accounts/*/home/sessions
   add_dirs antigravity-cli \
     "$HOME"/.t3/userdata/providers/antigravity/*/antigravity-acp/conversations \
     "$HOME"/.gemini/antigravity-acp/conversations
