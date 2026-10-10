@@ -1,20 +1,20 @@
 {
-  "version": "2026.10.6",
+  "version": "2026.10.7",
   "systems": {
     "x86_64-linux": {
       "asset": "linux-x64-musl",
-      "sha256": "63b7d112411240a3c5a8cf381d3916997de7515483eb678f08920d5c77923dc4",
-      "hash": "sha256-Y7fREkESQKPFqM84HTkWmX3nUVSD62ePCJINXHeSPcQ="
+      "sha256": "c4c13faa02709ee64027a5a01dd6228f3d3cda90a7219485c77bd7101e59fd8f",
+      "hash": "sha256-xME/qgJwnuZAJ6WgHdYijz082pCnIZSFx3vXEB5Z/Y8="
     },
     "aarch64-linux": {
       "asset": "linux-arm64-musl",
-      "sha256": "760b274537301cf78828254b133182ea38af27df2c0606766dc650f5c0618df0",
-      "hash": "sha256-dgsnRTcwHPeIKCVLEzGC6jivJ98sBgZ2bcZQ9cBhjfA="
+      "sha256": "ca6e03c163d9c3ad2aa1206fd80351dc909082738ef23eab83ba4f28449fe706",
+      "hash": "sha256-ym4DwWPZw60qoSBv2ANR3JCQgnOO8j6rg7pPKESf5wY="
     },
     "aarch64-darwin": {
       "asset": "macos-arm64",
-      "sha256": "6c6a0b26b15b7dabec9fe61a56f53e1bf5dfa5246da9f59fa8028eef2ec238cb",
-      "hash": "sha256-bGoLJrFbfavsn+YaVvU+G/XfpSRtqfWfqAKO7y7COMs="
+      "sha256": "5841e5ab5009b4c4dd2b641ddbfc6777cc1b9c9c0ffd375001e294540e9e9cc8",
+      "hash": "sha256-WEHlq1AJtMTdK2Qd2/xnd8wbnJwP/TdQAeKUVA6enMg="
     }
   }
 }
