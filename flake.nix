@@ -44,7 +44,7 @@
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
     compound-engineering-plugin = {
-      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.30.4";
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.30.5";
       flake = false;
     };
   };
