@@ -27,9 +27,8 @@ let
   # that a project-level .claude/settings.json still outranks this tier.
   settingsTier = {
     model = "opus[1m]";
-    # Top-level effortLevel applies to whichever model serves the session.  The
-    # published settings schema carries no modelSettings property, so there is
-    # no per-model form to use instead.
+    # Top-level effortLevel applies to whichever model serves the session.  A
+    # modelSettings entry would cover only the one model ID it names.
     effortLevel = "medium";
     language = "korean";
     # `auto` follows the background the terminal reports, so the palette
@@ -44,6 +43,13 @@ let
     # any settings source, so a project-level file cannot turn it back on, and
     # it does not depend on how the session's environment was built.
     disableClaudeAiConnectors = true;
+    # The window, not the trigger: compaction starts once the context reaches
+    # the window minus Claude Code's 33K autocompact buffer, about 367K.  The
+    # status line's used_percentage still measures against the full 1M window.
+    # A settings key rather than CLAUDE_CODE_AUTO_COMPACT_WINDOW, which would
+    # override /autocompact; a window /autocompact saves under modelSettings
+    # outranks this key, and the merge leaves it alone.
+    autoCompactWindow = 400000;
   };
 
   # Leaves assigned inside nested objects of settings.json. A plugin is enabled

@@ -24,7 +24,7 @@ tags:
 
 ## Context
 
-`home/h82/claude.nix` declares a `home.activation` entry that merges a declared set of keys into `~/.claude/settings.json`, a file Claude Code owns and rewrites at runtime. The point of the entry is that runtime drift in a declared key gets corrected.
+`home/h82/agents/claude.nix` (formerly `home/h82/claude.nix`) declares a `home.activation` entry that merges a declared set of keys into `~/.claude/settings.json`, a file Claude Code owns and rewrites at runtime. The point of the entry is that runtime drift in a declared key gets corrected.
 
 Four places said that correction happens "on every rebuild": the module comment, `docs/provisioning.md`, requirement R5 of the plan, and a new hardware checklist item in `docs/verification.md`. The checklist item told the operator to change a declared value with `/config`, run `nixos-rebuild switch`, and confirm the value reverted — adding that a value which survives "means the merge did not run".
 
