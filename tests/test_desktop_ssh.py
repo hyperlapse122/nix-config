@@ -337,8 +337,7 @@ class ProvisionTests(unittest.TestCase):
         import dbus.proxies
         from dbus._expat_introspect_parser import process_introspection_data
 
-        # kwalletd6 declares isOpen and close twice; dbus-python keeps the last
-        # declaration, isOpen(i) and close(ibs), unless the call names one.
+        # Mirrors kwalletd6's introspection order for its overloaded methods.
         introspection = """<node><interface name="org.kde.KWallet">
           <method name="close"><arg direction="out" type="i"/>
             <arg direction="in" type="s"/><arg direction="in" type="b"/></method>
