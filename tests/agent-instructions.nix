@@ -52,6 +52,12 @@
     `ce-simplify-code`, so any of them added back beside its replacement
     fails.
   - it exists and is non-empty.
+  - it carries the shared learning-refresh rule: check the commits a push
+    would send for broken learnings, which commits those are, leave a learning
+    already marked stale alone, one `ce-compound-refresh` run per learning scoped by
+    its filename, `mode:non-interactive` in autonomous runs, the refresh as
+    its own commit on the current branch, and one push after every run, so
+    any of those sentences dropped or moved into one harness's branch fails.
   - it carries the shared branch-name rule: rename a placeholder before the
     first push, what counts as a tool-generated placeholder (including a
     random-hex branch), only a branch never pushed, and the
@@ -89,6 +95,16 @@ let
     "This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`."
     "Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing."
     "In an autonomous run, stop and ask with the question tool when a fix would reverse a decision the user made, such as a `session-settled` entry in the plan."
+  ];
+
+  learningRefreshSentences = [
+    "Before each push, check whether the commits it would send break a learning, and refresh that learning on the branch before you push."
+    "Check the commits the remote branch does not have yet, or, before the first push, the commits since the branch left the default branch."
+    "Leave a learning alone when it already carries `status: stale`, so a learning a refresh marked stale is not refreshed again."
+    "Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint."
+    "In an autonomous run, such as `lfg`, pass `mode:non-interactive`, which marks an ambiguous learning stale instead of asking."
+    "Commit the refresh as its own commit on the current branch, separate from the change that caused it, and push it with that change."
+    "Let `ce-compound-refresh` push nothing; push once, after every refresh run has finished, so the push carries every refresh commit."
   ];
 
   branchNameSentences = [
@@ -251,6 +267,7 @@ let
         ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
         ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
         ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
+        ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
         for directive in ${lib.escapeShellArgs supersededDirectives}; do
           if grep -qF -- "$directive" "$file"; then
