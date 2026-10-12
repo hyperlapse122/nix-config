@@ -531,7 +531,9 @@ class KWallet:
             self.interface = dbus.Interface(
                 bus.get_object("org.kde.kwalletd6", "/modules/kwalletd6"),
                 "org.kde.KWallet")
-            if not self.interface.isOpen(dbus.String("kdewallet")):
+            # kwalletd6 overloads isOpen and close; introspection alone selects
+            # the last declaration, isOpen(i), so name the overload.
+            if not self.interface.isOpen("kdewallet", signature="s"):
                 raise DesktopSSHError("unlock kdewallet in KWallet Manager, then retry SSH")
             self.handle = int(self.interface.open("kdewallet", dbus.Int64(0), self.APP,
                                                   timeout=90))
@@ -569,7 +571,7 @@ class KWallet:
     def close(self):
         if self.handle is not None:
             try:
-                self.interface.close(self.handle, False, self.APP)
+                self.interface.close(self.handle, False, self.APP, signature="ibs")
             except self.dbus.DBusException:
                 pass
             self.handle = None

@@ -34,6 +34,10 @@ Jobs that a finished run skips by design, such as the Nix jobs on a docs-only ch
 
 **Offline backup** — the passphrase-protected export of the signing key, kept apart from the tokens that carry it. Because a token's private key cannot be extracted, there is no token-to-token path, and every replacement or additional token is provisioned from this backup. Losing it does not lose the key while a token still works, but it does mean the tokens in hand are the last ones that will ever exist.
 
+## Desktop SSH
+
+**Primary SSH key** — the host's own SSH identity on a NixOS desktop, offered ahead of every key the fallback agent holds and used only inside an active desktop session. Its public half is declared in the repository; its private half lives on disk encrypted with a random password that only the desktop wallet stores, and is re-derived from an encrypted recovery copy when that pair is missing or does not match. Signing with it therefore needs the wallet to be open and reachable, and when it is not, the agent refuses the primary key while keys from the fallback agent still work, so a signing failure that names the declared public key points at the wallet path rather than at the key itself.
+
 ## FIDO credentials
 
 **Discoverable credential** — a FIDO credential the token stores itself, together with the site it belongs to, so the token can name that site without being told. Its counterpart, a non-discoverable credential, leaves nothing on the token: the site keeps the material and hands it back at sign-in. The distinction sets the ceiling on what any inventory tool here can report — a discoverable credential is listable, a non-discoverable one is unlistable by construction rather than by a gap in the tooling, so a site missing from a listing is not evidence that the credential is absent.
