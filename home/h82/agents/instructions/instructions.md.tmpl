@@ -105,12 +105,19 @@ When this session runs inside T3 Code, delegate work that needs another model th
 
 # Review findings
 
-Apply every finding that `ce-code-review` and `ce-simplify-code` report, whatever its severity, P2 and P3 included. A low-severity finding is still a defect in the change, and fixing it now costs less than tracking it.
+Apply every finding that `ce-code-review` (its cross-model pass included), `ce-simplify-code`, and `ce-doc-review` report, whatever its severity (P2 and P3 included), its confidence, or the list it sits in. This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`. A low-severity finding is still a defect in the change, and fixing it now costs less than tracking it.
 
-- Fix P2, P3, and lower findings on the branch the same way you fix P0 and P1 findings, and verify each fix.
-- Do not defer a finding to a residual list, a follow-up ticket, or a note in the pull request body.
-- When a fix needs a decision only the user can make, ask with the question tool instead of deferring it.
-- Leave a finding unapplied only when you have verified that it is wrong or cannot be applied, and report which one and why.
+- A finding is any item these skills report: `findings`, `actionable_findings`, `testing_gaps`, `residual_risks`, advisory items, items owned by `human` or `release`, `ce-doc-review` FYI observations, and items `ce-simplify-code` would skip as low-value or uncertain.
+- Fix a testing gap by adding the missing test, and a residual risk or advisory item with the code or document change that removes it. Report an item without an edit only when it has nothing to change, such as a rollout note or a learning.
+- Verify a finding that a skill left `unresolved` or validation-degraded yourself. Apply it when it holds, and report it with the reason when it does not.
+- These skill rules give way to this one: `lfg`'s apply bar and residual handoff; `ce-work`'s deferral criteria and Residual Work Gate; `ce-code-review`'s `testing_gaps` and `residual_risks` buckets, its never-apply marks, its report-only default, and its no-blocking-prompts rule; `ce-simplify-code`'s low-value skip; and `ce-doc-review`'s grouped confirmation, routing question, per-finding Apply/Defer/Skip walk-through, FYI routing, and hold on findings that only a cross-model peer raised.
+- Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing.
+- Report what you applied, and each decision you made on the user's behalf, in the pull request body and the final report.
+- Leave a finding unapplied only when you verified that it is wrong, or when applying it would edit outside `ce-simplify-code`'s mutation boundary or weaken a safety check. Report each such finding and why.
+- When a fix needs a user decision, such as a change to product behavior or outside the agreed scope, ask with the question tool in an interactive run. In an autonomous run, such as `lfg`, apply the recommended fix and list the decision in the final report.
+- In an autonomous run, stop and ask with the question tool when a fix would reverse a decision the user made, such as a `session-settled` entry in the plan.
+- When the user asked only for a review, report it once the skill returns, then ask once whether to apply every finding. Do not offer a menu of which findings to apply.
+- A review that runs inside `ce-brainstorm`, `ce-plan`, `ce-work`, `lfg`, or `ce-commit-push-pr` applies its findings without that question. A finding there that needs a user decision follows the user-decision rules above.
 
 # Branch names
 

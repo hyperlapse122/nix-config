@@ -22,9 +22,11 @@
   - the materialized file carries the shared body's opening sentence with this
     harness's name filled in, so a context carrying the other harness's name
     fails.
-  - it carries the shared rule to apply every review finding and its ban on
-    deferring findings, so either sentence dropped from the template or moved
-    into one harness's branch fails.
+  - it carries the shared review-findings rule: the coverage of every
+    `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` finding, its
+    override of those skills' and their callers' apply bars, deferral steps,
+    and review prompts, and the outlets a finding may not be parked in, so any
+    of those sentences dropped or moved into one harness's branch fails.
   - it carries the shared model-routing defaults: their precedence below the
     conversation, project instructions, and CE config, the one-line reason for
     leaving the table, the tier-to-row mapping, the broad-scout fallback, the
@@ -41,9 +43,11 @@
     retry and fallback order, and verifying a delegated result, so any of
     those sentences dropped, reworded, or moved into one harness's branch
     fails.
-  - it carries neither superseded directive: delegating before a skill's own
-    gates, or setting effort instead of inheriting a model's default, so
-    either one added back beside its replacement fails.
+  - it carries no superseded directive: delegating before a skill's own
+    gates, setting effort instead of inheriting a model's default, or the
+    review-findings rule that named only `ce-code-review` and
+    `ce-simplify-code`, so any of them added back beside its replacement
+    fails.
   - it exists and is non-empty.
   - it carries the shared branch-name rule: rename a placeholder before the
     first push, what counts as a tool-generated placeholder (including a
@@ -78,8 +82,9 @@ let
   esc = value: lib.escapeShellArg (toString value);
 
   reviewFindingsSentences = [
-    "Apply every finding that `ce-code-review` and `ce-simplify-code` report, whatever its severity, P2 and P3 included."
-    "Do not defer a finding to a residual list, a follow-up ticket, or a note in the pull request body."
+    "Apply every finding that `ce-code-review` (its cross-model pass included), `ce-simplify-code`, and `ce-doc-review` report, whatever its severity (P2 and P3 included), its confidence, or the list it sits in."
+    "This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`."
+    "Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing."
   ];
 
   branchNameSentences = [
@@ -124,6 +129,7 @@ let
   supersededDirectives = [
     "before any of the skill's own discovery or launch steps"
     "for the task instead of inheriting its defaults"
+    "Apply every finding that `ce-code-review` and `ce-simplify-code` report"
   ];
 
   claudeTools = [
