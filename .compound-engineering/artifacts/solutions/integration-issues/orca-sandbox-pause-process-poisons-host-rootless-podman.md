@@ -1,8 +1,8 @@
 ---
-title: Rootless Podman pause process started inside the Orca sandbox poisons the host Podman service
+title: Rootless Podman pause process started inside an agent bubblewrap sandbox poisons the host Podman service
 date: "2026-09-28"
 category: integration-issues
-module: Orca IDE package and rootless Podman
+module: T3 Code desktop package (packages/t3code.nix) and rootless Podman
 problem_type: integration_issue
 component: tooling
 severity: high
@@ -16,15 +16,15 @@ resolution_type: config_change
 related_components:
   - infrastructure
   - testing_framework
-retire_when: "Orca no longer runs agent terminals inside a bubblewrap FHS sandbox; check whether packages/orca.nix still builds with appimageTools.wrapType2 and an Orca terminal still shows a tmpfs /etc in findmnt"
-tags: ["podman", "rootless", "bubblewrap", "orca", "pause-process", "user-namespace", "container-host", "testcontainers"]
+retire_when: "T3 Code no longer runs agent terminals inside a bubblewrap FHS sandbox; check whether packages/t3code.nix still builds with appimageTools.wrapType2 and a T3 Code agent terminal still shows a tmpfs /etc in findmnt"
+tags: ["podman", "rootless", "bubblewrap", "orca", "t3code", "pause-process", "user-namespace", "container-host", "testcontainers"]
 ---
 
-# Rootless Podman pause process started inside the Orca sandbox poisons the host Podman service
+# Rootless Podman pause process started inside an agent bubblewrap sandbox poisons the host Podman service
 
 ## Problem
 
-Orca IDE ships as a bubblewrap FHS sandbox, and its agent terminals inherit that sandbox. When a local rootless `podman` or `docker` command runs there first, it creates the per-user pause process inside the sandbox. After that, the host's `podman.service` joins that pause process's namespaces and can no longer see the host's `/etc/containers` or `/etc/subuid` (issue #121).
+Orca IDE, where this was first seen, shipped as a bubblewrap FHS sandbox, and its agent terminals inherited that sandbox. Orca has since been removed (`packages/orca.nix`), but T3 Code's `appimageTools.wrapType2` wrapper in `packages/t3code.nix` applies the same sandbox to its agent sessions, so the lesson and the mitigation carry over; the Orca-specific details below are kept as history. When a local rootless `podman` or `docker` command runs there first, it creates the per-user pause process inside the sandbox. After that, the host's `podman.service` joins that pause process's namespaces and can no longer see the host's `/etc/containers` or `/etc/subuid` (issue #121).
 
 ## Symptoms
 
@@ -35,7 +35,7 @@ Orca IDE ships as a bubblewrap FHS sandbox, and its agent terminals inherit that
 
 ## What Didn't Work
 
-- **The fix proposed in the issue.** Issue #121 suggested enabling `virtualisation.containers` and `autoSubUidGidRange`. Both were already in effect: `modules/nixos/services/podman.nix:15-18` enables `virtualisation.podman` (which pulls in the containers configuration), and `modules/nixos/services/podman.nix:27` sets `users.users.h82.autoSubUidGidRange = true`. On the real host, `/etc/containers/policy.json` existed and `/etc/subuid` contained `h82:100000:65536`.
+- **The fix proposed in the issue.** Issue #121 suggested enabling `virtualisation.containers` and `autoSubUidGidRange`. Both were already in effect: `modules/nixos/services/podman.nix` enables `virtualisation.podman` (which pulls in the containers configuration) and sets `users.users.${config.my.user.name}.autoSubUidGidRange = true`. On the real host, `/etc/containers/policy.json` existed and `/etc/subuid` contained `h82:100000:65536`.
 - **Checking `/etc` from an Orca terminal.** `ls /etc/containers` in an Orca terminal fails, which looks like it confirms the issue. The files only seem missing because that shell runs inside the sandbox. A host-side check shows them:
 
   ```sh
@@ -69,9 +69,9 @@ Rootless Podman keeps one pause process per user to hold the user and mount name
 
 ### Fix
 
-Before, `packages/orca.nix` passed no Podman setting into the sandbox, so `podman` and `docker` (through `dockerCompat`) ran locally inside bubblewrap.
+Before, `packages/orca.nix` (since removed) passed no Podman setting into the sandbox, so `podman` and `docker` (through `dockerCompat`) ran locally inside bubblewrap.
 
-After, `packages/orca.nix:38-40`:
+After, the `extraBwrapArgs` list in `packages/orca.nix` carried the setting. `packages/t3code.nix` carries the same entry today, next to `T3CODE_DISABLE_AUTO_UPDATE` and `SSL_CERT_FILE`:
 
 ```nix
 extraBwrapArgs = [
@@ -79,7 +79,7 @@ extraBwrapArgs = [
 ];
 ```
 
-nixpkgs writes `extraBwrapArgs` unquoted into the bwrap `cmd` array of the generated launcher script (`default.nix:330`). As a result, `$XDG_RUNTIME_DIR` expands when Orca starts, not at build time. When `CONTAINER_HOST` is set, Podman defaults to `--remote`. Every `podman` and `docker` call inside Orca then goes to the host's rootless socket, the same one Home Manager exports as `DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock"` (`home/h82/dev/containers.nix:16`), and never creates a pause process inside the sandbox. The comment above the option (`packages/orca.nix:33-37`) records why. The change is on the issue #121 branch, and its PR is pending as of this writing.
+nixpkgs writes `extraBwrapArgs` unquoted into the bwrap `cmd` array of the generated launcher script (`default.nix:330`). As a result, `$XDG_RUNTIME_DIR` expands when Orca starts, not at build time. When `CONTAINER_HOST` is set, Podman defaults to `--remote`. Every `podman` and `docker` call inside Orca then goes to the host's rootless socket, the same one Home Manager exports as `DOCKER_HOST = "unix://\${XDG_RUNTIME_DIR}/podman/podman.sock"` (`linuxSessionVariables` in `home/h82/dev/containers.nix`), and never creates a pause process inside the sandbox. The comment above `extraBwrapArgs` in `packages/t3code.nix` records why.
 
 ### Clearing already-poisoned state
 
@@ -89,7 +89,7 @@ The wrapper change does not fix a pause process that already exists. From a **ho
 podman system migrate   # or: kill "$(cat "$XDG_RUNTIME_DIR/libpod/tmp/pause.pid")"
 ```
 
-Then restart Orca so it runs the new wrapper.
+Then restart the app (Orca then, T3 Code now) so it runs the new wrapper.
 
 ### Verification (this session)
 
@@ -109,7 +109,7 @@ Trade-off: Podman's local-only subcommands (`podman unshare`, `podman mount`, `p
 
 ## Prevention
 
-- **Repository check.** The `orca-desktop` check in `flake.nix` (`flake.nix:751-780`) reads the materialized `bin/orca-ide` launcher, not the option value. It greps the `--setenv CONTAINER_HOST` line (`flake.nix:768`), `eval`s it under the fake `XDG_RUNTIME_DIR=/run/user/4242` (`flake.nix:752`), and compares the result with Home Manager's `DOCKER_HOST` expanded the same way. It also requires the value to contain the fake runtime directory. A path baked in at build time therefore fails. In this session, changing the argument to a hardcoded `/run/user/1000` turned the check red.
+- **Repository check.** The `orca-desktop` check in `flake.nix` read the materialized `bin/orca-ide` launcher, not the option value. Today the `t3code` check in `flake.nix` does the same for `bin/t3code-desktop`. It greps the `--setenv CONTAINER_HOST` line, `eval`s it under the fake `XDG_RUNTIME_DIR=/run/user/4242` (`fakeRuntimeDir`), and compares the result with Home Manager's `DOCKER_HOST` expanded the same way. It also requires the value to contain the fake runtime directory. A path baked in at build time therefore fails. When the Orca check was written, changing the argument to a hardcoded `/run/user/1000` turned the check red.
 - **General rule.** Any tool that keeps a persistent per-user namespace holder is at risk here: rootless Podman's pause process, and anything else that later processes join. If a sandboxed client starts it first, host-side users of it break later. Before you believe a "file missing" error from such a tool, find the holder's PID and check `/proc/<pid>/root` (for example `/proc/<pid>/root/etc/static`), `/proc/<pid>/uid_map`, and `/proc/<pid>/environ`. Check them before you change host configuration.
 - **Checking host files from a sandboxed shell.** Use `systemd-run --user --wait --pipe --quiet /run/current-system/sw/bin/sh -c '...'` to see the host's view.
 
@@ -118,4 +118,5 @@ Trade-off: Podman's local-only subcommands (`podman unshare`, `podman mount`, `p
 - Issue #121 reported the symptoms and proposed host-side fixes that were already in place.
 - Issue #62 added the Testcontainers and Podman session variables (`DOCKER_HOST`) that the sandbox's `CONTAINER_HOST` now mirrors.
 - [Orca rejects skill files hardlinked by the Nix store optimiser](orca-rejects-hardlinked-nix-store-skill-files.md) is another Orca packaging trap in `packages/orca.nix`'s neighbourhood.
+- [T3 Code's Antigravity ACP server finds no CA bundle on NixOS](t3code-antigravity-acp-openssl-missing-ca-bundle-hangs-sessions.md) is another `extraBwrapArgs` fix in the same `packages/t3code.nix` wrapper.
 - [A check that reads an option value passes when the option is disabled or renamed](../best-practices/nix-check-reads-option-value-not-materialized-output.md) is why the regression check reads the materialized launcher.

@@ -43,7 +43,7 @@ T3 Code runs its Antigravity provider through an ACP server it downloads itself,
 
 ## Solution
 
-Point `SSL_CERT_FILE` at the system bundle inside the T3 Code desktop wrapper's bubblewrap sandbox, which every provider process T3 starts inherits (`packages/t3code.nix:43`):
+Point `SSL_CERT_FILE` at the system bundle inside the T3 Code desktop wrapper's bubblewrap sandbox, which every provider process T3 starts inherits (the `extraBwrapArgs` list in `packages/t3code.nix`):
 
 ```nix
 extraBwrapArgs = [
@@ -53,7 +53,7 @@ extraBwrapArgs = [
 ];
 ```
 
-Inside the sandbox, `/etc/ssl/certs/ca-certificates.crt` is the host's `/etc/static` symlink (observed through `/proc/<server-pid>/root` in this session), so the server reads the same bundle NixOS builds from `security.pki`. The `t3code` check in `flake.nix:1158` asserts the wrapper sets it. The change takes effect after a rebuild and a T3 Code restart, because providers inherit the environment of the running app.
+Inside the sandbox, `/etc/ssl/certs/ca-certificates.crt` is the host's `/etc/static` symlink (observed through `/proc/<server-pid>/root` in this session), so the server reads the same bundle NixOS builds from `security.pki`. The `t3code` check in `flake.nix` asserts the wrapper sets it (its `expect_setenv SSL_CERT_FILE` assertion). The change takes effect after a rebuild and a T3 Code restart, because providers inherit the environment of the running app.
 
 ## Why This Works
 

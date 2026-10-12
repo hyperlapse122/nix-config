@@ -2,7 +2,7 @@
 title: "A check that a systemd unit exists passes when the unit is disabled, because NixOS masks it to /dev/null"
 date: 2026-09-26
 category: best-practices
-module: "NixOS flake checks (ThinkPad Thunderbolt / bolt)"
+module: "NixOS flake checks (systemd unit assertions)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -27,13 +27,15 @@ tags:
 
 ## Context
 
-`tests/thunderbolt.nix` guards the ThinkPad's bolt daemon. Its first version asserted the unit with the repository's `assertPath` helper: `[ -e "${units}/bolt.service" ]`, where `units` is `host.config.environment.etc."systemd/system".source`. That reads the materialized unit tree, which is what [the option-value learning](nix-check-reads-option-value-not-materialized-output.md) asks for, and it passed every mutation in the plan: removing the module, forcing `services.hardware.bolt.enable = lib.mkForce false`, and swapping the package out.
+`tests/thunderbolt.nix` (removed with the ThinkPad host in e857618) guarded the ThinkPad's bolt daemon. Its first version asserted the unit with the repository's `assertPath` helper: `[ -e "${units}/bolt.service" ]`, where `units` is `host.config.environment.etc."systemd/system".source`. That reads the materialized unit tree, which is what [the option-value learning](nix-check-reads-option-value-not-materialized-output.md) asks for, and it passed every mutation in the plan: removing the module, forcing `services.hardware.bolt.enable = lib.mkForce false`, and swapping the package out.
+
+The lesson applies to any unit assertion; `tests/nix-cleanup.nix`, which reads `systemd.units."nh-clean.service".unit`, is a live example.
 
 Code review then tried `systemd.services.bolt.enable = false`, and the check stayed green. bolt could never start on that system.
 
 ## Why an existence test cannot see it
 
-NixOS does not drop a disabled unit from the tree. It renders it as a symlink to `/dev/null`, which is how systemd masks a unit. The locked nixpkgs (revs `4975466d` and `e94cb152` alike; a path outside this repository) does this in `nixos/lib/systemd-lib.nix` (lines 90-98): the `unit-<name>-disabled` derivation runs `ln -s /dev/null "$out/$name"`, and the unit-tree builder preserves those links (lines 470-471).
+NixOS does not drop a disabled unit from the tree. It renders it as a symlink to `/dev/null`, which is how systemd masks a unit. nixpkgs does this (verified at revs `4975466d` and `e94cb152`, and still so at `6510408d`; a path outside this repository) in `nixos/lib/systemd-lib.nix` (lines 90-98): the `unit-<name>-disabled` derivation runs `ln -s /dev/null "$out/$name"`, and the unit-tree builder preserves those links (lines 470-471).
 
 `/dev/null` exists, so `[ -e ]` is true for a masked unit. The existence test only answers whether something stands at that name, and a masked unit always has something there. `[ -f ]` happens to catch this particular case, because it follows the symlink and `/dev/null` is a character device, not a regular file. It still says nothing about what the unit runs, so a unit that was overridden rather than masked would pass it.
 
@@ -64,7 +66,7 @@ Each round is `nix build --no-link .#checks.x86_64-linux.thunderbolt`.
 | --- | --- | --- | --- |
 | 1 | module import removed | red | red |
 | 2 | `services.hardware.bolt.enable = lib.mkForce false` | red | red |
-| 3 | `systemd.services.bolt.enable = false`, bolt still enabled | **green** | red, only the unit assertion, on both ThinkPad configurations |
+| 3 | `systemd.services.bolt.enable = false`, bolt still enabled | **green** | red, only the unit assertion, on both configurations (historical: the ThinkPad configurations) |
 
 Round 3 is the only one that tells the two assertions apart, and it is not a feature toggle a reviewer reaches for first.
 

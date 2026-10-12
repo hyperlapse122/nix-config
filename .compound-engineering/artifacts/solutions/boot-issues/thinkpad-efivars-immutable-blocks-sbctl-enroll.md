@@ -16,6 +16,8 @@ tags: ["secure-boot", "sbctl", "thinkpad", "efivarfs", "chattr"]
 
 # ThinkPad efivarfs immutable attribute blocks sbctl key enrollment
 
+The ThinkPad X1 Carbon Gen 11 that hit this was removed in e857618. The cause, efivarfs marking the Secure Boot variables immutable, is kernel behavior that can recur on another host.
+
 ## Problem
 
 When enrolling custom Secure Boot keys using `sudo sbctl enroll-keys --microsoft` on ThinkPad X1 Carbon Gen 11 (with UEFI in Setup Mode), `sbctl` fails with an error stating that the target EFI variable file is immutable (`File is immutable`).
@@ -36,7 +38,7 @@ The Linux `efivarfs` kernel filesystem sets the immutable ext2/ext4 attribute bi
 
 ## Solution
 
-1. Install `e2fsprogs` in system packages (`modules/nixos/base.nix`) so `chattr` and `lsattr` are available on the installed system:
+1. Install `e2fsprogs` in system packages (`modules/nixos/system/base.nix`) so `chattr` and `lsattr` are available on the installed system:
 
    ```nix
    environment.systemPackages = [ pkgs.e2fsprogs ... ];
@@ -56,4 +58,4 @@ The Linux `efivarfs` kernel filesystem sets the immutable ext2/ext4 attribute bi
 
 ## Prevention
 
-The installation documentation in `docs/install.md` includes the `chattr -i` invocation immediately before `sbctl enroll-keys`.
+No repository doc carries the `chattr -i` step now: commit f45d1e9 dropped it from `docs/install.md`. A host that hits "File is immutable" from `sbctl enroll-keys` should get the step added to its note under "Per-host notes" in `docs/install.md`.

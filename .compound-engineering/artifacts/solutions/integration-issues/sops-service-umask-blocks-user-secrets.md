@@ -36,13 +36,13 @@ Remove the service-wide umask override. Keep explicit permissions at each owned 
 - SOPS token files are owned by `h82` with mode `0400`.
 - The publisher creates user-owned regular CLI configuration files with mode `0600`.
 
-`modules/nixos/secrets.nix`, `scripts/restore-age-identity`, and `scripts/publish-cli-auth` implement these boundaries. Do not add a recursive chmod of the runtime SOPS tree as a workaround; SOPS owns and rotates that tree.
+`modules/nixos/system/secrets.nix`, `scripts/restore-age-identity`, and `scripts/publish-cli-auth` implement these boundaries. Do not add a recursive chmod of the runtime SOPS tree as a workaround; SOPS owns and rotates that tree.
 
 ## Why this works
 
-The pinned installer creates generation directories and nested secret directories with `0751`. The process umask turns those modes into `0700`. The installer changes their owner/group but does not restore the masked traversal bits. A user-owned `0400` file remains inaccessible when its parent directories only permit root to traverse them.
+The sops-nix installer creates generation directories and nested secret directories with `0751`. The process umask turns those modes into `0700`. The installer changes their owner/group but does not restore the masked traversal bits. A user-owned `0400` file remains inaccessible when its parent directories only permit root to traverse them.
 
-The relevant operations are `os.Mkdir` and `os.MkdirAll` in [the pinned SOPS installer](https://github.com/Mic92/sops-nix/blob/7214124c20c1542c90deb54af50e2f53ae02711f/pkgs/sops-install-secrets/main.go#L431). This concerns that installer's multi-user directory layout; it is not a general objection to private umasks.
+The relevant operations are `os.Mkdir` and `os.MkdirAll` in [the sops-nix installer at the revision this was diagnosed on (7214124…)](https://github.com/Mic92/sops-nix/blob/7214124c20c1542c90deb54af50e2f53ae02711f/pkgs/sops-install-secrets/main.go#L431). This concerns that installer's multi-user directory layout; it is not a general objection to private umasks.
 
 ## Prevention
 
@@ -52,4 +52,4 @@ When hardening an upstream service that creates files for other users, inspect i
 nix build --no-link .#vmChecks.auth-provisioning
 ```
 
-`tests/auth-provisioning.nix` covers real decryption, user publication, repeated switches, missing/corrupt local keys, and recovery through the packaged installer. Its switch support is explicitly enabled and VM GRUB updates are disabled, so missing commands or unrelated bootloader errors cannot masquerade as expected authentication failures. Physical YubiKey and laptop boot checks remain separate.
+`tests/auth-provisioning.nix` covers real decryption, user publication, repeated switches, missing/corrupt local keys, and recovery through the packaged installer. Its switch support is explicitly enabled and VM GRUB updates are disabled, so missing commands or unrelated bootloader errors cannot masquerade as expected authentication failures. Physical YubiKey and boot checks remain separate.

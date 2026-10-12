@@ -49,7 +49,7 @@ in
 }
 ```
 
-The condition mirrors the module (`modules/programs/mise.nix` in the pinned Home Manager source, not this repo): `config = mkIf cfg.enable { … }` (line 126). `globalConfigPath` is `mise/config.toml` only when `mutableSettings` is false (line 10). The entry is declared only `mkIf (cfg.globalConfig != { })` (line 160).
+The condition mirrors the module (`modules/programs/mise.nix` in the pinned Home Manager source, not this repo): `config = mkIf cfg.enable { … }`. `globalConfigPath` is `mise/config.toml` only when `mutableSettings` is false (line 10). The entry is declared only `mkIf (cfg.globalConfig != { })` on the `${globalConfigPath}` entry.
 
 ## Why This Works
 

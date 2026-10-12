@@ -36,10 +36,10 @@ tags: [twemoji, emoji, fontconfig, ghostty, cbdt, svginot, dejavu, font-cache]
 
 ## Solution
 
-These changes are committed on branch `fix/twemoji-default-emoji-font`, with the PR pending as of this writing: one fix per mechanism, plus a check that proves them.
+One fix per mechanism, plus a check that proves them.
 
-1. **Install the CBDT build.** `twemoji-color-font` ships `TwitterColorEmoji-SVGinOT.ttf`, an OpenType-SVG font that, as observed in this session, only Firefox draws in color. nixpkgs `twitter-color-emoji` is a CBDT bitmap font with the same family name, so `defaultFonts.emoji` needs no rename (`modules/nixos/desktop/fonts.nix:17`).
-2. **List Twemoji after each primary font in the generic families.** `defaultFonts.emoji` only applies when an app requests the `emoji` family. Plain text in `sans-serif`, `serif`, or `monospace` reaches whatever font covers the codepoint first, and that was DejaVu Sans. Append Twemoji right after the primary font of each list (`modules/nixos/desktop/fonts.nix:25-38`):
+1. **Install the CBDT build.** `twemoji-color-font` ships `TwitterColorEmoji-SVGinOT.ttf`, an OpenType-SVG font that, as observed in this session, only Firefox draws in color. nixpkgs `twitter-color-emoji` is a CBDT bitmap font with the same family name, so `defaultFonts.emoji` needs no rename (the package list is in `modules/shared/font-packages.nix`; `emojiFont` in `modules/nixos/desktop/fonts.nix` names the family).
+2. **List Twemoji after each primary font in the generic families.** `defaultFonts.emoji` only applies when an app requests the `emoji` family. Plain text in `sans-serif`, `serif`, or `monospace` reaches whatever font covers the codepoint first, and that was DejaVu Sans. Append Twemoji right after the primary font of each list (the `sansSerif`, `serif`, and `monospace` lists in `modules/nixos/desktop/fonts.nix`):
 
    ```nix
    sansSerif = [ "Pretendard" emojiFont ];
@@ -53,8 +53,8 @@ These changes are committed on branch `fix/twemoji-default-emoji-font`, with the
    ```
 
    Never put it ahead of a primary font. Twemoji covers space, digits, `#`, and `*`, so it would take over ordinary text.
-3. **List Twemoji last in Ghostty's own `font-family`.** Ghostty 1.3.1 picks glyphs from its configured `font-family` list and falls back to Noto Color Emoji, not to the fontconfig `emoji` alias (`home/h82/desktop/terminal.nix:13`).
-4. **Prove it with `tests/emoji-font.nix`.** The check loads each configuration's built `/etc/fonts` (with `fonts.conf`'s absolute `/etc/fonts/conf.d` include redirected to the built tree, because the sandbox has no `/etc/fonts`) and models fallback as first-covering-font in `fc-match -s` order (`tests/emoji-font.nix:167-177`). It reads the resolved file's tables with fonttools, because fontconfig's `color` property is true for the OpenType-SVG build too (`tests/emoji-font.nix:109`). The `ghostty-font` check in `flake.nix` requires Twemoji exactly once, as the last `font-family` entry.
+3. **List Twemoji last in Ghostty's own `font-family`.** Ghostty 1.3.1 picks glyphs from its configured `font-family` list and falls back to Noto Color Emoji, not to the fontconfig `emoji` alias (the `font-family` list in `home/h82/desktop/terminal.nix`).
+4. **Prove it with `tests/emoji-font.nix`.** The check loads each configuration's built `/etc/fonts` (with `fonts.conf`'s absolute `/etc/fonts/conf.d` include redirected to the built tree, because the sandbox has no `/etc/fonts`) and models fallback as first-covering-font in `fc-match -s` order (the `first_cover_entry` helper in `tests/emoji-font.nix`). It reads the resolved file's tables with fonttools, because fontconfig's `color` property is true for the OpenType-SVG build too (the `ttx -l` step in `tests/emoji-font.nix`). The `ghostty-font` check in `flake.nix` requires Twemoji exactly once, as the last `font-family` entry.
 
 ## Why This Works
 

@@ -41,7 +41,7 @@ elif [ "$keep" -lt ${limit} ]; then
 fi
 ```
 
-The operand is not a constant: `modules/nixos/boot.nix` sets `boot.lanzaboote.configurationLimit`, and mutating it to `15` correctly turned the check red. The assertion looked live, and by the repository's existing tests for liveness it was.
+The operand is not a constant: `modules/nixos/system/boot.nix` sets `boot.lanzaboote.configurationLimit`, and mutating it to `15` correctly turned the check red. The assertion looked live, and by the repository's existing tests for liveness it was.
 
 It still passed in the one case the invariant exists for.
 
@@ -108,7 +108,7 @@ The round that matters, which passed before the fix and fails after it:
 
 ```sh
 # mutate: an unbounded boot menu
-sed -i 's/boot.lanzaboote.configurationLimit = lib.mkIf (!bootstrap) 5;/boot.lanzaboote.configurationLimit = lib.mkForce null;/' modules/nixos/boot.nix
+sed -i 's/boot.lanzaboote.configurationLimit = lib.mkIf (!bootstrap) 5;/boot.lanzaboote.configurationLimit = lib.mkForce null;/' modules/nixos/system/boot.nix
 nix build --no-link .#checks.x86_64-linux.nix-cleanup
 ```
 
@@ -138,4 +138,4 @@ SKIPPED
 
 ## Out of scope
 
-Whether the boot menu's entries on the running laptop actually correspond to surviving generations is not a build-time question. Nothing in this repository rewrites `/boot` outside a rebuild, so that correspondence rests on the retention floor holding; `docs/verification.md` carries the hardware checks.
+Whether the boot menu's entries on the running machine actually correspond to surviving generations is not a build-time question. Nothing in this repository rewrites `/boot` outside a rebuild, so that correspondence rests on the retention floor holding; `docs/verification.md` carries the hardware checks.

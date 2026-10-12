@@ -13,7 +13,7 @@ root_cause: wrong_api
 resolution_type: code_fix
 tags: ["claude-code", "settings-json", "claude-json", "global-config", "home-manager", "activation", "agent-settings", "t3code", "claude-config-dir", "context", "model-settings", "autocompact"]
 last_updated: "2026-10-12"
-retire_when: "Claude Code reads the key from settings.json; check a newer binary's strings for the key in the settings schema (`<key>:()=>`) or in the list that starts `var iCe=[`"
+retire_when: "Claude Code reads the key from settings.json; check a newer binary's strings for the key in the settings schema (`<key>:()=>`) or in the short settings-first key list that holds inputNeededNotifEnabled and agentPushNotifEnabled (`iCe` in 2.1.285, `nbe` in 2.1.296; minified names change per release)"
 ---
 
 # Claude Code ignores global-config keys declared in settings.json
@@ -42,7 +42,7 @@ Find the code that reads the key. Do not rely on where the key is listed. In Cla
 
 The fix declares such keys in their own tier. A second activation entry runs the same `agent-settings` merger against `~/.claude.json`. See `globalConfigTier` and `home.activation.claudeGlobalConfig` in `home/h82/agents/claude.nix`. `tests/claude.nix` runs the same assertions (activation present, target file, declared JSON) for both merges.
 
-`advisorModel`, declared in the same change, works from `settings.json`. The settings schema has an entry for it: `advisorModel:()=>...describe("Advisor model for the server-side advisor tool.")`.
+`advisorModel` works from `settings.json`. The repository first declared it in the same change and has since retired it (`retiredKeys` in `home/h82/agents/claude.nix`). The settings schema has an entry for it: `advisorModel:()=>...describe("Advisor model for the server-side advisor tool.")`.
 
 To check a key, extract strings from the unwrapped binary (`bin/.claude-wrapped` in the `claude-code` store path) and search them with Python `re`. In this environment `grep` is `ugrep`, which rejects the long-line patterns this needs.
 
@@ -52,13 +52,21 @@ python3 - <<'EOF'
 import re
 s = open('strings.txt', encoding='latin1').read()
 key = 'leftArrowOpensAgents'
-for pat in [rf'ce\(\)\.{key}', rf'{key}:\(\)=>', r'var iCe=\[[^\]]*\]']:
+for pat in [rf'ce\(\)\.{key}', rf'{key}:\(\)=>']:
     for m in list(re.finditer(pat, s))[:2]:
         print(pat, '->', s[max(0, m.start()-80):m.end()+120].replace('\n', ' '))
+# The two key lists are minified under names that change per release
+# (2.1.285: a6n and iCe; 2.1.296: NEr and nbe), so find them by content.
+# The long one also holds installMethod; the short one is the settings-first list.
+for name, body in re.findall(r'var ([\w$]+)=(\[[^\]]*"agentPushNotifEnabled"[^\]]*\])', s):
+    kind = 'all global-config keys' if '"installMethod"' in body else 'settings first'
+    print(name, kind, key in body)
 EOF
 ```
 
-If a key has a `ce().<key>` reader and is in neither the settings schema nor `iCe`, it belongs in `~/.claude.json`.
+On 2.1.296 this prints two `ce().leftArrowOpensAgents` readers, no schema entry, `NEr all global-config keys True`, and `nbe settings first False`.
+
+If a key has a `ce().<key>` reader and is in neither the settings schema nor the settings-first list, it belongs in `~/.claude.json`.
 
 ### Measure the effect with /context when Claude Code reports it
 
@@ -82,11 +90,11 @@ To see what a T3 Code session loads, read its arguments with `tr '\0' '\n' < /pr
 
 ## Why This Works
 
-Each file has its own reader, and a key takes effect only where its reader looks. For the keys listed in `iCe`, the reader checks settings first and then falls back to global config. That is how older global-config keys became settable from `settings.json`. Keys added outside that list, such as the agent-view toggles, have only the global-config reader.
+Each file has its own reader, and a key takes effect only where its reader looks. For the keys in the settings-first list (`iCe` in 2.1.285), the reader checks settings first and then falls back to global config. That is how older global-config keys became settable from `settings.json`. Keys added outside that list, such as the agent-view toggles, have only the global-config reader.
 
 ## Prevention
 
-- Before adding a key to `settingsTier`, confirm the binary reads it from settings: it is in the settings schema, or it is in `iCe`. Otherwise add it to `globalConfigTier`.
+- Before adding a key to `settingsTier`, confirm the binary reads it from settings: it is in the settings schema, or it is in the settings-first list. Otherwise add it to `globalConfigTier`.
 - Treat a passing `claude` check as proof of what activation writes, not of what Claude Code reads. When the key's effect shows in `/context` or another `claude -p` output, measure it against a copied config directory as above.
 - After a T3 Code or Agent SDK bump, re-read a T3 session's arguments. A `--setting-sources` flag, or a `--settings` value that carries a declared key, would change what those sessions read. [Checks that read an option value instead of the materialized output](../best-practices/nix-check-reads-option-value-not-materialized-output.md) covers the same kind of gap.
 - Merging into `~/.claude.json` carries risks that the `settings.json` merge does not:

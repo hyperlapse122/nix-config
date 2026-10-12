@@ -56,8 +56,8 @@ Placing `D2CodingLigature Nerd Font` before `D2KodingLigature Nerd Font` ensures
 Use `ghostty +show-face` to test character resolution:
 
 ```sh
-CONFIG_PATH=$(nix-build --impure --expr 'let f = builtins.getFlake (toString ./.); in f.nixosConfigurations.ThinkPad-X1-Carbon-Gen-11.config.home-manager.users.h82.xdg.configFile."ghostty/config".source' --no-out-link)
+CONFIG_PATH=$(nix-build --impure --expr 'let f = builtins.getFlake (toString ./.); in f.nixosConfigurations.MS-7D91.config.home-manager.users.h82.xdg.configFile."ghostty/config".source' --no-out-link)
 ghostty +show-face --config-file="$CONFIG_PATH" --string="한글"
 ```
 
-Flake check `checks.x86_64-linux.ghostty-font` in `flake.nix` verifies that the generated `ghostty/config` and fontconfig monospace defaults retain both D2Coding font entries.
+Flake check `checks.x86_64-linux.ghostty-font` in `flake.nix` verifies that the generated `ghostty/config` and fontconfig monospace defaults retain both D2Coding font entries. It also requires `Twitter Color Emoji` exactly once, as the last `font-family` entry, and runs for every configuration.

@@ -2,7 +2,7 @@
 title: "An unanchored grep fragment misses the argument that decides where a write lands"
 date: "2026-09-23"
 category: best-practices
-module: "NixOS flake checks (logind lid-switch / KDE Powerdevil activation script)"
+module: "NixOS flake checks (grep fragment against a multi-argument invocation)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -23,9 +23,11 @@ tags:
 
 ## Context
 
+`tests/logind-lid-switch.nix` and `home/h82/desktop/kde/power-lid.nix` were removed with the ThinkPad host in e857618. The example is kept because the pattern recurs.
+
 `tests/logind-lid-switch.nix` guards the KDE Powerdevil lid-action configuration `home/h82/kde/power-lid.nix` writes via eight `kwriteconfig6 --file powerdevilrc --group <profile> --group SuspendAndShutdown --key <key> ...` invocations. Its `assertPowerdevilHandled` helper reads the materialized `home.activation.kdePowerLid` script and asserts each invocation's shape is present, using `grep -Fq` (substring match) against fragments such as `--group Battery --group SuspendAndShutdown --key LidAction -- 1`.
 
-This repository already carries six learnings about checks that pass without proving what they claim. None of them predicted this one: the assertion here is sound by every test those six apply. The shell can fail (`if ! grep ...; then exit 1; fi`, never a bare `! grep` under `set -e`). The value read is materialized output — the rendered activation script — not an unreachable option. The fixture states genuinely diverge across the three `assertHost`-style calls (ThinkPad production, ThinkPad bootstrap, MS-7D91). No operand folds to a constant the module under test cannot change. No shell comparison sees an empty numeric operand. All five checks pass, and the check still could not tell a correct write from one aimed at the wrong file.
+This repository already carries six learnings about checks that pass without proving what they claim. None of them predicted this one: the assertion here is sound by every test those six apply. The shell can fail (`if ! grep ...; then exit 1; fi`, never a bare `! grep` under `set -e`). The value read is materialized output — the rendered activation script — not an unreachable option. The fixture states genuinely diverge across the three `assertHost`-style calls (at the time: ThinkPad production, ThinkPad bootstrap, MS-7D91). No operand folds to a constant the module under test cannot change. No shell comparison sees an empty numeric operand. All five checks pass, and the check still could not tell a correct write from one aimed at the wrong file.
 
 ## The practice
 
@@ -62,7 +64,7 @@ The pairing is the point: the same tree, the same mutation, goes from a false pa
 - [Mutation testing reveals decorative assertions in a Nix flake check](mutation-testing-reveals-decorative-nix-check-assertions.md) — the assertion's shell cannot fail.
 - [A mutation that only breaks Nix evaluation proves nothing about a check](unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md) — the mutation never reaches the assertion.
 - [A check that reads an option value instead of the materialized output](nix-check-reads-option-value-not-materialized-output.md) — the assertion reads a proxy for the property; this doc's assertion already read the materialized output and still missed the destination.
-- [Converged fixture state defeats mutation testing](converged-fixture-state-defeats-nix-check-mutation-testing.md) — the fixture cannot distinguish correct from buggy; here the fixture (three real hosts) diverges correctly, and the fragment itself is what is blind.
+- [Converged fixture state defeats mutation testing](converged-fixture-state-defeats-nix-check-mutation-testing.md) — the fixture cannot distinguish correct from buggy; here the fixture (at the time, three real hosts) diverges correctly, and the fragment itself is what is blind.
 - [An assertion on an unconditionally set option compiles to a constant](nix-check-assertion-on-unconditional-option-folds-to-a-constant.md) — the operand cannot vary; here it varies (the check does read three different hosts' scripts) and still cannot go red on this one dimension.
 - [A nullable option reaches a shell comparison as an empty word](nullable-option-empty-operand-passes-a-shell-comparison.md) — a shell-level blind spot at the value's type boundary; this is a text-level blind spot at the fragment's boundary.
 - [KDE Powerdevil overrides systemd-logind's lid and power-key settings](../integration-issues/kde-powerdevil-overrides-logind-lid-switch-settings.md) — the companion learning from the same change: why this check exists at all.

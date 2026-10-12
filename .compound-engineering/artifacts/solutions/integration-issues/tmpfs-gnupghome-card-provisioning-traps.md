@@ -21,7 +21,7 @@ tags: ["gnupg", "yubikey", "keytocard", "scdaemon", "pcsclite", "card-stubs"]
 
 ## Problem
 
-`docs/recovery.md:143` tells the operator to provision a replacement YubiKey from the offline backup by restoring it into a tmpfs `GNUPGHOME` and moving the subkeys onto the card. Carried out literally, that procedure fails twice, and neither failure is explained by anything in this repository.
+The replacement-card step in `docs/recovery.md` ("Restore the backup into a tmpfs `GNUPGHOME`") tells the operator to provision a replacement YubiKey from the offline backup by restoring it into a tmpfs `GNUPGHOME` and moving the subkeys onto the card. Carried out literally, that procedure fails twice, and neither failure is explained by anything in this repository.
 
 The tmpfs `GNUPGHOME` is the point of the exercise: it keeps secret key material off the SSD. But it is also a *fresh* GnuPG home, and the two settings that make cards work here are written into the real `~/.gnupg` by Home Manager, not carried by GnuPG itself.
 
@@ -66,7 +66,7 @@ Trusting `gpg --import`'s summary line. `secret keys imported: 1` and `secret ke
 
 ## Solution
 
-**Give the ceremony home its own `scdaemon.conf`**, with the same two settings `home/h82/gpg.nix:56` writes into the real `~/.gnupg`:
+**Give the ceremony home its own `scdaemon.conf`**, with the same two settings the `scdaemon.conf` block in `home/h82/security/gpg.nix` writes into the real `~/.gnupg`:
 
 ```sh
 cat >"$GNUPGHOME/scdaemon.conf" <<'EOF'
@@ -90,7 +90,7 @@ The check is the verification, not the import message: field 15 must read `+` (a
 
 ## Why This Works
 
-`services.pcscd.enable = true` at `modules/nixos/base.nix:40` runs pcscd, and pcscd holds the reader. Without `disable-ccid`, scdaemon prefers its own built-in CCID driver and contends with pcscd for the same device; `pcsc-shared` then lets it share the reader rather than demanding exclusive access. Home Manager writes both into `~/.gnupg/scdaemon.conf`, so every ordinary session inherits them and the constraint is invisible until a `GNUPGHOME` is created that Home Manager never touched.
+`services.pcscd.enable = true` at `modules/nixos/system/base.nix` runs pcscd (non-NixOS hosts run pcscd through `modules/system-manager/default.nix`), and pcscd holds the reader. Without `disable-ccid`, scdaemon prefers its own built-in CCID driver and contends with pcscd for the same device; `pcsc-shared` then lets it share the reader rather than demanding exclusive access. Home Manager writes both into `~/.gnupg/scdaemon.conf`, so every ordinary session inherits them and the constraint is invisible until a `GNUPGHOME` is created that Home Manager never touched.
 
 The import behaviour is deliberate on GnuPG's part: a card stub records that the private key lives on specific hardware, and silently overwriting it with an on-disk copy would be a downgrade the user did not ask for. So import merges the public material, reports the secret key as `unchanged`, and leaves the stub. `keytocard` is what created the stub in the first place, which is why the trap only appears from the second card onward.
 

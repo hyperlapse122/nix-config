@@ -43,7 +43,7 @@ A shell check running under `set -o pipefail` tested multi-line text with `print
 
 ## Solution
 
-Feed the text to `grep` with a here-string instead of a pipe, so no writer process exists to fail (`tests/check-workflow-docs-skip.sh:38-44` records the reason; the assertions start at line 93):
+Feed the text to `grep` with a here-string instead of a pipe, so no writer process exists to fail (the comment above `set -euo pipefail` in `tests/check-workflow-docs-skip.sh` records the reason; the here-string assertions follow the `needs_pattern` and `job_block` helpers):
 
 ```bash
 # Before: a match on line 1 can still fail the condition
@@ -67,7 +67,7 @@ Forced reproduction from this session: a 200,000-line block under `trap '' PIPE`
 
 - In any script that sets `pipefail`, do not pipe a producer into a reader that can stop early (`grep -q`, `head`, `awk '…; exit'`) when the producer's status matters. Use a here-string, or a file the reader opens itself.
 - When a check fails with `Broken pipe` next to an assertion message, suspect the assertion's plumbing before the asserted content.
-- Other `pipefail` tests still use the pipe form: `tests/claude.nix` and `tests/github-workflow-conventions.sh`. They have not failed; convert one if a trace shows its piped input spans several writes.
+- Another `pipefail` test still uses the pipe form: `tests/claude.nix`. They have not failed; convert one if a trace shows its piped input spans several writes.
 - Reproduce a suspected race with a large input under `trap '' PIPE` before and after the fix, as above, rather than trusting a single green run.
 
 ## Related Issues

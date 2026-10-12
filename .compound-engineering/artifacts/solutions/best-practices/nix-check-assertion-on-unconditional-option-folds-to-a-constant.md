@@ -38,7 +38,7 @@ fi
 
 That form follows [the decorative-assertion learning](mutation-testing-reveals-decorative-nix-check-assertions.md) correctly: it is an explicit `if`, not a `! grep` that `set -e` would exempt. It still could not fail.
 
-`builtins.toJSON value` resolves during evaluation, so the value never reaches the builder as a variable. `modules/nixos/base.nix` sets `services.pcscd.enable = true` unconditionally, so the interpolation produced the literal string `true`, and the built derivation contained:
+`builtins.toJSON value` resolves during evaluation, so the value never reaches the builder as a variable. `modules/nixos/system/base.nix` sets `services.pcscd.enable = true` unconditionally, so the interpolation produced the literal string `true`, and the built derivation contained:
 
 ```sh
 if [ "true" != "true" ]; then
