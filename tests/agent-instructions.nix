@@ -25,8 +25,11 @@
   - it carries the shared review-findings rule: the coverage of every
     `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` finding, its
     override of those skills' and their callers' apply bars, deferral steps,
-    and review prompts, and the outlets a finding may not be parked in, so any
-    of those sentences dropped or moved into one harness's branch fails.
+    and review prompts, the outlets a finding may not be parked in, and the
+    stop when an autonomous fix would reverse a user decision, so any of those
+    sentences dropped or moved into one harness's branch fails.
+  - every required sentence starts where a sentence starts, so a guarded
+    sentence negated by a prefix ("Do not ...") fails.
   - it carries the shared model-routing defaults: their precedence below the
     conversation, project instructions, and CE config, the one-line reason for
     leaving the table, the tier-to-row mapping, the broad-scout fallback, the
@@ -85,6 +88,7 @@ let
     "Apply every finding that `ce-code-review` (its cross-model pass included), `ce-simplify-code`, and `ce-doc-review` report, whatever its severity (P2 and P3 included), its confidence, or the list it sits in."
     "This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`."
     "Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing."
+    "In an autonomous run, stop and ask with the question tool when a fix would reverse a decision the user made, such as a `session-settled` entry in the plan."
   ];
 
   branchNameSentences = [
@@ -192,9 +196,20 @@ let
   ];
 
   # Fails the build, naming each sentence, when `$file` lacks any of them.
+  # A sentence counts only where one begins: at the start of a line, after a
+  # list marker, or after the previous sentence's full stop. A substring match
+  # would accept the sentence inside its own negation ("Do not Apply every...").
   requireSentences = message: sentences: ''
     for sentence in ${lib.escapeShellArgs sentences}; do
-      if ! grep -qF -- "$sentence" "$file"; then
+      if ! awk -v s="$sentence" '
+        {
+          i = index($0, s)
+          if (i == 0) next
+          pre = substr($0, 1, i - 1)
+          if (pre == "" || pre == "- " || pre ~ /\. $/) found = 1
+        }
+        END { exit !found }
+      ' "$file"; then
         echo ${esc message} "$sentence" >&2
         failed=1
       fi
