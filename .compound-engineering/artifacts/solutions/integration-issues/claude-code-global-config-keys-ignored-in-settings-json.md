@@ -11,7 +11,8 @@ symptoms:
   - "The `claude` check passes, because it compares the rendered declared JSON with its own mirror, not what Claude Code reads"
 root_cause: wrong_api
 resolution_type: code_fix
-tags: ["claude-code", "settings-json", "claude-json", "global-config", "home-manager", "activation", "agent-settings"]
+tags: ["claude-code", "settings-json", "claude-json", "global-config", "home-manager", "activation", "agent-settings", "t3code", "claude-config-dir", "context", "model-settings", "autocompact"]
+last_updated: "2026-10-12"
 retire_when: "Claude Code reads the key from settings.json; check a newer binary's strings for the key in the settings schema (`<key>:()=>`) or in the list that starts `var iCe=[`"
 ---
 
@@ -59,6 +60,26 @@ EOF
 
 If a key has a `ce().<key>` reader and is in neither the settings schema nor `iCe`, it belongs in `~/.claude.json`.
 
+### Measure the effect with /context when Claude Code reports it
+
+When the key's effect shows in what `claude -p` prints, such as the auto-compact window in `/context`, measure it instead of reading strings. Copy the config directory, edit only the copy, and run `/context` with the flags a T3 Code session uses:
+
+```sh
+T=$(mktemp -d)
+cp -r ~/.claude/. "$T"/
+cp ~/.claude.json "$T"/.claude.json
+jq '.autoCompactWindow=400000' ~/.claude/settings.json > "$T/settings.json"
+cd /tmp && CLAUDE_CONFIG_DIR="$T" claude -p /context --model claude-opus-5-5 \
+  --settings '{"fastMode":false,"showThinkingSummaries":true}' | grep -E 'Tokens:|Autocompact'
+rm -rf "$T"
+```
+
+The copy keeps the login, and the real `~/.claude/settings.json` is never touched. On Claude Code 2.1.296 this printed `**Tokens:** 16.2k / 400k (4%)` and `| Autocompact buffer | 33k | 8.3% |`; without the key, `16.2k / 1m`. Precedence tests the same way: adding `modelSettings: {"claude-opus-5-5": {"autoCompactWindow": 300000}}` beside the top-level key printed `16.2k / 300k`, so the per-model value that `/autocompact` writes outranks the top-level key. The `agent-settings` merger assigns only declared keys and leaves `modelSettings` alone, so declaring the top-level key keeps an `/autocompact` choice across rebuilds.
+
+### T3 Code sessions read the user settings file
+
+To see what a T3 Code session loads, read its arguments with `tr '\0' '\n' < /proc/<pid>/cmdline`. On T3 Code 0.0.46 nightly (the `t3code-desktop-0.0.46-nightly.20261011.2980` store path) with Agent SDK 0.3.276 (the session's `CLAUDE_AGENT_SDK_VERSION`), sessions run `/etc/profiles/per-user/h82/bin/claude` with `--model claude-opus-5-5` and `--settings '{"fastMode":false,"showThinkingSummaries":true}'`, and with no `--setting-sources`. Without `--setting-sources` the CLI loads the user settings file, so a `settingsTier` key reaches T3 sessions as it does terminal sessions. The `--settings` value is a higher-precedence flag layer, so a key it carried would win over the user file. It carries only those two keys. A T3 session observed on 2026-10-12 also answered in the language the user file's `language` key sets, which is consistent with this.
+
 ## Why This Works
 
 Each file has its own reader, and a key takes effect only where its reader looks. For the keys listed in `iCe`, the reader checks settings first and then falls back to global config. That is how older global-config keys became settable from `settings.json`. Keys added outside that list, such as the agent-view toggles, have only the global-config reader.
@@ -66,7 +87,8 @@ Each file has its own reader, and a key takes effect only where its reader looks
 ## Prevention
 
 - Before adding a key to `settingsTier`, confirm the binary reads it from settings: it is in the settings schema, or it is in `iCe`. Otherwise add it to `globalConfigTier`.
-- Treat a passing `claude` check as proof of what activation writes, not of what Claude Code reads. [Checks that read an option value instead of the materialized output](../best-practices/nix-check-reads-option-value-not-materialized-output.md) covers the same kind of gap.
+- Treat a passing `claude` check as proof of what activation writes, not of what Claude Code reads. When the key's effect shows in `/context` or another `claude -p` output, measure it against a copied config directory as above.
+- After a T3 Code or Agent SDK bump, re-read a T3 session's arguments. A `--setting-sources` flag, or a `--settings` value that carries a declared key, would change what those sessions read. [Checks that read an option value instead of the materialized output](../best-practices/nix-check-reads-option-value-not-materialized-output.md) covers the same kind of gap.
 - Merging into `~/.claude.json` carries risks that the `settings.json` merge does not:
   - When the file is absent, the merger creates it holding only the declared keys. Claude Code then does not print its hint about restoring a backup of a missing global config.
   - The merger does not take Claude Code's config lock. A running session can write its cached copy over the merged key, and the key stays missing until the next rebuild that produces a new generation.

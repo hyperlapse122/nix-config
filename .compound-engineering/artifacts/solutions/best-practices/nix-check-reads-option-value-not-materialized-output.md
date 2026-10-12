@@ -27,7 +27,9 @@ tags:
 
 ## Context
 
-`tests/claude.nix` guards the declarative Claude Code defaults: `/etc/claude-code/managed-settings.json` must set `autoMemoryEnabled`, `model`, and `effortLevel`, and Home Manager must not own `~/.claude/settings.json`. The obvious way to write both assertions is to read the option the module sets:
+This example describes `tests/claude.nix` as it stood when this learning was written. The managed settings tier has since been retired: the defaults now merge into `~/.claude/settings.json` at activation, and the check asserts that no `environment.etc` entry declares `claude-code/managed-settings.json`. The lesson about reading the materialized output still applies.
+
+At the time, `tests/claude.nix` guarded the declarative Claude Code defaults: `/etc/claude-code/managed-settings.json` had to set `autoMemoryEnabled`, `model`, and `effortLevel`, and Home Manager must not own `~/.claude/settings.json`. The obvious way to write both assertions is to read the option the module sets:
 
 ```nix
 managedSettingsJson = host.config.environment.etc."claude-code/managed-settings.json".text or null;
