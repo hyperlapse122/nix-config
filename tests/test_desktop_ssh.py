@@ -331,6 +331,56 @@ class ProvisionTests(unittest.TestCase):
                 desktop_ssh.KWallet()
         self.assertNotIn(leaked_value, str(error.exception))
 
+    def test_wallet_calls_select_the_overload_kwalletd_declares_last(self):
+        import dbus
+        import dbus.lowlevel
+        import dbus.proxies
+        from dbus._expat_introspect_parser import process_introspection_data
+
+        # kwalletd6 declares isOpen and close twice; dbus-python keeps the last
+        # declaration, isOpen(i) and close(ibs), unless the call names one.
+        introspection = """<node><interface name="org.kde.KWallet">
+          <method name="close"><arg direction="out" type="i"/>
+            <arg direction="in" type="s"/><arg direction="in" type="b"/></method>
+          <method name="close"><arg direction="out" type="i"/>
+            <arg direction="in" type="i"/><arg direction="in" type="b"/>
+            <arg direction="in" type="s"/></method>
+          <method name="isOpen"><arg direction="out" type="b"/>
+            <arg direction="in" type="s"/></method>
+          <method name="isOpen"><arg direction="out" type="b"/>
+            <arg direction="in" type="i"/></method>
+          <method name="open"><arg direction="out" type="i"/>
+            <arg direction="in" type="s"/><arg direction="in" type="x"/>
+            <arg direction="in" type="s"/></method>
+          <method name="hasFolder"><arg direction="out" type="b"/>
+            <arg direction="in" type="i"/><arg direction="in" type="s"/>
+            <arg direction="in" type="s"/></method>
+        </interface></node>"""
+        replies = {"isOpen": True, "open": 7, "hasFolder": True, "close": 0}
+        calls = []
+
+        class Bus:
+            def activate_name_owner(self, name):
+                return name
+
+            def get_object(self, name, path):
+                proxy = dbus.proxies.ProxyObject(self, name, path, introspect=False)
+                proxy._introspect_method_map = process_introspection_data(introspection)
+                return proxy
+
+            def call_blocking(self, name, path, interface, method, signature, args, **keywords):
+                # The real marshaller rejects arguments the signature cannot carry.
+                dbus.lowlevel.MethodCallMessage(name, path, interface, method).append(
+                    *args, signature=signature)
+                calls.append((method, signature))
+                return replies[method]
+
+        with patch.object(dbus.bus, "BusConnection", return_value=Bus()):
+            wallet = desktop_ssh.KWallet()
+            wallet.close()
+        self.assertEqual(calls, [("isOpen", "s"), ("open", "sxs"), ("hasFolder", "iss"),
+                                 ("close", "ibs")])
+
 
 class FakeAgent:
     """A real Unix protocol endpoint, with distinct identities and recorded requests."""
