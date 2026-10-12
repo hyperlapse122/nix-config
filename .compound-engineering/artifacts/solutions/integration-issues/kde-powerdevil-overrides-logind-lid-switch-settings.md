@@ -41,7 +41,7 @@ Configure Powerdevil directly instead of, or in addition to (as a defense-in-dep
 
 `LidAction=Sleep` (`1`) together with `SleepMode=SuspendThenHibernate` (`3`) reproduces the exact composite suspend-then-hibernate behavior that a shallow reading of the `PowerButtonAction` enum alone would suggest is unavailable — that enum's `Hibernate` value is a different, non-composite action; the composite behavior lives in the separate `SleepMode` field, read together with `LidAction=Sleep`.
 
-Write these with `kwriteconfig6 --file powerdevilrc --group <Profile> --group SuspendAndShutdown --key <Key> ...`, matching this repo's existing pattern for `powerdevilrc` in `home/h82/kde/session.nix`. See `home/h82/kde/power-lid.nix` for the applied fix (host-scoped via `osConfig.networking.hostName`, since `home-manager.users.h82` is shared unconditionally across every host).
+Write these with `kwriteconfig6 --file powerdevilrc --group <Profile> --group SuspendAndShutdown --key <Key> ...`, matching this repo's existing pattern for `powerdevilrc` in `home/h82/desktop/kde/session.nix`. The applied fix was `home/h82/desktop/kde/power-lid.nix`, host-scoped via `osConfig.networking.hostName` because `home-manager.users.h82` is shared unconditionally across every host. It was removed with the only laptop host in commit `e857618`, and today the repository sets no lid or power-key policy: no module sets `HandleLidSwitch`, `LidAction`, or `services.logind`, and `modules/nixos/desktop/desktop.nix` writes only display-dimming keys to `/etc/xdg/powerdevilrc`. Scoping by `osConfig` or a host name is no longer allowed (`AGENTS.md`: traits, never host names or `osConfig`), so a returning laptop should gate the fix on a trait.
 
 ## Why This Works
 
@@ -51,7 +51,7 @@ The inhibitor, not the option, decides which subsystem is authoritative. Reading
 
 - When a NixOS option under `services.logind.settings.Login` (or a historical `services.logind.<key>` alias) is meant to change lid/power/suspend/hibernate-key behavior on a host running a desktop environment, check first whether that desktop's own power daemon takes an inhibitor over the same keys (Powerdevil for Plasma; an equivalent daemon exists for GNOME and others). Read the daemon's actual source for the inhibitor call and its `what` string — do not infer this from end-user documentation, which describes the option in isolation.
 - Prove the mechanism against the materialized artifact the desktop environment actually reads (here, the Home Manager activation script that renders `powerdevilrc`), not only the systemd-side config file. A check that only reads `logind.conf` would have stayed green while this exact bug shipped.
-- `tests/logind-lid-switch.nix` in this repository asserts both surfaces materialize the intended values for exactly this reason.
+- Historical: `tests/logind-lid-switch.nix` asserted both surfaces materialize the intended values for exactly this reason. It was removed in `e857618` with the laptop host; recover it with `git show e857618^:tests/logind-lid-switch.nix`.
 
 ## Related Issues
 

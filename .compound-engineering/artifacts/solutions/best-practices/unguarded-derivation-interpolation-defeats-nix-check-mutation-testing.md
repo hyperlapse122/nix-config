@@ -2,7 +2,7 @@
 title: "A mutation that only breaks Nix evaluation proves nothing about a check"
 date: 2026-09-21
 category: best-practices
-module: "NixOS flake checks (kleopatra-gui derivation guard)"
+module: "NixOS flake checks (kleopatra-gui derivation guard, assertUserPackage)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -29,7 +29,9 @@ tags:
 
 ## Context
 
-The pending `feat/kleopatra-gpg-gui` work adds `kdePackages.kleopatra` to the user package list at `home/h82/default.nix:26` and registers a `kleopatra-gui` check in `flake.nix` (`flake.nix:148`) to guard it. Unlike its sibling `python3-runtime` (`flake.nix:127`), this check cannot settle for a boolean: it asserts that the package in the configuration ships `bin/kleopatra` and the `org.kde.kleopatra.desktop` entry, so it needs the derivation itself, resolved with `pkgs.lib.lists.findFirst (p: (p.pname or "") == "kleopatra") null userPackages` at `flake.nix:152`.
+The `feat/kleopatra-gpg-gui` work added `kdePackages.kleopatra` to the user package list in `home/h82/default.nix` and registered a `kleopatra-gui` check in `flake.nix` to guard it. Unlike its sibling `python3-runtime` as it was then, this check could not settle for a boolean: it asserts that the package in the configuration ships `bin/kleopatra` and the `org.kde.kleopatra.desktop` entry, so it needs the derivation itself, resolved with `pkgs.lib.lists.findFirst (p: (p.pname or "") == "kleopatra") null ...`.
+
+That logic now lives in the shared `assertUserPackage` helper in `flake.nix`, which `kleopatra-gui`, `python3-runtime`, `telegram-desktop`, and other package checks call through `forEveryConfiguration`. `userPackageOf` does the `findFirst ... null`, and the helper keeps the guard this doc describes. The snippets below show the original single-check form.
 
 That one difference — a resolved derivation instead of a boolean — changes what the repo's mutation-testing discipline actually measures. The existing learning on [decorative assertions](mutation-testing-reveals-decorative-nix-check-assertions.md) covers assertions that cannot fail. This is the level below it: the assertion here is sound, and the *mutation* is what silently fails to reach it. Nothing about a red mutation round tells you which of the two you are looking at.
 
@@ -70,13 +72,13 @@ present = pkgs.lib.optionalString (kleopatra != null) ''
 '';
 ```
 
-as written at `flake.nix:156` and `flake.nix:160`, spliced into the builder in that order at `flake.nix:171`. The comment above them (`flake.nix:153`) records the constraint, because the guard looks like redundant defensiveness to anyone who has not watched the unguarded version abort.
+`assertUserPackage` keeps the same two branches, `optionalString (package == null)` and `optionalString (package != null)`. The comment above it records the constraint, because the guard looks like redundant defensiveness to anyone who has not watched the unguarded version abort.
 
-The two branches are exclusive at the Nix level rather than the shell level: whichever condition is false expands to the empty string, so only one branch's text is ever spliced into the builder at all. The `exit 1` is still load-bearing — without it the absent branch would print its message and then fall through to `touch $out`, and the check would pass while announcing its own failure.
+The two branches are exclusive at the Nix level rather than the shell level: whichever condition is false expands to the empty string, so only one branch's text is ever spliced into the builder at all. The failure exit is still load-bearing. Without it, the absent branch would print its message and then fall through to `touch $out`, and the check would pass while announcing its own failure. The helper sets `fail=1` in place of `exit 1` so that every host is reported, and `forEveryConfiguration` exits after the last host when `fail` is set.
 
 ## Why the sibling check hides the trap
 
-`python3-runtime` at `flake.nix:127` computes only booleans — `pkgs.lib.lists.any (p: (p.pname or "") == "python3") userPackages` — and takes its binaries from `nativeBuildInputs` (`flake.nix:136`), not from anything resolved out of the user's configuration. Its trailing `python3 --version` and `uv --version` commands sit outside any guard (`flake.nix:144`) and are safe there, because nothing in them can be null. Its `optionalString` calls are doing ordinary conditional-text work, not laziness work.
+When this was written, `python3-runtime` computed only booleans, `pkgs.lib.lists.any (p: (p.pname or "") == "python3") userPackages`, and took its binaries from `nativeBuildInputs`, not from anything resolved out of the user's configuration. Its trailing `python3 --version` and `uv --version` commands sat outside any guard and were safe there, because nothing in them could be null. Its `optionalString` calls did ordinary conditional-text work, not laziness work. It now calls `assertUserPackage` too, but the trap still applies to any new check that copies a boolean-only shape.
 
 Copying that shape for a check that resolves a derivation is exactly what invites the failure. The visible structure is the same; the reason the structure is safe is not.
 
@@ -97,7 +99,7 @@ The control round is the one that carries the lesson. Without it, rounds two and
 
 - Before mutating, ask what the check's assertions *depend on*. A check that depends only on values computed in the flake (booleans, counts, string comparisons) can be mutated freely. A check that depends on a value resolved out of the configuration — a derivation, an attribute set, a path — can be mutated into non-evaluation instead of into failure.
 - Prefer a removal mutation *and* a content mutation. Removal tests the resolution path and the absent branch; content tests the assertion. Passing only one leaves half the check unproven, and removal is precisely the mutation that can break evaluation.
-- Read `nix log` for the failing derivation, or keep `set -x` at the top of the builder as this check does (`flake.nix:172`). A round that produced no builder output produced no evidence.
+- Read `nix log` for the failing derivation, or keep `set -x` at the top of the builder as this check does. A round that produced no builder output produced no evidence.
 - Treat `lib.findFirst ... null` as a signal. The `null` default is the whole hazard: it is what makes the absent case representable, and what makes interpolating the result an evaluation-time trap. Wherever that `null` can reach a string context, guard it.
 - Generalise past `optionalString`: any Nix construct that avoids forcing its argument works. The rule is that the failing branch must be reachable as *shell*, not as evaluation.
 
@@ -107,4 +109,4 @@ The control round is the one that carries the lesson. Without it, rounds two and
 
 ## Out of scope
 
-That Kleopatra launches, finds the user's GPG keyring, and is reachable from the Plasma launcher is hardware and desktop verification; see `docs/verification.md`. A build-time check on the package's contents cannot reach any of it. The `kleopatra-gui` check and this learning are on `feat/kleopatra-gpg-gui` and are pending merge at the time of writing.
+That Kleopatra launches, finds the user's GPG keyring, and is reachable from the Plasma launcher is hardware and desktop verification; see `docs/verification.md`. A build-time check on the package's contents cannot reach any of it.

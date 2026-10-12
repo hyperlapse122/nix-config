@@ -31,7 +31,7 @@ tags:
 
 ## Problem
 
-The scheduled dependency-update workflow decides whether to push straight to `main` from one output: `steps.verify.outputs.status`. The push step runs only when that output is `success` (`.github/workflows/update-dependencies.yml:132-133`). The "Verify updates" step that sets it piped each check through `tee` so the log could go into the step summary, then read `$?` for the check's exit code. In a pipeline without `pipefail`, `$?` is the status of the last command, which here is `tee`. `tee` almost always succeeds, so the step wrote `status=success` whatever `nix fmt` or `nix flake check` returned. Broken updates could therefore land on `main` with no human in the loop.
+The scheduled dependency-update workflow decides whether to push straight to `main` from one output: `steps.verify.outputs.status`. The push step runs only when that output is `success` (the push step's `if:` in `.github/workflows/update-dependencies.yml`). The "Verify updates" step that sets it piped each check through `tee` so the log could go into the step summary, then read `$?` for the check's exit code. In a pipeline without `pipefail`, `$?` is the status of the last command, which here is `tee`. `tee` almost always succeeds, so the step wrote `status=success` whatever `nix fmt` or `nix flake check` returned. Broken updates could therefore land on `main` with no human in the loop.
 
 Before the fix (`git show a3f409f:.github/workflows/update-dependencies.yml`, lines 95-104):
 
@@ -50,7 +50,7 @@ Before the fix (`git show a3f409f:.github/workflows/update-dependencies.yml`, li
 
 The step declares no `shell:`. GitHub Actions runs a `run:` block with no `shell:` key as `bash -e {0}`. Only an explicit `shell: bash` gets `bash --noprofile --norc -eo pipefail {0}`. So nothing in the step's environment set `pipefail`, and `set +e` also stopped `-e` from aborting on a failing pipeline (which, without `pipefail`, it would not have done anyway).
 
-The fix is on branch `perf/separate-vm-checks-from-flake-check` (issue #140) and is not merged as of this writing.
+The fix (issue #140) is merged.
 
 ## Symptoms
 
@@ -79,7 +79,7 @@ The fix is on branch `perf/separate-vm-checks-from-flake-check` (issue #140) and
 
 ## Solution
 
-Read each command's own exit status from `PIPESTATUS[0]` on the line straight after its pipeline, and give each logged command its own log file (`.github/workflows/update-dependencies.yml:95-130`):
+Read each command's own exit status from `PIPESTATUS[0]` on the line straight after its pipeline, and give each logged command its own log file (the `Verify updates` step in `.github/workflows/update-dependencies.yml`):
 
 ```yaml
         run: |
@@ -100,7 +100,7 @@ Read each command's own exit status from `PIPESTATUS[0]` on the line straight af
             echo "status=success" >> "$GITHUB_OUTPUT"
 ```
 
-The failure summary then tails `check.log` only when `CHECK_EXIT` is non-zero and `vm-check.log` only when `VM_EXIT` is non-zero (`.github/workflows/update-dependencies.yml:115-129`). `/vm-check.log` joins `/fmt.log` and `/check.log` in `.gitignore:15-17`, so the push step's catch-all commit does not pick it up. The `update-dependencies-push-order` fixture now writes a `vm-check.log` into its clone and asserts that none of the three logs gets committed (`tests/update-dependencies-push-order.sh:101-112`).
+The failure summary then tails `check.log` only when `CHECK_EXIT` is non-zero and `vm-check.log` only when `VM_EXIT` is non-zero (that step's failure summary). `/vm-check.log` joins `/fmt.log` and `/check.log` in `.gitignore:15-17`, so the push step's catch-all commit does not pick it up. The `update-dependencies-push-order` fixture now writes a `vm-check.log` into its clone and asserts that none of the three logs gets committed (`tests/update-dependencies-push-order.sh:101-112`).
 
 A new regression check, `tests/update-dependencies-verify-status.sh`, runs the step's real script instead of grepping it for patterns:
 
@@ -109,7 +109,7 @@ A new regression check, `tests/update-dependencies-verify-status.sh`, runs the s
 - The stub fails `fmt`, `flake`, and `build` in turn, and each run must write `status=failure`. A fourth run where nothing fails must write `status=success` (`:78-87`).
 - It asserts that the failing VM build's output is in `vm-check.log` and not in `check.log` (`:89-94`).
 
-The check is registered in `flake.nix:894-900` as `update-dependencies-verify-status`, so `nix flake check` runs it.
+The check is registered in `flake.nix` as `update-dependencies-verify-status`, so `nix flake check` runs it.
 
 ## Why This Works
 

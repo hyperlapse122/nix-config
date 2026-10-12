@@ -2,7 +2,7 @@
 title: "Mutation testing reveals decorative assertions in a Nix flake check"
 date: 2026-09-21
 category: best-practices
-module: "NixOS flake checks (keyd remap)"
+module: "NixOS flake checks (mutation-testing practice)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -28,7 +28,9 @@ tags:
 
 ## Context
 
-`tests/keyd-remap.nix`, registered as the `keyd-remap` check in `flake.nix`, asserts what `modules/nixos/keyd.nix` generates: a keyd configuration remapping Caps Lock to the Hangul key, keeping real Caps Lock on Ctrl+Caps Lock, scoping the remap to the internal keyboard, and a libinput quirk. It passed the first time it ran and was treated as a regression guard from that moment.
+`tests/keyd-remap.nix`, registered as the `keyd-remap` check in `flake.nix`, asserted what `modules/nixos/hardware/keyd.nix` generated: a keyd configuration remapping Caps Lock to the Hangul key, keeping real Caps Lock on Ctrl+Caps Lock, scoping the remap to the internal keyboard, and a libinput quirk. It passed the first time it ran and was treated as a regression guard from that moment.
+
+The ThinkPad host, the keyd module, and this check were removed in e857618, so the paths, option names, and commands below are historical. The lessons do not depend on keyd. `tests/check-workflow-docs-skip.sh` is a live check that writes its negative assertions in the explicit `if`/`exit` form this doc recommends.
 
 Mutation testing showed two of its assertions could not fail. The check was green partly for reasons unrelated to the module being correct.
 
@@ -118,4 +120,4 @@ Two further habits came out of the same pass. Put `set -x` at the top of a build
 
 ## Out of scope for this check
 
-That keyd actually grabs the internal keyboard, and that the emitted keysym reaches the input method, stay on the hardware checklist in `docs/verification.md`. A build-time check on generated configuration cannot reach either.
+Whether generated configuration reaches the real device or service stays a hardware check (see `docs/verification.md`). For keyd, that was whether it grabbed the internal keyboard and whether the emitted keysym reached the input method. A build-time check on generated configuration cannot reach either.

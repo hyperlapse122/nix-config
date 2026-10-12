@@ -49,7 +49,7 @@ Type=oneshot
 
 Three properties combine. The unit is a `oneshot` with `RemainAfterExit=yes`, so once it has run it stays `active` rather than returning to `inactive`. Its `ExecStart` embeds the Home Manager generation's store path, so the unit file's contents are a function of that generation. And `switch-to-configuration` acts only on units whose definition changed between the old and new system closures.
 
-So a rebuild whose Home Manager generation is byte-identical produces a byte-identical unit file, `switch-to-configuration` classifies it as unchanged, and the already-active oneshot is left alone. Its activation script — every `home.activation` entry, including one after `writeBoundary` — does not execute. Nothing reports this, because nothing failed.
+So a rebuild whose Home Manager generation is byte-identical produces a byte-identical unit file, `switch-to-configuration` classifies it as unchanged, and the already-active oneshot is left alone. Its activation script — every `home.activation` entry, including one after `installPackages` — does not execute. Nothing reports this, because nothing failed.
 
 Editing anything that feeds the generation (a declared value, a package, a dotfile) changes the generation path, changes the unit, and makes the unit restart, which is why the mechanism looks unconditional during development: an author testing a change is always in the case where it does run.
 
@@ -70,8 +70,8 @@ If `ExecStart` carries a generation store path and the unit is a `RemainAfterExi
 
 This is about whether activation *runs*, not about whether an activation script is correct. A script that is wrong will also be wrong when it does run.
 
-It applies to Home Manager as a NixOS module, where activation is driven by a system unit. A standalone `home-manager switch` invoked directly runs activation unconditionally, so the same repository can show both behaviours depending on how it is applied.
+It applies to Home Manager as a NixOS module, where activation is driven by a system unit. A standalone `home-manager switch` invoked directly runs activation unconditionally, so the same repository can show both behaviours depending on how it is applied. Both other host kinds here run it unconditionally. On a non-NixOS Linux host, `scripts/nr-linux` runs the generation's `activate` directly after the system layer. On a macOS host, Home Manager's nix-darwin module runs each user's `activate` from `system.activationScripts.postActivation`. So on those hosts every apply reasserts, and the conditional guarantee is specific to NixOS hosts.
 
 It is not specific to this repository's settings merge. Any `home.activation` entry whose job is to reassert state that drifts between rebuilds inherits the same conditional guarantee — the more the entry exists to correct outside changes, the more the gap matters, because outside changes are precisely what does not change the generation.
 
-The related checks under `.compound-engineering/artifacts/solutions/best-practices/` cover a different failure: an assertion that cannot go red. This one is not an assertion problem. `tests/claude.nix` correctly asserts that the activation entry exists and is wired after `writeBoundary`; no check can observe whether `switch-to-configuration` chose to restart the unit, which is why the wording in the docs was the only thing standing between the operator and a false bug report.
+The related checks under `.compound-engineering/artifacts/solutions/best-practices/` cover a different failure: an assertion that cannot go red. This one is not an assertion problem. `tests/claude.nix` correctly asserts that the activation entry exists and is ordered after `installPackages`; no check can observe whether `switch-to-configuration` chose to restart the unit, which is why the wording in the docs was the only thing standing between the operator and a false bug report.

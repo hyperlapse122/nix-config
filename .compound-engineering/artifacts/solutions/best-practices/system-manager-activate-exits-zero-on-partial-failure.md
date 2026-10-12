@@ -46,7 +46,7 @@ repository. What `activate()` in `crates/system-manager-engine/src/activate.rs`
 actually does:
 
 - A failed pre-activation assertion bails before anything changes
-  (`activate.rs:138-140`: `anyhow::bail!("Failure in pre-activation assertions.")`).
+  (`activate.rs:137-139`: `anyhow::bail!("Failure in pre-activation assertions.")`).
 - When `etc_files::activate` returns `ActivationError::WithPartialResult`, the
   engine logs `Error during activation`, writes the partial state file, and
   returns `Ok(())` (`activate.rs:190-199`).
@@ -61,7 +61,7 @@ So the process exits 0 when some `/etc` files or units failed. The failure
 shows up only as a log line.
 
 Registration has already happened by then. `register()` installs the new nix
-profile generation and creates the GC root (`register.rs:26-33`), and both
+profile generation and creates the GC root (`register.rs:27-33`), and both
 `nr-linux` (`scripts/nr-linux:183`) and upstream's own `switch`
 (`crates/system-manager/src/main.rs:413-420`, `invoke_engine_register` then
 `invoke_engine_activate`) register before activating. Only upstream's
@@ -123,8 +123,8 @@ vm.succeed("grep -qx 'host=<name>' /etc/nix-config-host")
 
 Two settings in `modules/system-manager/default.nix` are the kind of thing a
 partial activation would otherwise hide. They are asserted in the built output
-rather than trusted to the exit status (`tests/non-nixos-outputs.nix:208` greps
-the materialized `nix.conf` for `build-users-group = nixbld`):
+rather than trusted to the exit status (the `build-users-group = nixbld` assertion in `tests/non-nixos-outputs.nix`
+greps the materialized `nix.conf`):
 
 - `nix.enable = true` makes system-manager take over `/etc/nix/nix.conf`, but
   the upstream module drops the installer's `build-users-group`, so the module

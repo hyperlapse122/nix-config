@@ -23,7 +23,7 @@ retire_when: "auto-patchelf in nixpkgs skips static-pie executables (ET_DYN with
 
 ## Problem
 
-The ChatGPT desktop package (`packages/chatgpt.nix`, on branch `feat/add-codex-chatgpt`, unmerged as of this writing) repackages the upstream `.deb` with `autoPatchelfHook` and sets `appendRunpaths` to libGL and libpulseaudio so Chromium can `dlopen` them (`packages/chatgpt.nix:63-66`). The ChatGPT 26.928.31416 `.deb` also bundles three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
+The ChatGPT desktop package (`packages/chatgpt.nix`) repackages the upstream `.deb` with `autoPatchelfHook` and sets `appendRunpaths` to libGL and libpulseaudio so Chromium can `dlopen` them (`packages/chatgpt.nix:63-66`). The ChatGPT 26.928.31416 `.deb` also bundles three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
 
 autoPatchelf's static-binary skip does not cover static-pie, so the binaries have to be protected by hand. The first attempt at that also failed, because of the order in which stdenv runs a `postFixup` attribute and the `postFixupHooks` array.
 
@@ -80,7 +80,7 @@ After (`packages/chatgpt.nix:95-104` and `:125-134`):
 
 `pkgs.file` is added to `nativeBuildInputs` (`packages/chatgpt.nix:20`) for the detection. The files are found by `file -b … | grep 'static-pie linked'` rather than by a fixed list of names, so a static binary added in a later release is protected too.
 
-The `chatgpt` flake check now runs the bundled binaries instead of only checking that they exist: `HOME="$TMPDIR" …/lib/chatgpt/resources/$binary --version` for `codex` and `rg` (`flake.nix:928-936`).
+The `chatgpt` flake check now runs the bundled binaries instead of only checking that they exist: `HOME="$TMPDIR" …/lib/chatgpt/resources/$binary --version` for `codex` and `rg` (the `--version` loop in the `chatgpt` check in `flake.nix`). The ChatGPT pin has since moved (`packages/chatgpt-version.json`); the versions in this paragraph are the ones the fix was verified against.
 
 Verified after the fix: the bundled binaries report `codex-cli 0.159.2` and `ripgrep 15.2.0`, and the ChatGPT Electron binary still has its `RUNPATH`, so the libGL and libpulseaudio `dlopen` path is unchanged. As a mutation test in this session, re-enabling the automatic hook turned the `chatgpt` check red.
 
@@ -96,3 +96,4 @@ A static-pie binary relocates itself at startup and has no dynamic loader that w
 - Do not try to undo the hook's work in the `postFixup` attribute. A derivation's own `pre*`/`post*` string runs before that hook's `*Hooks` array (`setup.sh:211`), so it cannot run after `autoPatchelfPostFixup`. Set `dontAutoPatchelf = true` and call `autoPatchelf` yourself where the order matters.
 - When a check covers a binary that patching or wrapping can break, run it (`--version` is enough). Checking that the file exists and is executable passes on a binary that segfaults. Mutation-test the check by re-enabling the breaking step, as described in [mutation testing for check assertions](../best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md).
 - Before removing this workaround, confirm that nixpkgs' `is_static_executable` also covers `ET_DYN` files without `.interp`, or that `autoPatchelfPostFixup` skips them. Then rebuild with the automatic hook re-enabled and confirm that the `chatgpt` check stays green.
+- `packages/t3code-cli.nix` applies the same pattern, setting aside every static-pie file at install time and restoring it after `autoPatchelf` in `postFixup`, for the Cursor SDK's `rg` and `cursorsandbox` on x86_64. Its `t3code` check in `flake.nix` runs `t3 --version` and the bundled `rg --version`.

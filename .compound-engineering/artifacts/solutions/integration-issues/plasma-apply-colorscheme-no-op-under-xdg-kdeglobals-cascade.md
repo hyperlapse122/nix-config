@@ -25,8 +25,8 @@ tags: ["kde-plasma", "kdeglobals", "plasma-apply-colorscheme", "kwriteconfig6", 
 
 The KDE dark-theme change (branch `hyperlapse122/feat-kde-dark-theme`) makes Breeze Dark the default Plasma theme. It does this in two layers:
 
-- **System layer.** `modules/nixos/desktop/desktop.nix:192-213` renders `/etc/xdg/kdeglobals` with `[General] ColorScheme=BreezeDark` (line 197), `[Icons] Theme=breeze-dark`, and `[KDE] LookAndFeelPackage=org.kde.breezedark.desktop`. It then appends the `[Colors:*]`, `[ColorEffects:*]`, and `[WM]` groups from the packaged `BreezeDark.colors` (lines 209-212).
-- **User layer.** A Home Manager activation, `home.activation.kdeTheme` in `home/h82/desktop/kde/theme.nix:28`, converts h82's existing user.
+- **System layer.** `modules/nixos/desktop/desktop.nix` originally rendered `/etc/xdg/kdeglobals` with `[General] ColorScheme=BreezeDark`, `[Icons] Theme=breeze-dark`, and `[KDE] LookAndFeelPackage=org.kde.breezedark.desktop`, then appended the `[Colors:*]`, `[ColorEffects:*]`, and `[WM]` groups from the packaged `BreezeDark.colors`. Today it renders `ColorScheme=BreezeLight`, `Icons Theme=breeze`, `AutomaticLookAndFeel=true` with `DefaultLightLookAndFeel`/`DefaultDarkLookAndFeel`, and `LookAndFeelPackage=org.kde.breeze.desktop`, and appends the groups from `BreezeLight.colors`.
+- **User layer.** A Home Manager activation, `home.activation.kdeTheme` in `home/h82/desktop/kde/theme.nix`, converts h82's existing user.
 
 New users picked up the dark defaults, but h82 stayed light. h82's long-lived `~/.config/kdeglobals` had no `ColorScheme` key. It did carry its own light `[Colors:*]` groups, for example `[Colors:Window] BackgroundNormal=239,240,241`. KConfig lets user-file groups override `/etc/xdg`, so those light colors won over the system dark defaults.
 
@@ -62,9 +62,11 @@ The tool behavior below was observed in this session against `plasma-workspace` 
 
 ## Solution
 
+> **Historical:** `home/h82/desktop/kde/theme.nix` no longer has this design. It now sets `AutomaticLookAndFeel` with `DefaultLightLookAndFeel`/`DefaultDarkLookAndFeel`, and deletes the user's `ColorScheme`, `ColorSchemeHash`, and `Icons Theme` pins with `XDG_CONFIG_DIRS=/var/empty`, so Plasma applies the scheduled theme at login. `modules/nixos/desktop/desktop.nix` renders `/etc/xdg/kdeglobals` with `ColorScheme=BreezeLight`, and the check is `kde-theme` (`tests/kde-theme.nix`). The mechanics below describe the original implementation. The cascade lesson still applies: any tool or check that reads the effective config sees `/etc/xdg`, not just the user file.
+
 Drop `plasma-apply-colorscheme` and write the scheme's color entries into the user file directly with `kwriteconfig6`. Build the entry list from the packaged scheme so it follows Breeze upgrades.
 
-`home/h82/desktop/kde/theme.nix:7-20` generates the list at build time. It is one `group<TAB>key<TAB>value` line per entry in `[Colors:*]`, `[ColorEffects:*]`, and `[WM]`. Nested groups such as `[Colors:Header][Inactive]` are joined with `/`:
+The original `home/h82/desktop/kde/theme.nix` generated the list at build time. It is one `group<TAB>key<TAB>value` line per entry in `[Colors:*]`, `[ColorEffects:*]`, and `[WM]`. Nested groups such as `[Colors:Header][Inactive]` are joined with `/`:
 
 ```nix
 darkColors = pkgs.runCommand "breeze-dark-color-entries" { nativeBuildInputs = [ pkgs.gawk ]; } ''
@@ -83,7 +85,7 @@ darkColors = pkgs.runCommand "breeze-dark-color-entries" { nativeBuildInputs = [
 '';
 ```
 
-The activation (`home/h82/desktop/kde/theme.nix:28-43`) writes the three identity keys and then loops over the list. For each nested level it passes a separate `--group`:
+The original activation wrote the three identity keys and then loops over the list. For each nested level it passes a separate `--group`:
 
 ```nix
 home.activation.kdeTheme = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -104,9 +106,9 @@ home.activation.kdeTheme = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
 '';
 ```
 
-`kwrite` is `${pkgs.kdePackages.kconfig}/bin/kwriteconfig6` (`theme.nix:3`). The activation takes about 1.8 s. It needs no display and no `QT_QPA_PLATFORM`.
+`kwrite` is `${pkgs.kdePackages.kconfig}/bin/kwriteconfig6` (still the `kwrite` binding in `theme.nix`). The activation takes about 1.8 s. It needs no display and no `QT_QPA_PLATFORM`.
 
-Regression check: `tests/kde-dark-theme.nix`, registered as `kde-dark-theme` in `flake.nix:728`. The default later moved to Breeze Light with the same two-layer mechanism, and then to automatic switching between Breeze and Breeze Dark, where Plasma's own login-time apply and `lookandfeelautoswitcher` write the colors and the activation no longer copies them; the check is now `tests/kde-theme.nix` (`kde-theme`).
+Regression check: `tests/kde-dark-theme.nix`, registered as `kde-dark-theme` in `flake.nix`. The default later moved to Breeze Light with the same two-layer mechanism, and then to automatic switching between Breeze and Breeze Dark, where Plasma's own login-time apply and `lookandfeelautoswitcher` write the colors and the activation no longer copies them; the check is now `tests/kde-theme.nix` (`kde-theme`).
 
 ## Why This Works
 
@@ -115,15 +117,15 @@ Regression check: `tests/kde-dark-theme.nix`, registered as `kde-dark-theme` in 
 - Passing one `--group` per nesting level addresses `[Colors:Header][Inactive]` as a real subgroup. Joining the levels into one group name writes a different, unrelated group and leaves the light subgroup in place.
 - Generating the list from `${pkgs.kdePackages.breeze}/share/color-schemes/BreezeDark.colors` keeps the user values identical to what `desktop.nix` appends to `/etc/xdg/kdeglobals` from the same file.
 
-The activation runs only when the Home Manager generation changes, not on every rebuild (`theme.nix:26-27`; see `.compound-engineering/artifacts/solutions/best-practices/home-manager-activation-does-not-run-on-every-rebuild.md`). It converts the user file once. Nothing reasserts dark on each switch.
+The activation runs only when the Home Manager generation changes, not on every rebuild (see the comment above `home.activation.kdeTheme` in `theme.nix`; see `.compound-engineering/artifacts/solutions/best-practices/home-manager-activation-does-not-run-on-every-rebuild.md`). It converts the user file once. Nothing reasserts dark on each switch.
 
 ## Prevention
 
 - **Treat any "apply" tool that reads the effective config as a possible silent no-op when `/etc/xdg` sets the same value.** Before relying on `plasma-apply-colorscheme`, `plasma-apply-lookandfeel`, or similar tools in activation, run them with the real `XDG_CONFIG_DIRS` pointed at the built `/etc/xdg`. A test under `env -i`, or one with no `XDG_CONFIG_DIRS`, hides the cascade and gives the misleading "Successfully applied" result.
-- **Run the real activation, not a grep of its text.** `tests/kde-dark-theme.nix:76-118` takes `home-manager.users.h82.home.activation.kdeTheme.data` and runs it with `bash` under a fixture `HOME`, with `XDG_CONFIG_DIRS` set to `${host.config.system.build.etc}/etc/xdg` (lines 100-102).
-- **Seed the fixture with the wrong values, not with missing keys.** The fixture user `kdeglobals` (lines 95-99) contains `ColorScheme=BreezeLight`, `Icons Theme=breeze`, `LookAndFeelPackage=org.kde.breeze.desktop`, and every `[Colors:*]` group from `BreezeLight.colors`. If keys are merely absent, the dark `/etc/xdg` defaults fill them in and a dropped write still passes. This is the converged-fixture trap in `.compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md`.
-- **Assert the resolved value, not the presence of a user key.** `ini_effective` (lines 151-160) returns the user file's value when the group and key exist there, and the `/etc/xdg` value otherwise. That matches KConfig's behavior of dropping user entries equal to the cascaded default. Include at least one nested group in the assertions. The check compares both `[Colors:Window]` and `[Colors:Header][Inactive]` `BackgroundNormal` against values read from `BreezeDark.colors` (lines 110-115, 162-163), and it confirms the dark value differs from `BreezeLight.colors` so a light scheme cannot pass (lines 164-167).
-- **Mutation-test the check.** Each of these five mutations made `kde-dark-theme` fail:
+- **Run the real activation, not a grep of its text.** The retired `tests/kde-dark-theme.nix` took `home-manager.users.h82.home.activation.kdeTheme.data` and ran it with `bash` under a fixture `HOME`, with `XDG_CONFIG_DIRS` set to `${host.config.system.build.etc}/etc/xdg`. `tests/kde-theme.nix` keeps the same approach: it runs `kdeTheme.data` against fixture HOMEs with the session's `XDG_CONFIG_DIRS` (the `kdeEnv` binding).
+- **Seed the fixture with the wrong values, not with missing keys.** The retired check's fixture user `kdeglobals` contained `ColorScheme=BreezeLight`, `Icons Theme=breeze`, `LookAndFeelPackage=org.kde.breeze.desktop`, and every `[Colors:*]` group from `BreezeLight.colors`. If keys are merely absent, the dark `/etc/xdg` defaults fill them in and a dropped write still passes. This is the converged-fixture trap in `.compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md`.
+- **Assert the resolved value, not the presence of a user key.** `ini_effective` (in `tests/kde-theme.nix` too) returns the user file's value when the group and key exist there, and the `/etc/xdg` value otherwise. That matches KConfig's behavior of dropping user entries equal to the cascaded default; `ini_mentions` there also catches a `Key[$d]` deletion marker. Include at least one nested group in the assertions. The retired check compared both `[Colors:Window]` and `[Colors:Header][Inactive]` `BackgroundNormal` against values read from `BreezeDark.colors`, and confirmed the dark value differs from `BreezeLight.colors` so a light scheme cannot pass.
+- **Mutation-test the check.** Each of these five mutations made the retired `kde-dark-theme` check fail:
   - dropping the `ColorScheme` write
   - dropping the `LookAndFeelPackage` write
   - dropping the `Icons/Theme` write
@@ -132,3 +134,7 @@ The activation runs only when the Home Manager generation changes, not on every 
 
   Repeat this after changing the activation or the fixture.
 - **Keep hardware verification separate.** The check cannot observe whether a running Plasma session repaints. That belongs in `docs/verification.md`.
+
+## Related
+
+- [kwriteconfig6 --delete writes a deletion marker that masks kdedefaults](kwriteconfig6-delete-writes-masking-marker-over-cascaded-default.md): the delete side of the same cascade, used by the current `theme.nix`.

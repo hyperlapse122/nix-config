@@ -29,7 +29,7 @@ tags:
 
 ## Context
 
-`tests/git-trim.nix` guards `home/h82/dev/git.nix`'s branch-cleanup settings: `trim.delete = "merged-local"` and `trim.detach = false` (`home/h82/dev/git.nix:23-24`), which override git-trim's upstream defaults of `--delete merged:origin` (also deletes merged branches on the remote) and detaching a checkout whose merged branch it deletes. The check has to prove those settings actually reach the packaged `git-trim` binary, not just that the rendered config text contains the right string.
+`tests/git-trim.nix` guards `home/h82/dev/git.nix`'s branch-cleanup settings: `trim.delete = "merged-local"` and `trim.detach = false` (the `trim.*` settings in `home/h82/dev/git.nix`), which override git-trim's upstream defaults of `--delete merged:origin` (also deletes merged branches on the remote) and detaching a checkout whose merged branch it deletes. The check has to prove those settings actually reach the packaged `git-trim` binary, not just that the rendered config text contains the right string.
 
 The natural fixture for "prove a rendered config file is honored" in this repository's checks is `GIT_CONFIG_GLOBAL=<rendered-file>` inside a sandboxed `HOME` — every other git-driven check here shells out to the real `git` binary, which has read that override since Git 2.32. Pointing it at the Home Manager output and running `git config --get trim.delete` through it would confirm the value round-trips.
 
@@ -60,11 +60,11 @@ mkdir -p "$XDG_CONFIG_HOME/git"
 cp "$gitConfig" "$XDG_CONFIG_HOME/git/config"
 ```
 
-(`tests/git-trim.nix:74-78`, with `gitConfig` sourced from `userConfig.xdg.configFile."git/config".source` at `tests/git-trim.nix:50`). Both the vendored libgit2 inside `git-trim` and the real `git` binary discover global config by searching `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config` — that lookup path is part of git's config-file *discovery* protocol, which libgit2 reimplements, unlike `GIT_CONFIG_GLOBAL`, which is a CLI-only environment override with no equivalent in libgit2's discovery code.
+(the `export HOME`/`XDG_CONFIG_HOME` block in `tests/git-trim.nix`, with `gitConfig` sourced from `userConfig.xdg.configFile."git/config".source` in `assertEntry`). Both the vendored libgit2 inside `git-trim` and the real `git` binary discover global config by searching `~/.gitconfig` and `$XDG_CONFIG_HOME/git/config` — that lookup path is part of git's config-file *discovery* protocol, which libgit2 reimplements, unlike `GIT_CONFIG_GLOBAL`, which is a CLI-only environment override with no equivalent in libgit2's discovery code.
 
-Where the fixture does need a CLI-only override, it scopes that override to what only the CLI reads. Commit signing only matters to the `git commit`/`git push` calls the fixture itself makes to build the test repository — `git-trim` never signs anything — so `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=false` (`tests/git-trim.nix:80`) is safe precisely because nothing that reads it needs to also be visible to the binary under test.
+Where the fixture does need a CLI-only override, it scopes that override to what only the CLI reads. Commit signing only matters to the `git commit`/`git push` calls the fixture itself makes to build the test repository — `git-trim` never signs anything — so `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=false` (the `GIT_CONFIG_COUNT` line in `tests/git-trim.nix`) is safe precisely because nothing that reads it needs to also be visible to the binary under test.
 
-The check also never passes the setting under test on the command line — it invokes `"$trim" --no-confirm` with no `--delete` flag (`tests/git-trim.nix:112`), so `trim.delete`/`trim.detach` reach `git-trim` only through the file the fixture installed. A `--delete merged-local` flag on that invocation would make the check pass regardless of what `home/h82/dev/git.nix` declares, turning the guard decorative in exactly the sense `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md` describes, and mutation testing (deleting the `trim.delete` line) would not be able to tell the check apart from a broken one.
+The check also never passes the setting under test on the command line — it invokes `"$trim" --no-confirm` with no `--delete` flag (the `--no-confirm` call in `tests/git-trim.nix`), so `trim.delete`/`trim.detach` reach `git-trim` only through the file the fixture installed. A `--delete merged-local` flag on that invocation would make the check pass regardless of what `home/h82/dev/git.nix` declares, turning the guard decorative in exactly the sense `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md` describes, and mutation testing (deleting the `trim.delete` line) would not be able to tell the check apart from a broken one.
 
 ## Why This Matters
 
@@ -77,7 +77,7 @@ The trap has a second edge. Once the check is failing "for no reason," the fix t
 - Any fixture for a check that exercises a non-git binary through git configuration — a merge tool, a commit hook runner, a branch-cleanup tool like `git-trim`, a git credential helper — where the binary is not `/nix/store/.../bin/git` itself.
 - Any time a fixture's plan is "point `GIT_CONFIG_GLOBAL` (or another CLI env override) at the rendered config," before implementing it: run `grep -ac GIT_CONFIG_GLOBAL <binary>` (or the relevant override name) against the actual binary the check will invoke. A `0` means the fixture needs the on-disk path (`~/.gitconfig` or `$XDG_CONFIG_HOME/git/config`) instead.
 - Any check whose invocation of the tool under test could plausibly take the setting under test as a CLI flag. If a flag would make the tool's behavior match the check's assertions independent of the rendered config, the check must not pass that flag — verify by mutation-testing removal of the option (here, deleting `trim.delete` from `home/h82/dev/git.nix` and confirming `nix build --no-link .#checks.x86_64-linux.git-trim` goes red).
-- Not every CLI-only override is unsafe to use: one that only needs to affect commands the fixture itself runs directly (`GIT_CONFIG_COUNT` disabling commit signing for the fixture's own `git commit`/`git push` calls, `tests/git-trim.nix:80`) is fine, because nothing that needs to see it is a different binary.
+- Not every CLI-only override is unsafe to use: one that only needs to affect commands the fixture itself runs directly (`GIT_CONFIG_COUNT` disabling commit signing for the fixture's own `git commit`/`git push` calls, the `GIT_CONFIG_COUNT` line in `tests/git-trim.nix`) is fine, because nothing that needs to see it is a different binary.
 
 ## Examples
 
@@ -99,14 +99,14 @@ Mutation rounds that separate a real guard from a decorative one (`nix build --n
 | `trim.confirm = false` added | red: `trim.confirm turns off the deletion prompt` |
 | `git-trim` package removed from `home.packages` | red: `git-trim is not in home.path` |
 
-A related aside worth keeping in mind when a check's per-host logic is a subshell function, as `checkHost` is here (`tests/git-trim.nix:60`): a subshell invoked as the left operand of `||` runs with `errexit` disabled inside it, so a fallback on the right never fires for a failure inside the subshell that the subshell itself doesn't explicitly `exit` on:
+A related aside worth keeping in mind when a check's per-host logic is a subshell function, as `checkHost` is here (defined in `tests/git-trim.nix`): a subshell invoked as the left operand of `||` runs with `errexit` disabled inside it, so a fallback on the right never fires for a failure inside the subshell that the subshell itself doesn't explicitly `exit` on:
 
 ```sh
 $ bash -c 'set -eu; f() ( false; echo continued ); f || echo fallback'
 continued
 ```
 
-Only `continued` prints; `fallback` never does, because `false`'s failure doesn't abort the subshell under a disabled `set -e`, and the subshell's own exit status comes from the final `echo`. A check that wraps a `checkHost`-style subshell call in `checkHost ... || echo "setup failed"` to report a distinct message on early exit should not rely on that pattern to detect failures raised inside the subshell body; the subshell must set its own exit status or fail file entry explicitly, the way `git-trim.nix`'s `checkHost` already does with `fail()` appending to `$failures` (`tests/git-trim.nix:62`) rather than relying on the caller's `||`.
+Only `continued` prints; `fallback` never does, because `false`'s failure doesn't abort the subshell under a disabled `set -e`, and the subshell's own exit status comes from the final `echo`. A check that wraps a `checkHost`-style subshell call in `checkHost ... || echo "setup failed"` to report a distinct message on early exit should not rely on that pattern to detect failures raised inside the subshell body; the subshell must set its own exit status or fail file entry explicitly, the way `git-trim.nix`'s `checkHost` already does with `fail()` appending to `$failures` (in `checkHost`, `tests/git-trim.nix`) rather than relying on the caller's `||`.
 
 ## See also
 

@@ -64,7 +64,7 @@ services.tailscale = {
 };
 ```
 
-(`modules/nixos/services/tailscale.nix:15-19`, `:60`, `:64`). `tailscale set` does not register a `--reset` flag (`cmd/tailscale/cli/set.go` defines `--operator` at line 113 but no `reset`), so it gets `nodeFlags` alone.
+(`nodeFlags` at `modules/nixos/services/tailscale.nix:15-19`, then `extraUpFlags` and `extraSetFlags`). `tailscale set` does not register a `--reset` flag (`cmd/tailscale/cli/set.go` defines `--operator` at line 113 but no `reset`), so it gets `nodeFlags` alone.
 
 Before: `extraUpFlags = nodeFlags;`. After: `extraUpFlags = nodeFlags ++ [ "--reset" ];`.
 
@@ -81,6 +81,6 @@ The operator also stays in `extraSetFlags` because autoconnect only runs `up` in
 - When a node gets a pref that a non-root user or a GUI can change later (operator, exit node, LAN access, shields-up), check every unattended `tailscale up` that can run after it. Either name every pref it might find stored, or pass `--reset` and accept that it clears user changes.
 - Do not count a passing VM test as evidence for `tailscale up` argument handling. The up checker skips nodes with no `ControlURL` (`up.go:1011`), so an up/set mismatch only shows on a node registered with a real control server.
 - `tests/desktop-autostart.nix` checks the materialized unit scripts, not the option values. For each production configuration that enables Tailscale, it reads the `ExecStart` script of `tailscaled-autoconnect.service` and `tailscaled-set.service`, keeps only the line that runs `tailscale up` or `tailscale set`, and requires `--operator=<my.user.name>` and `--reset` on the up line and the operator on the set line (`tests/desktop-autostart.nix:214-254`). A missing unit fails the check outright (`:225-226`). Per this session's mutation runs, removing `--reset`, setting the operator only through `extraSetFlags`, and disabling `tailscaled-set` each fail the check in the builder.
-- `tests/tailscale-provisioning.nix` checks the declared up flags as a set (`:110-113`). At runtime it clears `RouteAll`, `RunSSH`, and the operator with `tailscale set --accept-routes=false --ssh=false --operator=`, starts `tailscaled-set.service`, and requires all three back (`:121-132`). Two traps from writing that test:
-  - `OperatorUser` is tagged `json:",omitempty"` (`ipn/prefs.go:250`). Once cleared, it is missing from `tailscale debug prefs`, and `jq -r .OperatorUser` prints `null`. Query `.OperatorUser // empty` so a cleared operator compares equal to `""` (`tests/tailscale-provisioning.nix:121`).
+- `tests/tailscale-provisioning.nix` checks the declared up flags as a set (the `client_up_flags` and `router_up_flags` assertions). At runtime it clears `RouteAll`, `RunSSH`, and the operator with `tailscale set --accept-routes=false --ssh=false --operator=`, starts `tailscaled-set.service`, and requires all three back (the runtime clear-and-restore block after the up-flag assertions). Two traps from writing that test:
+  - `OperatorUser` is tagged `json:",omitempty"` (`ipn/prefs.go:250`). Once cleared, it is missing from `tailscale debug prefs`, and `jq -r .OperatorUser` prints `null`. Query `.OperatorUser // empty` so a cleared operator compares equal to `""` (`operator_query` in `tests/tailscale-provisioning.nix`).
   - Per this session's observation, `tailscale set --operator=<user>` succeeds even when that user has no account on the node; tailscaled only logs about an unknown user. The VM test therefore needs no real login account for `my.user.name`.

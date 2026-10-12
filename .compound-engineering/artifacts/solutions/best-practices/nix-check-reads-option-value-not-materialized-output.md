@@ -72,13 +72,15 @@ claudeSettingsTargeted = lib.any (
 
 The `or` fallbacks keep the earlier learning's rule intact: a removed entry still fails inside the builder rather than during evaluation.
 
+Today `tests/claude.nix` applies the `target` half to the merged `~/.claude/settings.json` and `~/.claude.json` and asserts that no `environment.etc` entry declares `claude-code/managed-settings.json`; the `enable` half stays as a general lesson for any `environment.etc` entry.
+
 ## What was verified
 
 Each round is `nix build --no-link .#checks.x86_64-linux.claude`.
 
 | Round | Mutation | Before the guard | After the guard |
 | --- | --- | --- | --- |
-| 1 | `enable = false` beside `text` in `modules/nixos/claude.nix` | green — the host writes no file | red, in the builder: `Expected /etc/claude-code/managed-settings.json to be enabled` |
+| 1 | `enable = false` beside `text` in `modules/nixos/claude.nix` (historical: that module no longer exists) | green — the host writes no file | red, in the builder: `Expected /etc/claude-code/managed-settings.json to be enabled` |
 | 2 | `home.file.claudeSettings` with `target = ".claude/settings.json"` | green — the file is managed anyway | red, in the builder: `Home Manager must not target ~/.claude/settings.json` |
 | 3 | value and key mutations on `model`, `effortLevel`, `autoMemoryEnabled` | red | red |
 
@@ -100,4 +102,4 @@ Round 3 is the control: the value mutations were already caught by the original 
 
 ## Out of scope
 
-Whether Claude Code actually honors the managed settings tier at runtime is not a build-time question; `docs/verification.md` carries the one-time post-activation check for it.
+Whether Claude Code actually honored the managed settings tier at runtime was not a build-time question; `docs/verification.md` carried the one-time post-activation check for it, and now checks that the retired file is gone.

@@ -26,7 +26,7 @@ tags:
 
 ## Context
 
-`tests/check-workflow-docs-skip.sh` guards `check.yml`'s docs-only CI skip: `flake-check` and `build` must run on any non-`pull_request` event, or when the classifier job did not succeed, and skip only on a definitive `docs_only:true` — three clauses joined by `||` inside one `if:` string. The first version of `assert_gated` asserted this by checking, with three independent `grep -qF` calls, that each clause's text appeared somewhere in the `if:` line:
+`tests/check-workflow-docs-skip.sh` guards `check.yml`'s docs-only CI skip: the gated jobs in `check.yml` (`flake-check`, `hosts`, `build`, `build-linux`, `build-darwin`, and the shard and VM-check jobs; `flake-check` and `build` at the time) must run on any non-`pull_request` event, or when the classifier job did not succeed, and skip only on a definitive `docs_only:true` — three clauses joined by `||` inside one `if:` string. The first version of `assert_gated` asserted this by checking, with three independent `grep -qF` calls, that each clause's text appeared somewhere in the `if:` line:
 
 ```sh
 if ! printf '%s' "$if_line" | grep -qF "github.event_name != 'pull_request'"; then fail ...; fi
@@ -42,10 +42,12 @@ It was mutation-tested against removing `needs:`, dropping the fail-open clause,
 
 ```sh
 expected="!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
-if ! printf '%s' "$if_line" | grep -qF -- "$expected"; then
+if ! grep -qF -- "$expected" <<<"$if_line"; then
   fail "job '$job' if: does not match the expected fail-open condition exactly; got: $if_line"
 fi
 ```
+
+The line goes in through a here-string rather than `printf | grep -q` because `grep -q` exits at the first match and, under `pipefail`, the upstream `printf` can then report a failure that reads as a miss; see [the pipefail miss](../logic-errors/printf-pipe-grep-q-under-pipefail-reports-a-miss.md).
 
 One fixed-string match spanning both `||` operators fails the instant either one becomes `&&`, because the mutated line no longer contains that exact substring anywhere.
 

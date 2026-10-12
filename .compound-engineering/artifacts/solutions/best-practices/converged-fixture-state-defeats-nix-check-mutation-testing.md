@@ -27,7 +27,7 @@ tags:
 
 ## Context
 
-`scripts/nr` is the flake's rebuild helper, packaged by `packages/nix-tools.nix` and aliased in `home/h82/shell.nix` as `nrs`/`nrb`/`nrt`/`nrd`. It shells out to `nixos-rebuild`, then reports the generation change with `nvd`.
+`scripts/nr` is the flake's rebuild helper, packaged by `packages/nix-tools.nix` and aliased in `home/h82/shell/shell.nix` as `nrs`/`nrb`/`nrt`/`nrd`. It shells out to `nixos-rebuild`, then reports the generation change with `nvd`.
 
 `nixos-rebuild boot` does not activate: the new generation lands in `/nix/var/nix/profiles/system` while `/run/current-system` keeps pointing at the running one until reboot. `switch` and `test` do activate, so for them `/run/current-system` is the symlink that moves. `scripts/nr` therefore picks a per-subcommand comparison target:
 
