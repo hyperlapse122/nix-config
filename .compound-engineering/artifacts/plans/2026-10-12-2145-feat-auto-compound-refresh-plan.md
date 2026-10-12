@@ -24,7 +24,7 @@ execution: code
 
 ## Product Contract
 
-Product Contract preservation: changed R3 — added the already-handled-learning skip so AE3 holds when a re-check sees the same deleting commits; added a line-number-drift Scope Boundary. The three Deferred to Planning questions are resolved in KTD2, KTD3, and KTD5 and removed from Outstanding Questions; R1 names the push range per KTD2.
+Product Contract preservation: changed R3 — added the already-handled-learning skip (R7) so AE3 holds when a re-check sees the same deleting commits; added a line-number-drift Scope Boundary. The three Deferred to Planning questions are resolved in KTD2, KTD3, and KTD5 and removed from Outstanding Questions; R1 names the push range per KTD2.
 
 ### Summary
 
@@ -49,7 +49,7 @@ Learnings under the solutions store cite files, hosts, packages, and options by 
 - R1. Before each push, the agent collects the paths and identifiers that the commits the push would send delete, move, or rename, such as file paths, host names, package names, and option names.
 - R2. The agent searches the project's learning store for learnings that cite any collected item; a learning that cites none is not refreshed.
 - R3. The check is skipped when the project has no learning store, when the commits the push would send change only learnings, or when no collected item is cited.
-- R7. A learning is not refreshed again when it already carries `status: stale` or when a commit the push would send already modified it.
+- R7. A learning is not refreshed again when it already carries `status: stale`; the R2 search reads learnings as they stand at the branch tip, so a learning a refresh already fixed no longer matches.
 
 **Refresh and commit**
 
@@ -123,7 +123,7 @@ Learnings under the solutions store cite files, hosts, packages, and options by 
 - **Requirements:** R6; KTD4.
 - **Dependencies:** U1.
 - **Files:** `tests/agent-instructions.nix`.
-- **Approach:** Add `learningRefreshSentences` holding the U1 sentences that carry the trigger (R1), the already-handled skip (R7), the scope hint (KTD3), the modes (R5), the commit override, and the no-push clause (KTD5), copied literally. Call `requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences` beside the other rule checks. Add a docstring bullet in the same style as the existing ones.
+- **Approach:** Add `learningRefreshSentences` holding the U1 sentences that carry the trigger (R1), the push range (KTD2), the already-handled skip (R7), the scope hint (KTD3), the modes (R5), the commit override, and the no-push clause (KTD5), copied literally. Call `requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences` beside the other rule checks. Add a docstring bullet in the same style as the existing ones.
 - **Test scenarios:**
   - The check passes on the rendered files for all three harnesses on every host and fixture.
   - Deleting one guarded sentence from the template makes the check fail and name that sentence.

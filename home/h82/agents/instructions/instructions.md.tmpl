@@ -124,9 +124,9 @@ Apply every finding that `ce-code-review` (its cross-model pass included), `ce-s
 Before each push, check whether the commits it would send break a learning, and refresh that learning on the branch before you push. A learning is a document under `solutions/` in the project's Compound Engineering artifact root, which is `docs` unless `docs_root` in `.compound-engineering/config.yaml` names another directory.
 
 - Check the commits the remote branch does not have yet, or, before the first push, the commits since the branch left the default branch. Commits an earlier push sent were checked then.
-- Collect each file path, host name, package name, option name, or other identifier those commits delete, move, or rename, and search the learnings for any that cite one.
+- Collect each file path, host name, package name, option name, or other identifier those commits delete, move, or rename, and search the learnings as they stand at the tip of the branch for any that cite one.
 - Skip the check when the project has no learnings, when those commits change only learnings, or when no learning cites a collected item.
-- Leave a learning alone when it already carries `status: stale` or when one of those commits already modified it.
+- Leave a learning alone when it already carries `status: stale`, so a learning a refresh marked stale is not refreshed again.
 - Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint.
 - In an interactive session, run it in interactive mode so it asks the user its judgment calls. In an autonomous run, such as `lfg`, pass `mode:non-interactive`, which marks an ambiguous learning stale instead of asking.
 - Commit the refresh as its own commit on the current branch, separate from the change that caused it, and push it with that change. This overrides `ce-compound-refresh`'s commit step and its Discoverability Check follow-up: do not ask where to commit, do not move the refresh to a new branch or pull request, and fold any instruction-file or `CONCEPTS.md` edit they make into the refresh commit.
