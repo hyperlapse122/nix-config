@@ -35,6 +35,12 @@
     this system; a failing stub must fail the script; and a dry run must not
     run it. The paths are compared as strings, so the runtime, about 1.3 GB
     unpacked, is never built here.
+  - home.activation.t3codeAntigravityLinks exists exactly when either trait
+    is on and runs after installPackages. Its script is executed with the
+    packaged linker swapped for a stub: on a live run the stub must run with
+    --base-dir ~/.t3, --gemini-config ~/.gemini/config, and --instance
+    antigravity, the instance the text-generation selection names; a failing
+    stub must fail the script; and a dry run must not run it.
   The same holds on each non-NixOS fixture host of the builder's
   architecture, production and bootstrap, and on each bootstrap fixture
   re-assembled with only the CLI trait forced on, since the CLI is the T3
@@ -257,6 +263,18 @@ let
         } ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
         } ${esc "${user.home.homeDirectory or ""}/.t3"}
+      ''
+    )
+    + (
+      let
+        activation = user.home.activation.t3codeAntigravityLinks or null;
+      in
+      ''
+        checkLinks ${esc name} ${lib.boolToString expected} ${lib.boolToString (activation != null)} ${
+          esc (noContext (activation.data or ""))
+        } ${lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))} ${
+          esc (user.home.homeDirectory or "")
+        }
       ''
     );
 
@@ -611,6 +629,65 @@ pkgs.runCommand "t3code-traits" { } ''
     exercise ':' 0 || true
     if [ -f args ]; then
       echo "$name: the t3codeAntigravity activation runs the installer outside Home Manager's run, so a dry run changes ~/.t3" >&2
+      fail=1
+    fi
+  }
+
+  # $2 says whether the instance links belong on this configuration, $3
+  # whether they are declared; $4 is the script, $5 whether it runs after
+  # installPackages, and $6 the home directory its paths must sit under.
+  checkLinks() {
+    local name=$1 expected=$2 present=$3 after=$5 home=$6 linker actual
+    if [ "$present" != "$expected" ]; then
+      echo "$name: home.activation.t3codeAntigravityLinks is present=$present, either T3 Code trait on is $expected" >&2
+      fail=1
+      return
+    fi
+    [ "$present" = true ] || return 0
+
+    if [ "$after" != true ]; then
+      echo "$name: home.activation.t3codeAntigravityLinks must run after installPackages" >&2
+      fail=1
+    fi
+
+    printf '%s\n' "$4" > script
+    linker=$(grep -oE '/nix/store/[^[:space:]]+/bin/t3code-antigravity-link' script | head -n 1 || true)
+    if [ -z "$linker" ]; then
+      echo "$name: the t3codeAntigravityLinks activation names no packaged linker" >&2
+      fail=1
+      return
+    fi
+    sed "s|$linker|$PWD/merger-stub|g" script > swapped
+
+    if ! exercise '"$@"' 0 || [ ! -f args ]; then
+      echo "$name: on a live run the t3codeAntigravityLinks activation does not run the linker" >&2
+      fail=1
+      return
+    fi
+    actual=$(argAfter --base-dir)
+    if [ "$actual" != "$home/.t3" ]; then
+      echo "$name: the linker must be pointed at $home/.t3, got '$actual'" >&2
+      fail=1
+    fi
+    actual=$(argAfter --gemini-config)
+    if [ "$actual" != "$home/.gemini/config" ]; then
+      echo "$name: the linker must link to $home/.gemini/config, got '$actual'" >&2
+      fail=1
+    fi
+    actual=$(grep -cxF -- --instance args || true)
+    if [ "$actual" != 1 ] || [ "$(argAfter --instance)" != antigravity ]; then
+      echo "$name: the linker must prepare exactly the antigravity instance home" >&2
+      fail=1
+    fi
+
+    if exercise '"$@"' 23; then
+      echo "$name: the t3codeAntigravityLinks activation swallows the linker's exit status" >&2
+      fail=1
+    fi
+
+    exercise ':' 0 || true
+    if [ -f args ]; then
+      echo "$name: the t3codeAntigravityLinks activation runs the linker outside Home Manager's run, so a dry run changes ~/.t3" >&2
       fail=1
     fi
   }

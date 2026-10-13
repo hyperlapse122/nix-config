@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Link the Antigravity CLI's plugins and instructions into T3 Code's homes.
+
+T3 Code runs each Antigravity instance with GEMINI_HOME set to
+<base>/userdata/providers/antigravity/<sha256 of the instance id>. The harness
+reads plugins from config/plugins and global rules from config/AGENTS.md under
+that home, so each home gets two links to the CLI's own files in
+~/.gemini/config. T3 Code creates the home and links only the skills; it
+removes nothing else, so these links survive.
+
+A declared instance gets its home created before T3 Code first starts it. Every
+home under providers/antigravity is linked, declared or not. A link with the
+wrong target is replaced; a real file or directory at a link path is left and
+reported.
+"""
+
+import argparse
+import hashlib
+import os
+import sys
+from pathlib import Path
+
+LINKS = ("plugins", "AGENTS.md")
+
+
+def ensure_link(link, target):
+    """Point link at target. Return True when it changed."""
+    if link.is_symlink():
+        if Path(os.readlink(link)) == target:
+            return False
+        staging = link.with_name(f".{link.name}.staging")
+        staging.unlink(missing_ok=True)
+        staging.symlink_to(target)
+        os.replace(staging, link)
+        return True
+    if os.path.lexists(link):
+        print(f"t3code-antigravity-link: {link} is not a link; left as is", file=sys.stderr)
+        return False
+    link.symlink_to(target)
+    return True
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base-dir", required=True, type=Path, help="T3 Code's base directory, ~/.t3")
+    parser.add_argument("--gemini-config", required=True, type=Path, help="the CLI's config directory, ~/.gemini/config")
+    parser.add_argument("--instance", action="append", default=[], help="an Antigravity instance id; repeatable")
+    args = parser.parse_args(argv)
+
+    providers = args.base_dir / "userdata" / "providers" / "antigravity"
+    try:
+        for instance in args.instance:
+            key = hashlib.sha256(instance.encode()).hexdigest()
+            home = providers / key
+            if not home.exists():
+                providers.mkdir(parents=True, exist_ok=True)
+                home.mkdir(mode=0o700)
+            (home / "config").mkdir(exist_ok=True)
+
+        if not providers.is_dir():
+            return 0
+        for home in sorted(providers.iterdir()):
+            if not home.is_dir():
+                continue
+            (home / "config").mkdir(exist_ok=True)
+            for name in LINKS:
+                link = home / "config" / name
+                if ensure_link(link, args.gemini_config / name):
+                    print(f"linked {link}")
+    except OSError as error:
+        print(f"t3code-antigravity-link: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
