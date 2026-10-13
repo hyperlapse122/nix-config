@@ -131,7 +131,7 @@ This plan covers one area: the pinned source, the version-keyed materialization,
 
 ### Scope Boundaries
 
-- Antigravity CLI wiring. Deferred to its own plan; the registry contract accommodates it (R10).
+- Antigravity CLI wiring. Deferred to its own plan; the registry contract accommodates it (R10). Superseded by the [Antigravity agent parity plan](2026-10-14-0144-feat-antigravity-agent-parity-plan.md), which wires it.
 - The dotagents, mise, and `agents.toml` project-scope layer. Untouched, and asserted untouched (R17).
 - The other harnesses already declared in `agents.toml`. Not wired here.
 - Plugins other than Compound Engineering. The registry admits them; declaring them is separate work.

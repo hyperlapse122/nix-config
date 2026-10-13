@@ -148,6 +148,8 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
+        antigravity-cli-release = agentTools.antigravityCliRelease;
+        antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
@@ -433,6 +435,17 @@
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+          antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
+          # Fetches every pinned platform's tarball, not only this system's, so
+          # a wrong URL or hash for a platform no Linux job builds, such as
+          # aarch64-darwin, fails before the pin reaches main.
+          antigravity-cli-sources =
+            let
+              release = builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json);
+            in
+            pkgs.linkFarm "antigravity-cli-sources" (
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
+            );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -503,6 +516,16 @@
             python tests/test_codex_release.py
             touch $out
           '';
+          antigravity-cli-release =
+            pkgs.runCommand "antigravity-cli-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/antigravity-cli-release} scripts/antigravity-cli-release
+                cp ${./tests/test_antigravity_cli_release.py} tests/test_antigravity_cli_release.py
+                python tests/test_antigravity_cli_release.py
+                touch $out
+              '';
           t3code-release = pkgs.runCommand "t3code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             export PYTHONDONTWRITEBYTECODE=1
             mkdir -p scripts tests
@@ -522,6 +545,17 @@
                 python tests/test_t3code_antigravity_install.py
                 touch $out
               '';
+          t3code-antigravity-link =
+            pkgs.runCommand "t3code-antigravity-link-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/t3code-antigravity-link} scripts/t3code-antigravity-link
+                cp ${./tests/test_t3code_antigravity_link.py} tests/test_t3code_antigravity_link.py
+                patchShebangs scripts
+                python tests/test_t3code_antigravity_link.py
+                touch $out
+              '';
           # The pin and the CLI are independent sources: scripts/t3code-release
           # writes the pin from the T3 Code source, and the CLI is the release
           # binary the flake builds, which embeds the table T3 Code installs from.
@@ -533,6 +567,23 @@
                   ${./packages/t3code-release.json}
                 touch $out
               '';
+          # scripts/t3code-antigravity-link derives each instance home the way
+          # the pinned T3 Code does: the hex SHA-256 of the instance id under
+          # providers/antigravity. A T3 Code bump that changes either fails
+          # here instead of leaving the links in homes T3 Code no longer reads.
+          t3code-antigravity-layout = pkgs.runCommand "t3code-antigravity-layout" { } ''
+            bundle=${self.packages.${system}.t3code-cli}/libexec/t3code/t3
+            for fragment in \
+              'crypto.digest("SHA-256", new TextEncoder().encode(instanceId))' \
+              'profile: path.join(stateDir, "providers", "antigravity", key),' \
+              'const geminiHome = path.resolve(input.profileDirectory);'; do
+              if ! grep -aqF "$fragment" "$bundle"; then
+                echo "the pinned T3 Code no longer contains: $fragment" >&2
+                exit 1
+              fi
+            done
+            touch $out
+          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
@@ -1027,6 +1078,44 @@
                 '';
             in
             pkgs.runCommand "codex-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          antigravity-cli =
+            let
+              # The version is compared with the pin for the reason given on the
+              # claude-code check. The wrapper variable is read from the
+              # installed bin/agy, because it keeps agy from updating itself
+              # under any GEMINI_HOME, such as T3 Code's per-provider homes.
+              pinnedVersion =
+                (builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json)).version;
+              assertConfiguration =
+                entry:
+                let
+                  agyPkg = userPackageOf "antigravity-cli" entry;
+                  versionMismatch = pkgs.lib.optionalString (agyPkg != null && agyPkg.version != pinnedVersion) ''
+                    echo "antigravity-cli on ${entry.name} is built from version '${agyPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  updaterDisabled = pkgs.lib.optionalString (agyPkg != null) ''
+                    if ! grep -qxF "export AGY_CLI_DISABLE_AUTO_UPDATE='true'" ${agyPkg}/bin/agy; then
+                      echo "agy on ${entry.name} does not turn its self-updater off" >&2
+                      fail=1
+                    fi
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "antigravity-cli";
+                    executables = [ "agy" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${updaterDisabled}
+                '';
+            in
+            pkgs.runCommand "antigravity-cli-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out

@@ -25,6 +25,14 @@ let
   agentTools = import ../../packages/agent-tools.nix { inherit pkgs; };
   merger = "${agentTools.agentSettings}/bin/agent-settings";
   installer = "${agentTools.t3codeAntigravityInstall}/bin/t3code-antigravity-install";
+  linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
+
+  # The Antigravity instances this file selects a model on. Each gets its home
+  # prepared on activation, so the plugins and instructions are there before
+  # T3 Code first starts it.
+  antigravityInstances = [ textGenerationInstance ];
+  # The instance T3 Code generates commit messages and titles with.
+  textGenerationInstance = "antigravity";
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
@@ -67,7 +75,7 @@ let
       model = "claude-opus-5-5";
     };
     textGenerationModelSelection = {
-      instanceId = "antigravity";
+      instanceId = textGenerationInstance;
       model = "gemini-3.8-flash-low";
     };
   };
@@ -158,6 +166,17 @@ in
           --base-dir ${config.home.homeDirectory}/.t3 \
           --runtime ${antigravity}/libexec/antigravity-acp \
           --pin ${antigravityPin}
+      '';
+      # T3 Code runs each Antigravity instance under its own GEMINI_HOME,
+      # which reads none of ~/.gemini, so the CLI's plugins and global
+      # instructions are linked into every instance home. An instance added in
+      # the app gets its links on the next activation, which on NixOS runs only
+      # when a rebuild produces a new Home Manager generation.
+      t3codeAntigravityLinks = lib.hm.dag.entryAfter [ "installPackages" ] ''
+        run ${linker} \
+          --base-dir ${config.home.homeDirectory}/.t3 \
+          --gemini-config ${config.home.homeDirectory}/.gemini/config \
+          ${lib.concatMapStringsSep " " (id: "--instance ${lib.escapeShellArg id}") antigravityInstances}
       '';
     }
   );

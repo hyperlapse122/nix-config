@@ -75,6 +75,11 @@ let
   # so the sandboxed repository check can drive it with fixtures.
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
 
+  # Resolves the latest Antigravity CLI release and its per-platform digests
+  # from Google's release feed. Its network calls go through an overridable
+  # command so the sandboxed repository check can drive it with fixtures.
+  antigravityCliRelease = pythonHelper "antigravity-cli-release" ../scripts/antigravity-cli-release;
+
   # Resolves the newest T3 Code nightly and its asset digests from the GitHub
   # releases API. Its network call goes through an overridable command so the
   # sandboxed repository check can drive it with fixtures.
@@ -83,6 +88,10 @@ let
   # Runs from home activation and links the pinned Antigravity runtime into
   # T3 Code's managed runtime directory, which T3 Code checks on disk.
   t3codeAntigravityInstall = pythonHelper "t3code-antigravity-install" ../scripts/t3code-antigravity-install;
+
+  # Runs from home activation and links the Antigravity CLI's plugins and
+  # global instructions into each T3 Code Antigravity instance home.
+  t3codeAntigravityLink = pythonHelper "t3code-antigravity-link" ../scripts/t3code-antigravity-link;
 
   # Pins the Android SDK packages from Google's repository XML. Its network
   # call goes through an overridable command for the same reason. It is Ruby
@@ -103,8 +112,10 @@ in
     claudeCodeRelease
     miseRelease
     codexRelease
+    antigravityCliRelease
     t3codeRelease
     t3codeAntigravityInstall
+    t3codeAntigravityLink
     androidSdkRelease
     ;
 }

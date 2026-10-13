@@ -14,6 +14,7 @@ let
   # command's --cli flag can never drift onto a different agent build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
   codex = import ../../../packages/codex.nix { inherit pkgs; };
+  antigravityCli = import ../../../packages/antigravity-cli.nix { inherit pkgs; };
 
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
@@ -41,6 +42,7 @@ let
       exclude = {
         claude = [ ];
         codex = [ ];
+        antigravity = [ ];
       };
     };
   };
@@ -56,12 +58,16 @@ let
       name = "compound-engineering";
       harness = "codex";
     }
+    {
+      name = "compound-engineering";
+      harness = "antigravity";
+    }
   ];
 
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; Codex's update overrides travel inside its wrapper instead.
+  # it; Codex's and agy's update overrides travel inside their wrappers instead.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
@@ -69,6 +75,10 @@ let
     };
     codex = {
       cli = "${codex}/bin/codex";
+      env = "";
+    };
+    antigravity = {
+      cli = "${antigravityCli}/bin/agy";
       env = "";
     };
   };

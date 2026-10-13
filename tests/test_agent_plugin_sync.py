@@ -193,6 +193,59 @@ print('unknown command: ' + joined, file=sys.stderr)
 sys.exit(2)
 '''
 
+# agy has no marketplace and no JSON output: it copies a plugin directory into
+# $HOME/.gemini/config/plugins/<name>/ (replacing any earlier copy) and never
+# touches config.json. The fake mimics that on whatever HOME the test gives it.
+FAKE_AGY_CLI = '''import json, os, shutil, sys
+state = os.environ['FAKE_STATE']
+fail_on = os.environ.get('FAKE_FAIL_ON', '')
+fail_version = os.environ.get('FAKE_FAIL_VERSION', '')
+noop_version = os.environ.get('FAKE_NOOP_VERSION', '')
+plugins = os.path.join(os.environ['HOME'], '.gemini', 'config', 'plugins')
+
+args = sys.argv[1:]
+joined = ' '.join(args)
+with open(state) as handle:
+    data = json.load(handle)
+data['calls'].append(args)
+with open(state, 'w') as handle:
+    json.dump(data, handle)
+
+if fail_on and joined.startswith(fail_on):
+    print('simulated failure: ' + joined, file=sys.stderr)
+    sys.exit(1)
+
+if args[:2] == ['plugin', 'validate']:
+    print('[ok] ' + args[2])
+    sys.exit(0)
+
+if args[:2] == ['plugin', 'install']:
+    source = args[2]
+    with open(os.path.join(source, 'plugin.json')) as handle:
+        manifest = json.load(handle)
+    target = os.path.join(plugins, manifest['name'])
+    if noop_version and manifest.get('version') == noop_version:
+        print('[ok]    ' + manifest['name'])
+        sys.exit(0)
+    # A failure after the old tree is gone is the worst case for a bump.
+    if os.path.isdir(target):
+        shutil.rmtree(target)
+    if fail_version and manifest.get('version') == fail_version:
+        print('simulated install failure', file=sys.stderr)
+        sys.exit(1)
+    shutil.copytree(source, target, symlinks=False)
+    print('[ok]    ' + manifest['name'])
+    sys.exit(0)
+
+if args[:2] == ['plugin', 'uninstall']:
+    shutil.rmtree(os.path.join(plugins, args[2]), ignore_errors=True)
+    print('Uninstalled plugin "' + args[2] + '"')
+    sys.exit(0)
+
+print('unknown command: ' + joined, file=sys.stderr)
+sys.exit(2)
+'''
+
 
 class FakeCliCase(unittest.TestCase):
     harness = 'claude'
@@ -742,6 +795,220 @@ class CodexRetireTestCase(CodexCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.adds_and_removes(), [])
         self.assertFalse(self.retired_base.exists())
+
+
+class AntigravityCase(FakeCliCase):
+    harness = 'antigravity'
+    fake = FAKE_AGY_CLI
+
+    def setUp(self):
+        super().setUp()
+        self.home = self.root / 'home'
+        self.home.mkdir()
+        self.installed = self.home / '.gemini/config/plugins/compound-engineering'
+
+    def make_source(self, version, skills=('alpha',)):
+        src = self.root / '{}-source'.format(hashlib.sha256(version.encode()).hexdigest()[:32])
+        plugin = {'name': 'compound-engineering', 'version': version.lstrip('v')}
+        (src / 'skills').mkdir(parents=True)
+        (src / 'plugin.json').write_text(json.dumps(plugin))
+        for skill in skills:
+            (src / 'skills' / skill).mkdir()
+            (src / 'skills' / skill / 'SKILL.md').write_text(skill)
+        # Mirrors the upstream layout: .agy holds symlinks to the root files.
+        (src / '.agy').mkdir()
+        (src / '.agy/plugin.json').symlink_to('../plugin.json')
+        (src / '.agy/skills').symlink_to('../skills')
+        return src
+
+    def invoke(self, args, env=None):
+        merged = {'HOME': str(self.home)}
+        merged.update(env or {})
+        return super().invoke(args, merged)
+
+    def agy_calls(self):
+        return [call[:2] for call in self.read_state()['calls']]
+
+    def installed_version(self):
+        return json.loads((self.installed / 'plugin.json').read_text())['version']
+
+
+class AntigravitySyncTestCase(AntigravityCase):
+    def test_fresh_home_validates_installs_from_agy_and_reads_back(self):
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.read_state()['calls']
+        self.assertEqual([c[:2] for c in calls], [['plugin', 'validate'], ['plugin', 'install']])
+        self.assertEqual(calls[1][2], str(self.base / 'v3.28.0' / '.agy'))
+        self.assertEqual(self.installed_version(), '3.28.0')
+        self.assertTrue((self.installed / 'skills/alpha/SKILL.md').is_file())
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_converged_home_makes_no_install_call(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.reset_state()
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(['plugin', 'install'], self.agy_calls())
+        self.assertNotIn(['plugin', 'validate'], self.agy_calls())
+
+    def test_version_bump_replaces_the_tree_and_keeps_superseded_links(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0', skills=('beta',))
+        result = self.run_sync(segment='v3.29.0', source=new_source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.installed_version(), '3.29.0')
+        self.assertFalse((self.installed / 'skills/alpha').exists())
+        self.assertTrue((self.installed / 'skills/beta').is_dir())
+        # The marketplace rows prune the shared base once they confirm their
+        # source; this row must not remove a link one of them kept.
+        self.assertEqual(sorted(p.name for p in self.base.iterdir()), ['v3.28.0', 'v3.29.0'])
+
+    def test_a_manifest_without_a_version_is_refused(self):
+        (self.source / 'plugin.json').write_text(json.dumps({'name': 'compound-engineering'}))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('declares no version', result.stderr)
+        self.assertEqual(self.agy_calls(), [])
+
+    def test_an_invalid_manifest_is_refused(self):
+        (self.source / 'plugin.json').write_text('{not json')
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('is not a valid plugin manifest', result.stderr)
+        self.assertEqual(self.agy_calls(), [])
+
+    def test_an_install_that_leaves_another_version_fails(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'FAKE_NOOP_VERSION': '3.29.0'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at version '3.28.0' after install, not 3.29.0", result.stderr)
+        self.assertEqual(self.installed_version(), '3.28.0')
+
+    def test_a_failing_backup_leaves_no_temporary_directory(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        unreadable = self.installed / 'skills/alpha/SKILL.md'
+        unreadable.chmod(0)
+        self.addCleanup(unreadable.chmod, 0o644)
+        scratch = self.root / 'tmp'
+        scratch.mkdir()
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'TMPDIR': str(scratch)})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(['plugin', 'install'], self.agy_calls()[2:])
+        self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_a_failing_restore_is_reported(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'FAKE_FAIL_ON': 'plugin install'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('could not restore the previous plugin copy', result.stderr)
+        self.assertIn('plugin install failed', result.stderr)
+
+    def test_failing_install_on_a_fresh_home_fails_with_the_cli_message(self):
+        result = self.run_sync(env={'FAKE_FAIL_ON': 'plugin install'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('plugin install failed', result.stderr)
+        self.assertIn('simulated failure', result.stderr)
+        self.assertFalse(self.installed.exists())
+
+    def test_failing_install_after_a_bump_restores_the_previous_version(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0', skills=('beta',))
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'FAKE_FAIL_VERSION': '3.29.0'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('simulated install failure', result.stderr)
+        self.assertEqual(self.installed_version(), '3.28.0')
+        self.assertTrue((self.installed / 'skills/alpha/SKILL.md').is_file())
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_dry_run_runs_no_mutating_command(self):
+        result = self.run_sync(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('would run:', result.stdout)
+        self.assertNotIn(['plugin', 'install'], self.agy_calls())
+        self.assertFalse(self.installed.exists())
+        self.assertFalse(self.base.exists())
+
+    def test_config_json_survives_a_reinstall_byte_for_byte(self):
+        config = self.home / '.gemini/config/config.json'
+        config.parent.mkdir(parents=True)
+        content = '{"plugins": {"compound-engineering": {"enabled": false}}}\n'
+        config.write_text(content)
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0')
+        self.assertEqual(self.run_sync(segment='v3.29.0', source=new_source).returncode, 0)
+        self.assertEqual(config.read_text(), content)
+
+    def test_a_source_without_agy_installs_from_the_root(self):
+        source = self.make_source('v3.29.0')
+        for name in ('plugin.json', 'skills'):
+            (source / '.agy' / name).unlink()
+        (source / '.agy').rmdir()
+        result = self.run_sync(segment='v3.29.0', source=source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.installed_version(), '3.29.0')
+
+    def test_a_source_without_a_manifest_is_refused(self):
+        (self.source / 'plugin.json').unlink()
+        (self.source / '.agy/plugin.json').unlink()
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('missing', result.stderr)
+
+    def test_a_failing_validate_stops_before_install(self):
+        result = self.run_sync(env={'FAKE_FAIL_ON': 'plugin validate'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(['plugin', 'install'], self.agy_calls())
+
+
+class AntigravityRetireTestCase(AntigravityCase):
+    def run_retire(self, env=None):
+        return self.invoke([
+            '--retire', '--harness', 'antigravity', '--cli', str(self.cli),
+            '--base', str(self.base),
+            '--plugin', 'compound-engineering',
+            '--marketplace', 'compound-engineering-plugin',
+        ], env)
+
+    def test_retire_uninstalls_and_removes_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.installed.exists())
+        self.assertFalse(self.base.exists())
+        self.assertIn(['plugin', 'uninstall', 'compound-engineering'],
+                      self.read_state()['calls'])
+
+    def test_retiring_an_absent_plugin_succeeds(self):
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_failing_uninstall_keeps_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        result = self.run_retire(env={'FAKE_FAIL_ON': 'plugin uninstall'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.base.exists())
+
+    def test_dry_run_retire_runs_no_command(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.reset_state()
+        result = self.invoke([
+            '--retire', '--dry-run', '--harness', 'antigravity', '--cli', str(self.cli),
+            '--base', str(self.base),
+            '--plugin', 'compound-engineering',
+            '--marketplace', 'compound-engineering-plugin',
+        ])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('would run:', result.stdout)
+        self.assertEqual(self.read_state()['calls'], [])
+        self.assertTrue(self.installed.exists())
 
 
 if __name__ == '__main__':
