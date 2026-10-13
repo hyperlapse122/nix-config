@@ -93,6 +93,13 @@ jobs:
             git checkout -- packages/t3code-release.json
           fi
 
+          # 10. Update the Antigravity CLI. A feed failure keeps the current
+          # pin and lets the other updates through, as T3 Code's does.
+          if ! nix run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json; then
+            echo "::warning title=Antigravity CLI update skipped::antigravity-cli-release failed; keeping the current pin in packages/antigravity-cli-release.json."
+            git checkout -- packages/antigravity-cli-release.json
+          fi
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -168,6 +175,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/t3code-release.json)
             git add packages/t3code-release.json
             git commit -m "chore(packages): bump t3code to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/antigravity-cli-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/antigravity-cli-release.json)
+            git add packages/antigravity-cli-release.json
+            git commit -m "chore(packages): bump antigravity-cli to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then

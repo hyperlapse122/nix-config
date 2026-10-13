@@ -34,10 +34,7 @@ in
   home.packages =
     (
       with pkgs;
-      [
-        antigravity-cli
-        bun
-      ]
+      [ bun ]
       ++ gui [ discord ]
       ++ [
         gh
@@ -65,6 +62,7 @@ in
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
       (import ../../packages/codex.nix { inherit pkgs; })
+      (import ../../packages/antigravity-cli.nix { inherit pkgs; })
       (
         let
           nixTools = import ../../packages/nix-tools.nix { inherit pkgs; };
