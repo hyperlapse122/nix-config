@@ -8,7 +8,6 @@ allow_all = true
 name = "dotagents"
 source = "getsentry/dotagents"
 
-[[plugins]]
-name = "compound-engineering"
+[[skills]]
+name = "*"
 source = "EveryInc/compound-engineering-plugin"
-path = "."
