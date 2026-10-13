@@ -49,6 +49,9 @@
     already serving the pass, and verifying a delegated result, so any of
     those sentences dropped, reworded, negated, or moved into one harness's
     branch fails.
+  - every sentence in its Cross-model delegation section that names
+    Antigravity or Argon is one of those pinned sentences, so a reversal
+    added beside a pinned sentence fails.
   - it carries no superseded directive: delegating before a skill's own
     gates, setting effort instead of inheriting a model's default, the
     review-findings rule that named only `ce-code-review` and
@@ -277,6 +280,36 @@ let
     done
   '';
 
+  # The pinned delegation sentences that name Antigravity or Argon. Any other
+  # sentence in that section naming them, such as an added reversal kept
+  # beside the pinned rule, fails.
+  antigravitySentences = lib.filter (
+    sentence: lib.hasInfix "Antigravity" sentence || lib.hasInfix "Argon" sentence
+  ) delegationSentences;
+
+  # Fails the build, naming each sentence, when the section under `heading`
+  # carries a sentence matching `pattern` that is not one of `sentences`.
+  onlyPinnedSentences = message: heading: pattern: sentences: ''
+    if ! grep -qxF -- ${esc heading} "$file"; then
+      echo ${esc "${message} section missing:"} ${esc heading} >&2
+      failed=1
+    fi
+    allowed=$(mktemp)
+    printf '%s\n' ${lib.escapeShellArgs sentences} > "$allowed"
+    while IFS= read -r sentence; do
+      if ! grep -qxF -- "$sentence" "$allowed"; then
+        echo ${esc message} "$sentence" >&2
+        failed=1
+      fi
+    done < <(
+      awk -v h=${esc heading} '
+        $0 == h { inside = 1; next }
+        /^# / { inside = 0 }
+        inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+      ' "$file" | grep -E -- ${esc pattern} || true
+    )
+  '';
+
   assertHarness =
     hostName: userConfig: harness:
     let
@@ -312,6 +345,11 @@ let
         ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
         ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
         ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
+        ${onlyPinnedSentences "${label} carries an unpinned Antigravity sentence:"
+          "# Cross-model delegation"
+          "Antigravity|Argon"
+          antigravitySentences
+        }
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
         ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
