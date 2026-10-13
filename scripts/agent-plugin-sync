@@ -263,6 +263,15 @@ class Codex(Harness):
         self.add_plugin(plugin_id, False)
 
 
+def manifest_version(path):
+    """The version a plugin.json declares, or None when it is unreadable."""
+    try:
+        manifest = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return manifest.get('version') if isinstance(manifest, dict) else None
+
+
 class Antigravity(Harness):
     """agy imports a plugin directory by copying it; there is no marketplace.
 
@@ -275,20 +284,14 @@ class Antigravity(Harness):
         return Path.home() / '.gemini' / 'config' / 'plugins' / plugin
 
     def installed_version(self, plugin):
-        try:
-            manifest = json.loads((self.installed_dir(plugin) / 'plugin.json').read_text())
-        except (OSError, ValueError):
-            return None
-        return manifest.get('version') if isinstance(manifest, dict) else None
+        return manifest_version(self.installed_dir(plugin) / 'plugin.json')
 
     def sync(self, args):
-        previous_backup = None
         try:
             package = args.source / '.agy'
-            manifest_path = package / 'plugin.json'
             if not package.is_dir():
                 package = args.source
-                manifest_path = package / 'plugin.json'
+            manifest_path = package / 'plugin.json'
             if not manifest_path.is_file():
                 raise Failure('pinned source is missing {}'.format(manifest_path))
             try:
@@ -300,16 +303,15 @@ class Antigravity(Harness):
 
             link_version(args.base, args.segment, args.source, args.dry_run)
             package = args.base / args.segment / package.relative_to(args.source)
-            require([self.cli, 'plugin', 'validate', str(package)], args.dry_run,
-                    'plugin validate')
 
             current = self.installed_version(args.plugin)
             if args.dry_run or current != version:
+                require([self.cli, 'plugin', 'validate', str(package)], args.dry_run,
+                        'plugin validate')
                 backup = None
                 if current is not None and not args.dry_run:
                     backup = Path(tempfile.mkdtemp(prefix='agent-plugin-sync-'))
-                    previous_backup = backup / args.plugin
-                    shutil.copytree(self.installed_dir(args.plugin), previous_backup)
+                    shutil.copytree(self.installed_dir(args.plugin), backup / args.plugin)
                 try:
                     require([self.cli, 'plugin', 'install', str(package)], args.dry_run,
                             'plugin install')
@@ -320,8 +322,8 @@ class Antigravity(Harness):
                                 'installed {} is at version {!r} after install, not {}'.format(
                                     args.plugin, installed, version))
                 except (Failure, OSError):
-                    if previous_backup is not None:
-                        self.restore_backup(previous_backup)
+                    if backup is not None:
+                        self.restore_backup(backup / args.plugin)
                     raise
                 finally:
                     if backup is not None:

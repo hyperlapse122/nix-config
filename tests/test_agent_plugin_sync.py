@@ -846,6 +846,7 @@ class AntigravitySyncTestCase(AntigravityCase):
         result = self.run_sync()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(['plugin', 'install'], self.agy_calls())
+        self.assertNotIn(['plugin', 'validate'], self.agy_calls())
 
     def test_version_bump_replaces_the_tree_and_prunes(self):
         self.assertEqual(self.run_sync().returncode, 0)

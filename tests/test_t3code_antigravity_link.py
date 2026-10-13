@@ -54,7 +54,6 @@ class LinkTest(unittest.TestCase):
         return home
 
     def test_creates_declared_home_with_links(self):
-        # Covers AE1.
         self.assertEqual(hashlib.sha256(b"antigravity").hexdigest(), DEFAULT_KEY)
         result = self.run_helper("antigravity")
         self.assertEqual(result.returncode, 0, result.stderr)

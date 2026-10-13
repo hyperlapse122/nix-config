@@ -1071,7 +1071,7 @@
                     echo "antigravity-cli on ${entry.name} is built from version '${agyPkg.version}', expected pin ${pinnedVersion}" >&2
                     fail=1
                   '';
-                  updaterOn = pkgs.lib.optionalString (agyPkg != null) ''
+                  updaterDisabled = pkgs.lib.optionalString (agyPkg != null) ''
                     if ! grep -qxF "export AGY_CLI_DISABLE_AUTO_UPDATE='1'" ${agyPkg}/bin/agy; then
                       echo "agy on ${entry.name} does not turn its self-updater off" >&2
                       fail=1
@@ -1085,7 +1085,7 @@
                     desktopEntries = [ ];
                   } entry}
                   ${versionMismatch}
-                  ${updaterOn}
+                  ${updaterDisabled}
                 '';
             in
             pkgs.runCommand "antigravity-cli-tests" { } ''

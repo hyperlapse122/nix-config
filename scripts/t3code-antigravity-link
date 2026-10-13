@@ -25,18 +25,21 @@ LINKS = ("plugins", "AGENTS.md")
 
 def ensure_link(link, target):
     """Point link at target. Return True when it changed."""
-    if link.is_symlink():
-        if Path(os.readlink(link)) == target:
-            return False
-        staging = link.with_name(f".{link.name}.staging")
-        staging.unlink(missing_ok=True)
-        staging.symlink_to(target)
-        os.replace(staging, link)
+    try:
+        current = Path(os.readlink(link))
+    except FileNotFoundError:
+        link.symlink_to(target)
         return True
-    if os.path.lexists(link):
+    except OSError:
+        # readlink fails with EINVAL on anything that is not a symlink.
         print(f"t3code-antigravity-link: {link} is not a link; left as is", file=sys.stderr)
         return False
-    link.symlink_to(target)
+    if current == target:
+        return False
+    staging = link.with_name(f".{link.name}.staging")
+    staging.unlink(missing_ok=True)
+    staging.symlink_to(target)
+    os.replace(staging, link)
     return True
 
 
@@ -52,14 +55,16 @@ def main(argv=None):
         for instance in args.instance:
             key = hashlib.sha256(instance.encode()).hexdigest()
             home = providers / key
-            if not home.exists():
-                providers.mkdir(parents=True, exist_ok=True)
-                home.mkdir(mode=0o700)
+            providers.mkdir(parents=True, exist_ok=True)
+            # The mode applies only when the home is created here.
+            home.mkdir(mode=0o700, exist_ok=True)
             (home / "config").mkdir(exist_ok=True)
 
-        if not providers.is_dir():
+        try:
+            homes = sorted(providers.iterdir())
+        except (FileNotFoundError, NotADirectoryError):
             return 0
-        for home in sorted(providers.iterdir()):
+        for home in homes:
             if not home.is_dir():
                 continue
             (home / "config").mkdir(exist_ok=True)
