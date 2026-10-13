@@ -31,7 +31,6 @@ pkgs.runCommand "antigravity-plugin-install" { nativeBuildInputs = [ pkgs.jq ]; 
   mkdir -p "$HOME"
   base=$HOME/.local/share/agent-plugins/compound-engineering
   installed=$HOME/.gemini/config/plugins/compound-engineering
-  version=$(jq -r .version ${source}/plugin.json)
 
   runSync() {
     ${sync} --harness antigravity --cli ${agy} --source ${source} \
@@ -40,6 +39,7 @@ pkgs.runCommand "antigravity-plugin-install" { nativeBuildInputs = [ pkgs.jq ]; 
   }
 
   runSync
+  version=$(jq -r .version ${source}/plugin.json)
   if ! ${agy} plugin list | grep -qF "compound-engineering (enabled, $version)"; then
     echo "agy does not list compound-engineering enabled at $version after a sync:" >&2
     ${agy} plugin list >&2
