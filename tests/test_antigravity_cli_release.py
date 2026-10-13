@@ -181,6 +181,23 @@ class AntigravityCliReleaseTestCase(unittest.TestCase):
         self.assert_refused_unchanged(result, "version")
         self.assertEqual(self.fetched(), [f"{BASE}/latest"])
 
+    def test_a_manifest_that_is_not_an_object_fails(self):
+        for body in ["[]", '"1.3.4"', "not json"]:
+            with self.subTest(body=body):
+                self.write_pin("1.3.3")
+                before = self.output.read_bytes()
+                result = self.run_release(body=body)
+                self.assert_refused_unchanged(result, "manifest for 1.3.4", before)
+
+    def test_a_malformed_pin_counts_as_no_current_version(self):
+        for content in ["{not json", "[]\n"]:
+            with self.subTest(content=content):
+                self.output.write_text(content)
+                result = self.run_release()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(self.output.read_text())["version"], "1.3.4")
+                self.assertIn(f"{BASE}/1.3.4/manifest.json", self.fetched())
+
     def test_dry_run_prints_the_pin_and_writes_nothing(self):
         result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)

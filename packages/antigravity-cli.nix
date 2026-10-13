@@ -24,13 +24,14 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   ++ lib.optional pkgs.stdenv.hostPlatform.isElf pkgs.autoPatchelfHook;
 
   # The variable holds under any HOME, including the per-provider homes T3 Code
-  # sets, where no settings file turns the self-updater off.
+  # sets, where no settings file turns the self-updater off. agy accepts only
+  # `true`: with `1` it still starts the updater.
   installPhase = ''
     runHook preInstall
 
     install -Dm755 antigravity $out/libexec/antigravity-cli/agy
     makeWrapper $out/libexec/antigravity-cli/agy $out/bin/agy \
-      --set AGY_CLI_DISABLE_AUTO_UPDATE 1
+      --set AGY_CLI_DISABLE_AUTO_UPDATE true
 
     runHook postInstall
   '';

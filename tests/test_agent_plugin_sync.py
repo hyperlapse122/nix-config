@@ -200,6 +200,7 @@ FAKE_AGY_CLI = '''import json, os, shutil, sys
 state = os.environ['FAKE_STATE']
 fail_on = os.environ.get('FAKE_FAIL_ON', '')
 fail_version = os.environ.get('FAKE_FAIL_VERSION', '')
+noop_version = os.environ.get('FAKE_NOOP_VERSION', '')
 plugins = os.path.join(os.environ['HOME'], '.gemini', 'config', 'plugins')
 
 args = sys.argv[1:]
@@ -223,6 +224,9 @@ if args[:2] == ['plugin', 'install']:
     with open(os.path.join(source, 'plugin.json')) as handle:
         manifest = json.load(handle)
     target = os.path.join(plugins, manifest['name'])
+    if noop_version and manifest.get('version') == noop_version:
+        print('[ok]    ' + manifest['name'])
+        sys.exit(0)
     # A failure after the old tree is gone is the worst case for a bump.
     if os.path.isdir(target):
         shutil.rmtree(target)
@@ -848,7 +852,7 @@ class AntigravitySyncTestCase(AntigravityCase):
         self.assertNotIn(['plugin', 'install'], self.agy_calls())
         self.assertNotIn(['plugin', 'validate'], self.agy_calls())
 
-    def test_version_bump_replaces_the_tree_and_prunes(self):
+    def test_version_bump_replaces_the_tree_and_keeps_superseded_links(self):
         self.assertEqual(self.run_sync().returncode, 0)
         new_source = self.make_source('v3.29.0', skills=('beta',))
         result = self.run_sync(segment='v3.29.0', source=new_source)
@@ -856,7 +860,55 @@ class AntigravitySyncTestCase(AntigravityCase):
         self.assertEqual(self.installed_version(), '3.29.0')
         self.assertFalse((self.installed / 'skills/alpha').exists())
         self.assertTrue((self.installed / 'skills/beta').is_dir())
-        self.assertEqual([p.name for p in self.base.iterdir()], ['v3.29.0'])
+        # The marketplace rows prune the shared base once they confirm their
+        # source; this row must not remove a link one of them kept.
+        self.assertEqual(sorted(p.name for p in self.base.iterdir()), ['v3.28.0', 'v3.29.0'])
+
+    def test_a_manifest_without_a_version_is_refused(self):
+        (self.source / 'plugin.json').write_text(json.dumps({'name': 'compound-engineering'}))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('declares no version', result.stderr)
+        self.assertEqual(self.agy_calls(), [])
+
+    def test_an_invalid_manifest_is_refused(self):
+        (self.source / 'plugin.json').write_text('{not json')
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('is not a valid plugin manifest', result.stderr)
+        self.assertEqual(self.agy_calls(), [])
+
+    def test_an_install_that_leaves_another_version_fails(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'FAKE_NOOP_VERSION': '3.29.0'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("at version '3.28.0' after install, not 3.29.0", result.stderr)
+        self.assertEqual(self.installed_version(), '3.28.0')
+
+    def test_a_failing_backup_leaves_no_temporary_directory(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        unreadable = self.installed / 'skills/alpha/SKILL.md'
+        unreadable.chmod(0)
+        self.addCleanup(unreadable.chmod, 0o644)
+        scratch = self.root / 'tmp'
+        scratch.mkdir()
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'TMPDIR': str(scratch)})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(['plugin', 'install'], self.agy_calls()[2:])
+        self.assertEqual(list(scratch.iterdir()), [])
+
+    def test_a_failing_restore_is_reported(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        new_source = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=new_source,
+                               env={'FAKE_FAIL_ON': 'plugin install'})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('could not restore the previous plugin copy', result.stderr)
+        self.assertIn('plugin install failed', result.stderr)
 
     def test_failing_install_on_a_fresh_home_fails_with_the_cli_message(self):
         result = self.run_sync(env={'FAKE_FAIL_ON': 'plugin install'})

@@ -116,6 +116,27 @@ class LinkTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertTrue(result.stderr.startswith("t3code-antigravity-link: "))
 
+    def broken_home(self, key):
+        home = self.home(key)
+        home.mkdir(parents=True)
+        (home / "config").write_text("not a directory")
+        return home
+
+    def test_failing_undeclared_home_is_reported_and_skipped(self):
+        self.broken_home("0" * 64)
+        result = self.run_helper("antigravity")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_linked(self.home())
+        self.assertIn(str(self.home("0" * 64) / "config"), result.stderr)
+
+    def test_failing_declared_home_fails_after_linking_the_rest(self):
+        self.broken_home(DEFAULT_KEY)
+        other = self.make_t3_home("f" * 64)
+        result = self.run_helper("antigravity")
+        self.assertEqual(result.returncode, 1)
+        self.assert_linked(other)
+        self.assertTrue(result.stderr.startswith("t3code-antigravity-link: "))
+
 
 if __name__ == "__main__":
     unittest.main()

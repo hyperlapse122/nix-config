@@ -40,9 +40,10 @@ pkgs.runCommand "antigravity-plugin-install" { nativeBuildInputs = [ pkgs.jq ]; 
 
   runSync
   version=$(jq -r .version ${source}/plugin.json)
-  if ! ${agy} plugin list | grep -qF "compound-engineering (enabled, $version)"; then
+  list=$(${agy} plugin list)
+  if ! grep -qF "compound-engineering (enabled, $version)" <<< "$list"; then
     echo "agy does not list compound-engineering enabled at $version after a sync:" >&2
-    ${agy} plugin list >&2
+    printf '%s\n' "$list" >&2
     exit 1
   fi
   if ! diff <(ls ${source}/skills) <(ls "$installed/skills"); then

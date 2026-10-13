@@ -135,10 +135,20 @@ def installed(harness):
 
 
 class Harness:
-    """What every agent adapter shares: its CLI and the marketplace removal."""
+    """What every agent adapter shares: its CLI and the marketplace removal.
+
+    sync and retire default to the marketplace flow; an adapter for an agent
+    without marketplaces overrides both.
+    """
 
     def __init__(self, cli):
         self.cli = cli
+
+    def sync(self, args):
+        return marketplace_sync(args, self)
+
+    def retire(self, args):
+        return marketplace_retire(args, self)
 
     def remove_marketplace(self, name, dry_run):
         require([self.cli, 'plugin', 'marketplace', 'remove', name], dry_run, 'marketplace remove')
@@ -309,10 +319,12 @@ class Antigravity(Harness):
                 require([self.cli, 'plugin', 'validate', str(package)], args.dry_run,
                         'plugin validate')
                 backup = None
-                if current is not None and not args.dry_run:
-                    backup = Path(tempfile.mkdtemp(prefix='agent-plugin-sync-'))
-                    shutil.copytree(self.installed_dir(args.plugin), backup / args.plugin)
+                restorable = False
                 try:
+                    if current is not None and not args.dry_run:
+                        backup = Path(tempfile.mkdtemp(prefix='agent-plugin-sync-'))
+                        shutil.copytree(self.installed_dir(args.plugin), backup / args.plugin)
+                        restorable = True
                     require([self.cli, 'plugin', 'install', str(package)], args.dry_run,
                             'plugin install')
                     if not args.dry_run:
@@ -322,15 +334,16 @@ class Antigravity(Harness):
                                 'installed {} is at version {!r} after install, not {}'.format(
                                     args.plugin, installed, version))
                 except (Failure, OSError):
-                    if backup is not None:
+                    if restorable:
                         self.restore_backup(backup / args.plugin)
                     raise
                 finally:
                     if backup is not None:
                         shutil.rmtree(backup, ignore_errors=True)
 
-            for name in prune(args.base, args.segment, args.dry_run):
-                print('removed superseded plugin version {}'.format(name))
+            # No prune: agy keeps its own copy and never reads the link again,
+            # so superseded versions in the shared base stay for the
+            # marketplace rows to remove once they have confirmed their source.
             return 0
         except (Failure, OSError) as exc:
             print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
@@ -408,7 +421,7 @@ def prune(base, segment, dry_run):
     return removed
 
 
-def retire(args, harness):
+def marketplace_retire(args, harness):
     """Remove a plugin an earlier generation registered, and its base directory.
 
     Each removal runs only when the agent still lists what it removes, so a
@@ -457,17 +470,17 @@ def main(argv=None):
     if args.retire:
         if args.source is not None or args.segment is not None:
             parser.error('--retire takes no --source or --segment')
-        if hasattr(harness, 'retire'):
-            return harness.retire(args)
-        return retire(args, harness)
+        return harness.retire(args)
     if args.source is None or args.segment is None:
         parser.error('sync requires --source and --segment')
     if not SEGMENT.match(args.segment):
         parser.error('refusing unsafe version segment: {!r}'.format(args.segment))
 
-    if hasattr(harness, 'sync'):
-        return harness.sync(args)
+    return harness.sync(args)
 
+
+def marketplace_sync(args, harness):
+    """Register the pinned source as a local marketplace and add the plugin."""
     previous = None
     plugin_id = '{}@{}'.format(args.plugin, args.marketplace)
     try:

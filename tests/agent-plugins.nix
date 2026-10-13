@@ -124,7 +124,11 @@ let
         let
           target = file.target or "";
         in
-        target == agyInstallDir || lib.hasPrefix "${agyInstallDir}/" target
+        # A link on the directory, inside it, or on an ancestor such as
+        # ~/.gemini/config/plugins all put a store path where agy installs.
+        target == agyInstallDir
+        || lib.hasPrefix "${agyInstallDir}/" target
+        || (target != "" && lib.hasPrefix "${target}/" agyInstallDir)
       ) (lib.attrValues (userConfig.home.file or { }));
 
       registryAbsent = lib.optionalString (registry == null) ''

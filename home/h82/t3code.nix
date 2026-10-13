@@ -30,7 +30,9 @@ let
   # The Antigravity instances this file selects a model on. Each gets its home
   # prepared on activation, so the plugins and instructions are there before
   # T3 Code first starts it.
-  antigravityInstances = [ "antigravity" ];
+  antigravityInstances = [ textGenerationInstance ];
+  # The instance T3 Code generates commit messages and titles with.
+  textGenerationInstance = "antigravity";
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
@@ -73,7 +75,7 @@ let
       model = "claude-opus-5-5";
     };
     textGenerationModelSelection = {
-      instanceId = lib.head antigravityInstances;
+      instanceId = textGenerationInstance;
       model = "gemini-3.8-flash-low";
     };
   };
@@ -168,7 +170,8 @@ in
       # T3 Code runs each Antigravity instance under its own GEMINI_HOME,
       # which reads none of ~/.gemini, so the CLI's plugins and global
       # instructions are linked into every instance home. An instance added in
-      # the app gets its links on the next activation.
+      # the app gets its links on the next activation, which on NixOS runs only
+      # when a rebuild produces a new Home Manager generation.
       t3codeAntigravityLinks = lib.hm.dag.entryAfter [ "installPackages" ] ''
         run ${linker} \
           --base-dir ${config.home.homeDirectory}/.t3 \

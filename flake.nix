@@ -436,6 +436,16 @@
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
+          # Fetches every pinned platform's tarball, not only this system's, so
+          # a wrong URL or hash for a platform no Linux job builds, such as
+          # aarch64-darwin, fails before the pin reaches main.
+          antigravity-cli-sources =
+            let
+              release = builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json);
+            in
+            pkgs.linkFarm "antigravity-cli-sources" (
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
+            );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -557,6 +567,23 @@
                   ${./packages/t3code-release.json}
                 touch $out
               '';
+          # scripts/t3code-antigravity-link derives each instance home the way
+          # the pinned T3 Code does: the hex SHA-256 of the instance id under
+          # providers/antigravity. A T3 Code bump that changes either fails
+          # here instead of leaving the links in homes T3 Code no longer reads.
+          t3code-antigravity-layout = pkgs.runCommand "t3code-antigravity-layout" { } ''
+            bundle=${self.packages.${system}.t3code-cli}/libexec/t3code/t3
+            for fragment in \
+              'crypto.digest("SHA-256", new TextEncoder().encode(instanceId))' \
+              'profile: path.join(stateDir, "providers", "antigravity", key),' \
+              'const geminiHome = path.resolve(input.profileDirectory);'; do
+              if ! grep -aqF "$fragment" "$bundle"; then
+                echo "the pinned T3 Code no longer contains: $fragment" >&2
+                exit 1
+              fi
+            done
+            touch $out
+          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
@@ -1072,7 +1099,7 @@
                     fail=1
                   '';
                   updaterDisabled = pkgs.lib.optionalString (agyPkg != null) ''
-                    if ! grep -qxF "export AGY_CLI_DISABLE_AUTO_UPDATE='1'" ${agyPkg}/bin/agy; then
+                    if ! grep -qxF "export AGY_CLI_DISABLE_AUTO_UPDATE='true'" ${agyPkg}/bin/agy; then
                       echo "agy on ${entry.name} does not turn its self-updater off" >&2
                       fail=1
                     fi
