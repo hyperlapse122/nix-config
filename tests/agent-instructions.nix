@@ -63,6 +63,17 @@
     random-hex branch), only a branch never pushed, and the
     `type/short-kebab-slug` fallback, so any of those sentences dropped or
     moved into one harness's branch fails.
+  - it carries the shared issue and pull request media rule: which GitHub and
+    GitLab items it covers, attaching the conversation's media, capturing
+    media when showing would help and when not to, logs as code blocks,
+    before-and-after states for visible changes, masking with an opaque box
+    placed at the file's real pixel size, stripping metadata, when a file is
+    left out, viewing masked files and dense video frames before upload, CLI
+    or API upload only, the `gh --attach` commands and the separate-comment
+    fallback, the GitLab uploads API and its authentication check on the
+    project that receives the upload, reporting failed uploads, and keeping a skill's body
+    structure, so any of those sentences dropped, reworded, negated, or moved
+    into one harness's branch fails.
   - it names every native tool its harness template maps, and none of the
     other harnesses', so a branch keyed on the wrong id, or swapped targets,
     fail.
@@ -112,6 +123,29 @@ let
     "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
+  ];
+
+  mediaSentences = [
+    "When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change."
+    "Attach every image or video from the conversation that relates to the item you are writing."
+    "When showing the screen or behavior would help a reader and no media in the conversation already shows it, reproduce it with the tools this session offers, such as browser automation, an app preview, or a device simulator, and capture a screenshot, or a recording when the point is motion or a sequence of steps."
+    "Do not capture when reproducing needs production data, a payment, a login you do not already hold, or another action with side effects; tell the user why you captured nothing."
+    "Put logs and terminal output in the body as fenced code blocks, not as images."
+    "For a pull or merge request that changes something visible, attach the state after the change, and add the state before it when the base revision runs without much effort."
+    "Before upload, mask credentials, tokens, passwords, personal data, and internal hosts or addresses with an opaque filled box over the whole region, never with blur or pixelation, which can be reversed."
+    "Place each box using the file's real pixel size from `ffprobe`, scaling any coordinates you read off a downscaled view of the image."
+    "Before upload, remove embedded metadata, such as location, device, and capture time, from every image and video by re-encoding it with `ffmpeg -map_metadata -1`, including files that need no masking."
+    "Leave a file out only when masking would remove what it was meant to show, or when the sensitive content cannot be masked reliably, such as a region you cannot locate in every frame of a recording; tell the user which file you left out and why."
+    "Look at every masked file before you upload it."
+    "Check a video by extracting a frame at every scene change, with a low threshold so a small overlay counts as one, and at least two frames per second, and view them, both to find what to mask and to confirm the mask held."
+    "When something sensitive could appear between the frames you viewed, such as a token typed and cleared within a second, leave the video out."
+    "Upload only through the CLI or API, never through the web UI in a browser."
+    "On GitHub, pass each file to the `--attach` option of `gh issue create`, `gh issue comment`, `gh issue edit`, `gh pr create`, `gh pr comment`, or `gh pr edit`."
+    "When the GitHub item has no `--attach` path, such as a review-thread reply or an edit of a comment other than your last, post the media in a separate `gh issue comment --attach` or `gh pr comment --attach` on the same issue or pull request, and link that comment from the text you wrote."
+    "On GitLab, upload each file with `glab api --form file=@<path> projects/:id/uploads` and put the `markdown` field it returns into the body; for a merge request from a fork, upload to the target project instead of `:id`."
+    "Before uploading an image to a private or internal GitLab project, read `visibility` and `enforce_auth_checks_on_uploads` from `glab api projects/<project>` for the project you upload to, which for a merge request from a fork is the target project; when authentication is not enforced, upload no images there and tell the user which files you held back, why, and that a maintainer can turn on \"Require authentication to view media files\" in the project's visibility settings."
+    "When an upload fails, tell the user which files did not attach, including when `gh` created the item but exited non-zero."
+    "When a skill defines the body of an issue or pull request, keep its structure and add the media to it."
   ];
 
   routingSentences = [
@@ -269,6 +303,7 @@ let
         ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+        ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
         for directive in ${lib.escapeShellArgs supersededDirectives}; do
           if grep -qF -- "$directive" "$file"; then
             echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
