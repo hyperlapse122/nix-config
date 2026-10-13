@@ -95,6 +95,11 @@ let
           pname = "codex";
           expectedCli = packagePath "codex" "codex";
         }
+        {
+          name = "antigravity";
+          pname = "antigravity-cli";
+          expectedCli = packagePath "antigravity-cli" "agy";
+        }
       ];
 
       activation = userConfig.home.activation.agentPlugins or null;
