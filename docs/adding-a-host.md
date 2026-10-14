@@ -64,11 +64,11 @@ It writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/r
 
 `.sops.yaml` has one creation rule per encrypted file, and each rule lists the age recipients that may decrypt it. Append the value from `secrets/bootstrap/<host>/recipient.txt` to the `age:` list of every rule the new host needs, comma-separated. A production host needs `secrets/tokens.yaml`, `secrets/wifi.yaml`, and `secrets/tailscale.yaml`.
 
-Adding a recipient does not change existing ciphertext. Re-encrypt each file to the new recipient list on a machine whose local identity can already decrypt it. The development shell provides `sops`:
+Adding a recipient does not change existing ciphertext. Re-encrypt each file to the new recipient list from the repository root, on any machine with the checkout and a YubiKey. The key command below decrypts every host's bootstrap identity with GPG; one card opens them all, so together they reach every file in `.sops.yaml` whichever host runs it, and no sudo is needed. The card may prompt for its PIN. The development shell provides `sops`:
 
 ```sh
 nix develop
-export SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt"
+export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
 sops updatekeys -y secrets/tokens.yaml
 sops updatekeys -y secrets/wifi.yaml
 sops updatekeys -y secrets/tailscale.yaml
@@ -209,11 +209,11 @@ It writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/r
 
 Append the value from `secrets/bootstrap/<host>/recipient.txt` to the `age:` list of the `secrets/tokens.yaml` rule in `.sops.yaml`. Do not add it to the `secrets/wifi.yaml` or `secrets/tailscale.yaml` rules. A non-NixOS host uses neither file, and its identity rests on the distribution's disk encryption.
 
-Re-encrypt `tokens.yaml` on a NixOS machine whose local identity can already decrypt it:
+Re-encrypt `tokens.yaml` from the repository root, on any machine with the checkout and a YubiKey, with the same GPG key command as [the NixOS re-encryption](#add-the-recipient-to-sopsyaml-and-re-encrypt):
 
 ```sh
 nix develop
-export SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt"
+export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
 sops updatekeys -y secrets/tokens.yaml
 unset SOPS_AGE_KEY_CMD
 ```
