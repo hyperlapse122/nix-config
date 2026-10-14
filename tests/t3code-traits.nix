@@ -36,7 +36,9 @@
     run it. The paths are compared as strings, so the runtime, about 1.3 GB
     unpacked, is never built here.
   - home.activation.t3codeAntigravityLinks exists exactly when either trait
-    is on and runs after installPackages. Its script is executed with the
+    is on and runs after installPackages and after home.activation.agentPlugins,
+    which must exist on every host, so a plugin sync's new or retired skills are linked in the
+    same activation. Its script is executed with the
     packaged linker swapped for a stub: on a live run the stub must run with
     --base-dir ~/.t3, --gemini-config ~/.gemini/config, and --instance
     antigravity, the instance the text-generation selection names; a failing
@@ -238,8 +240,10 @@ let
 
   # Every lookup has an `or` fallback, so a removed declaration reaches the
   # builder as an empty argument instead of failing evaluation.
-  assertSettings =
-    name: user: expected:
+  # pluginsDeclared is false for the module evaluated on its own, which has no
+  # agentPlugins entry to exist; the link entry must still name it.
+  assertSettingsWith =
+    pluginsDeclared: name: user: expected:
     lib.concatMapStrings (
       merge:
       let
@@ -274,9 +278,16 @@ let
           esc (noContext (activation.data or ""))
         } ${lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))} ${
           esc (user.home.homeDirectory or "")
+        } ${
+          lib.boolToString (
+            lib.elem "agentPlugins" (activation.after or [ ])
+            && (!pluginsDeclared || user.home.activation ? agentPlugins)
+          )
         }
       ''
     );
+
+  assertSettings = assertSettingsWith true;
 
   assertSettingsOn =
     entry:
@@ -434,8 +445,8 @@ let
       (lib.optionalString (!darwin.updaterOff) (
         fail "macOS with my.t3.desktop.enable: no launchd agent runs launchctl setenv T3CODE_DISABLE_AUTO_UPDATE 1, so the copied app can update itself off the nightly pin"
       ))
-      (assertSettings "NixOS module with my.t3.desktop.enable" nixos.config true)
-      (assertSettings "macOS module with my.t3.desktop.enable" darwin.config true)
+      (assertSettingsWith false "NixOS module with my.t3.desktop.enable" nixos.config true)
+      (assertSettingsWith false "macOS module with my.t3.desktop.enable" darwin.config true)
     ];
 in
 pkgs.runCommand "t3code-traits" { } ''
@@ -635,9 +646,10 @@ pkgs.runCommand "t3code-traits" { } ''
 
   # $2 says whether the instance links belong on this configuration, $3
   # whether they are declared; $4 is the script, $5 whether it runs after
-  # installPackages, and $6 the home directory its paths must sit under.
+  # installPackages, $6 the home directory its paths must sit under, and $7
+  # whether it runs after an agentPlugins entry that exists.
   checkLinks() {
-    local name=$1 expected=$2 present=$3 after=$5 home=$6 linker actual
+    local name=$1 expected=$2 present=$3 after=$5 home=$6 afterPlugins=$7 linker actual
     if [ "$present" != "$expected" ]; then
       echo "$name: home.activation.t3codeAntigravityLinks is present=$present, either T3 Code trait on is $expected" >&2
       fail=1
@@ -647,6 +659,10 @@ pkgs.runCommand "t3code-traits" { } ''
 
     if [ "$after" != true ]; then
       echo "$name: home.activation.t3codeAntigravityLinks must run after installPackages" >&2
+      fail=1
+    fi
+    if [ "$afterPlugins" != true ]; then
+      echo "$name: home.activation.t3codeAntigravityLinks must run after home.activation.agentPlugins" >&2
       fail=1
     fi
 

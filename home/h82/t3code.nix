@@ -168,11 +168,14 @@ in
           --pin ${antigravityPin}
       '';
       # T3 Code runs each Antigravity instance under its own GEMINI_HOME,
-      # which reads none of ~/.gemini, so the CLI's plugins and global
-      # instructions are linked into every instance home. An instance added in
-      # the app gets its links on the next activation, which on NixOS runs only
-      # when a rebuild produces a new Home Manager generation.
-      t3codeAntigravityLinks = lib.hm.dag.entryAfter [ "installPackages" ] ''
+      # whose ACP runtime loads skills but no plugins, so each plugin skill is
+      # linked into ~/.gemini/antigravity-cli/skills, which T3 Code links into
+      # every instance home, and the CLI's global instructions into each home.
+      # It runs after agentPlugins so a sync's new or retired skills are seen.
+      # An instance added in the app gets its links on the next activation,
+      # which on NixOS runs only when a rebuild produces a new Home Manager
+      # generation.
+      t3codeAntigravityLinks = lib.hm.dag.entryAfter [ "installPackages" "agentPlugins" ] ''
         run ${linker} \
           --base-dir ${config.home.homeDirectory}/.t3 \
           --gemini-config ${config.home.homeDirectory}/.gemini/config \
