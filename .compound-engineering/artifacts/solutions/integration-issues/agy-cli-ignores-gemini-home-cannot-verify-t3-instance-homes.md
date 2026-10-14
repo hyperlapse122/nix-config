@@ -10,6 +10,7 @@ symptoms:
   - "GEMINI_HOME=<T3 instance home> agy plugin list prints \"No plugins installed.\" although config/plugins in that home links to an installed plugin"
   - "An agy -p session started with GEMINI_HOME set reads AGENTS.md and plugins from $HOME/.gemini, not from GEMINI_HOME"
   - "A headless ACP session/new against agy_acp_server.par with oauth-personal hangs instead of answering"
+  - "T3 Code's Antigravity composer finds no plugin skill, and a session asked to list its skills says it has none, although config/plugins in the instance home links to the installed plugin"
 root_cause: wrong_api
 resolution_type: tooling_addition
 related_components:
@@ -22,34 +23,36 @@ retire_when: "agy honors GEMINI_HOME (check: GEMINI_HOME=<dir holding config/plu
 
 ## Problem
 
-T3 Code runs each Antigravity instance's ACP runtime (`agy_acp_server.par`) with `GEMINI_HOME` set to a private home. To give those instances the same plugins and global instructions as the `agy` CLI, `scripts/t3code-antigravity-link` links `config/plugins` and `config/AGENTS.md` in every instance home back to `~/.gemini/config`. The obvious way to check that delivery is to point the CLI at the instance home with `GEMINI_HOME`. That check is meaningless: the CLI ignores the variable.
+T3 Code runs each Antigravity instance's ACP runtime (`agy_acp_server.par`) with `GEMINI_HOME` set to a private home. To give those instances the same plugins and global instructions as the `agy` CLI, `scripts/t3code-antigravity-link` first linked `config/plugins` and `config/AGENTS.md` in every instance home back to `~/.gemini/config`. The obvious way to check that delivery is to point the CLI at the instance home with `GEMINI_HOME`. That check is meaningless: the CLI ignores the variable. When the runtime itself was finally probed, the `config/plugins` link turned out to deliver nothing: the runtime loads skills but no plugins.
 
 ## Symptoms
 
 - `GEMINI_HOME=<instance home> agy plugin list` prints `No plugins installed.` both for a home that holds the two links and for a bare home, when `HOME` holds no plugins.
 - An `agy -p` session given a marker in `<instance home>/config/AGENTS.md` does not see it. With the same marker in `$HOME/.gemini/config/AGENTS.md`, it does.
-- Probing the ACP runtime directly fails differently: `session/new` with the `oauth-personal` auth method hangs, because the runtime needs the instance's `antigravity-acp/acp_token.json`, which the app's sign-in flow writes.
+- Probing the ACP runtime directly against a bare home fails differently: `session/new` with the `oauth-personal` auth method hangs, because the runtime needs the instance's `antigravity-acp/acp_token.json`, which the app's sign-in flow writes.
+- In T3 Code, `/` finds no plugin command, and an Antigravity session asked to list its skills answers that it has none, while the CLI lists every plugin skill.
 
 ## What Didn't Work
 
 - **Asserting the instance home through the CLI in a Nix check.** A code reviewer proposed extending `tests/antigravity-plugin-install.nix` with `GEMINI_HOME=$PWD/instance agy plugin list`. Probing showed the CLI's answer does not depend on `GEMINI_HOME`, so the assertion would only ever test `HOME`.
 - **Finding a different variable in the binary.** `strings` on the pinned `agy` binary shows no `GEMINI_HOME` string. The only near match is `SMARTDISPLAY_GEMINIHOME`, which is unrelated.
-- **Driving the ACP runtime headless.** The runtime does honor `GEMINI_HOME`, since T3 Code relies on that, but it refuses to start a session without OAuth. A fake token would not authenticate, and a real one may not be used in checks.
+- **Driving the ACP runtime headless in a check.** The runtime does honor `GEMINI_HOME`, since T3 Code relies on that, but it refuses to start a session without OAuth. A fake token would not authenticate, and a real one may not be used in checks.
+- **Linking `config/plugins` into the home.** Driven by hand against a copy of a signed-in instance home (the copy carries `acp_token.json`), runtime 1.3.0 and 1.4.0 both answer `NONE` when asked to list their skills with only that link in place, and also with `config/import_manifest.json` copied beside it. Their `available_commands_update` lists only `plan` and `logout` (1.4.0 adds `usage`), so T3 Code's `/` menu has nothing from a plugin either. Bumping the runtime does not change this.
 
 ## Solution
 
 Split verification by what each layer can observe:
 
-1. **Layout, from the pinned T3 Code bundle.** The `t3code-antigravity-layout` check in `flake.nix` greps the pinned `t3` binary for the fragments that define the home: `crypto.digest("SHA-256", new TextEncoder().encode(instanceId))`, `profile: path.join(stateDir, "providers", "antigravity", key),` and `const geminiHome = path.resolve(input.profileDirectory);`. A T3 Code bump that moves the homes fails the check instead of leaving links where nothing reads them.
+1. **Layout, from the pinned T3 Code bundle.** The `t3code-antigravity-layout` check in `flake.nix` greps the pinned `t3` binary for the fragments that define the home: `crypto.digest("SHA-256", new TextEncoder().encode(instanceId))`, `profile: path.join(stateDir, "providers", "antigravity", key),` and `const geminiHome = path.resolve(input.profileDirectory);`. A T3 Code bump that moves the homes fails the check instead of leaving links where nothing reads them. The plugin skills reach a home only through T3 Code's own `antigravity-cli/skills` link, so the check also greps the fragments of that link: the two directories `antigravityUserSkillDirectories` returns, the `const targets = ...` line that points them at `~/.gemini`, the loop that calls `NodeFSP.symlink` for each, and the `yield* linkAntigravityUserSkills({` call in profile preparation.
 2. **Links, from the helper's own tests.** `tests/test_t3code_antigravity_link.py` drives the linker against fake T3 homes.
 3. **The plugin payload, through the CLI's own home.** `tests/antigravity-plugin-install.nix` runs the real `agy` with `HOME` pointed at a throwaway directory. That is the one place where the CLI's view is the same as what the links expose.
-4. **Loading, in the app.** Whether the ACP runtime loads `config/plugins` and `config/AGENTS.md` from a `GEMINI_HOME` that holds only links is checked by hand in T3 Code. The manual items are in `docs/verification.md` and the follow-up issue.
+4. **Loading, by hand.** Copy a signed-in instance home to a scratch directory, start `agy_acp_server.par --uid=` there with `GEMINI_HOME`, `ANTIGRAVITY_HARNESS_PATH`, and `AGY_ACP_FORCE_FILE_STORAGE=1` as T3 Code sets them (`buildAntigravityAcpSpawnInput`), then send `initialize`, `authenticate` with `oauth-personal`, `session/new`, and a `session/prompt` asking for the skill list. A skill placed in `config/skills` or `antigravity-cli/skills` of that home is listed, both as a copied directory and as a symlink to the plugin's skill directory; nothing reached through `config/plugins` is. That is why the linker now links each plugin skill into `~/.gemini/antigravity-cli/skills`, which T3 Code links into every home. The same probe could not settle whether the runtime reads `config/AGENTS.md`: it reported no marker from that file, but also none from a workspace `AGENTS.md`, so the model does not quote its rules and the answer means nothing. That item stays a manual check in the app.
 
 ## Why This Works
 
 The CLI and the ACP runtime are different programs that share a name. The CLI resolves its state from `$HOME/.gemini` only. The ACP runtime resolves it from `GEMINI_HOME`, which T3 Code sets (`resolveAntigravityInstanceDirectories` and `prepareAntigravityProfile` in the pinned bundle). A test that runs the CLI with `GEMINI_HOME` therefore tests `HOME`, whatever it appears to assert. Each check above runs against a layer that does read the path it asserts.
 
-T3 Code also limits what can be delivered into a home. While preparing an instance's profile it links only `config/skills` and `antigravity-cli/skills` (`linkAntigravityUserSkills`), and on every prepare it rewrites `antigravity-acp/settings.json` with only the auth method, plus a `gcp` block when one is configured. Links in other paths survive. A setting written into that file, such as the CLI's `disableAutoGenerateMemories`, does not.
+T3 Code also limits what can be delivered into a home. While preparing an instance's profile it links only `config/skills` and `antigravity-cli/skills` (`linkAntigravityUserSkills`) to the same directories under `~/.gemini`, re-pointing either link when it differs, and on every prepare it rewrites `antigravity-acp/settings.json` with only the auth method, plus a `gcp` block when one is configured. Links in other paths survive. A setting written into that file, such as the CLI's `disableAutoGenerateMemories`, does not.
 
 ## Prevention
 
@@ -57,6 +60,8 @@ T3 Code also limits what can be delivered into a home. While preparing an instan
 - When a reviewer proposes an instance-home check through the CLI, probe it first with an empty `HOME` and a populated `GEMINI_HOME`. If the result does not change, the check is decorative.
 - Keep `t3code-antigravity-layout` current when T3 Code renames the minified code around those fragments: update the fragments from the new bundle rather than deleting the check.
 - Do not try to declare Antigravity settings for T3 instances through `antigravity-acp/settings.json`. T3 Code overwrites that file.
+- Deliver plugin content to T3 Code's Antigravity as skills, not as a plugin tree. Put the links in `~/.gemini/antigravity-cli/skills`, not `~/.gemini/config/skills`: the CLI lists a skill in `config/skills` a second time beside the same plugin skill, and does not for `antigravity-cli/skills`.
+- Before you trust a link into an instance home, ask the runtime itself with the probe above. A link that exists proves only that the linker ran.
 
 ## Related
 

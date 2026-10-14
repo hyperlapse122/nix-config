@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
-"""Link the Antigravity CLI's plugins and instructions into T3 Code's homes.
+"""Link the Antigravity CLI's plugin skills and instructions into T3 Code's homes.
 
 T3 Code runs each Antigravity instance with GEMINI_HOME set to
 <base>/userdata/providers/antigravity/<hex SHA-256 of the instance id>
 (resolveAntigravityInstanceDirectories in the pinned bundle; the
-t3code-antigravity-layout check fails when a bump changes it). The harness
-reads plugins from config/plugins and global rules from config/AGENTS.md under
-that home, so each home gets two links to the CLI's own files in
-~/.gemini/config. T3 Code creates the home and links only config/skills and
-antigravity-cli/skills (linkAntigravityUserSkills); it removes nothing else,
-so these links survive.
+t3code-antigravity-layout check fails when a bump changes it). T3 Code creates
+the home and links its config/skills and antigravity-cli/skills to the same
+directories under ~/.gemini (linkAntigravityUserSkills); it removes nothing
+else, so links made here survive.
+
+The ACP runtime T3 Code starts there (agy_acp_server.par 1.3.0 and 1.4.0)
+loads skills from both skills directories but loads no plugins: a home whose
+config/plugins links to the CLI's plugins lists no plugin skill. So every
+plugin skill is linked by name into ~/.gemini/antigravity-cli/skills, which the
+CLI does not list a second time, unlike ~/.gemini/config/skills. A link there
+that points into the plugins directory but no longer names a plugin skill is
+removed; a real directory, or a link elsewhere, is the user's and is left and
+reported when it holds a plugin skill's name. A plugin that `agy plugin
+disable` turned off in ~/.gemini/config/config.json keeps its tree but gets no
+links. Two plugins with a skill of the same name fail the run once the rest are
+linked, since one name holds one link and the other skill would be missing. The
+config/plugins link an earlier version made in each home is removed. Each home
+also gets config/AGENTS.md linked to the CLI's global rules.
 
 A declared instance gets its home created before T3 Code first starts it. Every
 home under providers/antigravity is linked, declared or not. A link with the
@@ -20,11 +32,12 @@ on a declared home fails the run once every home has been tried.
 
 import argparse
 import hashlib
+import json
 import os
 import sys
 from pathlib import Path
 
-LINKS = ("plugins", "AGENTS.md")
+LINKS = ("AGENTS.md",)
 
 
 def ensure_link(link, target):
@@ -47,6 +60,80 @@ def ensure_link(link, target):
     return True
 
 
+def points_into(link, directory):
+    """True for a symlink into directory, False for anything else at link, None when nothing is there."""
+    try:
+        return link.readlink().is_relative_to(directory)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        # readlink fails with EINVAL on anything that is not a symlink.
+        return False
+
+
+def remove_old_plugins_link(home, gemini_config):
+    """Remove the config/plugins link an earlier version made; the runtime never read it."""
+    link = home / "config" / "plugins"
+    if link.is_symlink() and link.readlink() == gemini_config / "plugins":
+        link.unlink()
+        print(f"removed {link}")
+
+
+def disabled_plugins(gemini_config):
+    """The plugins `agy plugin disable` turned off; a malformed file raises ValueError."""
+    path = gemini_config / "config.json"
+    try:
+        config = json.loads(path.read_text())
+    except FileNotFoundError:
+        return set()
+    except ValueError as error:
+        raise ValueError(f"{path}: {error}") from error
+    plugins = config.get("plugins") if isinstance(config, dict) else None
+    if not isinstance(plugins, dict):
+        return set()
+    return {
+        name for name, entry in plugins.items() if isinstance(entry, dict) and entry.get("enabled") is False
+    }
+
+
+def link_plugin_skills(gemini_config):
+    """Link every enabled plugin skill into the CLI's antigravity-cli/skills. Return False on a name clash."""
+    plugins = gemini_config / "plugins"
+    skills = gemini_config.parent / "antigravity-cli" / "skills"
+    disabled = disabled_plugins(gemini_config)
+    wanted = {}
+    clash = False
+    for manifest in sorted(plugins.glob("*/skills/*/SKILL.md")):
+        if manifest.parent.parent.parent.name in disabled:
+            continue
+        name = manifest.parent.name
+        if name in wanted:
+            print(
+                f"t3code-antigravity-link: skill {name} is in more than one plugin: {wanted[name]} and {manifest.parent}",
+                file=sys.stderr,
+            )
+            clash = True
+            continue
+        wanted[name] = manifest.parent
+    if not wanted and not skills.is_dir():
+        return not clash
+
+    skills.mkdir(parents=True, exist_ok=True)
+    for name, target in wanted.items():
+        link = skills / name
+        if points_into(link, plugins) is False:
+            print(f"t3code-antigravity-link: {link} is not a plugin skill link; left as is", file=sys.stderr)
+            continue
+        if ensure_link(link, target):
+            print(f"linked {link}")
+
+    for link in sorted(skills.iterdir()):
+        if link.name not in wanted and points_into(link, plugins):
+            link.unlink()
+            print(f"removed {link}")
+    return not clash
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base-dir", required=True, type=Path, help="T3 Code's base directory, ~/.t3")
@@ -57,6 +144,13 @@ def main(argv=None):
     providers = args.base_dir / "userdata" / "providers" / "antigravity"
     declared = {hashlib.sha256(instance.encode()).hexdigest() for instance in args.instance}
     status = 0
+    try:
+        if not link_plugin_skills(args.gemini_config):
+            status = 1
+    except (OSError, ValueError) as error:
+        print(f"t3code-antigravity-link: {error}", file=sys.stderr)
+        status = 1
+
     for key in sorted(declared):
         home = providers / key
         try:
@@ -81,6 +175,7 @@ def main(argv=None):
             if not home.is_dir():
                 continue
             (home / "config").mkdir(exist_ok=True)
+            remove_old_plugins_link(home, args.gemini_config)
             for name in LINKS:
                 link = home / "config" / name
                 if ensure_link(link, args.gemini_config / name):

@@ -571,12 +571,21 @@
           # the pinned T3 Code does: the hex SHA-256 of the instance id under
           # providers/antigravity. A T3 Code bump that changes either fails
           # here instead of leaving the links in homes T3 Code no longer reads.
+          # The plugin skills reach each home only through T3 Code's own link
+          # of antigravity-cli/skills, so that link is checked as well: the
+          # directories, the loop that symlinks each one, and the call from
+          # profile preparation, so a helper left unused does not pass.
           t3code-antigravity-layout = pkgs.runCommand "t3code-antigravity-layout" { } ''
             bundle=${self.packages.${system}.t3code-cli}/libexec/t3code/t3
             for fragment in \
               'crypto.digest("SHA-256", new TextEncoder().encode(instanceId))' \
               'profile: path.join(stateDir, "providers", "antigravity", key),' \
-              'const geminiHome = path.resolve(input.profileDirectory);'; do
+              'const geminiHome = path.resolve(input.profileDirectory);' \
+              'return [path.join(geminiHome, "config", "skills"), path.join(geminiHome, "antigravity-cli", "skills")];' \
+              'const targets = antigravityUserSkillDirectories(path, path.join(input.userHome, ".gemini"));' \
+              'for (const [link, target] of [[links[0], targets[0]], [links[1], targets[1]]])' \
+              'NodeFSP.symlink(target, link, input.platform === "win32" ? "junction" : "dir")' \
+              'yield* linkAntigravityUserSkills({'; do
               if ! grep -aqF "$fragment" "$bundle"; then
                 echo "the pinned T3 Code no longer contains: $fragment" >&2
                 exit 1
