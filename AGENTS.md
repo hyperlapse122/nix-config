@@ -70,7 +70,9 @@ When watching a pull request from a local session, judge readiness on check evid
 
 ## Security and lifecycle constraints
 
-Never evaluate or build with real plaintext credentials. Ordinary rebuilds use the local LUKS-protected age identity. On a non-NixOS host, they use the user-owned identity at `~/.config/nix-config/age/key.txt`, which the distribution's disk encryption protects; a macOS host keeps it at the same path, protected by FileVault. YubiKey use is for initial recovery and Git signing; three cards carry the same key, each with its own PIN. Publish gh/glab files only after successful decryption and keep them writable by their user. Report failures without printing tokens.
+Never evaluate or build with real plaintext credentials. Ordinary rebuilds use the local LUKS-protected age identity. On a non-NixOS host, they use the user-owned identity at `~/.config/nix-config/age/key.txt`, which the distribution's disk encryption protects; a macOS host keeps it at the same path, protected by FileVault. YubiKey use is for initial recovery, Git signing, and decrypting the bootstrap identities for SOPS work; three cards carry the same key, each with its own PIN. Publish gh/glab files only after successful decryption and keep them writable by their user. Report failures without printing tokens.
+
+Re-encrypt and edit SOPS files yourself, on any host, without sudo. From the repository root, set `SOPS_AGE_KEY_CMD` to decrypt every `secrets/bootstrap/*/age-key.asc` with `gpg --batch --no-tty --decrypt`; one card opens every host's identity, so together they reach every file in `.sops.yaml`. Then run `sops updatekeys -y <file>` to re-encrypt, or pipe a JSON-encoded value into `sops set --value-stdin <file> '["<key>"]'` to change one value. Do not use `sops edit`, which opens an interactive editor, or `sops decrypt` to the terminal. [Adding a host](docs/adding-a-host.md#add-the-recipient-to-sopsyaml-and-re-encrypt) has the exact key command.
 
 Do not partition or format the developer's host, enroll firmware or TPM keys, or run `nixos-rebuild switch` or `nr switch` as validation. Hardware installation requires an explicit instruction.
 

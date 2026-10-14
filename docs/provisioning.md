@@ -159,19 +159,21 @@ Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_ke
 Follow these steps when a non-NixOS host or a macOS host is lost, compromised, or retired. Its identity and SSH key are plaintext on its disk, so treat everything that host could decrypt as exposed.
 
 1. Revoke its SSH public key on GitHub and remove it from every server's `authorized_keys`.
-2. Remove the host's recipient from the `secrets/tokens.yaml` rule in `.sops.yaml`. On a machine that can still decrypt, re-encrypt the file to the remaining recipients, then replace its data key:
+2. Remove the host's recipient from the `secrets/tokens.yaml` rule in `.sops.yaml`. From the repository root, on any machine with the checkout and a YubiKey, re-encrypt the file to the remaining recipients, then replace its data key. The key command decrypts every host's bootstrap identity with GPG, and the card may prompt for its PIN:
 
    ```sh
    nix develop
-   export SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt"
+   export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
    sops updatekeys -y secrets/tokens.yaml
    sops rotate -i secrets/tokens.yaml
    ```
 
-3. Rotate every token in `secrets/tokens.yaml` at its service. Write the new values into the file in the same shell, then clear the key command:
+3. Rotate every token in `secrets/tokens.yaml` at its service. Write each new value into the file in the same shell without passing it as an argument: save it to a mode 0600 file outside the checkout, pipe it in as a JSON string, and delete the file. Then clear the key command:
 
    ```sh
-   sops secrets/tokens.yaml
+   python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \
+     | sops set --value-stdin secrets/tokens.yaml '["<key>"]'
+   rm <token-file>
    unset SOPS_AGE_KEY_CMD
    ```
 
@@ -282,10 +284,15 @@ The Antigravity CLI also loads `~/.gemini/GEMINI.md` as a global rule, but the G
 - `TOKSCALE_EXTRA_DIRS` gains, after any value you already exported, an `antigravity-cli:<dir>` entry for each existing `~/.t3/userdata/providers/antigravity/*/antigravity-acp/conversations` and for `~/.gemini/antigravity-acp/conversations`. T3 Code runs Antigravity through its ACP server with a per-provider `GEMINI_HOME`, so those conversations land outside `~/.gemini/antigravity-cli/conversations`, the only Antigravity CLI directory Tokscale scans; they use the same database format, so Tokscale counts them as Antigravity CLI usage. A path containing a comma is skipped, because the variable is comma-separated.
 - `TOKSCALE_API_TOKEN` is read from `/run/secrets/cli-auth/tokscale_token` on each run, unless you exported a non-empty value yourself. No `~/.config/tokscale/credentials.json` is written.
 
-The shared profile, `modules/nixos/profile.nix`, sets `my.cliAuth.enableTokscaleToken` to `true` by default on every host, which on a production output decrypts `tokscale_token` from `secrets/tokens.yaml` to that path, owned by h82 with mode 0400. `publish-cli-auth` never reads it, so a Tokscale problem cannot block gh and glab. To add or rotate the token, edit it into `secrets/tokens.yaml` without passing it as an argument:
+The shared profile, `modules/nixos/profile.nix`, sets `my.cliAuth.enableTokscaleToken` to `true` by default on every host, which on a production output decrypts `tokscale_token` from `secrets/tokens.yaml` to that path, owned by h82 with mode 0400. `publish-cli-auth` never reads it, so a Tokscale problem cannot block gh and glab. To add or rotate the token, save it to a mode 0600 file outside the checkout and write it into `secrets/tokens.yaml` from the repository root without passing it as an argument. The key command decrypts every host's bootstrap identity with GPG, and the card may prompt for its PIN:
 
 ```sh
-SOPS_AGE_KEY_CMD="sudo cat /var/lib/sops-nix/key.txt" sops secrets/tokens.yaml
+nix develop
+export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
+python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \
+  | sops set --value-stdin secrets/tokens.yaml '["tokscale_token"]'
+rm <token-file>
+unset SOPS_AGE_KEY_CMD
 ```
 
 A rotated token takes effect on the next `tokscale` run after the rebuild that decrypts it. On a bootstrap host, or with the flag off, the file is absent and Tokscale runs unauthenticated: local reports work and commands that need an account report "Not logged in". Commands run through `bunx` directly, rather than through the wrapper, are unauthenticated too.
