@@ -57,6 +57,19 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 {{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
 {{- end }}
 
+# GPG and encryption
+
+The user's GPG key is on an OpenPGP card, a YubiKey that stays connected, and its PIN is usually cached, so GPG works from your shell without the user.
+
+- Run GPG signing, decryption, and encryption yourself, along with work that goes through GPG, such as SOPS re-encryption and editing; do not ask the user to run these commands.
+- When a pinentry dialog appears, still run the command and let the dialog reach the user.
+- Stop and report only when the PIN is rejected, the prompt times out, or the card is missing.
+- Never print decrypted values, pass them as command arguments, or read decrypted files with the file tools; send decrypted output straight into the command that consumes it.
+- Leave card administration and key management to the user: card-edit admin commands, PIN changes, key generation, secret-key export, and trust changes.
+- When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key.
+- When a machine or service must decrypt that file without the card, also add the machine's own recipient.
+- Keep the existing method in a project that already encrypts with age or another method.
+
 # Model routing
 
 These are the user's default models for each role in Compound Engineering (CE) work, such as a skill's scouts, workers, and reviewers. They are a starting point, not a rule.

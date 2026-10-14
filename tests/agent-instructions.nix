@@ -70,6 +70,16 @@
     random-hex branch), only a branch never pushed, and the
     `type/short-kebab-slug` fallback, so any of those sentences dropped or
     moved into one harness's branch fails.
+  - it carries the shared GPG rule under its `# GPG and encryption` heading:
+    the always-connected card with its cached PIN, running GPG and SOPS work
+    without handing it to the user, letting pinentry reach the user, when to
+    stop and report, keeping decrypted values out of output, arguments, and
+    file tools, leaving card administration to the user, the card key by
+    fingerprint for a new setup with a machine recipient beside it, and
+    keeping a project's existing method. Every sentence in that section must
+    be pinned, so a missing heading, or any of those sentences dropped,
+    reworded, negated, contradicted by an added sentence, or moved into one
+    harness's branch, fails.
   - it carries the shared issue and pull request media rule: which GitHub and
     GitLab items it covers, attaching the conversation's media, capturing
     media when showing would help and when not to, logs as code blocks,
@@ -130,6 +140,18 @@ let
     "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
+  ];
+
+  gpgSentences = [
+    "The user's GPG key is on an OpenPGP card, a YubiKey that stays connected, and its PIN is usually cached, so GPG works from your shell without the user."
+    "Run GPG signing, decryption, and encryption yourself, along with work that goes through GPG, such as SOPS re-encryption and editing; do not ask the user to run these commands."
+    "When a pinentry dialog appears, still run the command and let the dialog reach the user."
+    "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing."
+    "Never print decrypted values, pass them as command arguments, or read decrypted files with the file tools; send decrypted output straight into the command that consumes it."
+    "Leave card administration and key management to the user: card-edit admin commands, PIN changes, key generation, secret-key export, and trust changes."
+    "When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key."
+    "When a machine or service must decrypt that file without the card, also add the machine's own recipient."
+    "Keep the existing method in a project that already encrypts with age or another method."
   ];
 
   mediaSentences = [
@@ -354,6 +376,10 @@ let
         }
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+        ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
+        ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
+          gpgSentences
+        }
         ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
         for directive in ${lib.escapeShellArgs supersededDirectives}; do
           if grep -qF -- "$directive" "$file"; then
