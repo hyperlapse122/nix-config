@@ -1,6 +1,6 @@
 # Authentication preparation and recovery
 
-Use the YubiKey for Git signing, initial installation or recovery, and reading which sites hold FIDO credentials on a card. On NixOS desktops, routine configuration applies use the root-only age identity inside LUKS. SSH prefers the host's own key, unlocked through KWallet, and automatically falls back to selected 1Password keys. Automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host). A macOS host does the same, and its card PIN can be saved in the macOS Keychain; see [YubiKey PIN on macOS](#yubikey-pin-on-macos).
+Use the YubiKey for Git signing, initial installation or recovery, decrypting the bootstrap identities for SOPS work, and reading which sites hold FIDO credentials on a card. On NixOS desktops, routine configuration applies use the root-only age identity inside LUKS. SSH prefers the host's own key, unlocked through KWallet, and automatically falls back to selected 1Password keys. Automatic account login is not configured. On non-NixOS hosts, routine applies use a user-owned age identity, and each host has its own SSH key; see [Recover once on a non-NixOS host](#recover-once-on-a-non-nixos-host) and [SSH key on a non-NixOS host](#ssh-key-on-a-non-nixos-host). A macOS host does the same, and its card PIN can be saved in the macOS Keychain; see [YubiKey PIN on macOS](#yubikey-pin-on-macos).
 
 ## Before erasing the existing OS
 
@@ -181,7 +181,7 @@ Follow these steps when a non-NixOS host or a macOS host is lost, compromised, o
 
 Removing a recipient without rotating the tokens revokes nothing. Git history keeps the old ciphertext, and the host's identity still decrypts it.
 
-Keep steps 2 and 3 in this order. `sops secrets/tokens.yaml` encrypts to the recipients recorded in the file, not to `.sops.yaml`, so new tokens written first would still be encrypted to the removed host. `updatekeys` keeps the old data key, which the removed host can read from any earlier ciphertext in history; `sops rotate` replaces it.
+Keep steps 2 and 3 in this order. `sops set` encrypts to the recipients recorded in the file, not to `.sops.yaml`, so new tokens written first would still be encrypted to the removed host. `updatekeys` keeps the old data key, which the removed host can read from any earlier ciphertext in history; `sops rotate` replaces it.
 
 Also delete `hosts/<host>/` and the `secrets/hosts/<host>/ssh.yaml` rule in `.sops.yaml`. Otherwise `bootstrap-recipients` fails on a host without bootstrap material, and `.sops.yaml` keeps a rule for a file that no longer exists.
 
@@ -324,10 +324,15 @@ Supported registries:
 
 ### Developer prerequisites
 
-1. **Docker Hub token**: To enable authenticated pulls from `docker.io`, generate an access token on Docker Hub, add `docker_token` to `secrets/tokens.yaml`, and re-encrypt the file with SOPS using the host age recipient:
+1. **Docker Hub token**: To enable authenticated pulls from `docker.io`, generate an access token on Docker Hub and save it to a mode 0600 file outside the checkout. From the repository root, write it into `secrets/tokens.yaml` as `docker_token` without passing it as an argument. The key command decrypts every host's bootstrap identity with GPG, and the card may prompt for its PIN:
 
    ```sh
-   sops secrets/tokens.yaml
+   nix develop
+   export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
+   python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \
+     | sops set --value-stdin secrets/tokens.yaml '["docker_token"]'
+   rm <token-file>
+   unset SOPS_AGE_KEY_CMD
    ```
 
    Then enable Docker Hub token decryption in `hosts/<host>/default.nix`:
