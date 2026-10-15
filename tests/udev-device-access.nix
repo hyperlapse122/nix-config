@@ -7,9 +7,10 @@
   rules for the NuPhy Gem80 keyboard, the STM32 ROM DFU bootloader, and the
   Sennheiser BTD 600/700 dongles, and Apple iOS devices in DFU and recovery
   mode, the rules that hide the DualSense controller touchpad from libinput,
-  and the `/dev/kvm` mode that rootless Podman containers depend on. Every assertion reads the materialised rules
-  directory (`environment.etc."udev/rules.d"`), never the option lists it is
-  derived from. `services.udev.extraRules` lands in 99-local.rules while
+  and the `/dev/kvm` mode that rootless Podman containers depend on. Every
+  assertion reads the materialised rules directory
+  (`environment.etc."udev/rules.d"`), never the option lists it is derived
+  from. `services.udev.extraRules` lands in 99-local.rules while
   `services.udev.packages` files keep their own names, so the option value
   cannot say which file a rule ends up in. That decides whether the rule does
   anything, because udev applies the files in byte order of their names:
@@ -44,15 +45,18 @@
   - every configuration that leaves the trait off carries neither NuPhy rule
     line. The assertion is an explicit `if`, because a bare `! grep` is exempt
     from `set -e`.
-  - every configuration that enables `my.podman.enable` carries the
-    `/dev/kvm` 0666 rule line verbatim in a file that sorts after the last
-    file carrying systemd's `static_node=kvm` default, and that file is the
-    last one assigning `/dev/kvm` a `MODE`. A rootless container gets the
-    host's node bind-mounted and cannot change its mode, so the host's mode is
-    what the container's non-root users get; systemd's own default comes from
-    its `dev-kvm-mode` build option, which this repository does not control.
-  - every configuration that leaves `my.podman.enable` off carries no such
-    line.
+  - every configuration that enables `my.podman.enable` has the `/dev/kvm`
+    0666 `static_node` rule line as the last uncommented rule, in udev's file
+    order, that assigns `/dev/kvm` a `MODE`, whichever key comes first in it;
+    no `/dev/kvm` rule uses `MODE:=`, which would pin an earlier mode; and the
+    first `/dev/kvm` entry in the earliest-named file of the built
+    `/etc/tmpfiles.d` is `z /dev/kvm 0666 - kvm -`, which tmpfiles applies to
+    the static node before udevd starts. A rootless container gets the host's
+    node bind-mounted and cannot change its mode, so the host's mode is what
+    the container's non-root users get; systemd's own default comes from its
+    `dev-kvm-mode` build option, which this repository does not control.
+  - every configuration that leaves `my.podman.enable` off carries neither
+    the rule line nor the tmpfiles entry.
 
   Coverage is every configuration `tests/lib/configurations.nix` yields. The
   NuPhy expectation is taken from each configuration's `my.nuphyGem80.enable`
@@ -98,8 +102,8 @@ let
     ''ACTION=="add|change", ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
   ];
 
-  kvmRule = ''KERNEL=="kvm", GROUP="kvm", MODE="0666"'';
-  kvmDefaultMarker = ''OPTIONS+="static_node=kvm"'';
+  kvmRule = ''KERNEL=="kvm", MODE="0666", GROUP="kvm", OPTIONS+="static_node=kvm"'';
+  kvmTmpfilesLine = "z /dev/kvm 0666 - kvm -";
 
   builtinLine = ''RUN{builtin}+="uaccess"'';
   usbDefaultLine = ''SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0664"'';
@@ -122,10 +126,11 @@ let
     }
 
     # The name of the first or last (by $3) rules file in $1 that carries the
-    # fixed string $2, or nothing when no file does.
+    # fixed string $2 (an extended regex when $4 is E), or nothing when no
+    # file does.
     edge_file_with() {
       edge=""
-      for file in $(grep -lF -- "$2" "$1"/*.rules); do
+      for file in $(grep -l"''${4:-F}" -- "$2" "$1"/*.rules); do
         name=$(basename "$file")
         if [ -z "$edge" ]; then
           edge=$name
@@ -196,26 +201,47 @@ let
       fi
     }
 
-    # $1 host, $2 rules directory, $3 true when the /dev/kvm rule belongs there.
+    # Any uncommented rule matching /dev/kvm that assigns a MODE, `MODE:=`
+    # included, whichever of the two keys comes first in the rule.
+    kvm_mode_pattern='^[^#]*(KERNEL=="kvm".*MODE:?=|MODE:?=.*KERNEL=="kvm")'
+    # Any tmpfiles entry for the /dev/kvm path.
+    kvm_tmpfiles_pattern='^[^#[:space:]]+[[:space:]]+/dev/kvm([[:space:]]|$)'
+
+    # $1 host, $2 rules directory, $3 tmpfiles.d directory, $4 true when the
+    # /dev/kvm rule and tmpfiles entry belong there.
     check_kvm() {
-      if [ "$3" = true ]; then
-        kvm_default_file=$(edge_file_with "$2" ${esc kvmDefaultMarker} last)
-        if [ -z "$kvm_default_file" ]; then
-          fail "$1: no rules file carries systemd's /dev/kvm default"
+      if [ "$4" = true ]; then
+        last_mode_file=$(edge_file_with "$2" "$kvm_mode_pattern" last E)
+        last_mode_line=""
+        if [ -n "$last_mode_file" ]; then
+          last_mode_line=$(grep -E -- "$kvm_mode_pattern" "$2/$last_mode_file" | tail -n 1)
         fi
-        check_rule_order "$1" "$2" "$kvm_default_file" ${esc kvmRule} after
-        last_mode_file=""
-        for file in $(grep -lE '^KERNEL=="kvm".*MODE=' "$2"/*.rules); do
-          name=$(basename "$file")
-          if [ -z "$last_mode_file" ] || sorts_before "$last_mode_file" "$name"; then
-            last_mode_file=$name
-          fi
-        done
-        if [ -z "$last_mode_file" ] || ! grep -qFx -- ${esc kvmRule} "$2/$last_mode_file"; then
-          fail "$1: the last rules file assigning /dev/kvm a MODE does not carry: "${esc kvmRule}
+        if [ "$last_mode_line" != ${esc kvmRule} ]; then
+          fail "$1: the last rule assigning /dev/kvm a MODE is not: "${esc kvmRule}
         fi
-      elif [ -n "$(files_with_line "$2" ${esc kvmRule})" ]; then
-        fail "$1: the /dev/kvm rule reaches a configuration without Podman"
+        # MODE:= forbids every later MODE change, so one in any file pins the
+        # mode, however late the 0666 rule comes. grep -c reads all of its
+        # input, so pipefail cannot turn an early match into a miss.
+        if [ "$(grep -hE -- "$kvm_mode_pattern" "$2"/*.rules | grep -cF 'MODE:=' || true)" != 0 ]; then
+          fail "$1: a /dev/kvm rule fixes its MODE with :="
+        fi
+        # tmpfiles applies the entry from the earliest-named file for a path,
+        # and the first entry within that file.
+        first_tmpfiles_file=$(grep -lE -- "$kvm_tmpfiles_pattern" "$3"/*.conf | LC_ALL=C sort | sed -n 1p || true)
+        first_tmpfiles_line=""
+        if [ -n "$first_tmpfiles_file" ]; then
+          first_tmpfiles_line=$(grep -E -- "$kvm_tmpfiles_pattern" "$first_tmpfiles_file" | sed -n 1p)
+        fi
+        if [ "$first_tmpfiles_line" != ${esc kvmTmpfilesLine} ]; then
+          fail "$1: the tmpfiles entry applied to /dev/kvm is not: "${esc kvmTmpfilesLine}
+        fi
+      else
+        if [ -n "$(files_with_line "$2" ${esc kvmRule})" ]; then
+          fail "$1: the /dev/kvm rule reaches a configuration without Podman"
+        fi
+        if [ -n "$(grep -lFx -- ${esc kvmTmpfilesLine} "$3"/*.conf)" ]; then
+          fail "$1: the /dev/kvm tmpfiles entry reaches a configuration without Podman"
+        fi
       fi
     }
   '';
@@ -238,13 +264,15 @@ let
       '';
 
   # A configuration without a rules directory already fails in entryAssertion.
+  # tmpfiles.d is read from the built /etc, where every file has its own name.
   kvmAssertion =
     kvmBelongs: entry:
     let
       rules = entry.config.environment.etc."udev/rules.d".source or null;
+      tmpfiles = "${entry.config.system.build.etc}/etc/tmpfiles.d";
     in
     lib.optionalString (rules != null) ''
-      check_kvm ${esc entry.name} ${esc rules} ${boolToString kvmBelongs}
+      check_kvm ${esc entry.name} ${esc rules} ${esc tmpfiles} ${boolToString kvmBelongs}
     '';
 in
 pkgs.runCommand "udev-device-access-tests" { } ''
