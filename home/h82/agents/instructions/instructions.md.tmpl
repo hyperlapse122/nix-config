@@ -155,6 +155,16 @@ Before the first push of a branch, check whether its name describes the change, 
 - Follow the project's documented branch-naming rule, from `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`, the project docs, or a CI check or hook that validates branch names. A pattern seen only in existing branch names is not a rule.
 - When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change. This follows GitHub Flow's short, descriptive names, for example `feat/add-branch-naming-rule`. Drop an owner prefix a tool added, such as `hyperlapse122/`, and check the name with `git check-ref-format --branch`, which checks syntax only.
 
+# Commit hooks
+
+A commit hook can copy the checkout into a temporary directory and run a mise shim there, which fails because mise has never trusted the copy's `mise.toml`.
+
+- When a commit hook fails because mise does not trust a `mise.toml` in a temporary directory the hook created, run that one commit again with `MISE_TRUSTED_CONFIG_PATHS` set to the resolved directory that holds the one the error names, usually `"$(cd "${TMPDIR:-/tmp}" && pwd -P)"`.
+- Resolve that path with `pwd -P`, because mise checks the resolved path and `$TMPDIR` on macOS sits under `/var`, a link to `/private/var`.
+- When the retry fails with the same error, report the failure instead of retrying again.
+- Do not run `mise trust` on a temporary directory, which writes a trust entry for every throwaway copy, and do not skip the hook with `--no-verify`, which skips its checks.
+- When the untrusted file is the checkout's own `mise.toml`, trusting it is the user's decision; report the failure instead.
+
 # Pull and merge requests
 
 GitHub and GitLab are both normal forges. Treat a GitLab project as the same case as a GitHub one, and babysit every pull or merge request you open or push to until it looks ready to merge.
