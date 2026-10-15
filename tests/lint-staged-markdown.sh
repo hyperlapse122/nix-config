@@ -141,6 +141,7 @@ mkdir -p "$trust_stub_dir"
 cat > "$trust_stub_dir/markdownlint-cli2" <<'STUB_EOF'
 #!/bin/sh
 printf '%s\n' "${MISE_TRUSTED_CONFIG_PATHS-<unset>}" > "$TRUST_RECORD"
+printf '%s\n' "${MISE_SAFE-<unset>}" > "$TRUST_RECORD.safe"
 if [ "${MISE_TRUSTED_CONFIG_PATHS-}" != "$(pwd -P)" ]; then
   echo "mise ERROR Config files in $(pwd -P)/mise.toml are not trusted." >&2
   exit 1
@@ -157,6 +158,12 @@ export TRUST_RECORD="$TEST_TMPDIR/trust_record"
   || fail "lint ran without MISE_TRUSTED_CONFIG_PATHS naming the scratch copy (recorded: $(cat "$TRUST_RECORD" 2>/dev/null))"
 pass "lint runs with MISE_TRUSTED_CONFIG_PATHS naming the scratch copy"
 
+# Scenario: the trusted copy runs in mise safe mode, so a staged mise.toml
+# cannot run environment code such as an [env] _.source script.
+[[ $(cat "$TRUST_RECORD.safe") == 1 ]] \
+  || fail "lint ran without MISE_SAFE=1 (recorded: $(cat "$TRUST_RECORD.safe"))"
+pass "lint runs the trusted copy in mise safe mode"
+
 # Scenario: under a symlinked TMPDIR the trusted path is the resolved one, as
 # on macOS, where $TMPDIR sits under /var, a link to /private/var.
 real_tmp="$TEST_TMPDIR/real_tmp"
@@ -169,7 +176,7 @@ real_tmp_resolved=$(cd "$real_tmp" && pwd -P)
   || fail "trusted path $(cat "$TRUST_RECORD") is not under the resolved $real_tmp_resolved"
 pass "lint under a symlinked TMPDIR trusts the resolved scratch path"
 
-# Scenario: the script never calls mise, so it writes no trust entry.
+# Scenario: no trust entry is written.
 mise_record="$TEST_TMPDIR/mise_record"
 cat > "$trust_stub_dir/mise" <<STUB_EOF
 #!/bin/sh
