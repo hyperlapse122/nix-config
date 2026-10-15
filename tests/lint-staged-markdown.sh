@@ -133,6 +133,63 @@ chmod +x "$stub_dir/markdownlint-cli2"
 (cd "$repo3" && PATH="$stub_dir:$PATH" bash "$script") || fail "staging non-markdown called markdownlint-cli2"
 pass "staging only flake.nix exits 0 without running markdownlint-cli2"
 
+# Scenario: the lint runs with the scratch copy trusted by its resolved path.
+# The stub stands in for a mise shim: it refuses, as mise does, unless
+# MISE_TRUSTED_CONFIG_PATHS names the resolved directory it runs in.
+trust_stub_dir="$TEST_TMPDIR/trust_lint_bin"
+mkdir -p "$trust_stub_dir"
+cat > "$trust_stub_dir/markdownlint-cli2" <<'STUB_EOF'
+#!/bin/sh
+printf '%s\n' "${MISE_TRUSTED_CONFIG_PATHS-<unset>}" > "$TRUST_RECORD"
+printf '%s\n' "${MISE_SAFE-<unset>}" > "$TRUST_RECORD.safe"
+if [ "${MISE_TRUSTED_CONFIG_PATHS-}" != "$(pwd -P)" ]; then
+  echo "mise ERROR Config files in $(pwd -P)/mise.toml are not trusted." >&2
+  exit 1
+fi
+STUB_EOF
+chmod +x "$trust_stub_dir/markdownlint-cli2"
+repo15="$TEST_TMPDIR/repo15"
+make_test_repo "$repo15"
+mkdir -p "$repo15/docs"
+printf "%s" "$clean_md_content" > "$repo15/docs/ok.md"
+git -C "$repo15" add docs/ok.md
+export TRUST_RECORD="$TEST_TMPDIR/trust_record"
+(cd "$repo15" && PATH="$trust_stub_dir:$PATH" bash "$script") >/dev/null 2>&1 \
+  || fail "lint ran without MISE_TRUSTED_CONFIG_PATHS naming the scratch copy (recorded: $(cat "$TRUST_RECORD" 2>/dev/null))"
+pass "lint runs with MISE_TRUSTED_CONFIG_PATHS naming the scratch copy"
+
+# Scenario: the trusted copy runs in mise safe mode, so a staged mise.toml
+# cannot run environment code such as an [env] _.source script.
+[[ $(cat "$TRUST_RECORD.safe") == 1 ]] \
+  || fail "lint ran without MISE_SAFE=1 (recorded: $(cat "$TRUST_RECORD.safe"))"
+pass "lint runs the trusted copy in mise safe mode"
+
+# Scenario: under a symlinked TMPDIR the trusted path is the resolved one, as
+# on macOS, where $TMPDIR sits under /var, a link to /private/var.
+real_tmp="$TEST_TMPDIR/real_tmp"
+mkdir -p "$real_tmp"
+ln -s "$real_tmp" "$TEST_TMPDIR/linked_tmp"
+(cd "$repo15" && TMPDIR="$TEST_TMPDIR/linked_tmp" PATH="$trust_stub_dir:$PATH" bash "$script") >/dev/null 2>&1 \
+  || fail "lint under a symlinked TMPDIR was not trusted by its resolved path (recorded: $(cat "$TRUST_RECORD" 2>/dev/null))"
+real_tmp_resolved=$(cd "$real_tmp" && pwd -P)
+[[ $(cat "$TRUST_RECORD") == "$real_tmp_resolved"/* ]] \
+  || fail "trusted path $(cat "$TRUST_RECORD") is not under the resolved $real_tmp_resolved"
+pass "lint under a symlinked TMPDIR trusts the resolved scratch path"
+
+# Scenario: no trust entry is written.
+mise_record="$TEST_TMPDIR/mise_record"
+cat > "$trust_stub_dir/mise" <<STUB_EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$mise_record"
+exit 1
+STUB_EOF
+chmod +x "$trust_stub_dir/mise"
+(cd "$repo15" && PATH="$trust_stub_dir:$PATH" bash "$script") >/dev/null 2>&1 || true
+[[ ! -e "$mise_record" ]] || fail "lint-staged-markdown called mise: $(cat "$mise_record")"
+rm "$trust_stub_dir/mise"
+unset TRUST_RECORD
+pass "lint-staged-markdown never calls mise"
+
 # Scenario: Staged secrets/bad.md with error exits 0 because outside globs
 repo4="$TEST_TMPDIR/repo4"
 make_test_repo "$repo4"

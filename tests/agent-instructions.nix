@@ -70,6 +70,16 @@
     random-hex branch), only a branch never pushed, and the
     `type/short-kebab-slug` fallback, so any of those sentences dropped or
     moved into one harness's branch fails.
+  - it carries the shared commit-hook rule under its `# Commit hooks` heading:
+    why a hook's temporary copy trips mise, retrying that one commit with
+    `MISE_TRUSTED_CONFIG_PATHS` set to the resolved temporary root, resolving
+    it with `pwd -P`, reporting a retry that fails the same way, never
+    `mise trust` on a temporary directory or `--no-verify`, and reporting
+    when the checkout's own `mise.toml` is untrusted. Every sentence in that
+    section must be pinned, in order, so a missing heading, or any of those
+    sentences dropped, reworded, negated, contradicted by an added sentence,
+    duplicated, reordered, moved into another section, or moved into one
+    harness's branch, fails.
   - it carries the shared GPG rule under its `# GPG and encryption` heading:
     the always-connected card with its cached PIN, running GPG and SOPS work
     without handing it to the user, letting pinentry reach the user, when to
@@ -160,6 +170,15 @@ let
     "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
     "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
+  ];
+
+  commitHookSentences = [
+    "A commit hook can copy the checkout into a temporary directory and run a mise shim there, which fails because mise has never trusted the copy's `mise.toml`."
+    "When a commit hook fails because mise does not trust a `mise.toml` in a temporary directory the hook created, run that one commit again with `MISE_TRUSTED_CONFIG_PATHS` set to the resolved directory that holds the one the error names, usually `\"$(cd \"\${TMPDIR:-/tmp}\" && pwd -P)\"`."
+    "Resolve that path with `pwd -P`, because mise checks the resolved path and `$TMPDIR` on macOS sits under `/var`, a link to `/private/var`."
+    "When the retry fails with the same error, report the failure instead of retrying again."
+    "Do not run `mise trust` on a temporary directory, which writes a trust entry for every throwaway copy, and do not skip the hook with `--no-verify`, which skips its checks."
+    "When the untrusted file is the checkout's own `mise.toml`, trusting it is the user's decision; report the failure instead."
   ];
 
   gpgSentences = [
@@ -474,6 +493,16 @@ let
         }
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+        ${requireSentences "${label} lacks the commit-hook rule:" commitHookSentences}
+        ${onlyPinnedSentences "${label} carries an unpinned commit-hook sentence:" "# Commit hooks" "."
+          commitHookSentences
+        }
+        ${sentencesInSection "${label} moves a commit-hook sentence out of its section:" "# Commit hooks"
+          commitHookSentences
+        }
+        ${sentencesInOrder "${label} reorders or duplicates a commit-hook sentence:" "# Commit hooks"
+          commitHookSentences
+        }
         ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
         ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
           gpgSentences
