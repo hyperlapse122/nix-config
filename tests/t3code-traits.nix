@@ -163,142 +163,138 @@ let
       ];
     };
 
-  settingsExpectedBase =
-    home:
-    pkgs.writeText "t3code-expected-base-settings.json" (
-      builtins.toJSON {
-        set = {
-          addProjectBaseDirectory = "~/src";
-          autoResumeLimitedThreads = true;
-          branchNamingMode = "semantic";
-          defaultAutoPull = true;
-          enableAgentDeviceAccess = true;
-          enableDeviceSupport = true;
-          snoozeLimitedThreads = true;
-        };
-        remove = [
-          "defaultThreadEnvMode"
-          "providers"
+  settingsExpectedBase = home: {
+    set = {
+      addProjectBaseDirectory = "~/src";
+      autoResumeLimitedThreads = true;
+      branchNamingMode = "semantic";
+      defaultAutoPull = true;
+      enableAgentDeviceAccess = true;
+      enableDeviceSupport = true;
+      snoozeLimitedThreads = true;
+    };
+    remove = [
+      "defaultThreadEnvMode"
+      "providers"
+    ];
+    upsertPaths = [
+      {
+        path = [
+          "providerInstances"
+          "claudeAgent"
+          "environment"
         ];
-        upsertPaths = [
-          {
-            path = [
-              "providerInstances"
-              "claudeAgent"
-              "environment"
-            ];
-            key = "name";
-            value = {
-              name = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
-              value = "1";
-              sensitive = false;
-            };
-          }
-        ];
-        setPaths = [
-          {
-            path = [
-              "providerInstances"
-              "antigravity"
-              "driver"
-            ];
-            value = "antigravity";
-          }
-          {
-            path = [
-              "providerInstances"
-              "antigravity"
-              "enabled"
-            ];
-            value = true;
-          }
-          {
-            path = [
-              "providerInstances"
-              "claudeAgent"
-              "config"
-              "launchArgs"
-            ];
-            value = "--add-dir ${home}/.t3/instructions/claude-code";
-          }
-          {
-            path = [
-              "providerInstances"
-              "claudeAgent"
-              "driver"
-            ];
-            value = "claudeAgent";
-          }
-          {
-            path = [
-              "providerInstances"
-              "codex"
-              "driver"
-            ];
-            value = "codex";
-          }
-          {
-            path = [
-              "sourceControlWritingStyle"
-              "mode"
-            ];
-            value = "conventional_commits";
-          }
-          {
-            path = [
-              "storageCleanup"
-              "browserArtifactsAfterDays"
-            ];
-            value = 8;
-          }
-          {
-            path = [
-              "storageCleanup"
-              "logsAfterDays"
-            ];
-            value = 8;
-          }
-          {
-            path = [
-              "storageCleanup"
-              "worktreeAfterDays"
-            ];
-            value = 8;
-          }
-          {
-            path = [
-              "storageCleanup"
-              "worktreeOnDelete"
-            ];
-            value = true;
-          }
-          {
-            path = [
-              "storageCleanup"
-              "worktreeOnMerge"
-            ];
-            value = true;
-          }
-          {
-            path = [
-              "storageCleanup"
-              "worktreeUnchanged"
-            ];
-            value = true;
-          }
-        ];
-        own = {
-          defaultModelSelection = {
-            instanceId = "claudeAgent";
-            model = "claude-opus-5-5";
-          };
-          textGenerationModelSelection = {
-            instanceId = "antigravity";
-            model = "gemini-3.8-flash-low";
-          };
+        key = "name";
+        value = {
+          name = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
+          value = "1";
+          sensitive = false;
         };
       }
-    );
+    ];
+    setPaths = [
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
+          "driver"
+        ];
+        value = "antigravity";
+      }
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
+          "enabled"
+        ];
+        value = true;
+      }
+      {
+        path = [
+          "providerInstances"
+          "claudeAgent"
+          "config"
+          "launchArgs"
+        ];
+        value = "--add-dir ${home}/.t3/instructions/claude-code";
+      }
+      {
+        path = [
+          "providerInstances"
+          "claudeAgent"
+          "driver"
+        ];
+        value = "claudeAgent";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
+          "driver"
+        ];
+        value = "codex";
+      }
+      {
+        path = [
+          "sourceControlWritingStyle"
+          "mode"
+        ];
+        value = "conventional_commits";
+      }
+      {
+        path = [
+          "storageCleanup"
+          "browserArtifactsAfterDays"
+        ];
+        value = 8;
+      }
+      {
+        path = [
+          "storageCleanup"
+          "logsAfterDays"
+        ];
+        value = 8;
+      }
+      {
+        path = [
+          "storageCleanup"
+          "worktreeAfterDays"
+        ];
+        value = 8;
+      }
+      {
+        path = [
+          "storageCleanup"
+          "worktreeOnDelete"
+        ];
+        value = true;
+      }
+      {
+        path = [
+          "storageCleanup"
+          "worktreeOnMerge"
+        ];
+        value = true;
+      }
+      {
+        path = [
+          "storageCleanup"
+          "worktreeUnchanged"
+        ];
+        value = true;
+      }
+    ];
+    own = {
+      defaultModelSelection = {
+        instanceId = "claudeAgent";
+        model = "claude-opus-5-5";
+      };
+      textGenerationModelSelection = {
+        instanceId = "antigravity";
+        model = "gemini-3.8-flash-low";
+      };
+    };
+  };
 
   clientSettingsExpected =
     _home:

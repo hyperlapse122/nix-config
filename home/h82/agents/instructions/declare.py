@@ -9,8 +9,8 @@ the store, so evaluation never reads a derivation's output.
 ENCODING is `text` for the file's contents as they are, or `codex-launch` for
 a T3 Code launch argument that sets Codex's developer_instructions: a TOML
 basic string inside one single-quoted word, which T3 Code's tokenizer ends at
-the first bare `'`. TOML basic strings have no `\\'`, so `'` and every control
-character take a `\\uXXXX` escape, and the word holds no bare `'`.
+the first bare `'`. TOML basic strings have no `\\'`, so `'` takes a `\\u0027`
+escape, and the word holds no bare `'`.
 """
 
 import json
@@ -18,19 +18,9 @@ import sys
 
 
 def toml_basic(text):
-    out = []
-    for char in text:
-        if char == '\\':
-            out.append('\\\\')
-        elif char == '"':
-            out.append('\\"')
-        elif char == '\n':
-            out.append('\\n')
-        elif char == "'" or ord(char) < 0x20 or ord(char) == 0x7f:
-            out.append('\\u{:04x}'.format(ord(char)))
-        else:
-            out.append(char)
-    return '"' + ''.join(out) + '"'
+    # A JSON string is a TOML basic string with the same escapes, except that
+    # TOML forbids a raw DEL. `'` is escaped too, for the tokenizer.
+    return json.dumps(text, ensure_ascii=False).replace("'", '\\u0027').replace('\x7f', '\\u007f')
 
 
 ENCODINGS = {

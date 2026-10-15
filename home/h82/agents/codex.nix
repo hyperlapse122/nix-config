@@ -61,12 +61,10 @@ let
 
   declared = instructions.declare {
     name = "codex-declared-settings.json";
-    base = pkgs.writeText "codex-declared-base.json" (
-      builtins.toJSON {
-        setPaths = declaredPaths;
-        remove = retiredKeys;
-      }
-    );
+    base = {
+      setPaths = declaredPaths;
+      remove = retiredKeys;
+    };
     leaves = [
       {
         path = [ "developer_instructions" ];

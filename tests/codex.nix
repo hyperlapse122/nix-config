@@ -44,38 +44,36 @@ let
 
   instructions = import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; };
 
-  expectedBase = pkgs.writeText "codex-expected-base.json" (
-    builtins.toJSON {
-      setPaths = [
-        {
-          path = [ "check_for_update_on_startup" ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "in_app_updates"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "daemon_auto_start"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "memories"
-          ];
-          value = false;
-        }
-      ];
-      remove = [ ];
-    }
-  );
+  expectedBase = {
+    setPaths = [
+      {
+        path = [ "check_for_update_on_startup" ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "in_app_updates"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "daemon_auto_start"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "memories"
+        ];
+        value = false;
+      }
+    ];
+    remove = [ ];
+  };
 
   expected = instructions.declare {
     name = "codex-expected-settings.json";
@@ -155,10 +153,8 @@ let
         elif ! diff -u "$declaredPath" ${expected} >/dev/null; then
           echo 'the declared keys codexSettings renders drifted from the asserted values on ${hostName}' >&2
           failed=1
-        elif ! python3 -c 'import json, sys
-        paths = json.load(open(sys.argv[1]))["setPaths"]
-        values = [entry["value"] for entry in paths if entry["path"] == ["developer_instructions"]]
-        sys.exit(0 if len(values) == 1 and values[0].startswith("# Tool use") and "T3 Code" not in values[0] else 1)' "$declaredPath"; then
+        elif ! python3 ${./agent-instruction-channels.py} developer "$declaredPath" developer.md \
+          || [ "$(head -n 1 developer.md)" != '# Tool use' ] || grep -qF 'T3 Code' developer.md; then
           echo 'codexSettings must declare developer_instructions once, as the system part without T3 Code, on ${hostName}' >&2
           failed=1
         fi

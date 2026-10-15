@@ -111,6 +111,13 @@ def fail(message):
     print(f"{PROG}: {message}", file=sys.stderr)
 
 
+class RuleProbe(NamedTuple):
+    subject: str  # the verdict's name
+    heading: str  # the answer heading the marker should come back under
+    marker: str
+    path: Path  # relative to the workspace, or absolute in the instance home
+
+
 class Platform(NamedTuple):
     system: str  # the Nix system packages/t3code-release.json pins under
     t3: str  # T3 Code's directory under ~/.t3/tools/antigravity-acp
@@ -569,7 +576,7 @@ def model_name(session):
     return (session.get("models") or {}).get("currentModelId")
 
 
-def verdicts(home, skills, control, answer, marker, rule_markers, stop_reason, tool_calls):
+def verdicts(home, skills, control, answer, marker, rule_probes, stop_reason, tool_calls):
     parts = sections(answer)
     missing_headings = [heading for heading in HEADINGS if heading not in parts]
     if stop_reason != "end_turn" or missing_headings or tool_calls:
@@ -611,13 +618,13 @@ def verdicts(home, skills, control, answer, marker, rule_markers, stop_reason, t
         lines.append("instructions: undetermined (the fingerprint did not come back and the answer gave no clean NONE with the control description)")
     lines.append(f"workspace marker: {'came back' if marker in parts['MARKER'] else 'did not come back'}")
 
-    for subject, heading, rule_marker, path in rule_markers:
-        if rule_marker in parts[heading]:
-            lines.append(f"{subject}: loaded (the marker from {path} came back)")
-        elif is_none(parts[heading]) and control_back:
-            lines.append(f"{subject}: not loaded (the {control} description came back, the marker did not)")
+    for rule in rule_probes:
+        if rule.marker in parts[rule.heading]:
+            lines.append(f"{rule.subject}: loaded (the marker from {rule.path} came back)")
+        elif is_none(parts[rule.heading]) and control_back:
+            lines.append(f"{rule.subject}: not loaded (the {control} description came back, the marker did not)")
         else:
-            lines.append(f"{subject}: undetermined (the marker did not come back and the answer gave no clean NONE with the control description)")
+            lines.append(f"{rule.subject}: undetermined (the marker did not come back and the answer gave no clean NONE with the control description)")
 
     stores = memory_stores(home)
     if not stores:
@@ -671,20 +678,26 @@ def probe(args):
     marker = f"PROBE-MARKER-{secrets.token_hex(8)}"
     # The probe's own file names, so a rule file the home already holds is never touched.
     rule_name = f"{PROG}-{secrets.token_hex(4)}.md"
-    workspace_rule = (f"PROBE-WORKSPACE-RULE-{secrets.token_hex(8)}", Path(".agents") / "rules" / rule_name)
-    global_rule = (f"PROBE-GLOBAL-RULE-{secrets.token_hex(8)}", home / "config" / "rules" / rule_name)
+    workspace_rule = RuleProbe(
+        "workspace rule", "WORKSPACE_RULE", f"PROBE-WORKSPACE-RULE-{secrets.token_hex(8)}", Path(".agents") / "rules" / rule_name
+    )
+    global_rule = RuleProbe(
+        "global rule", "GLOBAL_RULE", f"PROBE-GLOBAL-RULE-{secrets.token_hex(8)}", home / "config" / "rules" / rule_name
+    )
+    # Removed after the run only when the probe created it.
+    global_rules_dir_existed = global_rule.path.parent.exists()
     with tempfile.TemporaryDirectory(prefix=f"{PROG}-") as temp:
         temp_dir = Path(temp)
         workspace = temp_dir / "workspace"
         workspace.mkdir()
         (workspace / "AGENTS.md").write_text(f"# Workspace rules\n\nThe marker for this workspace is {marker}.\n")
-        (workspace / workspace_rule[1]).parent.mkdir(parents=True)
-        (workspace / workspace_rule[1]).write_text(f"# Workspace rule\n\nThe rule marker for this workspace is {workspace_rule[0]}.\n")
+        (workspace / workspace_rule.path).parent.mkdir(parents=True)
+        (workspace / workspace_rule.path).write_text(f"# Workspace rule\n\nThe rule marker for this workspace is {workspace_rule.marker}.\n")
         command = [str(runtime_dir / EXECUTABLE)] + (["--uid="] if sys.platform == "linux" else [])
         server = Server(command, child_environment(home, runtime_dir, temp_dir), workspace)
         try:
-            global_rule[1].parent.mkdir(parents=True, exist_ok=True)
-            global_rule[1].write_text(f"# Global rule\n\nThe rule marker for the instance home is {global_rule[0]}.\n")
+            global_rule.path.parent.mkdir(parents=True, exist_ok=True)
+            global_rule.path.write_text(f"# Global rule\n\nThe rule marker for the instance home is {global_rule.marker}.\n")
             server.start()
             server.request(
                 "initialize",
@@ -709,11 +722,9 @@ def probe(args):
             )
         finally:
             server.stop()
-            global_rule[1].unlink(missing_ok=True)
-            try:
-                global_rule[1].parent.rmdir()
-            except OSError:
-                pass
+            global_rule.path.unlink(missing_ok=True)
+            if not global_rules_dir_existed and global_rule.path.parent.is_dir() and not any(global_rule.path.parent.iterdir()):
+                global_rule.path.parent.rmdir()
 
     answer = "".join(
         (update.get("content") or {}).get("text", "")
@@ -728,11 +739,7 @@ def probe(args):
     print("\n--- answer ---")
     print(answer.strip())
     print("--- verdicts ---")
-    rule_markers = (
-        ("workspace rule", "WORKSPACE_RULE", workspace_rule[0], f".agents/rules/{rule_name}"),
-        ("global rule", "GLOBAL_RULE", global_rule[0], global_rule[1]),
-    )
-    for line in verdicts(home, skills, control, answer, marker, rule_markers, stop_reason, tool_calls):
+    for line in verdicts(home, skills, control, answer, marker, (workspace_rule, global_rule), stop_reason, tool_calls):
         print(line)
     return 0
 

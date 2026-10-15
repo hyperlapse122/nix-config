@@ -144,23 +144,31 @@ let
     else
       [ { inherit path value; } ];
 
-  render =
-    name: values: owned: remove: upsertPaths:
-    pkgs.writeText name (
-      builtins.toJSON {
-        inherit remove upsertPaths;
-        set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
-        setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
-        own = owned;
-      }
-    );
+  declaration =
+    {
+      values,
+      owned ? { },
+      remove ? [ ],
+      upsertPaths ? [ ],
+    }:
+    {
+      inherit remove upsertPaths;
+      set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
+      setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
+      own = owned;
+    };
 
   merges = {
     t3codeSettings = {
       file = "settings.json";
       declared = instructions.declare {
         name = "t3code-declared-settings.json";
-        base = render "t3code-declared-base-settings.json" settings modelSelections retiredKeys upserts;
+        base = declaration {
+          values = settings;
+          owned = modelSelections;
+          remove = retiredKeys;
+          upsertPaths = upserts;
+        };
         leaves = [
           {
             path = [
@@ -183,7 +191,11 @@ let
     };
     t3codeClientSettings = {
       file = "client-settings.json";
-      declared = render "t3code-declared-client-settings.json" clientSettings { } [ ] [ ];
+      declared = pkgs.writeText "t3code-declared-client-settings.json" (
+        builtins.toJSON (declaration {
+          values = clientSettings;
+        })
+      );
     };
   };
 in

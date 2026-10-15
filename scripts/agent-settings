@@ -152,6 +152,19 @@ def declaration(declared, fmt='json'):
     return assign, retire, paths, owned, upserts
 
 
+def check_path(path, declared):
+    if not isinstance(path, list) or not path or any(not isinstance(name, str) for name in path):
+        raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+
+
+def check_disjoint(path, others):
+    """Refuse a path that runs through another's leaf, or repeats it."""
+    for other in others:
+        shorter = min(len(path), len(other))
+        if path[:shorter] == other[:shorter]:
+            raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+
+
 def nested_paths(entries, assign, retire, declared):
     if not isinstance(entries, list):
         raise ValueError('declared "setPaths" is not a list: {}'.format(declared))
@@ -160,8 +173,7 @@ def nested_paths(entries, assign, retire, declared):
         if not isinstance(entry, dict) or set(entry) != {'path', 'value'}:
             raise ValueError('declared "setPaths" entry is not {{path, value}}: {}'.format(declared))
         path, value = entry['path'], entry['value']
-        if not isinstance(path, list) or not path or any(not isinstance(key, str) for key in path):
-            raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+        check_path(path, declared)
         # Values stay scalars for the same reason as `set`: an object would
         # replace whatever the owner keeps beside the declared keys.
         if isinstance(value, (dict, list)):
@@ -173,10 +185,7 @@ def nested_paths(entries, assign, retire, declared):
         paths.append((path, value))
     # Likewise when one path runs through another's leaf, or repeats it.
     for index, (path, _) in enumerate(paths):
-        for other, _ in paths[index + 1:]:
-            shorter = min(len(path), len(other))
-            if path[:shorter] == other[:shorter]:
-                raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+        check_disjoint(path, [other for other, _ in paths[index + 1:]])
     return paths
 
 
@@ -188,18 +197,14 @@ def upsert_entries(entries, assign, retire, owned, paths, declared):
         if not isinstance(entry, dict) or set(entry) != {'path', 'key', 'value'}:
             raise ValueError('declared "upsertPaths" entry is not {{path, key, value}}: {}'.format(declared))
         path, key, value = entry['path'], entry['key'], entry['value']
-        if not isinstance(path, list) or not path or any(not isinstance(name, str) for name in path):
-            raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+        check_path(path, declared)
         if not isinstance(key, str) or not isinstance(value, dict) or key not in value:
             raise ValueError('declared upsert value must be an object holding its key field: {}'.format(describe(path)))
         # Same reasoning as setPaths: another declaration on the top-level key
         # would fight this one, with the outcome depending on order.
         if path[0] in assign or path[0] in retire or path[0] in owned:
             raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
-        for other, _ in paths:
-            shorter = min(len(path), len(other))
-            if path[:shorter] == other[:shorter]:
-                raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+        check_disjoint(path, [other for other, _ in paths])
         upserts.append((path, key, value))
     return upserts
 
