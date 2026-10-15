@@ -51,16 +51,20 @@
     completion notification, the result read with one `task_status` call,
     when to launch with `mode: "wait"` and what follows `waitTimedOut`,
     ending the turn until every awaited task has notified, no status polling
-    or self-wake, one status read per task in a turn, subagents not ending
-    their turn to wait, and ending the turn despite a skill's rule against
-    it, so any of those sentences dropped, reworded, negated, or moved into
-    one harness's branch fails.
+    or self-wake, one status read after each notification and otherwise
+    only in a turn no delegation notification started, subagents returning
+    their task IDs instead of ending their turn to wait, and ending the turn
+    despite a skill's rule against it, so any of those sentences dropped,
+    reworded, negated, or moved into one harness's branch or out of the
+    Cross-model delegation section fails.
   - every sentence in its Cross-model delegation section that names
     Antigravity or Argon is one of those pinned sentences, so a reversal
     added beside a pinned sentence fails.
   - every sentence in that section that speaks of `task_status`, polling,
-    notifications, `mode: "wait"`, `waitTimedOut`, sleeping, or timers is
-    one of the pinned wait sentences, so an added "keep polling" fails.
+    notifications, waiting, waking, blocking, sleeping, timers, checking,
+    finishing, background work, or scheduling is one of the pinned wait
+    sentences, so an added "keep polling" or "wait five minutes and check"
+    fails.
   - it carries no superseded directive: delegating before a skill's own
     gates, setting effort instead of inheriting a model's default, the
     review-findings rule that named only `ce-code-review` and
@@ -289,14 +293,15 @@ let
     "Launch with `mode: \"wait\"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it."
     "After an `async` launch, do the work that does not need the result; when a step needs results whose notifications have not all arrived, end your turn, and resume that step once every task it waits on has notified."
     "Never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself for a delegated task."
-    "Read `task_status` at most once per task in a turn: after its notification, or when a turn starts without that notification, so a task that failed or shows no progress reaches the retry rule in this section."
-    "Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code launches with `mode: \"wait\"` or returns its task IDs to its caller."
+    "Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the retry rule in this section."
+    "Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: \"wait\"` launch returns `waitTimedOut`."
     "Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited."
   ];
 
   # Every sentence of the delegation section that may speak about status
   # reads, waiting, or self-wake. Any other such sentence there, such as an
-  # added "keep polling `task_status`", fails.
+  # added "keep polling `task_status`" or "wait five minutes and check
+  # whether the child finished", fails.
   waitTopicSentences = [
     "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`."
   ]
@@ -424,6 +429,15 @@ let
     sentence: lib.hasInfix "Antigravity" sentence || lib.hasInfix "Argon" sentence
   ) delegationSentences;
 
+  # Prints the section under `heading` one sentence per line, list markers
+  # dropped, splitting after each full stop.
+  sectionSentences = heading: ''
+    awk -v h=${esc heading} '
+      $0 == h { inside = 1; next }
+      /^# / { inside = 0 }
+      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+    ' "$file"'';
+
   # Fails the build, naming each sentence, when the section under `heading`
   # carries a sentence matching `pattern` that is not one of `sentences`.
   onlyPinnedSentences = message: heading: pattern: sentences: ''
@@ -439,11 +453,7 @@ let
         failed=1
       fi
     done < <(
-      awk -v h=${esc heading} '
-        $0 == h { inside = 1; next }
-        /^# / { inside = 0 }
-        inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
-      ' "$file" | grep -E -- ${esc pattern} || true
+      ${sectionSentences heading} | grep -E -- ${esc pattern} || true
     )
   '';
 
@@ -452,11 +462,7 @@ let
   # moved into another section would still pass it.
   sentencesInSection = message: heading: sentences: ''
     present=$(mktemp)
-    awk -v h=${esc heading} '
-      $0 == h { inside = 1; next }
-      /^# / { inside = 0 }
-      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
-    ' "$file" > "$present"
+    ${sectionSentences heading} > "$present"
     for sentence in ${lib.escapeShellArgs sentences}; do
       if ! grep -qxF -- "$sentence" "$present"; then
         echo ${esc message} "$sentence" >&2
@@ -473,11 +479,7 @@ let
     expected=$(mktemp)
     actual=$(mktemp)
     printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
-    awk -v h=${esc heading} '
-      $0 == h { inside = 1; next }
-      /^# / { inside = 0 }
-      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
-    ' "$file" | grep -E -- . > "$actual" || true
+    ${sectionSentences heading} | grep -E -- . > "$actual" || true
     if ! cmp -s "$expected" "$actual"; then
       echo ${esc message} >&2
       diff "$expected" "$actual" >&2 || true
@@ -527,8 +529,12 @@ let
         }
         ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
           "# Cross-model delegation"
-          "task_status|[Pp]oll|[Nn]otif|mode: \"wait\"|waitTimedOut|[Ss]leep|[Tt]imer"
+          "task_status|[Pp]oll|[Nn]otif|[Ww]ait|[Ww]ake|[Bb]lock|[Ss]leep|[Tt]imer|[Cc]heck|[Ff]inish|[Bb]ackground|[Ss]chedul"
           waitTopicSentences
+        }
+        ${sentencesInSection "${label} moves a cross-model delegation sentence out of its section:"
+          "# Cross-model delegation"
+          delegationSentences
         }
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}

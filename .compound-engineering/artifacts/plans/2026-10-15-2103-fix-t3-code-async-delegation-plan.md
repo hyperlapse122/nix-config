@@ -43,13 +43,13 @@ The template's one sentence on this ("Delegate long work asynchronously, then co
 - R3. The section says when to launch with `mode: "wait"` and what it blocks on, and that on `waitTimedOut` the child keeps running and still notifies, so the agent ends its turn and waits for that notification.
 - R4. With `async`, the agent does the work that does not need the result; when a step needs results whose notifications have not all arrived, it ends its turn and resumes that step once every task the step waits on has notified.
 - R5. The section forbids calling `task_status` in a loop and starting a sleep, timer, or background command to wake for a delegated task.
-- R6. The section limits `task_status` to one read per task in a turn: after that task's notification, or when a turn starts without it, so a failed or stalled task reaches the section's existing retry rule.
+- R6. The section limits `task_status` to one read after each task's notification, and otherwise to one read per task in a turn that no delegation notification started, so a failed or stalled task reaches the section's existing retry rule while a sibling's notification never triggers a read of a task still running.
 - R7. Ending the turn to wait for a delegation notification is allowed where a skill says not to end the turn, naming `lfg`'s DONE rule, and the run continues from the step that waited.
-- R9. Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code launches with `mode: "wait"` or returns its task IDs to its caller.
+- R9. Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: "wait"` launch returns `waitTimedOut`.
 
 **Checks**
 
-- R8. `tests/agent-instructions.nix` pins every new sentence, and fails when an unpinned sentence about `task_status`, polling, notifications, `mode: "wait"`, `waitTimedOut`, sleeping, or timers appears in the `# Cross-model delegation` section.
+- R8. `tests/agent-instructions.nix` pins every new sentence, and fails when an unpinned sentence about `task_status`, polling, notifications, waiting, waking, blocking, sleeping, timers, checking, finishing, background work, or scheduling appears in the `# Cross-model delegation` section, or when a pinned delegation sentence moves out of that section.
 
 ### Acceptance Examples
 
@@ -74,7 +74,7 @@ The template's one sentence on this ("Delegate long work asynchronously, then co
 ### Key Technical Decisions
 
 - KTD1. **Replace the one async bullet with self-contained bullets, one rule each.** Each sentence names its tool and mode instead of saying "otherwise" or "it", so the check can pin them one by one and a reorder cannot change what any of them means. The old sentence's two halves are kept in substance and made concrete (R1-R6).
-- KTD2. **Guard the topic with `onlyPinnedSentences`, not a superseded-fragment list.** The failure was a missing fact, not an old directive coming back, so no earlier text needs banning. A pattern guard over the section (`task_status`, `poll`, `notification`, `mode: "wait"`, `waitTimedOut`, `sleep`, `timer`) catches an added reversal such as "keep polling `task_status`", which `requireSentences` would let stand beside the pinned rule. The section's existing sentence that lists the tools by name matches `task_status`, so it joins the allowed list.
+- KTD2. **Guard the topic with `onlyPinnedSentences`, not a superseded-fragment list.** The failure was a missing fact, not an old directive coming back, so no earlier text needs banning. A pattern guard over the section (`task_status`, `poll`, `notif`, `wait`, `wake`, `block`, `sleep`, `timer`, `check`, `finish`, `background`, `schedul`) catches an added reversal such as "keep polling `task_status`", which `requireSentences` would let stand beside the pinned rule. The section's existing sentence that lists the tools by name matches `task_status`, so it joins the allowed list.
 - KTD3. **State the turn-ending override in this section rather than in `# Pull and merge requests`.** That section's override list covers `lfg`'s DONE rule only for babysitting; delegation waits happen in any skill, so the override sits beside the delegation rules it serves (R7).
 
 ### Sentence draft
@@ -86,8 +86,8 @@ Directional wording for the new bullets, in this order, replacing the current "D
 3. Launch with `mode: "wait"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it.
 4. After an `async` launch, do the work that does not need the result; when a step needs results whose notifications have not all arrived, end your turn, and resume that step once every task it waits on has notified.
 5. Never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself for a delegated task.
-6. Read `task_status` at most once per task in a turn: after its notification, or when a turn starts without that notification, so a task that failed or shows no progress reaches the retry rule in this section.
-7. Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code launches with `mode: "wait"` or returns its task IDs to its caller.
+6. Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the retry rule in this section.
+7. Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: "wait"` launch returns `waitTimedOut`.
 8. Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited.
 
 ## Implementation Units
@@ -112,7 +112,8 @@ Directional wording for the new bullets, in this order, replacing the current "D
 - **Approach:**
   1. Add the final U1 sentences to `delegationSentences`.
   2. Add an `onlyPinnedSentences` call for `# Cross-model delegation` with the KTD2 pattern; its allowed list is the new sentences plus the existing "The tools are `orchestrator_capabilities`, ..." sentence.
-  3. Extend the header comment's description of the delegation assertions to name the async-wait rules and the new guard.
+  3. Add a `sentencesInSection` call for `# Cross-model delegation` over `delegationSentences`, so a pinned sentence moved to another section fails.
+  4. Extend the header comment's description of the delegation assertions to name the async-wait rules and the new guard.
 - **Execution note:** Mutation-test each new assertion against a scratch copy, following the mutation-testing learnings named in `AGENTS.md`, including the copied-worktree index trap.
 - **Patterns to follow:** The existing Antigravity guard (`antigravitySentences` with `onlyPinnedSentences`), and the GPG section guard.
 - **Test scenarios:**
