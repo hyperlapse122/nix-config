@@ -7,8 +7,9 @@ plugin skills and config/AGENTS.md into it. The repository's checks prove the
 links exist, not that the runtime reads them, and the agy CLI ignores
 GEMINI_HOME, so it cannot answer the question either. This probe starts the
 runtime itself, the way T3 Code does, against that home, asks the session what
-it holds, and reports three verdicts: plugin skills, global instructions, and
-auto-memories.
+it holds, and reports five verdicts: plugin skills, global instructions,
+auto-memories, and two rule paths the runtime may read, <workspace>/.agents/rules
+and <GEMINI_HOME>/config/rules.
 
 The runtime is the one T3 Code installed when its version matches; otherwise
 the probe downloads the archive from Google into ~/.cache/antigravity-acp-probe
@@ -18,8 +19,9 @@ because no trusted digest exists for it; its extracted files are hashed once
 and rechecked on every reuse.
 
 The session runs with every built-in tool disabled and no MCP server, in a
-temporary workspace whose AGENTS.md carries a random marker, so the model can
-answer only from its context. Each verdict reads only the answer's section
+temporary workspace whose AGENTS.md and .agents/rules file carry random markers,
+so the model can answer only from its context. The probe also plants a marker file
+in the instance home's config/rules for the run and removes it afterwards. Each verdict reads only the answer's section
 under its own heading. Every verdict is undetermined when the turn did not end
 normally, a heading is missing, or the session reported a tool call. The skills
 verdict is loaded only when every skill is listed and the control skill's
@@ -27,7 +29,8 @@ description comes back quoted, which proves the session answered from its
 context. The instructions verdict is loaded only when the answer returns the
 GPG fingerprint the global rules name; it is not loaded only when the answer
 writes NONE for it and the control description came back; otherwise it is
-undetermined.
+undetermined. Each rule verdict is loaded only when the answer returns that
+path's marker, and is not loaded and undetermined on the same terms.
 
 The probe needs the instance home signed in through T3 Code's settings, which
 no check or CI runner has, so it is a manual utility: run it from a checkout in
@@ -89,7 +92,7 @@ REMOVED_ENVIRONMENT_KEYS = {
 CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/cert.pem")
 MEMORY_STORES = ("implicit", "knowledge")
 SHARED_RUN_WORDS = 6
-HEADINGS = ("SKILLS", "CONTROL", "FINGERPRINT", "MARKER", "MEMORIES")
+HEADINGS = ("SKILLS", "CONTROL", "FINGERPRINT", "MARKER", "WORKSPACE_RULE", "GLOBAL_RULE", "MEMORIES")
 # Release versions as Google names them; anything else could escape the cache directory.
 VERSION_PATTERN = re.compile(r"\d+(\.\d+)+")
 TERMINATING_SIGNALS = (signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)
@@ -552,9 +555,11 @@ SKILLS: list the name of every skill available to you, one per line.
 CONTROL: quote verbatim the description of the skill named {control}, or write NONE.
 FINGERPRINT: your instructions may name the GPG key fingerprint to use as the recipient for a new SOPS setup. Give that 40-character fingerprint exactly, or write NONE.
 MARKER: your workspace rules may carry a marker that starts with PROBE-MARKER-. Give it exactly, or write NONE.
+WORKSPACE_RULE: your workspace rules may carry a marker that starts with PROBE-WORKSPACE-RULE-. Give it exactly, or write NONE.
+GLOBAL_RULE: your global rules may carry a marker that starts with PROBE-GLOBAL-RULE-. Give it exactly, or write NONE.
 MEMORIES: list every memory you hold about the user or about past conversations, or write NONE.
 
-Use those five headings in that order."""
+Use those seven headings in that order."""
 
 
 def model_name(session):
@@ -564,7 +569,7 @@ def model_name(session):
     return (session.get("models") or {}).get("currentModelId")
 
 
-def verdicts(home, skills, control, answer, marker, stop_reason, tool_calls):
+def verdicts(home, skills, control, answer, marker, rule_markers, stop_reason, tool_calls):
     parts = sections(answer)
     missing_headings = [heading for heading in HEADINGS if heading not in parts]
     if stop_reason != "end_turn" or missing_headings or tool_calls:
@@ -574,7 +579,7 @@ def verdicts(home, skills, control, answer, marker, stop_reason, tool_calls):
             reason = f"the turn ended with stop reason {stop_reason}"
         else:
             reason = f"the answer lacks the heading {', '.join(missing_headings)}"
-        return [f"{subject}: undetermined ({reason})" for subject in ("skills", "instructions", "memories")]
+        return [f"{subject}: undetermined ({reason})" for subject in ("skills", "instructions", "workspace rule", "global rule", "memories")]
 
     control_back = control is not None and shares_run(skills[control], normalized(parts["CONTROL"]))
     lines = []
@@ -605,6 +610,14 @@ def verdicts(home, skills, control, answer, marker, stop_reason, tool_calls):
     else:
         lines.append("instructions: undetermined (the fingerprint did not come back and the answer gave no clean NONE with the control description)")
     lines.append(f"workspace marker: {'came back' if marker in parts['MARKER'] else 'did not come back'}")
+
+    for subject, heading, rule_marker, path in rule_markers:
+        if rule_marker in parts[heading]:
+            lines.append(f"{subject}: loaded (the marker from {path} came back)")
+        elif is_none(parts[heading]) and control_back:
+            lines.append(f"{subject}: not loaded (the {control} description came back, the marker did not)")
+        else:
+            lines.append(f"{subject}: undetermined (the marker did not come back and the answer gave no clean NONE with the control description)")
 
     stores = memory_stores(home)
     if not stores:
@@ -656,14 +669,22 @@ def probe(args):
     # The control description must be long enough for shares_run to match it.
     control = min((name for name, description in skills.items() if len(words(description)) >= SHARED_RUN_WORDS), default=None)
     marker = f"PROBE-MARKER-{secrets.token_hex(8)}"
+    # The probe's own file names, so a rule file the home already holds is never touched.
+    rule_name = f"{PROG}-{secrets.token_hex(4)}.md"
+    workspace_rule = (f"PROBE-WORKSPACE-RULE-{secrets.token_hex(8)}", Path(".agents") / "rules" / rule_name)
+    global_rule = (f"PROBE-GLOBAL-RULE-{secrets.token_hex(8)}", home / "config" / "rules" / rule_name)
     with tempfile.TemporaryDirectory(prefix=f"{PROG}-") as temp:
         temp_dir = Path(temp)
         workspace = temp_dir / "workspace"
         workspace.mkdir()
         (workspace / "AGENTS.md").write_text(f"# Workspace rules\n\nThe marker for this workspace is {marker}.\n")
+        (workspace / workspace_rule[1]).parent.mkdir(parents=True)
+        (workspace / workspace_rule[1]).write_text(f"# Workspace rule\n\nThe rule marker for this workspace is {workspace_rule[0]}.\n")
         command = [str(runtime_dir / EXECUTABLE)] + (["--uid="] if sys.platform == "linux" else [])
         server = Server(command, child_environment(home, runtime_dir, temp_dir), workspace)
         try:
+            global_rule[1].parent.mkdir(parents=True, exist_ok=True)
+            global_rule[1].write_text(f"# Global rule\n\nThe rule marker for the instance home is {global_rule[0]}.\n")
             server.start()
             server.request(
                 "initialize",
@@ -688,6 +709,11 @@ def probe(args):
             )
         finally:
             server.stop()
+            global_rule[1].unlink(missing_ok=True)
+            try:
+                global_rule[1].parent.rmdir()
+            except OSError:
+                pass
 
     answer = "".join(
         (update.get("content") or {}).get("text", "")
@@ -702,7 +728,11 @@ def probe(args):
     print("\n--- answer ---")
     print(answer.strip())
     print("--- verdicts ---")
-    for line in verdicts(home, skills, control, answer, marker, stop_reason, tool_calls):
+    rule_markers = (
+        ("workspace rule", "WORKSPACE_RULE", workspace_rule[0], f".agents/rules/{rule_name}"),
+        ("global rule", "GLOBAL_RULE", global_rule[0], global_rule[1]),
+    )
+    for line in verdicts(home, skills, control, answer, marker, rule_markers, stop_reason, tool_calls):
         print(line)
     return 0
 
