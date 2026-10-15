@@ -19,12 +19,16 @@ place through tomlkit, so the user's comments and the tables the declaration
 does not name keep their bytes.  TOML has no null, so a declared null is
 refused before anything is touched.
 
-The declared document is a JSON object with up to four fields:
+The declared document is a JSON object with up to five fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
   setPaths  [{path: [key, ...], value: scalar}]
                                     leaves to assign inside nested objects
+  upsertPaths [{path: [key, ...], key: name, value: object}]
+                                    one entry in the list at path: replaces the
+                                    entry whose `key` field equals value[key],
+                                    else appends value; other entries stay
   own       {name: any JSON}        top-level keys whose whole value is
                                     declared here
 
@@ -79,7 +83,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths', 'own'}
+FIELDS = {'set', 'remove', 'setPaths', 'upsertPaths', 'own'}
 
 
 def describe(path):
@@ -97,7 +101,7 @@ def holds_null(value):
 
 
 def declaration(declared, fmt='json'):
-    """Parse the rendered declaration into (assign, retire, paths, owned).
+    """Parse the rendered declaration into (assign, retire, paths, owned, upserts).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -138,12 +142,14 @@ def declaration(declared, fmt='json'):
     through = sorted({path[0] for path, _ in paths if path[0] in owned})
     if through:
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
+    upserts = upsert_entries(document.get('upsertPaths', []), assign, retire, owned, paths, declared)
     if fmt == 'toml':
         nulls = sorted({describe([name]) for name, value in {**assign, **owned}.items() if holds_null(value)}
-                       | {describe(path) for path, value in paths if value is None})
+                       | {describe(path) for path, value in paths if value is None}
+                       | {describe(path) for path, _, value in upserts if holds_null(value)})
         if nulls:
             raise ValueError('TOML cannot hold a declared null: {}'.format(', '.join(nulls)))
-    return assign, retire, paths, owned
+    return assign, retire, paths, owned, upserts
 
 
 def nested_paths(entries, assign, retire, declared):
@@ -174,7 +180,31 @@ def nested_paths(entries, assign, retire, declared):
     return paths
 
 
-def apply(current, assign, retire, paths, owned=None):
+def upsert_entries(entries, assign, retire, owned, paths, declared):
+    if not isinstance(entries, list):
+        raise ValueError('declared "upsertPaths" is not a list: {}'.format(declared))
+    upserts = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'path', 'key', 'value'}:
+            raise ValueError('declared "upsertPaths" entry is not {{path, key, value}}: {}'.format(declared))
+        path, key, value = entry['path'], entry['key'], entry['value']
+        if not isinstance(path, list) or not path or any(not isinstance(name, str) for name in path):
+            raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+        if not isinstance(key, str) or not isinstance(value, dict) or key not in value:
+            raise ValueError('declared upsert value must be an object holding its key field: {}'.format(describe(path)))
+        # Same reasoning as setPaths: another declaration on the top-level key
+        # would fight this one, with the outcome depending on order.
+        if path[0] in assign or path[0] in retire or path[0] in owned:
+            raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
+        for other, _ in paths:
+            shorter = min(len(path), len(other))
+            if path[:shorter] == other[:shorter]:
+                raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+        upserts.append((path, key, value))
+    return upserts
+
+
+def apply(current, assign, retire, paths, owned=None, upserts=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     The whole document is deep-copied and the copy edited in place.  The
@@ -191,18 +221,37 @@ def apply(current, assign, retire, paths, owned=None):
     for name in retire:
         merged.pop(name, None)
     for path, value in paths:
-        node = merged
-        for depth, key in enumerate(path[:-1]):
-            if key not in node:
-                node[key] = {}
-            elif not isinstance(node[key], dict):
-                # Replacing it would discard whatever the owner stored there,
-                # so refuse and let the rebuild report it.
-                raise ValueError('{} is not an object, so {} cannot be set'.format(
-                    describe(path[:depth + 1]), describe(path)))
-            node = node[key]
+        node = parent_of(merged, path)
         node[path[-1]] = value
+    for path, key, value in upserts or []:
+        node = parent_of(merged, path)
+        if path[-1] not in node:
+            node[path[-1]] = []
+        entries = node[path[-1]]
+        if not isinstance(entries, list):
+            raise ValueError('{} is not a list, so {} cannot be upserted'.format(describe(path), describe(value)))
+        for index, entry in enumerate(entries):
+            if isinstance(entry, dict) and key in entry and entry[key] == value[key]:
+                entries[index] = copy.deepcopy(value)
+                break
+        else:
+            entries.append(copy.deepcopy(value))
     return merged
+
+
+def parent_of(merged, path):
+    """Return the object that holds the last key of `path`, creating parents."""
+    node = merged
+    for depth, key in enumerate(path[:-1]):
+        if key not in node:
+            node[key] = {}
+        elif not isinstance(node[key], dict):
+            # Replacing it would discard whatever the owner stored there,
+            # so refuse and let the rebuild report it.
+            raise ValueError('{} is not an object, so {} cannot be set'.format(
+                describe(path[:depth + 1]), describe(path)))
+        node = node[key]
+    return node
 
 
 def snapshot(settings):
@@ -290,7 +339,7 @@ def swap(settings, text, before):
 
 
 def merge(settings, declared, fmt='json'):
-    assign, retire, paths, owned = declaration(declared, fmt)
+    assign, retire, paths, owned, upserts = declaration(declared, fmt)
     # Looked up per call rather than bound at import, so a test that patches
     # either reader reaches this merge.
     read = read_toml_settings if fmt == 'toml' else read_settings
@@ -301,12 +350,12 @@ def merge(settings, declared, fmt='json'):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read(settings), assign, retire, paths, owned)
+    apply(read(settings), assign, retire, paths, owned, upserts)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read(settings)
-        merged = apply(current, assign, retire, paths, owned)
+        merged = apply(current, assign, retire, paths, owned, upserts)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)

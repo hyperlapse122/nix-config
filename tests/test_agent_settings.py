@@ -663,8 +663,8 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, owned = merger.declaration(self.declared)
-        merged = merger.apply({}, assign, retire, paths, owned)
+        assign, retire, paths, owned, upserts = merger.declaration(self.declared)
+        merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
 
@@ -849,8 +849,8 @@ class TomlTests(unittest.TestCase):
 
     def test_does_not_mutate_the_read_document(self):
         current = tomlkit.parse(TOML_EXISTING)
-        assign, retire, paths, owned = merger.declaration(self.declared, fmt='toml')
-        merger.apply(current, assign, retire, paths, owned)
+        assign, retire, paths, owned, upserts = merger.declaration(self.declared, fmt='toml')
+        merger.apply(current, assign, retire, paths, owned, upserts)
         self.assertEqual(tomlkit.dumps(current), TOML_EXISTING)
 
     def test_process_merges_toml(self):
@@ -859,6 +859,125 @@ class TomlTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['features']['daemon_auto_start'], False)
         self.assertIn('# Written by hand; keep this comment.\n', self.settings.read_text())
+
+    def test_multi_line_string_reads_back_byte_identical(self):
+        # developer_instructions is prose with newlines and every quote style.
+        text = 'First line.\nIt\'s said "quoted" and C:\\path\\n stays literal.\n\nLast line.\n'
+        self.seed()
+        self.declare({'set': {'developer_instructions': text}})
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['developer_instructions'], text)
+        self.assertEqual(result['model'], 'gpt-5.1-codex')
+        self.assertEqual(result['features']['web_search'], True)
+        self.assertIn('model = "gpt-5.1-codex" # the user\'s model\n', self.settings.read_text())
+
+    def test_upsert_appends_to_an_inline_list_of_tables(self):
+        self.seed('env = [{ name = "FOO", value = "1" }]\n')
+        self.declare({'upsertPaths': [
+            {'path': ['env'], 'key': 'name', 'value': {'name': 'BAR', 'value': '1'}}]})
+        self.merge()
+        self.assertEqual(self.read()['env'], [
+            {'name': 'FOO', 'value': '1'}, {'name': 'BAR', 'value': '1'}])
+
+
+UPSERT_ENV = ['providerInstances', 'claudeAgent', 'environment']
+UPSERT_ENTRY = {'name': 'CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD', 'value': '1'}
+
+UPSERT_EXISTING = {
+    'providerInstances': {
+        'claudeAgent': {
+            'driver': 'claudeAgent',
+            'config': {'launchArgs': '--keep'},
+            'environment': [{'name': 'FOO', 'value': '1'}],
+        },
+        'codex': {'driver': 'codex', 'environment': [{'name': 'X', 'value': 'y'}]},
+    },
+    'other': 1,
+}
+
+
+class UpsertPathTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.t3/settings.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare(UPSERT_ENTRY)
+
+    def declare(self, value, path=UPSERT_ENV, **fields):
+        document = {'upsertPaths': [{'path': path, 'key': 'name', 'value': value}]}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else UPSERT_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def environment(self):
+        return self.read()['providerInstances']['claudeAgent']['environment']
+
+    def test_appends_and_keeps_the_user_entry(self):
+        self.seed()
+        self.merge()
+        self.assertEqual(self.environment(), [{'name': 'FOO', 'value': '1'}, UPSERT_ENTRY])
+
+    def test_second_run_adds_no_duplicate_and_does_not_rewrite(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual(len(self.environment()), 2)
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_replaces_the_entry_with_the_same_name(self):
+        data = json.loads(json.dumps(UPSERT_EXISTING))
+        data['providerInstances']['claudeAgent']['environment'].insert(
+            0, {'name': UPSERT_ENTRY['name'], 'value': '0'})
+        self.seed(data)
+        self.merge()
+        self.assertEqual(self.environment(), [UPSERT_ENTRY, {'name': 'FOO', 'value': '1'}])
+
+    def test_creates_the_path_when_absent(self):
+        self.merge()
+        self.assertEqual(self.read(), {
+            'providerInstances': {'claudeAgent': {'environment': [UPSERT_ENTRY]}}})
+
+    def test_creates_the_list_when_the_parent_exists_without_it(self):
+        self.seed({'providerInstances': {'claudeAgent': {'driver': 'claudeAgent'}}})
+        self.merge()
+        self.assertEqual(self.read()['providerInstances']['claudeAgent'], {
+            'driver': 'claudeAgent', 'environment': [UPSERT_ENTRY]})
+
+    def test_siblings_and_other_instances_are_untouched(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['providerInstances']['claudeAgent']['config'], {'launchArgs': '--keep'})
+        self.assertEqual(result['providerInstances']['codex'], UPSERT_EXISTING['providerInstances']['codex'])
+        self.assertEqual(result['other'], 1)
+
+    def test_setpaths_still_refuses_a_non_scalar_value(self):
+        self.seed()
+        self.declared.write_text(json.dumps(
+            {'setPaths': [{'path': UPSERT_ENV, 'value': [UPSERT_ENTRY]}]}))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_does_not_mutate_the_read_document(self):
+        current = json.loads(json.dumps(UPSERT_EXISTING))
+        merger.apply(current, {}, [], [], {}, [(UPSERT_ENV, 'name', UPSERT_ENTRY)])
+        self.assertEqual(current, UPSERT_EXISTING)
 
 
 if __name__ == '__main__':
