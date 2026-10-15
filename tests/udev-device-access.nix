@@ -6,8 +6,8 @@
   Asserts that the udev rules each host actually builds carry the device-access
   rules for the NuPhy Gem80 keyboard, the STM32 ROM DFU bootloader, and the
   Sennheiser BTD 600/700 dongles, and Apple iOS devices in DFU and recovery
-  mode, and the rules that hide the DualSense
-  controller touchpad from libinput. Every assertion reads the materialised rules
+  mode, the rules that hide the DualSense controller touchpad from libinput,
+  and the `/dev/kvm` mode that rootless Podman containers depend on. Every assertion reads the materialised rules
   directory (`environment.etc."udev/rules.d"`), never the option lists it is
   derived from. `services.udev.extraRules` lands in 99-local.rules while
   `services.udev.packages` files keep their own names, so the option value
@@ -44,6 +44,15 @@
   - every configuration that leaves the trait off carries neither NuPhy rule
     line. The assertion is an explicit `if`, because a bare `! grep` is exempt
     from `set -e`.
+  - every configuration that enables `my.podman.enable` carries the
+    `/dev/kvm` 0666 rule line verbatim in a file that sorts after the last
+    file carrying systemd's `static_node=kvm` default, and that file is the
+    last one assigning `/dev/kvm` a `MODE`. A rootless container gets the
+    host's node bind-mounted and cannot change its mode, so the host's mode is
+    what the container's non-root users get; systemd's own default comes from
+    its `dev-kvm-mode` build option, which this repository does not control.
+  - every configuration that leaves `my.podman.enable` off carries no such
+    line.
 
   Coverage is every configuration `tests/lib/configurations.nix` yields. The
   NuPhy expectation is taken from each configuration's `my.nuphyGem80.enable`
@@ -64,6 +73,7 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
   nuphy = configurations.withTrait "my.nuphyGem80.enable" (config: config.my.nuphyGem80.enable);
+  podman = configurations.withTrait "my.podman.enable" (config: config.my.podman.enable);
 
   # Every rule below is text spliced into a shell script, so it is escaped
   # rather than trusted to be quote-free.
@@ -87,6 +97,9 @@ let
     ''ACTION=="add|change", ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
     ''ACTION=="add|change", ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
   ];
+
+  kvmRule = ''KERNEL=="kvm", GROUP="kvm", MODE="0666"'';
+  kvmDefaultMarker = ''OPTIONS+="static_node=kvm"'';
 
   builtinLine = ''RUN{builtin}+="uaccess"'';
   usbDefaultLine = ''SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0664"'';
@@ -182,6 +195,29 @@ let
         done
       fi
     }
+
+    # $1 host, $2 rules directory, $3 true when the /dev/kvm rule belongs there.
+    check_kvm() {
+      if [ "$3" = true ]; then
+        kvm_default_file=$(edge_file_with "$2" ${esc kvmDefaultMarker} last)
+        if [ -z "$kvm_default_file" ]; then
+          fail "$1: no rules file carries systemd's /dev/kvm default"
+        fi
+        check_rule_order "$1" "$2" "$kvm_default_file" ${esc kvmRule} after
+        last_mode_file=""
+        for file in $(grep -lE '^KERNEL=="kvm".*MODE=' "$2"/*.rules); do
+          name=$(basename "$file")
+          if [ -z "$last_mode_file" ] || sorts_before "$last_mode_file" "$name"; then
+            last_mode_file=$name
+          fi
+        done
+        if [ -z "$last_mode_file" ] || ! grep -qFx -- ${esc kvmRule} "$2/$last_mode_file"; then
+          fail "$1: the last rules file assigning /dev/kvm a MODE does not carry: "${esc kvmRule}
+        fi
+      elif [ -n "$(files_with_line "$2" ${esc kvmRule})" ]; then
+        fail "$1: the /dev/kvm rule reaches a configuration without Podman"
+      fi
+    }
   '';
 
   # The expectation comes from the trait, never from the udev options the
@@ -200,15 +236,28 @@ let
       ''
         check_host ${esc entry.name} ${esc rules} ${boolToString nuphyBelongs}
       '';
+
+  # A configuration without a rules directory already fails in entryAssertion.
+  kvmAssertion =
+    kvmBelongs: entry:
+    let
+      rules = entry.config.environment.etc."udev/rules.d".source or null;
+    in
+    lib.optionalString (rules != null) ''
+      check_kvm ${esc entry.name} ${esc rules} ${boolToString kvmBelongs}
+    '';
 in
 pkgs.runCommand "udev-device-access-tests" { } ''
   set -x
   ${configurations.guard}
   ${nuphy.guard}
+  ${podman.guard}
   ${helpers}
 
   ${lib.concatMapStringsSep "\n" (entryAssertion true) nuphy.enabled}
   ${lib.concatMapStringsSep "\n" (entryAssertion false) nuphy.disabled}
+  ${lib.concatMapStringsSep "\n" (kvmAssertion true) podman.enabled}
+  ${lib.concatMapStringsSep "\n" (kvmAssertion false) podman.disabled}
 
   if [ "$failed" != 0 ]; then
     exit 1

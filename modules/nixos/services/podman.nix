@@ -22,6 +22,18 @@ in
     # which starts the rootful daemon socket. We explicitly empty it.
     systemd.sockets.podman.wantedBy = lib.mkForce [ ];
 
+    # A rootless container cannot mknod, so `--device /dev/kvm` bind-mounts
+    # the host's node and root inside the container, mapped to this user,
+    # cannot chmod it. Container users such as Nix's nixbld builders are not
+    # in the host's kvm group either, so the host node's mode alone decides
+    # whether NixOS VM tests in a container get KVM. Pin it to 0666 instead of
+    # inheriting systemd's dev-kvm-mode build default; this file is
+    # 99-local.rules, so its MODE is the last one applied. Rootful Podman would
+    # also work, but the rootful socket stays off above.
+    services.udev.extraRules = ''
+      KERNEL=="kvm", GROUP="kvm", MODE="0666"
+    '';
+
     # Rootless Podman needs /etc/subuid and /etc/subgid entries. nixpkgs only
     # sets this with mkDefault for normal users that declare no explicit ranges.
     users.users.${config.my.user.name}.autoSubUidGidRange = true;
