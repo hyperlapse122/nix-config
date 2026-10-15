@@ -46,12 +46,21 @@
     gates, recipient restrictions, and skip, full-access runtime mode,
     running a skill's cross-model review pass alongside its in-process
     reviewers, the retry and fallback order, the retry that skips a provider
-    already serving the pass, and verifying a delegated result, so any of
-    those sentences dropped, reworded, negated, or moved into one harness's
-    branch fails.
+    already serving the pass, verifying a delegated result, and how a
+    delegation returns and is waited for: `async` by default with a
+    completion notification, the result read with one `task_status` call,
+    when to launch with `mode: "wait"` and what follows `waitTimedOut`,
+    ending the turn until every awaited task has notified, no status polling
+    or self-wake, one status read per task in a turn, subagents not ending
+    their turn to wait, and ending the turn despite a skill's rule against
+    it, so any of those sentences dropped, reworded, negated, or moved into
+    one harness's branch fails.
   - every sentence in its Cross-model delegation section that names
     Antigravity or Argon is one of those pinned sentences, so a reversal
     added beside a pinned sentence fails.
+  - every sentence in that section that speaks of `task_status`, polling,
+    notifications, `mode: "wait"`, `waitTimedOut`, sleeping, or timers is
+    one of the pinned wait sentences, so an added "keep polling" fails.
   - it carries no superseded directive: delegating before a skill's own
     gates, setting effort instead of inheriting a model's default, the
     review-findings rule that named only `ce-code-review` and
@@ -271,6 +280,28 @@ let
     "| Worker | Sonnet | Luna | Flash medium |"
   ];
 
+  # How a T3 Code delegation returns and how to wait for it: async by
+  # default, a completion notification instead of a blocking call, one
+  # status read per task, and no polling or self-wake.
+  asyncDelegationSentences = [
+    "`delegate_task` does not block in its default `async` mode: it returns a `taskId` at once, and when the child finishes, T3 Code sends this thread a notification, steered into your current turn where the harness supports that or queued to start your next turn otherwise."
+    "The notification only reports that the task finished; read the task's result with one `task_status` call, which returns at once and never waits."
+    "Launch with `mode: \"wait\"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it."
+    "After an `async` launch, do the work that does not need the result; when a step needs results whose notifications have not all arrived, end your turn, and resume that step once every task it waits on has notified."
+    "Never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself for a delegated task."
+    "Read `task_status` at most once per task in a turn: after its notification, or when a turn starts without that notification, so a task that failed or shows no progress reaches the retry rule in this section."
+    "Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code launches with `mode: \"wait\"` or returns its task IDs to its caller."
+    "Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited."
+  ];
+
+  # Every sentence of the delegation section that may speak about status
+  # reads, waiting, or self-wake. Any other such sentence there, such as an
+  # added "keep polling `task_status`", fails.
+  waitTopicSentences = [
+    "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`."
+  ]
+  ++ asyncDelegationSentences;
+
   delegationSentences = [
     "This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool."
     "When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens."
@@ -284,6 +315,9 @@ let
     "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content."
     "When a gate or restriction excludes it, or Antigravity is not runnable, skip it and say why in one line."
     "Run every delegated task in full-access runtime mode."
+  ]
+  ++ asyncDelegationSentences
+  ++ [
     "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
     "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider."
     "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map."
@@ -490,6 +524,11 @@ let
           "# Cross-model delegation"
           "Antigravity|Argon"
           antigravitySentences
+        }
+        ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
+          "# Cross-model delegation"
+          "task_status|[Pp]oll|[Nn]otif|mode: \"wait\"|waitTimedOut|[Ss]leep|[Tt]imer"
+          waitTopicSentences
         }
         ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
         ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
