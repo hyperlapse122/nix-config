@@ -80,6 +80,20 @@
     be pinned, so a missing heading, or any of those sentences dropped,
     reworded, negated, contradicted by an added sentence, or moved into one
     harness's branch, fails.
+  - it carries the shared pull and merge request rule under its
+    `# Pull and merge requests` heading: GitLab as a normal forge, running
+    GitHub-only skills through `glab` with the concept and command map,
+    skipping only steps with no counterpart, babysitting every request opened
+    or pushed without being asked and drafts only on request, the T3 Code
+    link, first tick, watch, and tick order, the settle-window and 30-minute fallback
+    waits, the paths without T3 Code and the GitLab watcher's exit events, the
+    GitLab tick's state, a successful head pipeline as readiness evidence,
+    the GitLab settle window, missing CI and pending approval as blockers,
+    never rebasing on GitLab, unwatching before hand-back, and leaving the
+    forge substitution out of the report. Every sentence in that section must
+    be pinned, so a missing heading, or any of those sentences dropped,
+    reworded, negated, contradicted by an added sentence, moved into another
+    section, or moved into one harness's branch, fails.
   - it carries the shared issue and pull request media rule: which GitHub and
     GitLab items it covers, attaching the conversation's media, capturing
     media when showing would help and when not to, logs as code blocks,
@@ -152,6 +166,33 @@ let
     "When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key."
     "When a machine or service must decrypt that file without the card, also add the machine's own recipient."
     "Keep the existing method in a project that already encrypts with age or another method."
+  ];
+
+  pullRequestSentences = [
+    "GitHub and GitLab are both normal forges."
+    "Treat a GitLab project as the same case as a GitHub one, and babysit every pull or merge request you open or push to until it looks ready to merge."
+    "When a Compound Engineering skill that speaks only GitHub, such as `ce-commit-push-pr`, `ce-babysit-pr`, `ce-resolve-pr-feedback`, `ce-code-review` on a pull request, or `lfg`, runs in a GitLab project, carry out the same procedure with `glab` instead of stopping or skipping its forge steps."
+    "Map each GitHub concept to its GitLab counterpart: a pull request is a merge request, a review thread is a resolvable discussion, and an Actions run or check is a pipeline or job."
+    "Open the merge request with `glab mr create`, read discussions with `glab mr note list -F json`, reply with `glab mr note create --reply`, post a top-level note with `glab mr note create --resolvable=false` so your own note opens no discussion, resolve with `glab mr note resolve`, retry a job with `glab ci retry`, and reach anything else through `glab api`."
+    "When a skill step has no GitLab counterpart, such as a `gh stack` posture, skip only that step, keep the rest of the procedure, and name the skipped step in your report."
+    "After you open a pull or merge request, or push to one, start babysitting it without being asked, in interactive and autonomous runs alike."
+    "Babysit a draft only when the user asked you to watch that draft; otherwise report it as a draft and arm no watch."
+    "When the T3 Code pull request tools are available, call `link_pull_request` and run one babysit tick; unless that tick reached looks-ready or a blocker, call `watch_pull_request` and end your turn."
+    "On each T3 Code wake, stop the background waits you started, then run one babysit tick in the skill's order: review feedback first, then CI on the current head, then branch currency."
+    "When a tick finds the request ready except for the skill's settle window or its bounded wait for a review still coming, keep the watch and start a background wait for that window, then run another tick when it ends."
+    "While T3 Code watches, also start one background wait of 30 minutes after each tick that runs a tick when no wake has arrived, so a watch that stopped reading the request does not strand it."
+    "When T3 Code is unavailable, babysit a GitHub pull request with `ce-babysit-pr` unchanged."
+    "When T3 Code is unavailable, babysit a GitLab merge request with the same ticks and a background watcher that polls every two to three minutes and exits when the head pipeline finishes, a note or discussion appears, the conflict or merge status changes, or the merge request closes or merges."
+    "Never wait in a foreground sleep loop; when your harness cannot run a background command, rely on T3 Code's wakes alone, and when a tick then finds only a wait outstanding, call `unwatch_pull_request` and report the open request and how to resume babysitting."
+    "On GitLab, read each tick's state from `glab mr view <id> -F json` (`state`, `draft`, `sha`, `head_pipeline`, `detailed_merge_status`, `has_conflicts`, `blocking_discussions_resolved`) and from `glab mr note list <id> -F json`."
+    "Call a merge request ready only when `head_pipeline.sha` equals `sha`, `head_pipeline.status` is `success`, `detailed_merge_status` is `mergeable`, no discussion is unresolved, no note or `needs-human` item is unhandled, and the settle window has passed."
+    "A T3 Code wake, `glab ci status`, or an empty pipeline list is not evidence that a merge request is ready."
+    "On GitLab, the settle window is 300 seconds with no new push, note, or discussion, the default `ce-babysit-pr` uses, unless the project sets another."
+    "When no pipeline runs for `sha` once the settle window has passed, report the missing CI evidence as a blocker for the user instead of calling the merge request ready."
+    "When only an approval stands between the merge request and `mergeable`, such as `detailed_merge_status` `not_approved`, wait one more settle window for review activity, then report the wait for that approval as a blocker for the user."
+    "On GitLab, never rebase: report a branch that is behind or conflicts with its target as a blocker for the user."
+    "When babysitting reaches looks-ready, a blocker, or its budget, call `unwatch_pull_request` and stop your background waits before you hand back, and leave the merge to the user."
+    "Using `glab` instead of `gh`, or T3 Code's watch instead of the skill's watcher, is not a decision you made on the user's behalf; leave it out of the report, and mention the forge only for a skipped step or a blocker."
   ];
 
   mediaSentences = [
@@ -334,6 +375,24 @@ let
     )
   '';
 
+  # Fails the build, naming each sentence, when the section under `heading`
+  # lacks it. `requireSentences` reads the whole file, so a pinned sentence
+  # moved into another section would still pass it.
+  sentencesInSection = message: heading: sentences: ''
+    present=$(mktemp)
+    awk -v h=${esc heading} '
+      $0 == h { inside = 1; next }
+      /^# / { inside = 0 }
+      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+    ' "$file" > "$present"
+    for sentence in ${lib.escapeShellArgs sentences}; do
+      if ! grep -qxF -- "$sentence" "$present"; then
+        echo ${esc message} "$sentence" >&2
+        failed=1
+      fi
+    done
+  '';
+
   assertHarness =
     hostName: userConfig: harness:
     let
@@ -379,6 +438,16 @@ let
         ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
         ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
           gpgSentences
+        }
+        ${requireSentences "${label} lacks the pull and merge request rule:" pullRequestSentences}
+        ${onlyPinnedSentences "${label} carries an unpinned pull and merge request sentence:"
+          "# Pull and merge requests"
+          "."
+          pullRequestSentences
+        }
+        ${sentencesInSection "${label} moves a pull and merge request sentence out of its section:"
+          "# Pull and merge requests"
+          pullRequestSentences
         }
         ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
         for directive in ${lib.escapeShellArgs supersededDirectives}; do
