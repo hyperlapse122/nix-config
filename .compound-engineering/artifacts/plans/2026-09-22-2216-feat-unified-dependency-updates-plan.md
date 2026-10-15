@@ -180,7 +180,7 @@ flowchart TB
 Holds `version`, `sha256`, and `hash` (SRI format `sha256-...`). `packages/claude-desktop.nix` imports this file via `builtins.fromJSON (builtins.readFile ./claude-desktop-version.json)` to set `version` and `src.hash`.
 
 2. `scripts/claude-desktop-release`:
-A clean Python 3 executable following the structure of `scripts/agent-plugin-release`:
+A Python 3 executable following the structure of `scripts/agent-plugin-release`:
 
 - CLI arguments: `--source-url <url>`, `--output <path>`, `--dry-run`.
 - Reads `CLAUDE_DESKTOP_RELEASE_FETCH` environment variable (defaults to `curl -s`).

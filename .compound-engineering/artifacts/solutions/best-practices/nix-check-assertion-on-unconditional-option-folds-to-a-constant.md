@@ -56,7 +56,7 @@ The three sibling learnings each describe a different failure:
 - [Evaluation-only mutations](unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md) — the mutation never reaches the assertion. Here the mutation reaches it and the assertion runs.
 - [Option value versus materialized output](nix-check-reads-option-value-not-materialized-output.md) — the assertion reads a proxy that can come apart from the outcome. That is the closest, and its guard is the right fix, but its examples are options the module under test *does* set. The case here is an option the module under test **cannot** set, which is what makes the assertion constant rather than merely indirect.
 
-The distinguishing question is not "does this assertion read an option?" but **"can any mutation of the code under test change the value this assertion compares?"** When the answer is no, the assertion is documentation wearing an `if`.
+The distinguishing question is not "does this assertion read an option?" but **"can any mutation of the code under test change the value this assertion compares?"** When the answer is no, the assertion is documentation written as an `if`.
 
 ## The guard
 
@@ -80,7 +80,7 @@ Each round is `nix build --no-link .#checks.x86_64-linux.yubikey-fido`, with the
 | 2 | `services.pcscd.enable = false` in `base.nix`, module removed | green — the emitted shell was `[ "true" != "true" ]` regardless | red, in the builder: `the built system declares no pcscd.socket unit at all` |
 | 3 | same as 2, with the fix applied but unguarded | — | red **in the evaluator**: `attribute '"pcscd.socket"' missing`, which proves nothing |
 
-Round 3 is the control that matters: it looks like a pass and is not one. Without reading where the failure came from, the unguarded fix would have been recorded as verified.
+Round 3 is the control: it looks like a pass and is not one. Without reading where the failure came from, the unguarded fix would have been recorded as verified.
 
 ## How to apply
 

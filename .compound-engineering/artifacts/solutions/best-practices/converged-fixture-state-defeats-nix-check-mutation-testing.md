@@ -114,7 +114,7 @@ Five rounds, each `bash tests/nr.sh scripts/nr`:
 | 4. Mutation reintroduced | diverged | same mutation, unchanged | **red** — `boot did not diff the profile's own before and after: nvd-called diff .../genA .../genC` |
 | 5. Fix restored | diverged | fix in place | green |
 
-Round 2 is the one that matters. The assertion was never at fault, and the mutation genuinely ran through the code the test targeted. The fixture was the only thing standing between "looks tested" and "is tested." Round 4 shows the same mutation, unchanged, going red the moment the fixture stops being able to hide it.
+In round 2 the assertion was sound and the mutation ran through the code the test targeted; the fixture alone hid the bug. Round 4 shows the same mutation, unchanged, going red the moment the fixture stops being able to hide it.
 
 ## How to apply
 

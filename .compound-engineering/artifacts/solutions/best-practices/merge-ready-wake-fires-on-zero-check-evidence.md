@@ -28,9 +28,9 @@ tags:
 
 ## Context
 
-Issue #30 proposed dropping `ce-babysit-pr`'s 300-second settle window. The argument was clean: the window exists to guard against "CI went green, told the user to merge, then feedback landed" (the compound-engineering plugin's `skills/ce-babysit-pr/` (v3.30.5 when last checked), `references/watch-loop.md:169`), and in this repository every reviewer reported as a GitHub check — the Claude review then ran as a `pull_request` workflow (`.github/workflows/claude-code-review.yml:3-5`, deleted on 2026-10-05). If review arrives as a check, the check rollup already carries the review verdict, so a quiet period adds nothing the checks do not already say.
+Issue #30 proposed dropping `ce-babysit-pr`'s 300-second settle window. The argument: the window exists to guard against "CI went green, told the user to merge, then feedback landed" (the compound-engineering plugin's `skills/ce-babysit-pr/` (v3.30.5 when last checked), `references/watch-loop.md:169`), and in this repository every reviewer reported as a GitHub check — the Claude review then ran as a `pull_request` workflow (`.github/workflows/claude-code-review.yml:3-5`, deleted on 2026-10-05). If review arrives as a check, the check rollup already carries the review verdict, so a quiet period adds nothing the checks do not already say.
 
-That argument is true about *stale* evidence and false about *absent* evidence, and the difference is what the timer was quietly covering.
+That argument holds for *stale* evidence and fails for *absent* evidence, and the timer was covering the absent case.
 
 ## The vacuous condition
 
@@ -91,7 +91,7 @@ A push moves the head SHA, and the head SHA is part of the settle signature: `ch
 
 In that five-minute gap, GitHub registers the check runs for the new head. By the time the window elapsed, `checks_terminal` was a statement about real runs rather than about an empty set. The timer was never advertised as an evidence-presence guard — `skills/ce-babysit-pr/references/watch-loop.md:33` calls it "the quiet window before a `merge-ready` wake" and the cooling-off bullet there calls it "a cooling-off signal, not a guarantee" — but it was functioning as one.
 
-Remove it (`--settle-seconds 0`) without adding anything, and a CLEAN/MERGEABLE pull request in the window between a push and the first registered check run satisfies merge-ready on *no evidence at all*. Not evidence that is stale, not evidence that is still running: none. That is the worst false positive a readiness call can make, and it is the one the removal creates.
+Remove it (`--settle-seconds 0`) without adding anything, and a CLEAN/MERGEABLE pull request in the window between a push and the first registered check run satisfies merge-ready on *no evidence at all*. The evidence is neither stale nor still running; it does not exist. The removal creates this false positive.
 
 ## The practice
 

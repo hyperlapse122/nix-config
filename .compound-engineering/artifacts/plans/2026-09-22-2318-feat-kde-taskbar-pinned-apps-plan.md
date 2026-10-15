@@ -29,7 +29,7 @@ In the current configuration, `home/h82/kde/plasma.nix` configures task manager 
 
 ### Key Decisions
 
-- **Declarative Taskbar Launchers via kwriteconfig6**: Configure `launchers` under `[Containments][$containment][Applets][$applet][Configuration][General]` dynamically in `home.activation.kdePlasmaApplets` (session-settled: user-directed — chosen over host-specific bifurcation or ad-hoc manual pinning: ensures a clean, declarative default without introducing external flakes like plasma-manager). Governs R1, R2, R4.
+- **Declarative Taskbar Launchers via kwriteconfig6**: Configure `launchers` under `[Containments][$containment][Applets][$applet][Configuration][General]` dynamically in `home.activation.kdePlasmaApplets` (session-settled: user-directed — chosen over host-specific bifurcation or ad-hoc manual pinning: gives a declarative default without introducing external flakes like plasma-manager). Governs R1, R2, R4.
 - **Stable XDG Application URIs**: Use stable application URIs (`preferred://browser` or `applications:google-chrome.desktop`, `preferred://filemanager` or `applications:org.kde.dolphin.desktop`, `applications:com.mitchellh.ghostty.desktop`, `applications:orca.desktop`) rather than `file:///nix/store/...` paths to ensure durability across NixOS rebuilds and garbage collection. Governs R3.
 
 ### Requirements
@@ -71,7 +71,7 @@ Product Contract unchanged.
 
 ### Key Technical Decisions
 
-- KTD1. **Extend existing kdePlasmaApplets activation loop**: Configure `launchers` using `kwriteconfig6` directly within the `case "$plugin" in org.kde.plasma.icontasks|org.kde.plasma.taskmanager)` block in `home/h82/kde/plasma.nix`. This modifies the live desktop configuration cleanly on activation without requiring desktop layout recreation. Governs R1, R4.
+- KTD1. **Extend existing kdePlasmaApplets activation loop**: Configure `launchers` using `kwriteconfig6` directly within the `case "$plugin" in org.kde.plasma.icontasks|org.kde.plasma.taskmanager)` block in `home/h82/kde/plasma.nix`. This modifies the live desktop configuration on activation without requiring desktop layout recreation. Governs R1, R4.
 - KTD2. **Order launchers with canonical KDE desktop service URIs**: Format the `launchers` key value as `"preferred://browser,preferred://filemanager,applications:com.mitchellh.ghostty.desktop,applications:orca.desktop"` (session-settled: user-directed — chosen over host-specific bifurcation or ad-hoc manual pinning: ensures declarative consistency across machines without volatile nix-store file paths). Governs R2, R3.
 - KTD3. **Automated regression check in flake.nix**: Add a new check derivation `tests/plasma-taskbar.nix` registered in `flake.nix` under `checks.${system}.plasma-taskbar` to assert that the activation scripts for both `ThinkPad-X1-Carbon-Gen-11` and `MS-7D91` contain the expected `launchers` string.
 

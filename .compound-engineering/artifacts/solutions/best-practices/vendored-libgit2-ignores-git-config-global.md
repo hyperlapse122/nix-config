@@ -68,7 +68,7 @@ The check also never passes the setting under test on the command line — it in
 
 ## Why This Matters
 
-A fixture that reads correctly through the git CLI but not through the tool under test produces the most misleading kind of check failure: the check goes **red on the config that is actually correct**. Nothing about the failure output points at the fixture — it looks exactly like the setting was never applied. Diagnosing it requires noticing that the tool under test is not `git` itself, then checking what config-discovery mechanism the tool's own dependency tree implements, which is not visible from the tool's CLI, man page, or even most of its source unless you check what version of its git library it vendors.
+A fixture that reads correctly through the git CLI but not through the tool under test produces a misleading failure: the check goes **red on the config that is actually correct**. Nothing about the failure output points at the fixture — it looks exactly like the setting was never applied. Diagnosing it requires noticing that the tool under test is not `git` itself, then checking what config-discovery mechanism the tool's own dependency tree implements, which is not visible from the tool's CLI, man page, or even most of its source unless you check what version of its git library it vendors.
 
 The trap has a second edge. Once the check is failing "for no reason," the fix that first suggests itself — pass the setting explicitly on the command line the fixture invokes — makes the check pass again, but it now proves nothing: the check would pass identically whether `home/h82/dev/git.nix` set `trim.delete` correctly, incorrectly, or not at all, because the flag overrides the config file either way. This is why proof-first verification matters here: the two proof-first runs used to develop this check were a red run with the `git-trim` package present but `trim.delete` absent (upstream default `merged:origin` deleted the merged branch on origin) and a green run with `trim.delete = "merged-local"` installed at the `XDG_CONFIG_HOME` path — both without a `--delete` flag on the invocation. Two independent reviewers of the check's design caught the `GIT_CONFIG_GLOBAL` plan from the binary's `strings` output before any of this was implemented, which is the check described above.
 
@@ -99,7 +99,7 @@ Mutation rounds that separate a real guard from a decorative one (`nix build --n
 | `trim.confirm = false` added | red: `trim.confirm turns off the deletion prompt` |
 | `git-trim` package removed from `home.packages` | red: `git-trim is not in home.path` |
 
-A related aside worth keeping in mind when a check's per-host logic is a subshell function, as `checkHost` is here (defined in `tests/git-trim.nix`): a subshell invoked as the left operand of `||` runs with `errexit` disabled inside it, so a fallback on the right never fires for a failure inside the subshell that the subshell itself doesn't explicitly `exit` on:
+A related trap when a check's per-host logic is a subshell function, as `checkHost` is here (defined in `tests/git-trim.nix`): a subshell invoked as the left operand of `||` runs with `errexit` disabled inside it, so a fallback on the right never fires for a failure inside the subshell that the subshell itself doesn't explicitly `exit` on:
 
 ```sh
 $ bash -c 'set -eu; f() ( false; echo continued ); f || echo fallback'

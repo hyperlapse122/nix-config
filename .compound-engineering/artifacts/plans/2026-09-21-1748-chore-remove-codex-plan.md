@@ -33,7 +33,7 @@ The `codex` CLI package is unusable in practice on this machine. Retaining it ad
 
 - **KD1. Remove codex from home packages**: Remove `pkgs.codex` from `home.packages` in `home/h82/default.nix` (session-settled: user-directed via issue #12). Governs R1.
 - **KD2. Clean up agents.toml and README.md**: Remove `codex` from `agents.toml`'s active agent roster and from `README.md`'s list of included tools (session-settled: user-directed via issue #12 knock-on effects). Governs R2, R3.
-- **KD3. Rely on default Compound Engineering peer fallback**: Do not force an explicit `cross_model_peer` in `.compound-engineering/config.yaml`, allowing the review pass to fall back to the next available tool or local adversarial reviewer naturally per issue #12 guidance. Governs R4.
+- **KD3. Rely on default Compound Engineering peer fallback**: Do not force an explicit `cross_model_peer` in `.compound-engineering/config.yaml`, allowing the review pass to fall back to the next available tool or local adversarial reviewer per issue #12 guidance. Governs R4.
 
 ### Requirements
 

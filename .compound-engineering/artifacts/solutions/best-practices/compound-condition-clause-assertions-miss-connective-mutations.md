@@ -61,7 +61,7 @@ Each round is `bash tests/check-workflow-docs-skip.sh .github/workflows/check.ym
 | Swap `\|\|` for `&&` in `flake-check`'s `if:` | inverts the fail-open condition to practically-always-false | **ok — false pass** | fails: "does not match the expected fail-open condition exactly" |
 | Restore | — | ok | ok |
 
-The middle row is the one that matters: the mutation reached the code under test, the assertions ran, and the old version still printed all-ok for every one of them.
+In the middle row the mutation reached the code under test, the assertions ran, and the old version still printed all-ok for every one of them.
 
 ## How to apply
 

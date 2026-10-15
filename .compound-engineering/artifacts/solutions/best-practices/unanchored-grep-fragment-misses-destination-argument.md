@@ -50,7 +50,7 @@ Two rounds, each `nix build --no-link .#checks.x86_64-linux.logind-lid-switch`:
 | 1 (before the fix) | `--file powerdevilrc` -> `--file WRONGFILE.rc` on the Battery `LidAction` write only | green — the fragment still matched somewhere in the script |
 | 2 (after the fix, same mutation) | identical mutation, expected fragments now include `--file powerdevilrc` | red: `ThinkPad-X1-Carbon-Gen-11: kdePowerLid activation script is missing: --file powerdevilrc --group Battery --group SuspendAndShutdown --key LidAction -- 1` |
 
-The pairing is the point: the same tree, the same mutation, goes from a false pass to a correct failure purely by adding the discriminating argument to the expected string.
+The same tree and the same mutation go from a false pass to a correct failure purely by adding the discriminating argument to the expected string.
 
 ## How to apply
 
