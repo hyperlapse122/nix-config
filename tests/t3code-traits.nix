@@ -26,7 +26,14 @@
     settings that differ from the pinned T3 Code's defaults; a failing stub
     must fail the script; and with Home Manager's `run` turned into a no-op,
     as on a dry run, the stub must not run. T3 Code rewrites both files at
-    runtime, so the keys are merged rather than the files owned.
+    runtime, so the keys are merged rather than the files owned. The
+    settings.json declaration names the provider instances' leaves: the Claude
+    instance's --add-dir under that configuration's home, its environment
+    entry upserted by name, and the Codex launch argument built from the
+    rendered Codex system and T3 Code parts; `providers` is removed.
+  - ~/.t3/instructions/claude-code/CLAUDE.md, which the Claude instance's
+    --add-dir loads, exists exactly when either trait is on and holds the
+    rendered Claude Code T3 Code part.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -117,102 +124,193 @@ let
 
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
 
+  instructions = import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; };
+
+  claudeInstructionsTarget = ".t3/instructions/claude-code/CLAUDE.md";
+  claudeInstructionsExpected = instructions.render {
+    harness = "claude-code";
+    parts = [ "t3code" ];
+  };
+
   # Rendered here rather than read back from the module, so a mutation of the
   # declaration turns the check red. Scalars are assigned, objects T3 Code
   # may extend are declared leaf by leaf, the model selections, which T3
-  # Code writes whole, are owned whole, and a retired key is removed.
-  settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
-    builtins.toJSON {
-      set = {
-        addProjectBaseDirectory = "~/src";
-        autoResumeLimitedThreads = true;
-        branchNamingMode = "semantic";
-        defaultAutoPull = true;
-        enableAgentDeviceAccess = true;
-        enableDeviceSupport = true;
-        snoozeLimitedThreads = true;
-      };
-      remove = [ "defaultThreadEnvMode" ];
-      setPaths = [
+  # Code writes whole, are owned whole, and a retired key is removed. The
+  # Claude instance's launch argument names the home, so the declaration is
+  # rendered per configuration.
+  settingsExpected =
+    home:
+    instructions.declare {
+      name = "t3code-expected-settings.json";
+      base = settingsExpectedBase home;
+      leaves = [
         {
           path = [
-            "providers"
-            "antigravity"
-            "enabled"
+            "providerInstances"
+            "codex"
+            "config"
+            "launchArgs"
           ];
-          value = true;
-        }
-        {
-          path = [
-            "sourceControlWritingStyle"
-            "mode"
-          ];
-          value = "conventional_commits";
-        }
-        {
-          path = [
-            "storageCleanup"
-            "browserArtifactsAfterDays"
-          ];
-          value = 8;
-        }
-        {
-          path = [
-            "storageCleanup"
-            "logsAfterDays"
-          ];
-          value = 8;
-        }
-        {
-          path = [
-            "storageCleanup"
-            "worktreeAfterDays"
-          ];
-          value = 8;
-        }
-        {
-          path = [
-            "storageCleanup"
-            "worktreeOnDelete"
-          ];
-          value = true;
-        }
-        {
-          path = [
-            "storageCleanup"
-            "worktreeOnMerge"
-          ];
-          value = true;
-        }
-        {
-          path = [
-            "storageCleanup"
-            "worktreeUnchanged"
-          ];
-          value = true;
+          encoding = "codex-launch";
+          source = instructions.render {
+            harness = "codex";
+            parts = [
+              "system"
+              "t3code"
+            ];
+          };
         }
       ];
-      own = {
-        defaultModelSelection = {
-          instanceId = "claudeAgent";
-          model = "claude-opus-5-5";
-        };
-        textGenerationModelSelection = {
-          instanceId = "antigravity";
-          model = "gemini-3.8-flash-low";
-        };
-      };
-    }
-  );
+    };
 
-  clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
-    builtins.toJSON {
-      set.fontFamilyCode = "JetBrains Mono";
-      remove = [ ];
-      setPaths = [ ];
-      own = { };
-    }
-  );
+  settingsExpectedBase =
+    home:
+    pkgs.writeText "t3code-expected-base-settings.json" (
+      builtins.toJSON {
+        set = {
+          addProjectBaseDirectory = "~/src";
+          autoResumeLimitedThreads = true;
+          branchNamingMode = "semantic";
+          defaultAutoPull = true;
+          enableAgentDeviceAccess = true;
+          enableDeviceSupport = true;
+          snoozeLimitedThreads = true;
+        };
+        remove = [
+          "defaultThreadEnvMode"
+          "providers"
+        ];
+        upsertPaths = [
+          {
+            path = [
+              "providerInstances"
+              "claudeAgent"
+              "environment"
+            ];
+            key = "name";
+            value = {
+              name = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
+              value = "1";
+              sensitive = false;
+            };
+          }
+        ];
+        setPaths = [
+          {
+            path = [
+              "providerInstances"
+              "antigravity"
+              "driver"
+            ];
+            value = "antigravity";
+          }
+          {
+            path = [
+              "providerInstances"
+              "antigravity"
+              "enabled"
+            ];
+            value = true;
+          }
+          {
+            path = [
+              "providerInstances"
+              "claudeAgent"
+              "config"
+              "launchArgs"
+            ];
+            value = "--add-dir ${home}/.t3/instructions/claude-code";
+          }
+          {
+            path = [
+              "providerInstances"
+              "claudeAgent"
+              "driver"
+            ];
+            value = "claudeAgent";
+          }
+          {
+            path = [
+              "providerInstances"
+              "codex"
+              "driver"
+            ];
+            value = "codex";
+          }
+          {
+            path = [
+              "sourceControlWritingStyle"
+              "mode"
+            ];
+            value = "conventional_commits";
+          }
+          {
+            path = [
+              "storageCleanup"
+              "browserArtifactsAfterDays"
+            ];
+            value = 8;
+          }
+          {
+            path = [
+              "storageCleanup"
+              "logsAfterDays"
+            ];
+            value = 8;
+          }
+          {
+            path = [
+              "storageCleanup"
+              "worktreeAfterDays"
+            ];
+            value = 8;
+          }
+          {
+            path = [
+              "storageCleanup"
+              "worktreeOnDelete"
+            ];
+            value = true;
+          }
+          {
+            path = [
+              "storageCleanup"
+              "worktreeOnMerge"
+            ];
+            value = true;
+          }
+          {
+            path = [
+              "storageCleanup"
+              "worktreeUnchanged"
+            ];
+            value = true;
+          }
+        ];
+        own = {
+          defaultModelSelection = {
+            instanceId = "claudeAgent";
+            model = "claude-opus-5-5";
+          };
+          textGenerationModelSelection = {
+            instanceId = "antigravity";
+            model = "gemini-3.8-flash-low";
+          };
+        };
+      }
+    );
+
+  clientSettingsExpected =
+    _home:
+    pkgs.writeText "t3code-expected-client-settings.json" (
+      builtins.toJSON {
+        set.fontFamilyCode = "JetBrains Mono";
+        remove = [ ];
+        setPaths = [ ];
+        upsertPaths = [ ];
+        own = { };
+      }
+    );
 
   # Without string context, so neither the runtime nor the scripts the
   # activation names are built: the check compares the paths, and the paths
@@ -255,9 +353,21 @@ let
           lib.boolToString (activation != null)
         } ${esc (activation.data or "")} ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected}
+        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${
+          merge.expected (user.home.homeDirectory or "")
+        }
       ''
     ) merges
+    + (
+      let
+        file = user.home.file.t3code-claude-instructions or null;
+      in
+      ''
+        checkInstructions ${esc name} ${lib.boolToString expected} ${
+          lib.boolToString (file != null)
+        } ${esc (file.target or "")} ${esc (file.source or "")}
+      ''
+    )
     + (
       let
         activation = user.home.activation.t3codeAntigravity or null;
@@ -381,6 +491,10 @@ let
                 default = { };
               };
               options.home.activation = lib.mkOption {
+                type = lib.types.attrsOf lib.types.unspecified;
+                default = { };
+              };
+              options.home.file = lib.mkOption {
                 type = lib.types.attrsOf lib.types.unspecified;
                 default = { };
               };
@@ -582,6 +696,27 @@ pkgs.runCommand "t3code-traits" { } ''
     exercise ':' 0 || true
     if [ -f args ]; then
       echo "$name: the $attr activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
+      fail=1
+    fi
+  }
+
+  # $2 says whether the Claude Code T3 Code instructions belong on this
+  # configuration, $3 whether the file is declared; $4 is its target and $5
+  # its source.
+  checkInstructions() {
+    local name=$1 expected=$2 present=$3 target=$4 source=$5
+    if [ "$present" != "$expected" ]; then
+      echo "$name: ~/${claudeInstructionsTarget} is present=$present, either T3 Code trait on is $expected" >&2
+      fail=1
+      return
+    fi
+    [ "$present" = true ] || return 0
+    if [ "$target" != ${esc claudeInstructionsTarget} ]; then
+      echo "$name: the Claude Code T3 Code instructions must sit at ~/${claudeInstructionsTarget}, got '$target'" >&2
+      fail=1
+    fi
+    if [ -z "$source" ] || ! cmp -s "$source" ${claudeInstructionsExpected}; then
+      echo "$name: ~/${claudeInstructionsTarget} must hold the rendered Claude Code T3 Code part, got '$source'" >&2
       fail=1
     fi
   }

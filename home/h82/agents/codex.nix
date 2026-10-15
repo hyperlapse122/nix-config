@@ -53,12 +53,31 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
-  declared = pkgs.writeText "codex-declared-settings.json" (
-    builtins.toJSON {
-      setPaths = declaredPaths;
-      remove = retiredKeys;
-    }
-  );
+  # The system part of the agent instructions, added to Codex's base
+  # instructions in every session; ~/.codex/AGENTS.md carries the user part.
+  # T3 Code sessions get it again, with the T3 Code part, from the launch
+  # argument t3code.nix declares, which overrides this key.
+  instructions = import ./instructions/render.nix { inherit pkgs lib; };
+
+  declared = instructions.declare {
+    name = "codex-declared-settings.json";
+    base = pkgs.writeText "codex-declared-base.json" (
+      builtins.toJSON {
+        setPaths = declaredPaths;
+        remove = retiredKeys;
+      }
+    );
+    leaves = [
+      {
+        path = [ "developer_instructions" ];
+        encoding = "text";
+        source = instructions.render {
+          harness = "codex";
+          parts = [ "system" ];
+        };
+      }
+    ];
+  };
 in
 {
   # Unguarded and after installPackages for the reasons given on

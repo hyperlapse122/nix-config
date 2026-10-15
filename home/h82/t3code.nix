@@ -26,6 +26,18 @@ let
   merger = "${agentTools.agentSettings}/bin/agent-settings";
   installer = "${agentTools.t3codeAntigravityInstall}/bin/t3code-antigravity-install";
   linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
+  t3 = cfg.cli.enable || cfg.desktop.enable;
+
+  # The T3 Code part of the agent instructions reaches only sessions T3 Code
+  # starts, through each instance's launch arguments; a terminal session never
+  # reads it. Claude Code loads CLAUDE.md from a directory passed with
+  # --add-dir when CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD is set, which
+  # the instance environment sets. --append-system-prompt-file would not work:
+  # T3 Code's own appended prompt, sent at initialize, replaces it. Codex
+  # takes developer_instructions as a -c override, which replaces the
+  # config.toml value codex.nix declares, so it carries the system part too.
+  instructions = import ./agents/instructions/render.nix { inherit pkgs lib; };
+  claudeInstructionsDir = ".t3/instructions/claude-code";
 
   # The Antigravity instances this file selects a model on. Each gets its home
   # prepared on activation, so the plugins and instructions are there before
@@ -41,10 +53,10 @@ let
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. App
-  # state (onboarding marks, folded panels, favorites, the provider instances
-  # the app writes during setup) stays the app's. T3 Code leaves its built-in
-  # Antigravity provider off until providers.antigravity.enabled is set, so it
-  # never shows up on its own.
+  # state (onboarding marks, folded panels, favorites, and every provider
+  # instance field not declared here) stays the app's. T3 Code leaves its
+  # built-in Antigravity instance off until it is enabled, so it never shows
+  # up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -52,7 +64,17 @@ let
     defaultAutoPull = true;
     enableAgentDeviceAccess = true;
     enableDeviceSupport = true;
-    providers.antigravity.enabled = true;
+    providerInstances = {
+      antigravity = {
+        driver = "antigravity";
+        enabled = true;
+      };
+      claudeAgent = {
+        driver = "claudeAgent";
+        config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
+      };
+      codex.driver = "codex";
+    };
     snoozeLimitedThreads = true;
     sourceControlWritingStyle.mode = "conventional_commits";
     storageCleanup = {
@@ -70,7 +92,31 @@ let
   # written value on every machine forever. Move it here instead, and delete
   # the entry once every host has rebuilt past it. defaultThreadEnvMode is left
   # to each repository's t3.json, which a value in settings.json outranks.
-  retiredKeys = [ "defaultThreadEnvMode" ];
+  # providers is the retired per-kind block T3 Code migrates into
+  # providerInstances once and then deletes.
+  retiredKeys = [
+    "defaultThreadEnvMode"
+    "providers"
+  ];
+
+  # The instance environment is a list the app also edits, so the one entry
+  # is upserted by name and the user's other entries stay. `sensitive` is the
+  # value the app writes back, so a later activation finds nothing to change.
+  upserts = [
+    {
+      path = [
+        "providerInstances"
+        "claudeAgent"
+        "environment"
+      ];
+      key = "name";
+      value = {
+        name = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
+        value = "1";
+        sensitive = false;
+      };
+    }
+  ];
 
   # T3 Code writes a model selection whole, with options that belong to the
   # chosen model, so a selection is owned rather than merged leaf by leaf:
@@ -99,10 +145,10 @@ let
       [ { inherit path value; } ];
 
   render =
-    name: values: owned: remove:
+    name: values: owned: remove: upsertPaths:
     pkgs.writeText name (
       builtins.toJSON {
-        inherit remove;
+        inherit remove upsertPaths;
         set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
         setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
         own = owned;
@@ -112,11 +158,32 @@ let
   merges = {
     t3codeSettings = {
       file = "settings.json";
-      declared = render "t3code-declared-settings.json" settings modelSelections retiredKeys;
+      declared = instructions.declare {
+        name = "t3code-declared-settings.json";
+        base = render "t3code-declared-base-settings.json" settings modelSelections retiredKeys upserts;
+        leaves = [
+          {
+            path = [
+              "providerInstances"
+              "codex"
+              "config"
+              "launchArgs"
+            ];
+            encoding = "codex-launch";
+            source = instructions.render {
+              harness = "codex";
+              parts = [
+                "system"
+                "t3code"
+              ];
+            };
+          }
+        ];
+      };
     };
     t3codeClientSettings = {
       file = "client-settings.json";
-      declared = render "t3code-declared-client-settings.json" clientSettings { } [ ];
+      declared = render "t3code-declared-client-settings.json" clientSettings { } [ ] [ ];
     };
   };
 in
@@ -155,7 +222,15 @@ in
   # refusal on one does not hide the other. Ordered after installPackages, as
   # the Claude Code merge in agents/claude.nix is, so a refusal cannot strand
   # linkGeneration. `run` leaves the files alone on a dry run.
-  home.activation = lib.mkIf (cfg.cli.enable || cfg.desktop.enable) (
+  home.file.t3code-claude-instructions = lib.mkIf t3 {
+    target = "${claudeInstructionsDir}/CLAUDE.md";
+    source = instructions.render {
+      harness = "claude-code";
+      parts = [ "t3code" ];
+    };
+  };
+
+  home.activation = lib.mkIf t3 (
     lib.mapAttrs (
       _: merge:
       lib.hm.dag.entryAfter [ "installPackages" ] ''

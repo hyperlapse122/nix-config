@@ -19,7 +19,10 @@
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
   - the `--declared` store file is identical to the declaration restated as
-    literals here, so a dropped or changed key turns this red.
+    literals here, plus `developer_instructions` holding the rendered Codex
+    system part, so a dropped or changed key turns this red.
+  - that `developer_instructions` value never mentions T3 Code: the T3 Code
+    part reaches Codex only through T3 Code's launch arguments.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
@@ -39,7 +42,9 @@ let
 
   settingsFile = ".codex/config.toml";
 
-  expected = pkgs.writeText "codex-expected-settings.json" (
+  instructions = import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; };
+
+  expectedBase = pkgs.writeText "codex-expected-base.json" (
     builtins.toJSON {
       setPaths = [
         {
@@ -71,6 +76,21 @@ let
       remove = [ ];
     }
   );
+
+  expected = instructions.declare {
+    name = "codex-expected-settings.json";
+    base = expectedBase;
+    leaves = [
+      {
+        path = [ "developer_instructions" ];
+        encoding = "text";
+        source = instructions.render {
+          harness = "codex";
+          parts = [ "system" ];
+        };
+      }
+    ];
+  };
 
   assertHost =
     entry:
@@ -135,6 +155,12 @@ let
         elif ! diff -u "$declaredPath" ${expected} >/dev/null; then
           echo 'the declared keys codexSettings renders drifted from the asserted values on ${hostName}' >&2
           failed=1
+        elif ! python3 -c 'import json, sys
+        paths = json.load(open(sys.argv[1]))["setPaths"]
+        values = [entry["value"] for entry in paths if entry["path"] == ["developer_instructions"]]
+        sys.exit(0 if len(values) == 1 and values[0].startswith("# Tool use") and "T3 Code" not in values[0] else 1)' "$declaredPath"; then
+          echo 'codexSettings must declare developer_instructions once, as the system part without T3 Code, on ${hostName}' >&2
+          failed=1
         fi
       '';
     in
@@ -146,15 +172,22 @@ let
       fi
     '';
 in
-pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
-  ${configurations.guard}
-  failed=0
+pkgs.runCommand "codex-settings-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.diffutils
+      pkgs.python3
+    ];
+  }
+  ''
+    ${configurations.guard}
+    failed=0
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+    ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
 
-  touch $out
-''
+    touch $out
+  ''
