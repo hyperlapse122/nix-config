@@ -50,7 +50,6 @@ let
     autoResumeLimitedThreads = true;
     branchNamingMode = "semantic";
     defaultAutoPull = true;
-    defaultThreadEnvMode = "worktree";
     enableAgentDeviceAccess = true;
     enableDeviceSupport = true;
     providers.antigravity.enabled = true;
@@ -65,6 +64,13 @@ let
       worktreeUnchanged = true;
     };
   };
+
+  # Keys that used to be declared. agent-settings removes these: the merge only
+  # assigns, so dropping a key from settings alone would leave its last
+  # written value on every machine forever. Move it here instead, and delete
+  # the entry once every host has rebuilt past it. defaultThreadEnvMode is left
+  # to each repository's t3.json, which a value in settings.json outranks.
+  retiredKeys = [ "defaultThreadEnvMode" ];
 
   # T3 Code writes a model selection whole, with options that belong to the
   # chosen model, so a selection is owned rather than merged leaf by leaf:
@@ -93,9 +99,10 @@ let
       [ { inherit path value; } ];
 
   render =
-    name: values: owned:
+    name: values: owned: remove:
     pkgs.writeText name (
       builtins.toJSON {
+        inherit remove;
         set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
         setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
         own = owned;
@@ -105,11 +112,11 @@ let
   merges = {
     t3codeSettings = {
       file = "settings.json";
-      declared = render "t3code-declared-settings.json" settings modelSelections;
+      declared = render "t3code-declared-settings.json" settings modelSelections retiredKeys;
     };
     t3codeClientSettings = {
       file = "client-settings.json";
-      declared = render "t3code-declared-client-settings.json" clientSettings { };
+      declared = render "t3code-declared-client-settings.json" clientSettings { } [ ];
     };
   };
 in

@@ -119,8 +119,8 @@ let
 
   # Rendered here rather than read back from the module, so a mutation of the
   # declaration turns the check red. Scalars are assigned, objects T3 Code
-  # may extend are declared leaf by leaf, and the model selections, which T3
-  # Code writes whole, are owned whole.
+  # may extend are declared leaf by leaf, the model selections, which T3
+  # Code writes whole, are owned whole, and a retired key is removed.
   settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
     builtins.toJSON {
       set = {
@@ -128,11 +128,11 @@ let
         autoResumeLimitedThreads = true;
         branchNamingMode = "semantic";
         defaultAutoPull = true;
-        defaultThreadEnvMode = "worktree";
         enableAgentDeviceAccess = true;
         enableDeviceSupport = true;
         snoozeLimitedThreads = true;
       };
+      remove = [ "defaultThreadEnvMode" ];
       setPaths = [
         {
           path = [
@@ -208,6 +208,7 @@ let
   clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
     builtins.toJSON {
       set.fontFamilyCode = "JetBrains Mono";
+      remove = [ ];
       setPaths = [ ];
       own = { };
     }
