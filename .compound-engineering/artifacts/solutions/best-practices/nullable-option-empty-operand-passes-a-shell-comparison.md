@@ -104,7 +104,7 @@ The shell's treatment of an empty numeric operand is what converts the gap into 
 
 ## Examples
 
-The round that matters, which passed before the fix and fails after it:
+The null-limit round, which passed before the fix and fails after it:
 
 ```sh
 # mutate: an unbounded boot menu
@@ -118,7 +118,7 @@ nix build --no-link .#checks.x86_64-linux.nix-cleanup
 | `configurationLimit = 15` | the limit raised past the floor | red, from the other side | same |
 | `configurationLimit = null` | the limit removed entirely | **green** — `[ "10" -lt '' ]` errored and the branch was skipped | red, in the builder: `the boot loader configurationLimit is null, so the boot menu offers every surviving generation and no finite retention count can cover it` |
 
-The third row is the whole learning. The first two rows are what makes it invisible: a mutation suite that only moves the limit *within* its integer range scores full marks on an assertion that fails open at the range's edge.
+Only the third row fails open. The first two rows hide that: a mutation suite that only moves the limit *within* its integer range scores full marks on an assertion that fails open at the range's edge.
 
 The shell behavior on its own, reproducible without Nix:
 

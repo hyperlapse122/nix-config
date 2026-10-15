@@ -1,57 +1,49 @@
 { pkgs, lib, ... }:
 let
-  # Every harness renders the one template, which branches on `.harness.id`
-  # for the native-tool section. `name` is what the text calls the harness, and
-  # the target is the user-level instruction file it loads in every workspace.
+  inherit (import ./render.nix { inherit pkgs lib; }) render;
+
+  # The user-level instruction file each harness loads in every workspace, and
+  # the parts it carries. A file whose harness has no added-system-prompt
+  # channel on any path carries the system part merged in; Codex takes its
+  # system part through `developer_instructions` (codex.nix). The T3 Code part
+  # never lands here: t3code.nix delivers it through T3 Code's settings.
   #
   # The Antigravity CLI loads both ~/.gemini/GEMINI.md and
   # ~/.gemini/config/AGENTS.md as global rules. The first is also the Gemini
   # CLI's global context file, which would hand Antigravity's tool names to a
   # different harness, so this uses the second.
-  harnesses = {
+  terminalFiles = {
     claude-code = {
-      name = "Claude Code";
       target = ".claude/CLAUDE.md";
+      parts = [
+        "system"
+        "user"
+      ];
     };
     antigravity = {
-      name = "Antigravity";
       target = ".gemini/config/AGENTS.md";
+      parts = [
+        "system"
+        "user"
+      ];
     };
     codex = {
-      name = "Codex";
       target = ".codex/AGENTS.md";
+      parts = [ "user" ];
     };
   };
-
-  # Rendered with gomplate, whose templates are Go text/template. A missing
-  # context key, or a harness id the template has no branch for, fails the
-  # build rather than shipping `<no value>` or a file without its tool section.
-  render =
-    id: harness:
-    let
-      context = pkgs.writeText "agent-instructions-${id}.json" (
-        builtins.toJSON {
-          inherit id;
-          inherit (harness) name;
-        }
-      );
-    in
-    pkgs.runCommand "agent-instructions-${id}.md" { nativeBuildInputs = [ pkgs.gomplate ]; } ''
-      gomplate \
-        --missing-key error \
-        --context harness=file://${context} \
-        --file ${./instructions.md.tmpl} \
-        --out $out
-    '';
 in
 {
   # Plain store links: no harness rewrites these files, unlike the
   # settings files claude.nix, codex.nix, and gemini.nix merge at activation.
   home.file = lib.mapAttrs' (
-    id: harness:
-    lib.nameValuePair "agent-instructions-${id}" {
-      inherit (harness) target;
-      source = render id harness;
+    harness: file:
+    lib.nameValuePair "agent-instructions-${harness}" {
+      inherit (file) target;
+      source = render {
+        inherit harness;
+        inherit (file) parts;
+      };
     }
-  ) harnesses;
+  ) terminalFiles;
 }

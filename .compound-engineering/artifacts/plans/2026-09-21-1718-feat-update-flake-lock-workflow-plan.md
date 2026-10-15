@@ -23,7 +23,7 @@ execution: code
 
 ### Summary
 
-Add a dedicated GitHub Actions workflow (`.github/workflows/update-flake-lock.yml`) that automatically checks for and updates Nix flake dependencies to their latest upstream channel revisions. The workflow runs weekly on a cron schedule and supports manual on-demand execution via `workflow_dispatch`. When changes are detected, it opens a pull request with Conventional Commit formatting (`chore(flake): update flake.lock`), automated labels, and an informative diff summary.
+Add a dedicated GitHub Actions workflow (`.github/workflows/update-flake-lock.yml`) that automatically checks for and updates Nix flake dependencies to their latest upstream channel revisions. The workflow runs weekly on a cron schedule and supports manual on-demand execution via `workflow_dispatch`. When changes are detected, it opens a pull request with Conventional Commit formatting (`chore(flake): update flake.lock`), automated labels, and a diff summary.
 
 ### Problem Frame
 
@@ -32,10 +32,10 @@ The repository manages a NixOS configuration tracking `nixos-unstable` along wit
 ### Key Decisions
 
 - **KD1. Dedicated workflow file over modifying existing check.yml**: Place the update automation in `.github/workflows/update-flake-lock.yml` rather than combining it with PR verification jobs in `check.yml` (session-settled: user-directed — chosen over monolithic workflow: isolates trigger events, security permissions, and schedule cadences). Governs R1, R2.
-- **KD2. Use DeterminateSystems/update-flake-lock action**: Leverage the community standard `DeterminateSystems/update-flake-lock` action pinned to v28 (SHA `834c491b2ece4de0bbd00d85214bb5e83b4da5c6`) alongside existing `cachix/install-nix-action` (chosen over custom git/gh shell scripts: handles PR creation, existing PR reuse/re-basing, branch management, and Markdown input diff generation out-of-the-box). Governs R3, R4, R5.
+- **KD2. Use DeterminateSystems/update-flake-lock action**: Use the community-standard `DeterminateSystems/update-flake-lock` action pinned to v28 (SHA `834c491b2ece4de0bbd00d85214bb5e83b4da5c6`) alongside existing `cachix/install-nix-action` (chosen over custom git/gh shell scripts: handles PR creation, existing PR reuse/re-basing, branch management, and Markdown input diff generation out-of-the-box). Governs R3, R4, R5.
 - **KD3. Conventional Commits and standard PR labeling**: Title PRs and commits with `chore(flake): update flake.lock` to conform with repo guidelines in `AGENTS.md` (imperative, lowercase conventional subject under 50 characters). Label PRs with `dependencies` and `automated`. Governs R4, R5.
 - **KD4. Dual trigger with flexible dispatch input**: Support both weekly cron schedule (`0 6 * * 1` - Mondays at 06:00 UTC) and manual `workflow_dispatch` with an optional `target_inputs` parameter allowing targeted or full updates. Governs R2.
-- **KD5. Token flexibility for downstream CI triggers**: Accept `secrets.GH_TOKEN_FOR_UPDATES || secrets.GITHUB_TOKEN` so a repository-configured fine-grained PAT or GitHub App token can automatically trigger downstream CI checks on generated PRs, while falling back gracefully to the default runner token. Governs R6.
+- **KD5. Token flexibility for downstream CI triggers**: Accept `secrets.GH_TOKEN_FOR_UPDATES || secrets.GITHUB_TOKEN` so a repository-configured fine-grained PAT or GitHub App token can automatically trigger downstream CI checks on generated PRs, and falling back to the default runner token otherwise. Governs R6.
 
 ### Requirements
 

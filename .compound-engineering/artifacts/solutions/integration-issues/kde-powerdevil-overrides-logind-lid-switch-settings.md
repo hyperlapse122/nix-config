@@ -45,7 +45,7 @@ Write these with `kwriteconfig6 --file powerdevilrc --group <Profile> --group Su
 
 ## Why This Works
 
-The inhibitor, not the option, decides which subsystem is authoritative. Reading only the option surface (what NixOS renders) misses that a downstream consumer — an entirely separate daemon with its own D-Bus lifecycle — can hold an exclusive lock on the event this option claims to control. The fix works because it configures the component that upstream evidence shows is actually asking systemd-logind to step aside, rather than the component whose configuration surface merely looks correct.
+The inhibitor, not the option, decides which subsystem is authoritative. What NixOS renders for the option does not show that a separate daemon with its own D-Bus lifecycle can hold an exclusive lock on the event the option claims to control. The fix configures the component that, per the upstream source, asks systemd-logind to step aside.
 
 ## Prevention
 

@@ -3,149 +3,72 @@
 
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
-  Asserts that the shared agent instructions reach each harness's user-level
-  instruction file for user `h82` on every host this flake declares, rendered
-  by gomplate from the one shared template with that harness's context.
+  Asserts that the shared agent instructions reach every delivery path for
+  user `h82` on every host this flake declares, each part exactly once. The
+  template renders three parts: system (tool use, GPG, model routing), user
+  (review findings, learning refresh, branch names, commit hooks, pull and
+  merge requests, issue media), and T3 Code (the rules that only apply inside
+  T3 Code). The channels, and the parts each must hold:
 
-  The user list is `userEntries` from `tests/lib/configurations.nix`: the h82
-  generation of every NixOS configuration and of every non-NixOS fixture host,
-  so a host of either kind added later is covered the day it is added, and the
-  helper's guard fails the build when either kind is missing instead of
-  letting it pass.
+    Claude Code   ~/.claude/CLAUDE.md                          system + user
+                  ~/.t3/instructions/claude-code/CLAUDE.md     T3 Code
+    Antigravity   ~/.gemini/config/AGENTS.md                   system + user
+    Codex         ~/.codex/AGENTS.md                           user
+                  config.toml developer_instructions           system
+                  T3 Code launch -c developer_instructions     system + T3 Code
 
-  Verifies, per Home Manager user and per harness:
-  - exactly one enabled Home Manager file resolves to the harness's target.
+  A terminal session reads the first row of each harness, plus Codex's
+  developer_instructions. A T3 Code session also reads the Claude Code T3
+  Code file, which the Claude instance's --add-dir loads, and Codex's launch
+  override, which replaces developer_instructions. Antigravity under T3 Code
+  has no channel yet and is not checked.
+
+  The user list is `userEntries` from `tests/lib/configurations.nix`, plus each
+  production configuration and this architecture's production fixtures
+  re-evaluated with both T3 Code traits forced off. The guard fails the build
+  when either side, T3 Code on or off, holds no user, or when a forced-off
+  user still has a trait on, so neither side passes by covering nothing. See
+  .compound-engineering/artifacts/solutions/best-practices/removing-a-host-empties-one-side-of-a-partitioned-check.md
+
+  Verifies, per Home Manager user:
+  - exactly one enabled Home Manager file resolves to each terminal target,
+    and to the Claude Code T3 Code target exactly when a T3 Code trait is on.
     The lookup compares each entry's resolved `target` rather than its
     attribute name, and reads `enable`, because either can move the file
     without changing its text. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
-  - the materialized file carries the shared body's opening sentence with this
-    harness's name filled in, so a context carrying the other harness's name
-    fails.
-  - it carries the shared review-findings rule: the coverage of every
-    `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` finding, its
-    override of those skills' and their callers' apply bars, deferral steps,
-    and review prompts, the outlets a finding may not be parked in, and the
-    stop when an autonomous fix would reverse a user decision, so any of those
-    sentences dropped or moved into one harness's branch fails.
+  - Codex's developer_instructions is read from the declared file the
+    codexSettings activation passes the merger. The launch override is read
+    from the t3codeSettings declared file, split as a shell would split it and
+    decoded as TOML, so a broken `'` or `"` escape fails. The Claude
+    instance's launch arguments must be `--add-dir` the directory of the T3
+    Code file, with the environment variable that makes Claude Code load it.
+  - on each delivery path, every pinned sentence of each part the path
+    carries appears exactly once, and no pinned sentence of another part
+    appears, so a part dropped, doubled, or delivered to the wrong path fails.
+  - in each channel, the parts it holds pass their sentence rules, and no
+    channel without the T3 Code part contains the string `T3 Code`:
+    - system: the opening sentence with this harness's name, the GPG rule
+      with every sentence pinned, the model-routing rule with each table row
+      matched whole, and every native tool its harness maps.
+    - user: the review-findings, learning-refresh, branch-name, and media
+      rules, and the commit-hook and pull and merge request rules with every
+      sentence pinned, in order, inside their sections.
+    - T3 Code: the T3 Code introduction in order, the cross-model delegation
+      rules inside their section with only pinned sentences naming
+      Antigravity or Argon or speaking of waiting, and the T3 Code pull and
+      merge request rules with every sentence pinned, in order.
   - every required sentence starts where a sentence starts, so a guarded
     sentence negated by a prefix ("Do not ...") fails.
-  - it carries the shared model-routing defaults: their precedence below the
-    conversation, project instructions, and CE config, the one-line reason for
-    leaving the table, the tier-to-row mapping, the broad-scout fallback, the
-    excluded models, default effort, where same-provider and cross-provider
-    routing apply, the inherit-and-say rule, and each row of the role table
-    matched whole, so any sentence dropped, reworded, or moved into one
-    harness's branch, or any cell changed, fails.
-  - it carries the shared cross-model delegation rules through the T3 Code
-    MCP server: when they apply, that a skill's gates decide before T3 Code
-    replaces its launch route, choosing the latest runnable version of a
-    model class and when an older one is allowed, the Gemini classes placed
-    against the Claude classes, taking a cross-model pass's model and effort
-    from the skill, the Antigravity Argon peer inside that pass with its
-    gates, recipient restrictions, and skip, full-access runtime mode,
-    running a skill's cross-model review pass alongside its in-process
-    reviewers, the retry and fallback order, the retry that skips a provider
-    already serving the pass, verifying a delegated result, and how a
-    delegation returns and is waited for: `async` by default with a
-    completion notification, the result read with one `task_status` call,
-    when to launch with `mode: "wait"` and what follows `waitTimedOut`,
-    ending the turn until every awaited task has notified, no status polling
-    or self-wake, one status read after each notification and otherwise
-    only in a turn no delegation notification started, subagents returning
-    their task IDs instead of ending their turn to wait, and ending the turn
-    despite a skill's rule against it, so any of those sentences dropped,
-    reworded, negated, or moved into one harness's branch or out of the
-    Cross-model delegation section fails.
-  - every sentence in its Cross-model delegation section that names
-    Antigravity or Argon is one of those pinned sentences, so a reversal
-    added beside a pinned sentence fails.
-  - every sentence in that section that speaks of `task_status`, polling,
-    notifications, waiting, waking, blocking, sleeping, timers, checking,
-    finishing, background work, or scheduling is one of the pinned wait
-    sentences, so an added "keep polling" or "wait five minutes and check"
-    fails.
-  - it carries no superseded directive: delegating before a skill's own
-    gates, setting effort instead of inheriting a model's default, the
-    review-findings rule that named only `ce-code-review` and
-    `ce-simplify-code`, Flash as the only Gemini class, a Flash retry on
-    Antigravity, or an Argon peer at high effort, so any of them added back
-    beside its replacement fails.
-  - it exists and is non-empty.
-  - it carries the shared learning-refresh rule: check the commits a push
-    would send for broken learnings, which commits those are, leave a learning
-    already marked stale alone, one `ce-compound-refresh` run per learning scoped by
-    its filename, `mode:non-interactive` in autonomous runs, the refresh as
-    its own commit on the current branch, and one push after every run, so
-    any of those sentences dropped or moved into one harness's branch fails.
-  - it carries the shared branch-name rule: rename a placeholder before the
-    first push, what counts as a tool-generated placeholder (including a
-    random-hex branch), only a branch never pushed, and the
-    `type/short-kebab-slug` fallback, so any of those sentences dropped or
-    moved into one harness's branch fails.
-  - it carries the shared commit-hook rule under its `# Commit hooks` heading:
-    why a hook's temporary copy trips mise, retrying that one commit with
-    `MISE_TRUSTED_CONFIG_PATHS` set to the resolved temporary root, resolving
-    it with `pwd -P`, reporting a retry that fails the same way, never
-    `mise trust` on a temporary directory or `--no-verify`, and reporting
-    when the checkout's own `mise.toml` is untrusted. Every sentence in that
-    section must be pinned, in order, so a missing heading, or any of those
-    sentences dropped, reworded, negated, contradicted by an added sentence,
-    duplicated, reordered, moved into another section, or moved into one
-    harness's branch, fails.
-  - it carries the shared GPG rule under its `# GPG and encryption` heading:
-    the always-connected card with its cached PIN, running GPG and SOPS work
-    without handing it to the user, letting pinentry reach the user, when to
-    stop and report, keeping decrypted values out of output, arguments, and
-    file tools, leaving card administration to the user, the card key by
-    fingerprint for a new setup with a machine recipient beside it, and
-    keeping a project's existing method. Every sentence in that section must
-    be pinned, so a missing heading, or any of those sentences dropped,
-    reworded, negated, contradicted by an added sentence, or moved into one
-    harness's branch, fails.
-  - it carries the shared pull and merge request rule under its
-    `# Pull and merge requests` heading: GitLab as a normal forge, running
-    GitHub-only skills through `glab` with the concept and command map,
-    skipping only steps with no counterpart, babysitting every request opened
-    or pushed without being asked and drafts only on request, the T3 Code
-    link, first tick, watch, and tick order, the settle-window and 30-minute fallback
-    waits, when the T3 Code tools count as available, T3 Code's watch
-    replacing only the wait on every path, one invocation across every wake,
-    `lfg` printing DONE at its CI-decided stop and babysitting on after it,
-    the bounded bridge watcher after a failed T3 Code call, a failed unwatch
-    at a stop, the skill rules that give way inside T3 Code, the paths
-    without T3 Code and the GitLab watcher's exit events, the
-    GitLab tick's state, a successful head pipeline as readiness evidence,
-    the GitLab settle window, missing CI and pending approval as blockers,
-    never rebasing on GitLab, unwatching before hand-back, and leaving the
-    forge substitution out of the report. Every sentence in that section must
-    be pinned, in order, so a missing heading, or any of those sentences
-    dropped, reworded, negated, contradicted by an added sentence, duplicated,
-    reordered, moved into another section, or moved into one harness's branch,
-    fails.
-  - it carries the shared issue and pull request media rule: which GitHub and
-    GitLab items it covers, attaching the conversation's media, capturing
-    media when showing would help and when not to, logs as code blocks,
-    before-and-after states for visible changes, masking with an opaque box
-    placed at the file's real pixel size, stripping metadata, when a file is
-    left out, viewing masked files and dense video frames before upload, CLI
-    or API upload only, the `gh --attach` commands and the separate-comment
-    fallback, the GitLab uploads API and its authentication check on the
-    project that receives the upload, reporting failed uploads, and keeping a skill's body
-    structure, so any of those sentences dropped, reworded, negated, or moved
-    into one harness's branch fails.
-  - it names every native tool its harness template maps, and none of the
-    other harnesses', so a branch keyed on the wrong id, or swapped targets,
-    fail.
-  - no template action (`{{`, `}}`) or `<no value>` survives in it, which is
-    what gomplate prints for a missing key when `--missing-key error` is lost.
+  - no channel carries a superseded directive, another harness's native
+    tool, an unrendered template action (`{{`, `}}`), or `<no value>`.
 
-  The expected sentence and tool names are literals here, not read from the
-  module, so a mutation of the templates turns this red.
+  The expected sentences and tool names are literals here, not read from the
+  module, so a mutation of the template turns this red.
 
-  Every lookup carries an `or` fallback and the store path is interpolated only
-  inside the present branch, so a removed declaration fails inside the builder
-  rather than during evaluation. See
+  Every lookup carries an `or` fallback and each store path is interpolated
+  only inside its present branch, so a removed declaration fails inside the
+  builder rather than during evaluation. See
   .compound-engineering/artifacts/solutions/best-practices/unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md
 
   The builder collects every failure instead of exiting at the first, so one
@@ -215,6 +138,30 @@ let
     "When a skill step has no GitLab counterpart, such as a `gh stack` posture, skip only that step, keep the rest of the procedure, and name the skipped step in your report."
     "After you open a pull or merge request, or push to one, start babysitting it without being asked, in interactive and autonomous runs alike."
     "Babysit a draft only when the user asked you to watch that draft; otherwise report it as a draft and arm no watch."
+    "Babysit a GitHub pull request with `ce-babysit-pr` unchanged."
+    "Babysit a GitLab merge request with the same ticks and a background watcher that polls every two to three minutes and exits when the head pipeline finishes, a note or discussion appears, the conflict or merge status changes, or the merge request closes or merges."
+    "Never wait in a foreground sleep loop; when your harness cannot run a background command, report the open request and how to resume babysitting."
+    "On GitLab, read each tick's state from `glab mr view <id> -F json` (`state`, `draft`, `sha`, `head_pipeline`, `detailed_merge_status`, `has_conflicts`, `blocking_discussions_resolved`) and from `glab mr note list <id> -F json`."
+    "Call a merge request ready only when `head_pipeline.sha` equals `sha`, `head_pipeline.status` is `success`, `detailed_merge_status` is `mergeable`, no discussion is unresolved, no note or `needs-human` item is unhandled, and the settle window has passed."
+    "A `glab ci status` result or an empty pipeline list is not evidence that a merge request is ready."
+    "On GitLab, the settle window is 300 seconds with no new push, note, or discussion, the default `ce-babysit-pr` uses, unless the project sets another."
+    "When no pipeline runs for `sha` once the settle window has passed, report the missing CI evidence as a blocker for the user instead of calling the merge request ready."
+    "When only an approval stands between the merge request and `mergeable`, such as `detailed_merge_status` `not_approved`, wait one more settle window for review activity, then report the wait for that approval as a blocker for the user."
+    "On GitLab, never rebase: report a branch that is behind or conflicts with its target as a blocker for the user."
+    "When babysitting reaches looks-ready, a blocker, or its budget, stop your background waits before you hand back, and leave the merge to the user."
+    "Using `glab` instead of `gh` is not a decision you made on the user's behalf; leave it out of the report, and mention the forge only for a skipped step or a blocker."
+  ];
+
+  t3IntroSentences = [
+    "This session runs inside T3 Code."
+    "These rules add to the Tool use, Model routing, and Pull and merge requests sections of your other instructions, and where they differ, these rules take precedence."
+    "Route to another provider only through T3 Code, as Cross-model delegation describes."
+    "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
+    "When your native subagent tool cannot select the table's class, delegate through T3 Code as Cross-model delegation describes instead of letting the subagent inherit your session model."
+  ];
+
+  t3PullRequestSentences = [
+    "These rules replace the waits in Pull and merge requests while T3 Code can watch the request."
     "When the T3 Code pull request tools are available, call `link_pull_request` and run one babysit tick; unless that tick reached looks-ready or a blocker, call `watch_pull_request` and end your turn."
     "On each T3 Code wake, stop the background waits you started, then run one babysit tick in the skill's order: review feedback first, then CI on the current head, then branch currency."
     "When a tick finds the request ready except for the skill's settle window or its bounded wait for a review still coming, keep the watch and start a background wait for that window, then run another tick when it ends."
@@ -226,24 +173,20 @@ let
     "When those values are no longer in your context, read them back from the request's `state.json` in `ce-babysit-pr`'s state directory, and at a stack layer transition also pass `--continue-invocation` as the skill directs."
     "Under T3 Code, `lfg` runs a `ce-babysit-pr mode:pipeline` tick on each wake until one reaches its CI-decided stop, and prints its close-out and `<promise>DONE</promise>` in that turn."
     "In that close-out, say that T3 Code watches the request instead of pointing the user to run `ce-babysit-pr`."
-    "When that tick also reached looks-ready, a blocker, or the budget, unwatch as the stop rule below says; otherwise keep the watch and end the turn, and later wakes keep babysitting under the same invocation until looks-ready, a blocker, or the budget, with every delegate still in `mode:pipeline`."
+    "When that tick also reached looks-ready, a blocker, or the budget, unwatch as the stop rule in this section says; otherwise keep the watch and end the turn, and later wakes keep babysitting under the same invocation until looks-ready, a blocker, or the budget, with every delegate still in `mode:pipeline`."
     "A failed call to `link_pull_request` or `watch_pull_request`, such as `The calling provider no longer owns an active thread run`, does not make T3 Code unavailable: when `link_pull_request` failed, still call `watch_pull_request` in that turn, and while the watch has not succeeded, arm a bridge watcher in place of the 30-minute wait and retry each failed call at the next tick."
-    "The bridge watcher is `ce-babysit-pr`'s own watcher on GitHub and the GitLab background watcher below on GitLab, and you stop it after at most 30 minutes, so a retry tick runs even when the request has not changed."
+    "The bridge watcher is `ce-babysit-pr`'s own watcher on GitHub and the GitLab background watcher from Pull and merge requests on GitLab, and you stop it after at most 30 minutes, so a retry tick runs even when the request has not changed."
     "Once `watch_pull_request` succeeds, stop the bridge watcher and start the 30-minute wait."
     "When `unwatch_pull_request` fails at a babysitting stop, arm no bridge and schedule no tick, and say in your final report that T3 Code still watches the request."
-    "Inside T3 Code, these skill rules give way to this section: `ce-babysit-pr`'s default `pr-snapshot watch` sustain mode, except for the bridge watcher above, its pipeline mode's wait between ticks and its rule never to wait on the settle window or human review, `ce-commit-push-pr`'s rule against arming a watcher outside `ce-babysit-pr`, which does not reach `watch_pull_request` or the waits this section starts, `lfg`'s stop once CI is decided, its close-out line that points the user to `ce-babysit-pr`, and its rule not to end the turn before `<promise>DONE</promise>`."
-    "When T3 Code is unavailable, babysit a GitHub pull request with `ce-babysit-pr` unchanged."
-    "When T3 Code is unavailable, babysit a GitLab merge request with the same ticks and a background watcher that polls every two to three minutes and exits when the head pipeline finishes, a note or discussion appears, the conflict or merge status changes, or the merge request closes or merges."
-    "Never wait in a foreground sleep loop; when your harness cannot run a background command, rely on T3 Code's wakes alone, and when a tick then finds only a wait outstanding, call `unwatch_pull_request` and report the open request and how to resume babysitting."
-    "On GitLab, read each tick's state from `glab mr view <id> -F json` (`state`, `draft`, `sha`, `head_pipeline`, `detailed_merge_status`, `has_conflicts`, `blocking_discussions_resolved`) and from `glab mr note list <id> -F json`."
-    "Call a merge request ready only when `head_pipeline.sha` equals `sha`, `head_pipeline.status` is `success`, `detailed_merge_status` is `mergeable`, no discussion is unresolved, no note or `needs-human` item is unhandled, and the settle window has passed."
-    "A T3 Code wake, `glab ci status`, or an empty pipeline list is not evidence that a merge request is ready."
-    "On GitLab, the settle window is 300 seconds with no new push, note, or discussion, the default `ce-babysit-pr` uses, unless the project sets another."
-    "When no pipeline runs for `sha` once the settle window has passed, report the missing CI evidence as a blocker for the user instead of calling the merge request ready."
-    "When only an approval stands between the merge request and `mergeable`, such as `detailed_merge_status` `not_approved`, wait one more settle window for review activity, then report the wait for that approval as a blocker for the user."
-    "On GitLab, never rebase: report a branch that is behind or conflicts with its target as a blocker for the user."
-    "When babysitting reaches looks-ready, a blocker, or its budget, call `unwatch_pull_request` and stop your background waits before you hand back, and leave the merge to the user."
-    "Using `glab` instead of `gh`, or T3 Code's watch instead of the skill's watcher, is not a decision you made on the user's behalf; leave it out of the report, and mention the forge only for a skipped step or a blocker."
+    "Inside T3 Code, this section overrides these skill rules:"
+    "`ce-babysit-pr`'s default `pr-snapshot watch` sustain mode, except for the bridge watcher above;"
+    "`ce-babysit-pr`'s pipeline-mode wait between ticks, and its rule never to wait on the settle window or human review;"
+    "`ce-commit-push-pr`'s rule against arming a watcher outside `ce-babysit-pr`, which does not cover `watch_pull_request` or the waits this section starts;"
+    "`lfg`'s stop once CI is decided, its close-out line that points the user to `ce-babysit-pr`, and its rule not to end the turn before `<promise>DONE</promise>`."
+    "A T3 Code wake is not evidence that a merge request is ready."
+    "When a harness cannot run a background command, rely on T3 Code's wakes alone, and when a tick then finds only a wait outstanding, call `unwatch_pull_request` and report the open request and how to resume babysitting."
+    "When babysitting reaches looks-ready, a blocker, or its budget, call `unwatch_pull_request` before you hand back."
+    "Using T3 Code's watch instead of the skill's watcher is not a decision you made on the user's behalf; leave it out of the report."
   ];
 
   mediaSentences = [
@@ -273,14 +216,13 @@ let
     "Each routing choice follows this order: the user's conversation, then the project's instructions and its CE config (`.compound-engineering/config.local.yaml`, then `.compound-engineering/config.yaml`) in the order the invoked skill defines, then the table below, then the skill's own default mapping."
     "Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why."
     "A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row."
-    "When Antigravity is not runnable through T3 Code, a broad scout uses the short scout's class."
     "Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it."
     "Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one."
-    "Apply the same-provider cells in every session, and route to another provider only through T3 Code, as Cross-model delegation below describes."
-    "When your native subagent tool cannot select the table's class and T3 Code is unavailable, let the subagent inherit your session model and say so in one line."
+    "Apply the same-provider cells in every session; a subagent you start yourself runs on your own provider."
+    "When your native subagent tool cannot select the table's class, let the subagent inherit your session model and say so in one line."
     # Role table rows, each matched whole so a changed cell fails.
     "| Short scout | Haiku | Luna | Flash low |"
-    "| Broad scout | Flash low through T3 Code | Flash low through T3 Code | Flash low |"
+    "| Broad scout | Haiku | Luna | Flash low |"
     "| Worker | Sonnet | Luna | Flash medium |"
   ];
 
@@ -314,7 +256,7 @@ let
     "Compare versions only within that class: a newer model of another class does not outrank the class the task needs."
     "Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model."
     "When a skill's cross-model pass runs through T3 Code, take its model and effort from `cross_model_model` and `cross_model_effort` when they are set, otherwise from the skill's own mapping; the latest-version rule does not replace a model the skill names."
-    "When a skill's cross-model pass runs through T3 Code and your session does not run on Antigravity, also delegate that pass to Antigravity on the latest runnable Argon at medium effort (today `gemini-4-argon-medium` on provider instance `antigravity`), even though the skill's mapping has no Gemini entry."
+    "When a skill's cross-model pass runs through T3 Code, also delegate that pass to Antigravity on the latest runnable Argon at medium effort (today `gemini-4-argon-medium` on provider instance `antigravity`), even though the skill's mapping has no Gemini entry."
     "The Antigravity peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs."
     "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `antigravity` as the provider name."
     "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content."
@@ -331,8 +273,6 @@ let
     "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
   ];
 
-  # Fragments of directives this template replaced; each contradicts a rule
-  # above, so its return must fail even while the replacement is present.
   supersededDirectives = [
     "before any of the skill's own discovery or launch steps"
     "for the task instead of inheriting its defaults"
@@ -377,33 +317,9 @@ let
     "`exec_command`"
   ];
 
-  harnesses = [
-    {
-      name = "Claude Code";
-      sharedSentence = "Use the tools Claude Code provides natively before reaching for a shell equivalent.";
-      target = ".claude/CLAUDE.md";
-      present = claudeTools;
-      absent = antigravityTools ++ codexTools;
-    }
-    {
-      name = "Antigravity";
-      sharedSentence = "Use the tools Antigravity provides natively before reaching for a shell equivalent.";
-      target = ".gemini/config/AGENTS.md";
-      present = antigravityTools;
-      absent = claudeTools ++ codexTools;
-    }
-    {
-      name = "Codex";
-      sharedSentence = "Use the tools Codex provides natively before reaching for a shell equivalent.";
-      target = ".codex/AGENTS.md";
-      present = codexTools;
-      absent = claudeTools ++ antigravityTools;
-    }
-  ];
-
   # Fails the build, naming each sentence, when `$file` lacks any of them.
   # A sentence counts only where one begins: at the start of a line, after a
-  # list marker, or after the previous sentence's full stop. A substring match
+  # list marker (nested or not), or after the previous sentence's full stop. A substring match
   # would accept the sentence inside its own negation ("Do not Apply every...").
   requireSentences = message: sentences: ''
     for sentence in ${lib.escapeShellArgs sentences}; do
@@ -412,7 +328,7 @@ let
           i = index($0, s)
           if (i == 0) next
           pre = substr($0, 1, i - 1)
-          if (pre == "" || pre == "- " || pre ~ /\. $/) found = 1
+          if (pre == "" || pre ~ /^ *- $/ || pre ~ /\. $/) found = 1
         }
         END { exit !found }
       ' "$file"; then
@@ -430,12 +346,12 @@ let
   ) delegationSentences;
 
   # Prints the section under `heading` one sentence per line, list markers
-  # dropped, splitting after each full stop.
+  # (nested ones included) dropped, splitting after each full stop.
   sectionSentences = heading: ''
     awk -v h=${esc heading} '
       $0 == h { inside = 1; next }
       /^# / { inside = 0 }
-      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+      inside { sub(/^ *- /, ""); gsub(/\. /, ".\n"); print }
     ' "$file"'';
 
   # Fails the build, naming each sentence, when the section under `heading`
@@ -487,126 +403,468 @@ let
     fi
   '';
 
-  assertHarness =
-    hostName: userConfig: harness:
+  harnesses = {
+    claude-code = {
+      name = "Claude Code";
+      sharedSentence = "Use the tools Claude Code provides natively before reaching for a shell equivalent.";
+      present = claudeTools;
+      absent = antigravityTools ++ codexTools;
+    };
+    antigravity = {
+      name = "Antigravity";
+      sharedSentence = "Use the tools Antigravity provides natively before reaching for a shell equivalent.";
+      present = antigravityTools;
+      absent = claudeTools ++ codexTools;
+    };
+    codex = {
+      name = "Codex";
+      sharedSentence = "Use the tools Codex provides natively before reaching for a shell equivalent.";
+      present = codexTools;
+      absent = claudeTools ++ antigravityTools;
+    };
+  };
+
+  # Each part's pinned sentences, for the exactly-once and wrong-path counts.
+  partSentences = harness: {
+    system = [ harness.sharedSentence ] ++ gpgSentences ++ routingSentences;
+    user =
+      reviewFindingsSentences
+      ++ learningRefreshSentences
+      ++ branchNameSentences
+      ++ commitHookSentences
+      ++ pullRequestSentences
+      ++ mediaSentences;
+    t3code = t3IntroSentences ++ delegationSentences ++ t3PullRequestSentences;
+  };
+
+  partNames = [
+    "system"
+    "user"
+    "t3code"
+  ];
+
+  # Fails the build, naming each sentence, when `$file` does not hold it
+  # exactly `count` times.
+  countSentences = message: count: sentences: ''
+    for sentence in ${lib.escapeShellArgs sentences}; do
+      # grep -c counts lines, not matches, and grep exits 1 on no match,
+      # which pipefail would turn into a failed assignment.
+      n=$( (grep -oF -- "$sentence" "$file" || true) | wc -l)
+      n=$((n))
+      if [ "$n" != ${toString count} ]; then
+        echo ${esc message} "($n times):" "$sentence" >&2
+        failed=1
+      fi
+    done
+  '';
+
+  systemRules = label: harness: ''
+    if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then
+      echo ${esc "${label} lacks the system part's opening sentence"} >&2
+      failed=1
+    fi
+    ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
+      gpgSentences
+    }
+    ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
+    for tool in ${lib.escapeShellArgs harness.present}; do
+      if ! grep -qF -- "$tool" "$file"; then
+        echo ${esc "${label} does not name"} "$tool" >&2
+        failed=1
+      fi
+    done
+  '';
+
+  userRules = label: ''
+    ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
+    ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
+    ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
+    ${requireSentences "${label} lacks the commit-hook rule:" commitHookSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned commit-hook sentence:" "# Commit hooks" "."
+      commitHookSentences
+    }
+    ${sentencesInSection "${label} moves a commit-hook sentence out of its section:" "# Commit hooks"
+      commitHookSentences
+    }
+    ${sentencesInOrder "${label} reorders or duplicates a commit-hook sentence:" "# Commit hooks"
+      commitHookSentences
+    }
+    ${requireSentences "${label} lacks the pull and merge request rule:" pullRequestSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned pull and merge request sentence:"
+      "# Pull and merge requests"
+      "."
+      pullRequestSentences
+    }
+    ${sentencesInSection "${label} moves a pull and merge request sentence out of its section:"
+      "# Pull and merge requests"
+      pullRequestSentences
+    }
+    ${sentencesInOrder "${label} reorders or duplicates a pull and merge request sentence:"
+      "# Pull and merge requests"
+      pullRequestSentences
+    }
+    ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
+  '';
+
+  t3codeRules = label: ''
+    ${requireSentences "${label} lacks the T3 Code introduction:" t3IntroSentences}
+    ${sentencesInOrder "${label} reorders, duplicates, or adds to the T3 Code introduction:" "# T3 Code"
+      t3IntroSentences
+    }
+    ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned Antigravity sentence:"
+      "# Cross-model delegation"
+      "Antigravity|Argon"
+      antigravitySentences
+    }
+    ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
+      "# Cross-model delegation"
+      "task_status|[Pp]oll|[Nn]otif|[Ww]ait|[Ww]ake|[Bb]lock|[Ss]leep|[Tt]imer|[Cc]heck|[Ff]inish|[Bb]ackground|[Ss]chedul"
+      waitTopicSentences
+    }
+    ${sentencesInSection "${label} moves a cross-model delegation sentence out of its section:"
+      "# Cross-model delegation"
+      delegationSentences
+    }
+    ${requireSentences "${label} lacks the T3 Code pull and merge request rule:" t3PullRequestSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned T3 Code pull and merge request sentence:"
+      "# Pull and merge requests in T3 Code"
+      "."
+      t3PullRequestSentences
+    }
+    ${sentencesInOrder "${label} reorders or duplicates a T3 Code pull and merge request sentence:"
+      "# Pull and merge requests in T3 Code"
+      t3PullRequestSentences
+    }
+  '';
+
+  # Checks the channel file at `$file`, which must hold exactly `parts`.
+  channelRules =
+    label: harness: parts:
     let
-      entries = lib.filter (file: (file.target or "") == harness.target) (
+      sentences = partSentences harness;
+      foreign = lib.concatMap (part: sentences.${part}) (lib.subtractLists parts partNames);
+    in
+    # The same rendered file recurs across hosts; a repeat of a file already
+    # checked for the same harness and parts is skipped, since it can only
+    # repeat the first check's result.
+    ''
+      key="$(sha256sum < "$file" 2>/dev/null | cut -d' ' -f1) ${esc "${harness.name} ${toString parts}"}"
+      if [ -s "$file" ] && grep -qxF -- "$key" "$seen"; then
+        :
+      else
+      echo "$key" >> "$seen"
+      if [ ! -s "$file" ]; then
+        echo ${esc "${label} is missing or empty"} >&2
+        failed=1
+      fi
+      ${lib.optionalString (lib.elem "system" parts) (systemRules label harness)}
+      ${lib.optionalString (lib.elem "user" parts) (userRules label)}
+      ${lib.optionalString (lib.elem "t3code" parts) (t3codeRules label)}
+      ${countSentences "${label} carries a sentence of a part it must not hold" 0 foreign}
+      ${lib.optionalString (!lib.elem "t3code" parts) ''
+        if grep -qF 'T3 Code' "$file"; then
+          echo ${esc "${label} mentions T3 Code, which only the T3 Code part may"} >&2
+          failed=1
+        fi
+      ''}
+      for directive in ${lib.escapeShellArgs supersededDirectives}; do
+        if grep -qF -- "$directive" "$file"; then
+          echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
+          failed=1
+        fi
+      done
+      for tool in ${lib.escapeShellArgs harness.absent}; do
+        if grep -qF -- "$tool" "$file"; then
+          echo ${esc "${label} names another harness's tool"} "$tool" >&2
+          failed=1
+        fi
+      done
+      if grep -qE '\{\{|\}\}|<no value>' "$file"; then
+        echo ${esc "${label} carries an unrendered template action"} >&2
+        failed=1
+      fi
+      fi
+    '';
+
+  # Checks one delivery path: the channels it reads, concatenated, must hold
+  # each of `parts` exactly once and no other part.
+  pathRules =
+    label: harness: channels: parts:
+    let
+      sentences = partSentences harness;
+      foreign = lib.concatMap (part: sentences.${part}) (lib.subtractLists parts partNames);
+    in
+    ''
+      file=$(mktemp)
+      for channel in ${lib.concatStringsSep " " channels}; do
+        if [ -f "$channel" ]; then
+          cat "$channel" >> "$file"
+        fi
+      done
+      ${countSentences "${label} does not carry this sentence exactly once" 1 (
+        lib.concatMap (part: sentences.${part}) parts
+      )}
+      ${countSentences "${label} carries a sentence of a part it must not reach" 0 foreign}
+      rm -f "$file"
+    '';
+
+  # Copies the one enabled Home Manager file at `target` to `dest`, failing
+  # unless exactly `want` (0 or 1) such files exist.
+  homeFile =
+    label: userConfig: target: want: dest:
+    let
+      entries = lib.filter (file: (file.target or "") == target) (
         lib.attrValues (userConfig.home.file or { })
       );
       entry = if lib.length entries == 1 then lib.head entries else null;
       source = if entry == null then null else (entry.source or null);
-      label = "${harness.name} (${harness.target}) on ${hostName}";
-
-      countWrong = lib.optionalString (lib.length entries != 1) ''
-        echo ${esc "expected exactly one home.file for ${label}, found ${toString (lib.length entries)}"} >&2
-        failed=1
-      '';
-
-      entryPresent = lib.optionalString (entry != null) ''
-        if [ ${esc (lib.boolToString (entry.enable or false))} != "true" ]; then
-          echo ${esc "home.file for ${label} is not enabled"} >&2
-          failed=1
-        fi
-      '';
-
-      sourcePresent = lib.optionalString (source != null) ''
-        file=${source}
-        if [ ! -s "$file" ]; then
-          echo ${esc "${label} is missing or empty"} >&2
-          failed=1
-        fi
-        if ! grep -qF -- ${esc harness.sharedSentence} "$file"; then
-          echo ${esc "${label} lacks the shared instructions"} >&2
-          failed=1
-        fi
-        ${requireSentences "${label} lacks the review-findings rule:" reviewFindingsSentences}
-        ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
-        ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
-        ${onlyPinnedSentences "${label} carries an unpinned Antigravity sentence:"
-          "# Cross-model delegation"
-          "Antigravity|Argon"
-          antigravitySentences
-        }
-        ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
-          "# Cross-model delegation"
-          "task_status|[Pp]oll|[Nn]otif|[Ww]ait|[Ww]ake|[Bb]lock|[Ss]leep|[Tt]imer|[Cc]heck|[Ff]inish|[Bb]ackground|[Ss]chedul"
-          waitTopicSentences
-        }
-        ${sentencesInSection "${label} moves a cross-model delegation sentence out of its section:"
-          "# Cross-model delegation"
-          delegationSentences
-        }
-        ${requireSentences "${label} lacks the learning-refresh rule:" learningRefreshSentences}
-        ${requireSentences "${label} lacks the branch-name rule:" branchNameSentences}
-        ${requireSentences "${label} lacks the commit-hook rule:" commitHookSentences}
-        ${onlyPinnedSentences "${label} carries an unpinned commit-hook sentence:" "# Commit hooks" "."
-          commitHookSentences
-        }
-        ${sentencesInSection "${label} moves a commit-hook sentence out of its section:" "# Commit hooks"
-          commitHookSentences
-        }
-        ${sentencesInOrder "${label} reorders or duplicates a commit-hook sentence:" "# Commit hooks"
-          commitHookSentences
-        }
-        ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
-        ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
-          gpgSentences
-        }
-        ${requireSentences "${label} lacks the pull and merge request rule:" pullRequestSentences}
-        ${onlyPinnedSentences "${label} carries an unpinned pull and merge request sentence:"
-          "# Pull and merge requests"
-          "."
-          pullRequestSentences
-        }
-        ${sentencesInSection "${label} moves a pull and merge request sentence out of its section:"
-          "# Pull and merge requests"
-          pullRequestSentences
-        }
-        ${sentencesInOrder "${label} reorders or duplicates a pull and merge request sentence:"
-          "# Pull and merge requests"
-          pullRequestSentences
-        }
-        ${requireSentences "${label} lacks the issue and pull request media rule:" mediaSentences}
-        for directive in ${lib.escapeShellArgs supersededDirectives}; do
-          if grep -qF -- "$directive" "$file"; then
-            echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
-            failed=1
-          fi
-        done
-        for tool in ${lib.escapeShellArgs harness.present}; do
-          if ! grep -qF -- "$tool" "$file"; then
-            echo ${esc "${label} does not name"} "$tool" >&2
-            failed=1
-          fi
-        done
-        for tool in ${lib.escapeShellArgs harness.absent}; do
-          if grep -qF -- "$tool" "$file"; then
-            echo ${esc "${label} names another harness's tool"} "$tool" >&2
-            failed=1
-          fi
-        done
-        if grep -qE '\{\{|\}\}|<no value>' "$file"; then
-          echo ${esc "${label} carries an unrendered template action"} >&2
-          failed=1
-        fi
-      '';
-
-      sourceAbsent = lib.optionalString (entry != null && source == null) ''
-        echo ${esc "home.file for ${label} has no source"} >&2
-        failed=1
-      '';
     in
-    countWrong + entryPresent + sourcePresent + sourceAbsent;
+    lib.optionalString (lib.length entries != want) ''
+      echo ${esc "expected ${toString want} home.file for ~/${target} on ${label}, found ${toString (lib.length entries)}"} >&2
+      failed=1
+    ''
+    + lib.optionalString (entry != null) ''
+      if [ ${esc (lib.boolToString (entry.enable or false))} != "true" ]; then
+        echo ${esc "home.file for ~/${target} on ${label} is not enabled"} >&2
+        failed=1
+      fi
+    ''
+    + lib.optionalString (entry != null && source == null) ''
+      echo ${esc "home.file for ~/${target} on ${label} has no source"} >&2
+      failed=1
+    ''
+    + lib.optionalString (source != null) ''
+      cp ${source} ${dest}
+    '';
+
+  # Prints the store file an activation entry passes the merger as --declared.
+  declaredOf = script: ''
+    printf '%s\n' ${esc script} \
+      | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
+      | head -1 | awk '{print $2}' || true
+  '';
+
+  channels = ./agent-instruction-channels.py;
+
+  claudeT3Target = ".t3/instructions/claude-code/CLAUDE.md";
+
+  t3On =
+    userConfig: (userConfig.my.t3.cli.enable or false) || (userConfig.my.t3.desktop.enable or false);
+
+  assertEntry =
+    entry:
+    let
+      label = entry.name;
+      user = entry.user;
+      t3 = t3On user;
+      home = user.home.homeDirectory or "";
+      codexScript = user.home.activation.codexSettings.data or "";
+      t3Activation = user.home.activation.t3codeSettings or null;
+      on = lib.optionalString t3;
+    in
+    ''
+      d=$(mktemp -d)
+
+      ${homeFile label user ".claude/CLAUDE.md" 1 "$d/claude"}
+      ${homeFile label user ".gemini/config/AGENTS.md" 1 "$d/antigravity"}
+      ${homeFile label user ".codex/AGENTS.md" 1 "$d/codex-agents"}
+      ${homeFile label user claudeT3Target (if t3 then 1 else 0) "$d/claude-t3"}
+
+      declared=$(${declaredOf codexScript})
+      if [ -z "$declared" ] || ! python3 ${channels} developer "$declared" "$d/codex-dev"; then
+        echo ${esc "the Codex developer_instructions on ${label} cannot be read from the codexSettings declaration"} >&2
+        failed=1
+      fi
+
+      ${
+        if t3 then
+          ''
+            declared=$(${declaredOf (t3Activation.data or "")})
+            if [ -z "$declared" ] || ! python3 ${channels} codex-launch "$declared" "$d/codex-launch"; then
+              echo ${esc "the Codex launch override on ${label} cannot be read from the t3codeSettings declaration"} >&2
+              failed=1
+            fi
+            dir=$(python3 ${channels} claude-dir "$declared" || true)
+            if [ "$dir" != ${esc "${home}/.t3/instructions/claude-code"} ]; then
+              echo ${esc "the Claude instance on ${label} must --add-dir the directory of ~/${claudeT3Target}, got"} "'$dir'" >&2
+              failed=1
+            fi
+          ''
+        else
+          lib.optionalString (t3Activation != null) ''
+            echo ${esc "${label} has both T3 Code traits off but declares the t3codeSettings merge"} >&2
+            failed=1
+          ''
+      }
+
+      file=$d/claude
+      ${channelRules "~/.claude/CLAUDE.md on ${label}" harnesses.claude-code [
+        "system"
+        "user"
+      ]}
+      file=$d/antigravity
+      ${channelRules "~/.gemini/config/AGENTS.md on ${label}" harnesses.antigravity [
+        "system"
+        "user"
+      ]}
+      file=$d/codex-agents
+      ${channelRules "~/.codex/AGENTS.md on ${label}" harnesses.codex [ "user" ]}
+      file=$d/codex-dev
+      ${channelRules "Codex developer_instructions on ${label}" harnesses.codex [ "system" ]}
+      ${on ''
+        file=$d/claude-t3
+        ${channelRules "~/${claudeT3Target} on ${label}" harnesses.claude-code [ "t3code" ]}
+        file=$d/codex-launch
+        ${channelRules "the T3 Code Codex launch override on ${label}" harnesses.codex [
+          "system"
+          "t3code"
+        ]}
+      ''}
+
+      ${pathRules "the Claude Code terminal path on ${label}" harnesses.claude-code
+        [ "$d/claude" ]
+        [ "system" "user" ]
+      }
+      ${pathRules "the Antigravity terminal path on ${label}" harnesses.antigravity
+        [ "$d/antigravity" ]
+        [ "system" "user" ]
+      }
+      ${pathRules "the Codex terminal path on ${label}" harnesses.codex
+        [ "$d/codex-agents" "$d/codex-dev" ]
+        [ "system" "user" ]
+      }
+      ${on ''
+        ${pathRules "the Claude Code T3 Code path on ${label}" harnesses.claude-code [
+          "$d/claude"
+          "$d/claude-t3"
+        ] partNames}
+        ${pathRules "the Codex T3 Code path on ${label}" harnesses.codex [
+          "$d/codex-agents"
+          "$d/codex-launch"
+        ] partNames}
+      ''}
+
+      rm -rf "$d"
+    '';
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
-  assertEntry = entry: lib.concatMapStrings (assertHarness entry.name entry.user) harnesses;
-in
-pkgs.runCommand "agent-instructions-tests" { } ''
-  ${configurations.userGuard}
-  failed=0
+  # No delivery path carries the Antigravity T3 Code part yet, so no host
+  # renders it. Rendered here, so the template's Antigravity branches in that
+  # part keep producing the part minus the rules about Antigravity peers.
+  antigravityT3 = (import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; }).render {
+    harness = "antigravity";
+    parts = [ "t3code" ];
+  };
+  # The broad-scout rule and the Antigravity-peer bullet, the two places the
+  # template leaves out for Antigravity.
+  antigravityT3Omitted = [
+    "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
+  ]
+  ++ lib.filter (
+    sentence:
+    lib.any (prefix: lib.hasPrefix prefix sentence) [
+      "When a skill's cross-model pass runs through T3 Code, also delegate"
+      "The Antigravity peer belongs"
+      "It mirrors every job"
+      "It obeys the skill's recipient restrictions"
+      "When a gate or restriction excludes it"
+    ]
+  ) delegationSentences;
+  antigravityT3Rules =
+    assert lib.assertMsg (lib.length antigravityT3Omitted == 6)
+      "tests/agent-instructions.nix: antigravityT3Omitted no longer names the six sentences the Antigravity branches leave out";
+    ''
+      file=${antigravityT3}
+      ${countSentences "the Antigravity T3 Code part does not carry this sentence exactly once" 1 (
+        lib.subtractLists antigravityT3Omitted (
+          t3IntroSentences ++ delegationSentences ++ t3PullRequestSentences
+        )
+      )}
+      ${countSentences "the Antigravity T3 Code part carries a rule about Antigravity peers" 0
+        antigravityT3Omitted
+      }
+      for tool in ${lib.escapeShellArgs harnesses.antigravity.absent}; do
+        if grep -qF -- "$tool" "$file"; then
+          echo "the Antigravity T3 Code part names another harness's tool $tool" >&2
+          failed=1
+        fi
+      done
+      if grep -qE '\{\{|\}\}|<no value>' "$file"; then
+        echo 'the Antigravity T3 Code part carries an unrendered template action' >&2
+        failed=1
+      fi
+    '';
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
+  forceT3Off = {
+    my.t3.cli.enable = lib.mkForce false;
+    my.t3.desktop.enable = lib.mkForce false;
+  };
+
+  mkLinuxHost = import ../lib/linux-host.nix { inherit (self) inputs; };
+
+  # Every configuration today enables a T3 Code trait, so the T3-off side
+  # comes from production configurations re-evaluated with both forced off.
+  # One configuration of each kind is enough: forcing the traits off
+  # removes the same files on every host of that kind.
+  forcedOff =
+    map (entry: {
+      name = "${entry.name} with both T3 Code traits forced off";
+      forced = true;
+      user =
+        (self.nixosConfigurations.${entry.name}.extendModules { modules = [ forceT3Off ]; })
+        .config.home-manager.users.h82 or { };
+    }) (lib.take 1 configurations.production)
+    ++ map (entry: {
+      name = "${entry.name} with both T3 Code traits forced off";
+      forced = true;
+      user =
+        (mkLinuxHost {
+          hostName = entry.fixture;
+          dir = ./fixtures/hosts + "/${entry.fixture}";
+          inherit (entry) bootstrap;
+          extraModules.home = [
+            ./lib/fake-secrets-module.nix
+            forceT3Off
+          ];
+        }).home.config;
+    }) (lib.take 1 (lib.filter (entry: !entry.bootstrap) configurations.linuxFixtures));
+
+  users =
+    map (entry: {
+      inherit (entry) name user;
+      forced = false;
+    }) configurations.userEntries
+    ++ forcedOff;
+
+  sidesGuard = lib.concatStrings [
+    (lib.optionalString (!lib.any (entry: t3On entry.user) users) ''
+      echo 'tests/agent-instructions.nix: no user enables a T3 Code trait, so the T3 Code paths are never checked' >&2
+      exit 1
+    '')
+    (lib.optionalString (lib.all (entry: t3On entry.user) users) ''
+      echo 'tests/agent-instructions.nix: every user enables a T3 Code trait, so no terminal-only user is checked' >&2
+      exit 1
+    '')
+    (lib.concatMapStrings (
+      entry:
+      lib.optionalString (entry.forced && t3On entry.user) ''
+        echo ${esc "tests/agent-instructions.nix: ${entry.name} still enables a T3 Code trait"} >&2
+        exit 1
+      ''
+    ) forcedOff)
+  ];
+in
+pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+  ${configurations.userGuard}
+  ${sidesGuard}
+  failed=0
+  seen=$(mktemp)
+
+  ${lib.concatMapStringsSep "\n" assertEntry users}
+  ${antigravityT3Rules}
 
   if [ "$failed" != "0" ]; then
     exit 1

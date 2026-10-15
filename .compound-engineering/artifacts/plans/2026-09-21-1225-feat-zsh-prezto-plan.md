@@ -32,7 +32,7 @@ The user requested adding Prezto (`https://github.com/sorin-ionescu/prezto`) to 
 ### Key Decisions
 
 - **KD1. Use Home Manager's native `programs.zsh.prezto` module**: Enable Prezto declaratively through `programs.zsh.prezto.enable = true;` backed by nixpkgs `pkgs.zsh-prezto` (session-settled: user-directed — chosen over manual git checkout or manual dotfile symlinks: fully declarative, reproducible, and managed by NixOS/Home Manager). Governs R1, R2, R3.
-- **KD2. Maintain existing shell extensions and integrations**: Retain existing `history`, `initContent` (custom site-functions fpath), `mise`, `autosuggestion`, and `syntaxHighlighting` configurations in `home/h82/shell.nix`, allowing Prezto and existing integrations to coexist harmoniously. Governs R2, R4.
+- **KD2. Maintain existing shell extensions and integrations**: Retain existing `history`, `initContent` (custom site-functions fpath), `mise`, `autosuggestion`, and `syntaxHighlighting` configurations in `home/h82/shell.nix`, so Prezto and the existing integrations coexist. Governs R2, R4.
 - **KD3. Automated regression check in `flake.nix`**: Register a fast derivation check `zsh-prezto` in `flake.nix` verifying that Prezto configuration files (`.zpreztorc`, `.zshenv`, `.zshrc`) are generated with proper runcom sourcing. Governs R5.
 
 ### Requirements

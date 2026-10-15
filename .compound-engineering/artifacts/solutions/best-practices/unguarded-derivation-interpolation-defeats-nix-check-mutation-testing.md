@@ -93,7 +93,7 @@ Four rounds, each one `nix build --no-link .#checks.x86_64-linux.kleopatra-gui`:
 | Content mutation | guarded, desktop-entry assertion pointed at a filename the package does not ship | red inside the builder with `kleopatra package ships no ... entry` |
 | Control | `optionalString` removed from the assertion block, package removed | `error: cannot coerce null to a string: null` at evaluation; no builder output, no package-name message |
 
-The control round is the one that carries the lesson. Without it, rounds two and three alone would have read as a clean mutation suite on either version of the check.
+The control round separates the unguarded version from the guarded one. Without it, rounds two and three alone would have read as a clean mutation suite on either version of the check.
 
 ## How to apply
 

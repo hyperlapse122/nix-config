@@ -72,7 +72,7 @@ Update the declared defaults for Claude Code in `home/h82/claude.nix` to use `so
 ### Assumptions
 
 - `sonnet` and `xhigh` are valid Claude Code settings (as documented in schema and issue #72).
-- The `agent-settings` python script performs scalar merge without validating against a fixed enum, so custom or new model/effort values are seamlessly merged into `~/.claude/settings.json`.
+- The `agent-settings` python script performs scalar merge without validating against a fixed enum, so custom or new model/effort values are merged into `~/.claude/settings.json`.
 
 ### Sequencing
 

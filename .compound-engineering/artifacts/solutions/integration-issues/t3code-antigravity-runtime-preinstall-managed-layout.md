@@ -22,7 +22,7 @@ retire_when: "T3 Code changes AntigravityInstallation (src/provider/AntigravityI
 
 ## Context
 
-T3 Code installs the Antigravity ACP server on demand: the provider page's Install button downloads a 110-335 MB archive into `~/.t3/tools`. This flake preinstalls that runtime (since the branch that made T3 Code's settings declarative) from a Nix-fetched package so a rebuild leaves only the Google sign-in (`home/h82/t3code.nix:156`). Getting there needed reading how T3 Code `0.0.46-nightly.20261008.2801` resolves the runtime, because several plausible shortcuts work at runtime yet leave the provider looking uninstalled, and one plausible worry (store symlinks) turned out not to apply. None of this is visible from the final code alone. The facts below were read from the pinned server bundle (`AntigravityInstallation.completedRelease` and `resolve`) and confirmed with a live ACP `initialize` on macOS (per this session's investigation).
+T3 Code installs the Antigravity ACP server on demand: the provider page's Install button downloads a 110-335 MB archive into `~/.t3/tools`. This flake preinstalls that runtime (since the branch that made T3 Code's settings declarative) from a Nix-fetched package so a rebuild leaves only the Google sign-in (`home/h82/t3code.nix:49`). Getting there needed reading how T3 Code `0.0.46-nightly.20261008.2801` resolves the runtime, because several plausible shortcuts work at runtime yet leave the provider looking uninstalled, and one plausible worry (store symlinks) turned out not to apply. None of this is visible from the final code alone. The facts below were read from the pinned server bundle (`AntigravityInstallation.completedRelease` and `resolve`) and confirmed with a live ACP `initialize` on macOS (per this session's investigation).
 
 ## Guidance
 
@@ -65,7 +65,7 @@ What looks equivalent but is not:
 
 ```text
 PATH=/nix/store/...-antigravity-acp-1.3.0/libexec/antigravity-acp:$PATH   # runs, but version: null
-providers.antigravity.binaryPath = ".../agy_acp_server.par"              # runs, but version: null
+providerInstances.antigravity.config.binaryPath = ".../agy_acp_server.par"  # runs, but version: null
 ```
 
 Related: [T3 Code's Antigravity ACP server finds no CA bundle on NixOS](t3code-antigravity-acp-openssl-missing-ca-bundle-hangs-sessions.md) (the wrapper's `SSL_CERT_FILE` still covers the preinstalled binary); [Orca rejects skill files hardlinked by the Nix store optimiser](orca-rejects-hardlinked-nix-store-skill-files.md) (the opposite outcome: Orca, since removed, checked link counts; T3 Code does not).

@@ -35,11 +35,11 @@ Weekly cleanup keeps the 10 newest generations regardless of age, so every entry
 
 ## An authentication stack that refuses
 
-If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead, holding Space at power-on to open it. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself — but confirm the passphrase works before you ever need it, because a change to Secure Boot policy is exactly what would make it mandatory at the worst moment.
+If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead, holding Space at power-on to open it. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself. Confirm the passphrase works before you need it, because a change to Secure Boot policy would make it mandatory.
 
 There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
 
-Booting an older generation escapes the stack but does not undo anything else in it,.
+Booting an older generation escapes the stack but does not undo anything else in it.
 
 ## TPM unlock failure
 

@@ -304,6 +304,18 @@
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           codex-settings = import ./tests/codex.nix { inherit pkgs self; };
+          # The probe needs a signed-in instance home, so no check runs it;
+          # this covers its rule verdicts and the cleanup of what it plants.
+          antigravity-acp-probe =
+            pkgs.runCommand "antigravity-acp-probe-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/antigravity-acp-probe} scripts/antigravity-acp-probe
+                cp ${./tests/test_antigravity_acp_probe.py} tests/test_antigravity_acp_probe.py
+                python tests/test_antigravity_acp_probe.py
+                touch $out
+              '';
           agent-settings =
             let
               tools = import ./packages/agent-tools.nix { inherit pkgs; };
@@ -593,6 +605,84 @@
             done
             touch $out
           '';
+          # home/h82/t3code.nix delivers the T3 Code instructions through these:
+          # the instance envelope's environment list, Claude launch arguments
+          # parsed into the SDK's extraArgs, Codex launch arguments tokenized
+          # after app-server, and Claude Code loading CLAUDE.md from an --add-dir
+          # directory when the variable is set. The Claude adapter must also pass
+          # the instance environment, not only the host's, to the SDK. A pin bump
+          # that drops one fails here instead of silently leaving T3 Code
+          # sessions without the part. The Codex launch argument is then split
+          # with the pinned tokenizer itself, which the other checks only
+          # imitate with shlex.
+          t3code-instruction-channels =
+            let
+              instructions = import ./home/h82/agents/instructions/render.nix {
+                inherit pkgs;
+                inherit (pkgs) lib;
+              };
+              codexLaunch = instructions.render {
+                harness = "codex";
+                parts = [
+                  "system"
+                  "t3code"
+                ];
+              };
+              codexLaunchDeclared = instructions.declare {
+                name = "t3code-codex-launch.json";
+                base = { };
+                leaves = [
+                  {
+                    path = [
+                      "providerInstances"
+                      "codex"
+                      "config"
+                      "launchArgs"
+                    ];
+                    encoding = "codex-launch";
+                    source = codexLaunch;
+                  }
+                ];
+              };
+            in
+            pkgs.runCommand "t3code-instruction-channels"
+              {
+                nativeBuildInputs = [
+                  pkgs.nodejs
+                  pkgs.python3
+                ];
+              }
+              ''
+                # One grep pass per artifact: list the fragments it holds, then
+                # name each pinned fragment missing from that list.
+                check() {
+                  found=$(grep -rhaoF -f "$2" "$3" | sort -u || true)
+                  while IFS= read -r fragment; do
+                    if ! grep -qxF -- "$fragment" <<<"$found"; then
+                      echo "the pinned $1 no longer contains: $fragment" >&2
+                      exit 1
+                    fi
+                  done < "$2"
+                }
+                check "T3 Code" ${pkgs.writeText "t3code-instruction-fragments" ''
+                  environment: optionalKey(ProviderInstanceEnvironment),
+                  description: "Additional CLI arguments passed on session start.",
+                  ...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;
+                  ...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }
+                  codexLaunchArgv = (launchArgs) => tokenizeCliArgs(launchArgs);
+                  codexAppServerArgs = (launchArgs) => ["app-server", ...codexLaunchArgv(launchArgs)];
+                  const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
+                  const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
+                  environment: claudeEnvironment,
+                ''} ${self.packages.${system}.t3code-cli}/libexec/t3code/t3
+                check "Claude Code" ${pkgs.writeText "claude-code-instruction-fragments" ''
+                  CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
+                  --add-dir <directories...>
+                ''} ${self.packages.${system}.claude-code}/bin
+                python3 ${./tests/t3code-codex-launch.py} \
+                  ${self.packages.${system}.t3code-cli}/libexec/t3code/t3 ${codexLaunchDeclared} ${codexLaunch}
+                touch $out
+              '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
@@ -703,7 +793,7 @@
                   ${assertSource ".config/zsh/.zpreztorc" "zstyle ':prezto:load' pmodule"}
                   ${assertSource ".config/zsh/.zshenv" "runcoms/zshenv"}
                   ${assertSource ".config/zsh/.zshrc" "runcoms/zshrc"}
-                  if ! printf '%s\n' ${pkgs.lib.escapeShellArg dotzshenv} | grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"}; then
+                  if ! grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"} <<<${pkgs.lib.escapeShellArg dotzshenv}; then
                     echo ${pkgs.lib.escapeShellArg ".zshenv does not source ${zshenv} on ${entry.name}"} >&2
                     fail=1
                   fi

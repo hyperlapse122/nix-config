@@ -19,7 +19,10 @@
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
   - the `--declared` store file is identical to the declaration restated as
-    literals here, so a dropped or changed key turns this red.
+    literals here, plus `developer_instructions` holding the rendered Codex
+    system part, so a dropped or changed key turns this red.
+  - that `developer_instructions` value never mentions T3 Code: the T3 Code
+    part reaches Codex only through T3 Code's launch arguments.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
@@ -39,38 +42,53 @@ let
 
   settingsFile = ".codex/config.toml";
 
-  expected = pkgs.writeText "codex-expected-settings.json" (
-    builtins.toJSON {
-      setPaths = [
-        {
-          path = [ "check_for_update_on_startup" ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "in_app_updates"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "daemon_auto_start"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "memories"
-          ];
-          value = false;
-        }
-      ];
-      remove = [ ];
-    }
-  );
+  instructions = import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; };
+
+  expectedBase = {
+    setPaths = [
+      {
+        path = [ "check_for_update_on_startup" ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "in_app_updates"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "daemon_auto_start"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "memories"
+        ];
+        value = false;
+      }
+    ];
+    remove = [ ];
+  };
+
+  expected = instructions.declare {
+    name = "codex-expected-settings.json";
+    base = expectedBase;
+    leaves = [
+      {
+        path = [ "developer_instructions" ];
+        encoding = "text";
+        source = instructions.render {
+          harness = "codex";
+          parts = [ "system" ];
+        };
+      }
+    ];
+  };
 
   assertHost =
     entry:
@@ -135,6 +153,10 @@ let
         elif ! diff -u "$declaredPath" ${expected} >/dev/null; then
           echo 'the declared keys codexSettings renders drifted from the asserted values on ${hostName}' >&2
           failed=1
+        elif ! python3 ${./agent-instruction-channels.py} developer "$declaredPath" developer.md \
+          || [ "$(head -n 1 developer.md)" != '# Tool use' ] || grep -qF 'T3 Code' developer.md; then
+          echo 'codexSettings must declare developer_instructions once, as the system part without T3 Code, on ${hostName}' >&2
+          failed=1
         fi
       '';
     in
@@ -146,15 +168,22 @@ let
       fi
     '';
 in
-pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
-  ${configurations.guard}
-  failed=0
+pkgs.runCommand "codex-settings-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.diffutils
+      pkgs.python3
+    ];
+  }
+  ''
+    ${configurations.guard}
+    failed=0
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+    ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
 
-  touch $out
-''
+    touch $out
+  ''

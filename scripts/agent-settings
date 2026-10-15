@@ -19,14 +19,22 @@ place through tomlkit, so the user's comments and the tables the declaration
 does not name keep their bytes.  TOML has no null, so a declared null is
 refused before anything is touched.
 
-The declared document is a JSON object with up to four fields:
+The declared document is a JSON object with up to six fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
   setPaths  [{path: [key, ...], value: scalar}]
                                     leaves to assign inside nested objects
+  upsertPaths [{path: [key, ...], key: name, value: object}]
+                                    one entry in the list at path: replaces the
+                                    entry whose `key` field equals value[key],
+                                    else appends value; other entries stay
   own       {name: any JSON}        top-level keys whose whole value is
                                     declared here
+  migrateInstances {from: name, to: name, kinds: [name]}
+                                    T3 Code's move of a retired per-kind
+                                    block into provider instances, run before
+                                    the rest; see migrate() below
 
 `own` is for a top-level key nobody else writes -- a named entry beside the
 ones the agent or another tool maintains -- so replacing its whole value
@@ -79,7 +87,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths', 'own'}
+FIELDS = {'set', 'remove', 'setPaths', 'upsertPaths', 'own', 'migrateInstances'}
 
 
 def describe(path):
@@ -97,7 +105,7 @@ def holds_null(value):
 
 
 def declaration(declared, fmt='json'):
-    """Parse the rendered declaration into (assign, retire, paths, owned).
+    """Parse the rendered declaration into (assign, retire, paths, owned, upserts, migration).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -138,12 +146,28 @@ def declaration(declared, fmt='json'):
     through = sorted({path[0] for path, _ in paths if path[0] in owned})
     if through:
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
+    upserts = upsert_entries(document.get('upsertPaths', []), assign, retire, owned, paths, declared)
+    migration = instance_migration(document.get('migrateInstances'), assign, retire, owned, declared)
     if fmt == 'toml':
         nulls = sorted({describe([name]) for name, value in {**assign, **owned}.items() if holds_null(value)}
-                       | {describe(path) for path, value in paths if value is None})
+                       | {describe(path) for path, value in paths if value is None}
+                       | {describe(path) for path, _, value in upserts if holds_null(value)})
         if nulls:
             raise ValueError('TOML cannot hold a declared null: {}'.format(', '.join(nulls)))
-    return assign, retire, paths, owned
+    return assign, retire, paths, owned, upserts, migration
+
+
+def check_path(path, declared):
+    if not isinstance(path, list) or not path or any(not isinstance(name, str) for name in path):
+        raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+
+
+def check_disjoint(path, others):
+    """Refuse a path that runs through another's leaf, or repeats it."""
+    for other in others:
+        shorter = min(len(path), len(other))
+        if path[:shorter] == other[:shorter]:
+            raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
 
 
 def nested_paths(entries, assign, retire, declared):
@@ -154,8 +178,7 @@ def nested_paths(entries, assign, retire, declared):
         if not isinstance(entry, dict) or set(entry) != {'path', 'value'}:
             raise ValueError('declared "setPaths" entry is not {{path, value}}: {}'.format(declared))
         path, value = entry['path'], entry['value']
-        if not isinstance(path, list) or not path or any(not isinstance(key, str) for key in path):
-            raise ValueError('declared path is not a non-empty list of names: {}'.format(declared))
+        check_path(path, declared)
         # Values stay scalars for the same reason as `set`: an object would
         # replace whatever the owner keeps beside the declared keys.
         if isinstance(value, (dict, list)):
@@ -167,14 +190,93 @@ def nested_paths(entries, assign, retire, declared):
         paths.append((path, value))
     # Likewise when one path runs through another's leaf, or repeats it.
     for index, (path, _) in enumerate(paths):
-        for other, _ in paths[index + 1:]:
-            shorter = min(len(path), len(other))
-            if path[:shorter] == other[:shorter]:
-                raise ValueError('declared paths overlap: {} and {}'.format(describe(path), describe(other)))
+        check_disjoint(path, [other for other, _ in paths[index + 1:]])
     return paths
 
 
-def apply(current, assign, retire, paths, owned=None):
+def upsert_entries(entries, assign, retire, owned, paths, declared):
+    if not isinstance(entries, list):
+        raise ValueError('declared "upsertPaths" is not a list: {}'.format(declared))
+    upserts = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'path', 'key', 'value'}:
+            raise ValueError('declared "upsertPaths" entry is not {{path, key, value}}: {}'.format(declared))
+        path, key, value = entry['path'], entry['key'], entry['value']
+        check_path(path, declared)
+        if not isinstance(key, str) or not isinstance(value, dict) or key not in value:
+            raise ValueError('declared upsert value must be an object holding its key field: {}'.format(describe(path)))
+        # Same reasoning as setPaths: another declaration on the top-level key
+        # would fight this one, with the outcome depending on order.
+        if path[0] in assign or path[0] in retire or path[0] in owned:
+            raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
+        check_disjoint(path, [other for other, _ in paths])
+        # Two upserts on one list are fine when they name different entries;
+        # anything else would have the later one undo the earlier.
+        for other, other_key, other_value in upserts:
+            if path == other and key == other_key and value[key] != other_value[other_key]:
+                continue
+            check_disjoint(path, [other])
+        upserts.append((path, key, value))
+    return upserts
+
+
+def instance_migration(entry, assign, retire, owned, declared):
+    if entry is None:
+        return None
+    if (not isinstance(entry, dict) or set(entry) != {'from', 'to', 'kinds'}
+            or not isinstance(entry['from'], str) or not isinstance(entry['to'], str)
+            or entry['from'] == entry['to']
+            or not isinstance(entry['kinds'], list)
+            or any(not isinstance(kind, str) for kind in entry['kinds'])):
+        raise ValueError('declared "migrateInstances" is not {{from, to, kinds}}: {}'.format(declared))
+    # The migration rewrites both keys, so another top-level declaration on
+    # either would fight it.
+    for name in (entry['from'], entry['to']):
+        if name in assign or name in retire or name in owned:
+            raise ValueError('migrated key is also set, removed, or owned: {}'.format(name))
+    return entry['from'], entry['to'], entry['kinds']
+
+
+def migrate(merged, migration):
+    """Move each listed kind out of the retired per-kind block, as T3 Code does.
+
+    T3 Code moves providers.<kind> into providerInstances.<kind> once, on
+    load, and only into an instance that does not exist yet.  The declaration
+    creates those instances, so without this step the next load would find
+    them present and the user's legacy fields would be dropped unread.  The
+    shape mirrors the pinned T3 Code's migrateLegacyProviderSettings:
+    `enabled` stays on the instance, every other field goes under `config`,
+    and an empty block makes no instance.  Kinds the declaration does not
+    list stay in the block for T3 Code to migrate itself.
+    """
+    if migration is None:
+        return
+    source, target, kinds = migration
+    legacy = merged.get(source)
+    if not isinstance(legacy, dict):
+        return
+    for kind in kinds:
+        blob = legacy.get(kind)
+        if not isinstance(blob, dict):
+            continue
+        instances = merged.setdefault(target, {})
+        if not isinstance(instances, dict):
+            raise ValueError('{} is not an object, so {} cannot be migrated into it'.format(
+                describe([target]), describe([source, kind])))
+        config = {name: value for name, value in blob.items() if name != 'enabled'}
+        enabled = blob.get('enabled')
+        if kind not in instances and (config or isinstance(enabled, bool)):
+            instance = {'driver': kind}
+            if isinstance(enabled, bool):
+                instance['enabled'] = enabled
+            instance['config'] = config
+            instances[kind] = instance
+        del legacy[kind]
+    if not legacy:
+        del merged[source]
+
+
+def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     The whole document is deep-copied and the copy edited in place.  The
@@ -185,24 +287,49 @@ def apply(current, assign, retire, paths, owned=None):
     table.
     """
     merged = copy.deepcopy(current)
+    migrate(merged, migration)
     merged.update(assign)
     # A copy, so a later edit to the result never reaches the declaration.
     merged.update(copy.deepcopy(owned or {}))
     for name in retire:
         merged.pop(name, None)
     for path, value in paths:
-        node = merged
-        for depth, key in enumerate(path[:-1]):
-            if key not in node:
-                node[key] = {}
-            elif not isinstance(node[key], dict):
-                # Replacing it would discard whatever the owner stored there,
-                # so refuse and let the rebuild report it.
-                raise ValueError('{} is not an object, so {} cannot be set'.format(
-                    describe(path[:depth + 1]), describe(path)))
-            node = node[key]
+        node = parent_of(merged, path)
         node[path[-1]] = value
+    for path, key, value in upserts or []:
+        node = parent_of(merged, path)
+        if path[-1] not in node:
+            node[path[-1]] = []
+        entries = node[path[-1]]
+        if not isinstance(entries, list):
+            raise ValueError('{} is not a list, so {} cannot be upserted'.format(describe(path), describe(value)))
+        # The app applies the entries in order and the last one wins, so a
+        # later duplicate would override the declared value: keep one entry,
+        # where the first match stood.
+        matches = [index for index, entry in enumerate(entries)
+                   if isinstance(entry, dict) and key in entry and entry[key] == value[key]]
+        if matches:
+            entries[matches[0]] = copy.deepcopy(value)
+            for index in reversed(matches[1:]):
+                del entries[index]
+        else:
+            entries.append(copy.deepcopy(value))
     return merged
+
+
+def parent_of(merged, path):
+    """Return the object that holds the last key of `path`, creating parents."""
+    node = merged
+    for depth, key in enumerate(path[:-1]):
+        if key not in node:
+            node[key] = {}
+        elif not isinstance(node[key], dict):
+            # Replacing it would discard whatever the owner stored there,
+            # so refuse and let the rebuild report it.
+            raise ValueError('{} is not an object, so {} cannot be set'.format(
+                describe(path[:depth + 1]), describe(path)))
+        node = node[key]
+    return node
 
 
 def snapshot(settings):
@@ -290,7 +417,7 @@ def swap(settings, text, before):
 
 
 def merge(settings, declared, fmt='json'):
-    assign, retire, paths, owned = declaration(declared, fmt)
+    assign, retire, paths, owned, upserts, migration = declaration(declared, fmt)
     # Looked up per call rather than bound at import, so a test that patches
     # either reader reaches this merge.
     read = read_toml_settings if fmt == 'toml' else read_settings
@@ -301,12 +428,12 @@ def merge(settings, declared, fmt='json'):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read(settings), assign, retire, paths, owned)
+    apply(read(settings), assign, retire, paths, owned, upserts, migration)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read(settings)
-        merged = apply(current, assign, retire, paths, owned)
+        merged = apply(current, assign, retire, paths, owned, upserts, migration)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)

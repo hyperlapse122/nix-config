@@ -663,8 +663,8 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, owned = merger.declaration(self.declared)
-        merged = merger.apply({}, assign, retire, paths, owned)
+        assign, retire, paths, owned, upserts, _ = merger.declaration(self.declared)
+        merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
 
@@ -849,8 +849,8 @@ class TomlTests(unittest.TestCase):
 
     def test_does_not_mutate_the_read_document(self):
         current = tomlkit.parse(TOML_EXISTING)
-        assign, retire, paths, owned = merger.declaration(self.declared, fmt='toml')
-        merger.apply(current, assign, retire, paths, owned)
+        assign, retire, paths, owned, upserts, _ = merger.declaration(self.declared, fmt='toml')
+        merger.apply(current, assign, retire, paths, owned, upserts)
         self.assertEqual(tomlkit.dumps(current), TOML_EXISTING)
 
     def test_process_merges_toml(self):
@@ -859,6 +859,312 @@ class TomlTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['features']['daemon_auto_start'], False)
         self.assertIn('# Written by hand; keep this comment.\n', self.settings.read_text())
+
+    def test_multi_line_string_reads_back_byte_identical(self):
+        # developer_instructions is prose with newlines and every quote style.
+        text = 'First line.\nIt\'s said "quoted" and C:\\path\\n stays literal.\n\nLast line.\n'
+        self.seed()
+        self.declare({'set': {'developer_instructions': text}})
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['developer_instructions'], text)
+        self.assertEqual(result['model'], 'gpt-5.1-codex')
+        self.assertEqual(result['features']['web_search'], True)
+        self.assertIn('model = "gpt-5.1-codex" # the user\'s model\n', self.settings.read_text())
+
+    def test_upsert_appends_to_an_inline_list_of_tables(self):
+        self.seed('env = [{ name = "FOO", value = "1" }]\n')
+        self.declare({'upsertPaths': [
+            {'path': ['env'], 'key': 'name', 'value': {'name': 'BAR', 'value': '1'}}]})
+        self.merge()
+        self.assertEqual(self.read()['env'], [
+            {'name': 'FOO', 'value': '1'}, {'name': 'BAR', 'value': '1'}])
+
+
+UPSERT_ENV = ['providerInstances', 'claudeAgent', 'environment']
+UPSERT_ENTRY = {'name': 'CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD', 'value': '1'}
+
+UPSERT_EXISTING = {
+    'providerInstances': {
+        'claudeAgent': {
+            'driver': 'claudeAgent',
+            'config': {'launchArgs': '--keep'},
+            'environment': [{'name': 'FOO', 'value': '1'}],
+        },
+        'codex': {'driver': 'codex', 'environment': [{'name': 'X', 'value': 'y'}]},
+    },
+    'other': 1,
+}
+
+
+class UpsertPathTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.t3/settings.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare(UPSERT_ENTRY)
+
+    def declare(self, value, path=UPSERT_ENV, **fields):
+        document = {'upsertPaths': [{'path': path, 'key': 'name', 'value': value}]}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else UPSERT_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def environment(self):
+        return self.read()['providerInstances']['claudeAgent']['environment']
+
+    def test_appends_and_keeps_the_user_entry(self):
+        self.seed()
+        self.merge()
+        self.assertEqual(self.environment(), [{'name': 'FOO', 'value': '1'}, UPSERT_ENTRY])
+
+    def test_second_run_adds_no_duplicate_and_does_not_rewrite(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual(len(self.environment()), 2)
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_replaces_the_entry_with_the_same_name(self):
+        data = json.loads(json.dumps(UPSERT_EXISTING))
+        data['providerInstances']['claudeAgent']['environment'].insert(
+            0, {'name': UPSERT_ENTRY['name'], 'value': '0'})
+        self.seed(data)
+        self.merge()
+        self.assertEqual(self.environment(), [UPSERT_ENTRY, {'name': 'FOO', 'value': '1'}])
+
+    def test_creates_the_path_when_absent(self):
+        self.merge()
+        self.assertEqual(self.read(), {
+            'providerInstances': {'claudeAgent': {'environment': [UPSERT_ENTRY]}}})
+
+    def test_creates_the_list_when_the_parent_exists_without_it(self):
+        self.seed({'providerInstances': {'claudeAgent': {'driver': 'claudeAgent'}}})
+        self.merge()
+        self.assertEqual(self.read()['providerInstances']['claudeAgent'], {
+            'driver': 'claudeAgent', 'environment': [UPSERT_ENTRY]})
+
+    def test_siblings_and_other_instances_are_untouched(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['providerInstances']['claudeAgent']['config'], {'launchArgs': '--keep'})
+        self.assertEqual(result['providerInstances']['codex'], UPSERT_EXISTING['providerInstances']['codex'])
+        self.assertEqual(result['other'], 1)
+
+    def test_setpaths_still_refuses_a_non_scalar_value(self):
+        self.seed()
+        self.declared.write_text(json.dumps(
+            {'setPaths': [{'path': UPSERT_ENV, 'value': [UPSERT_ENTRY]}]}))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_does_not_mutate_the_read_document(self):
+        current = json.loads(json.dumps(UPSERT_EXISTING))
+        merger.apply(current, {}, [], [], {}, [(UPSERT_ENV, 'name', UPSERT_ENTRY)])
+        self.assertEqual(current, UPSERT_EXISTING)
+
+    def test_collapses_later_duplicates_so_the_declared_value_wins(self):
+        # The app applies entries in order and the last wins, so a later
+        # duplicate holding 0 would turn the declared variable off.
+        data = json.loads(json.dumps(UPSERT_EXISTING))
+        data['providerInstances']['claudeAgent']['environment'] = [
+            {'name': UPSERT_ENTRY['name'], 'value': '1'},
+            {'name': 'FOO', 'value': '1'},
+            {'name': UPSERT_ENTRY['name'], 'value': '0'},
+        ]
+        self.seed(data)
+        self.merge()
+        self.assertEqual(self.environment(), [UPSERT_ENTRY, {'name': 'FOO', 'value': '1'}])
+        self.merge()
+        self.assertEqual(self.environment(), [UPSERT_ENTRY, {'name': 'FOO', 'value': '1'}])
+
+    def assert_refused(self, document):
+        self.seed()
+        self.declared.write_text(json.dumps(document))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_refuses_malformed_upsert_declarations(self):
+        entry = {'path': UPSERT_ENV, 'key': 'name', 'value': UPSERT_ENTRY}
+        for document in (
+            {'upsertPaths': entry},
+            {'upsertPaths': [{'path': UPSERT_ENV, 'value': UPSERT_ENTRY}]},
+            {'upsertPaths': [dict(entry, extra=1)]},
+            {'upsertPaths': [dict(entry, path=[])]},
+            {'upsertPaths': [dict(entry, path='providerInstances')]},
+            {'upsertPaths': [dict(entry, key=1)]},
+            {'upsertPaths': [dict(entry, value=['name'])]},
+            {'upsertPaths': [dict(entry, value={'value': '1'})]},
+        ):
+            with self.subTest(document=document):
+                self.assert_refused(document)
+
+    def test_refuses_an_upsert_on_a_key_set_removed_or_owned(self):
+        entry = {'path': UPSERT_ENV, 'key': 'name', 'value': UPSERT_ENTRY}
+        for field in ({'set': {'providerInstances': 1}},
+                      {'remove': ['providerInstances']},
+                      {'own': {'providerInstances': {}}}):
+            with self.subTest(field=field):
+                self.assert_refused(dict(field, upsertPaths=[entry]))
+
+    def test_refuses_an_upsert_overlapping_a_set_path(self):
+        self.assert_refused({
+            'setPaths': [{'path': UPSERT_ENV + ['x'], 'value': 1}],
+            'upsertPaths': [{'path': UPSERT_ENV, 'key': 'name', 'value': UPSERT_ENTRY}],
+        })
+
+    def test_refuses_overlapping_or_repeated_upserts(self):
+        entry = {'path': UPSERT_ENV, 'key': 'name', 'value': UPSERT_ENTRY}
+        for second in (
+            dict(entry, value=dict(UPSERT_ENTRY, value='0')),
+            dict(entry, path=UPSERT_ENV[:2]),
+            dict(entry, path=UPSERT_ENV + ['inner']),
+            dict(entry, key='value', value=UPSERT_ENTRY),
+        ):
+            with self.subTest(second=second):
+                self.assert_refused({'upsertPaths': [entry, second]})
+
+    def test_two_upserts_may_name_different_entries_of_one_list(self):
+        other = {'name': 'OTHER', 'value': '2'}
+        self.seed()
+        self.declared.write_text(json.dumps({'upsertPaths': [
+            {'path': UPSERT_ENV, 'key': 'name', 'value': UPSERT_ENTRY},
+            {'path': UPSERT_ENV, 'key': 'name', 'value': other},
+        ]}))
+        self.merge()
+        self.assertEqual(self.environment(), [{'name': 'FOO', 'value': '1'}, UPSERT_ENTRY, other])
+
+    def test_refuses_an_existing_value_that_is_not_a_list(self):
+        for environment in ({'name': 'FOO'}, 'FOO'):
+            data = json.loads(json.dumps(UPSERT_EXISTING))
+            data['providerInstances']['claudeAgent']['environment'] = environment
+            with self.subTest(environment=environment):
+                self.seed(data)
+                before = self.settings.read_bytes()
+                with self.assertRaises(ValueError):
+                    self.merge()
+                self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_toml_refuses_a_null_inside_an_upsert_value(self):
+        self.declare(dict(UPSERT_ENTRY, value=None))
+        with self.assertRaises(ValueError):
+            merger.declaration(self.declared, fmt='toml')
+
+
+MIGRATE = {'from': 'providers', 'to': 'providerInstances',
+           'kinds': ['antigravity', 'claudeAgent', 'codex']}
+
+
+class MigrateInstanceTests(unittest.TestCase):
+    """The retired providers block moves into providerInstances as T3 Code would."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.t3/settings.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        # The declaration home/h82/t3code.nix renders: the migration plus
+        # leaves that create the instances the migration must not lose.
+        self.declared.write_text(json.dumps({
+            'migrateInstances': MIGRATE,
+            'setPaths': [
+                {'path': ['providerInstances', 'claudeAgent', 'driver'], 'value': 'claudeAgent'},
+                {'path': ['providerInstances', 'claudeAgent', 'config', 'launchArgs'], 'value': '--add-dir x'},
+                {'path': ['providerInstances', 'antigravity', 'enabled'], 'value': True},
+            ],
+        }))
+
+    def seed(self, data):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data, indent=2))
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def test_legacy_fields_survive_beside_the_declared_leaves(self):
+        self.seed({'providers': {
+            'claudeAgent': {'enabled': True, 'binaryPath': '/opt/claude', 'homePath': '/h'},
+            'antigravity': {'enabled': False},
+        }})
+        self.merge()
+        self.assertEqual(self.read(), {'providerInstances': {
+            'claudeAgent': {'driver': 'claudeAgent', 'enabled': True,
+                            'config': {'binaryPath': '/opt/claude', 'homePath': '/h',
+                                       'launchArgs': '--add-dir x'}},
+            'antigravity': {'driver': 'antigravity', 'enabled': True, 'config': {}},
+        }})
+
+    def test_kinds_not_listed_stay_for_t3_code_to_migrate(self):
+        self.seed({'providers': {'cursor': {'enabled': True, 'binaryPath': '/c'},
+                                 'codex': {'binaryPath': '/x'}}})
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['providers'], {'cursor': {'enabled': True, 'binaryPath': '/c'}})
+        self.assertEqual(result['providerInstances']['codex'],
+                         {'driver': 'codex', 'config': {'binaryPath': '/x'}})
+
+    def test_an_existing_instance_wins_and_the_legacy_block_goes(self):
+        instance = {'driver': 'claudeAgent', 'config': {'launchArgs': '--add-dir x', 'binaryPath': '/new'}}
+        self.seed({'providers': {'claudeAgent': {'binaryPath': '/old'}},
+                   'providerInstances': {'claudeAgent': instance}})
+        self.merge()
+        self.assertEqual(self.read(), {'providerInstances': {
+            'claudeAgent': instance, 'antigravity': {'enabled': True}}})
+
+    def test_an_empty_legacy_block_makes_no_instance(self):
+        self.seed({'providers': {'codex': {}}})
+        self.merge()
+        self.assertNotIn('codex', self.read()['providerInstances'])
+        self.assertNotIn('providers', self.read())
+
+    def test_second_run_does_not_rewrite_the_file(self):
+        self.seed({'providers': {'claudeAgent': {'binaryPath': '/opt/claude'}}})
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_a_non_object_block_is_left_alone(self):
+        self.seed({'providers': ['claudeAgent']})
+        self.merge()
+        self.assertEqual(self.read()['providers'], ['claudeAgent'])
+
+    def test_refuses_malformed_declarations(self):
+        for migration in ({'from': 'providers', 'to': 'providerInstances'},
+                          dict(MIGRATE, kinds='codex'),
+                          dict(MIGRATE, to='providers'),
+                          dict(MIGRATE, extra=1)):
+            with self.subTest(migration=migration):
+                self.declared.write_text(json.dumps({'migrateInstances': migration}))
+                with self.assertRaises(ValueError):
+                    merger.declaration(self.declared)
+
+    def test_refuses_a_migrated_key_that_is_also_removed(self):
+        self.declared.write_text(json.dumps({'migrateInstances': MIGRATE, 'remove': ['providers']}))
+        with self.assertRaises(ValueError):
+            merger.declaration(self.declared)
 
 
 if __name__ == '__main__':
