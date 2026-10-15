@@ -1,0 +1,556 @@
+#!/usr/bin/env python3
+"""Report what a T3 Code Antigravity instance loads under a chosen ACP runtime version.
+
+T3 Code starts agy_acp_server.par with GEMINI_HOME set to an instance home under
+~/.t3/userdata/providers/antigravity, and t3code-antigravity-link links the
+plugin skills and config/AGENTS.md into it. The repository's checks prove the
+links exist, not that the runtime reads them, and the agy CLI ignores
+GEMINI_HOME, so it cannot answer the question either. This probe starts the
+runtime itself, the way T3 Code does, against that home, asks the session what
+it holds, and reports three verdicts: plugin skills, global instructions, and
+auto-memories.
+
+The runtime is the one T3 Code installed when its version matches; otherwise
+the probe downloads the archive from Google into ~/.cache/antigravity-acp-probe
+and prints its sha256. The version packages/t3code-release.json pins must match
+its pinned digest. Any other version is trusted on its HTTPS origin alone,
+because no trusted digest exists for it; its extracted files are hashed once
+and rechecked on every reuse.
+
+The session runs with every built-in tool disabled and no MCP server, in a
+temporary workspace whose AGENTS.md carries a random marker, so the model can
+answer only from its context. The instructions verdict is loaded only when the
+answer returns the GPG fingerprint the global rules name; it is not loaded only
+when the answer also returns a quoted skill description, which proves the
+session answered from its context; otherwise it is undetermined.
+
+The probe needs the instance home signed in through T3 Code's settings, which
+no check or CI runner has, so it is a manual utility: run it from a checkout in
+a desktop session. It is not installed on hosts and no check runs it. Its
+conversations stay in the instance home.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import queue
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
+import zipfile
+from pathlib import Path
+
+PROG = "antigravity-acp-probe"
+RELEASE_FILE = Path(__file__).resolve().parent.parent / "packages" / "t3code-release.json"
+AUTH_PREFIX = "Open the following link to authenticate the ACP server: "
+EXECUTABLE = "agy_acp_server.par"
+HARNESS = "localharness_external"
+# T3 Code's removedEnvironmentKeys: credentials and the variables it sets itself.
+REMOVED_ENVIRONMENT_KEYS = {
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_CLOUD_QUOTA_PROJECT",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GCLOUD_PROJECT",
+    "CLOUDSDK_CORE_PROJECT",
+    "AGY_ACP_CCPA_PROJECT",
+    "AGY_ACP_ENABLE_OAUTH",
+    "GEMINI_HOME",
+    "AGY_ACP_FORCE_FILE_STORAGE",
+    "ANTIGRAVITY_HARNESS_PATH",
+    "BROWSER",
+    "PYTHONUNBUFFERED",
+    "ELECTRON_RUN_AS_NODE",
+}
+CA_BUNDLES = ("/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/cert.pem")
+MEMORY_STORES = ("implicit", "knowledge")
+WINDOW = 6
+
+
+class ProbeError(Exception):
+    pass
+
+
+class NotSignedIn(ProbeError):
+    def __init__(self, reason):
+        super().__init__(f"the instance home is not signed in ({reason}); sign in to Antigravity in T3 Code's settings")
+
+
+def fail(message):
+    print(f"{PROG}: {message}", file=sys.stderr)
+
+
+def platform_ids():
+    """(nix system, T3 Code platform, release directory, archive suffix) for this machine."""
+    machine = platform.machine().lower()
+    if sys.platform == "linux" and machine in ("x86_64", "amd64"):
+        return "x86_64-linux", "linux-x64", "linux", "linux-x86_64"
+    if sys.platform == "linux" and machine in ("aarch64", "arm64"):
+        return "aarch64-linux", "linux-arm64", "linux", "linux-arm64"
+    if sys.platform == "darwin" and machine == "arm64":
+        return "aarch64-darwin", "darwin-arm64", "macos", "darwin-arm64"
+    raise ProbeError(f"no Antigravity runtime for {sys.platform} {machine}")
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def pinned_release(system):
+    try:
+        return json.loads(RELEASE_FILE.read_text())["antigravity"][system]
+    except (OSError, ValueError, KeyError) as error:
+        raise ProbeError(f"cannot read the pinned runtime from {RELEASE_FILE}: {error}") from error
+
+
+def managed_runtime(base_dir, t3_platform, version, pin):
+    """A T3 Code managed install of version, or None."""
+    for marker in sorted((base_dir / "tools" / "antigravity-acp" / t3_platform / "versions").glob("*/.install-complete.json")):
+        try:
+            install = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            continue
+        if install.get("version") != version:
+            continue
+        if pin["version"] == version and install.get("releaseId") != pin["sha256"]:
+            raise ProbeError(f"{marker.parent} holds {version} with release {install.get('releaseId')}, not the pinned {pin['sha256']}")
+        return marker.parent, install.get("releaseId")
+    return None
+
+
+def extract(archive, destination):
+    with zipfile.ZipFile(archive) as bundle:
+        for member in (EXECUTABLE, HARNESS):
+            info = next((entry for entry in bundle.infolist() if Path(entry.filename).name == member), None)
+            if info is None:
+                raise ProbeError(f"the archive has no {member}")
+            with bundle.open(info) as source, open(destination / member, "wb") as target:
+                shutil.copyfileobj(source, target, 1 << 20)
+            (destination / member).chmod(0o755)
+
+
+def cached_runtime(cache_dir, release_dir, suffix, version, pin):
+    """The cached runtime for version, downloading it on first use. Return (directory, archive sha256)."""
+    entry_dir = cache_dir / suffix / version
+    entry_file = entry_dir / "entry.json"
+    if entry_file.exists():
+        entry = json.loads(entry_file.read_text())
+        for member in (EXECUTABLE, HARNESS):
+            if sha256_file(entry_dir / member) != entry["files"][member]:
+                raise ProbeError(f"{entry_dir / member} changed since it was downloaded; remove {entry_dir} to fetch it again")
+        if pin["version"] == version and entry["archive"] != pin["sha256"]:
+            raise ProbeError(f"{entry_dir} came from archive {entry['archive']}, not the pinned {pin['sha256']}")
+        return entry_dir, entry["archive"]
+
+    url = f"https://dl.google.com/agy-extensions/releases/{release_dir}/agy-acp-server-{version}-{suffix}.zip"
+    print(f"downloading {url}", file=sys.stderr)
+    shutil.rmtree(entry_dir, ignore_errors=True)
+    entry_dir.mkdir(parents=True)
+    archive = entry_dir / "archive.zip.partial"
+    try:
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response, open(archive, "wb") as target:
+                shutil.copyfileobj(response, target, 1 << 20)
+        except urllib.error.HTTPError as error:
+            raise ProbeError(f"{url}: HTTP {error.code}") from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            raise ProbeError(f"{url}: {error}") from error
+        archive_sha = sha256_file(archive)
+        if pin["version"] == version and archive_sha != pin["sha256"]:
+            raise ProbeError(f"{url} has sha256 {archive_sha}, not the pinned {pin['sha256']}; refusing to run it")
+        extract(archive, entry_dir)
+        files = {member: sha256_file(entry_dir / member) for member in (EXECUTABLE, HARNESS)}
+        entry_file.write_text(json.dumps({"version": version, "url": url, "archive": archive_sha, "files": files}))
+    except BaseException:
+        shutil.rmtree(entry_dir, ignore_errors=True)
+        raise
+    finally:
+        archive.unlink(missing_ok=True)
+    return entry_dir, archive_sha
+
+
+def frontmatter(skill_file):
+    """The name, description, and disable-model-invocation of a SKILL.md."""
+    lines = skill_file.read_text(errors="replace").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    fields = {}
+    index = 1
+    while index < len(lines) and lines[index].strip() != "---":
+        match = re.match(r"([A-Za-z0-9_-]+):\s*(.*)$", lines[index])
+        index += 1
+        if not match:
+            continue
+        key, value = match.groups()
+        if value[:1] in (">", "|"):
+            block = []
+            while index < len(lines) and (lines[index].startswith((" ", "\t")) or not lines[index].strip()):
+                block.append(lines[index].strip())
+                index += 1
+            value = " ".join(part for part in block if part)
+        elif value[:1] in ('"', "'") and value[-1:] == value[:1]:
+            value = value[1:-1]
+        fields[key] = value
+    return fields
+
+
+def expected_skills(home):
+    """Every model-invocable skill the home's two skills directories hold, by name, with its description."""
+    skills = {}
+    for directory in (home / "config" / "skills", home / "antigravity-cli" / "skills"):
+        for skill_file in sorted(directory.glob("*/SKILL.md")):
+            fields = frontmatter(skill_file)
+            if fields.get("disable-model-invocation", "").lower() == "true":
+                continue
+            skills.setdefault(fields.get("name") or skill_file.parent.name, fields.get("description", ""))
+    return skills
+
+
+def words(text):
+    return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def shares_run(source, answer):
+    """True when answer repeats WINDOW consecutive words of source, or all of a shorter source."""
+    source_words = words(source)
+    if not source_words:
+        return False
+    answer_text = " " + " ".join(words(answer)) + " "
+    size = min(WINDOW, len(source_words))
+    return any(
+        " " + " ".join(source_words[start : start + size]) + " " in answer_text
+        for start in range(len(source_words) - size + 1)
+    )
+
+
+def memory_stores(home):
+    stores = []
+    for root, directories, _ in os.walk(home):
+        depth = len(Path(root).relative_to(home).parts)
+        if depth >= 3:
+            directories[:] = []
+        stores.extend(Path(root) / name for name in directories if name in MEMORY_STORES)
+    return sorted(stores)
+
+
+def concurrent_servers(home):
+    """Describe agy_acp_server processes that may share the home; T3 Code may be running one."""
+    if sys.platform == "linux":
+        found = []
+        for proc in Path("/proc").iterdir():
+            if not proc.name.isdigit():
+                continue
+            try:
+                if EXECUTABLE not in (proc / "cmdline").read_bytes().decode(errors="replace"):
+                    continue
+                environ = (proc / "environ").read_bytes().split(b"\0")
+            except OSError:
+                continue
+            if f"GEMINI_HOME={home}".encode() in environ:
+                found.append(proc.name)
+        return f"process {', '.join(found)} runs {EXECUTABLE} with this GEMINI_HOME" if found else None
+    result = subprocess.run(["pgrep", "-f", EXECUTABLE], capture_output=True, text=True)
+    pids = result.stdout.split()
+    return f"process {', '.join(pids)} runs {EXECUTABLE}, possibly with this home" if pids else None
+
+
+def child_environment(home, runtime_dir, temp_dir):
+    environment = {key: value for key, value in os.environ.items() if key.upper() not in REMOVED_ENVIRONMENT_KEYS}
+    environment.update(
+        GEMINI_HOME=str(home),
+        AGY_ACP_FORCE_FILE_STORAGE="1",
+        PYTHONUNBUFFERED="1",
+        ELECTRON_RUN_AS_NODE="1",
+        ANTIGRAVITY_HARNESS_PATH=str(runtime_dir / HARNESS),
+        TMPDIR=str(temp_dir),
+        # A command that opens nothing, so a stale token never starts a sign-in.
+        BROWSER=shutil.which("true") or "/usr/bin/true",
+    )
+    if "SSL_CERT_FILE" not in environment:
+        bundle = next((path for path in CA_BUNDLES if Path(path).is_file()), None)
+        if bundle:
+            environment["SSL_CERT_FILE"] = bundle
+    return environment
+
+
+class Server:
+    """agy_acp_server over newline-delimited JSON-RPC, in its own process group."""
+
+    def __init__(self, command, environment, cwd):
+        self.process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+        self.messages = queue.Queue()
+        self.next_id = 0
+        self.updates = []
+        threading.Thread(target=self._read_stdout, daemon=True).start()
+        threading.Thread(target=self._read_stderr, daemon=True).start()
+
+    def _read_stdout(self):
+        for raw in self.process.stdout:
+            line = raw.decode(errors="replace").rstrip("\r\n")
+            if line.startswith(AUTH_PREFIX):
+                self.messages.put(NotSignedIn("the runtime asked for a browser sign-in"))
+                continue
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(message, dict):
+                self.messages.put(message)
+        self.messages.put(None)
+
+    def _read_stderr(self):
+        for raw in self.process.stderr:
+            if raw.decode(errors="replace").startswith(AUTH_PREFIX):
+                self.messages.put(NotSignedIn("the runtime asked for a browser sign-in"))
+
+    def _send(self, message):
+        self.process.stdin.write((json.dumps(message) + "\n").encode())
+        self.process.stdin.flush()
+
+    def _answer(self, message):
+        if message.get("method") == "session/request_permission":
+            self._send({"jsonrpc": "2.0", "id": message["id"], "result": {"outcome": {"outcome": "cancelled"}}})
+        else:
+            self._send({"jsonrpc": "2.0", "id": message["id"], "error": {"code": -32601, "message": "not supported"}})
+
+    def request(self, method, params, timeout):
+        self.next_id += 1
+        request_id = self.next_id
+        self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProbeError(f"{method}: no answer within {timeout} s")
+            try:
+                message = self.messages.get(timeout=remaining)
+            except queue.Empty:
+                continue
+            if message is None:
+                raise ProbeError(f"{method}: the runtime exited with status {self.process.wait()}")
+            if isinstance(message, Exception):
+                raise message
+            if "method" in message and "id" in message:
+                self._answer(message)
+            elif message.get("method") == "session/update":
+                self.updates.append(message.get("params", {}).get("update", {}))
+            elif message.get("id") == request_id:
+                if "error" in message:
+                    error = message["error"]
+                    if error.get("code") == -32000:
+                        raise NotSignedIn(f"{method} reported: {error.get('message')}")
+                    raise ProbeError(f"{method} failed: {error.get('code')} {error.get('message')}")
+                return message.get("result") or {}
+
+    def stop(self):
+        """Stop the whole group: a stopped client leaves the server and its harness running."""
+        try:
+            os.killpg(self.process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            # Reap the leader, or the group still exists while it is a zombie.
+            self.process.poll()
+            try:
+                os.killpg(self.process.pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.2)
+        try:
+            os.killpg(self.process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        self.process.wait()
+
+
+def prompt_text(control):
+    return f"""Answer only from what is already in your context. Do not call any tool and do not read any file.
+
+SKILLS: list the name of every skill available to you, one per line.
+CONTROL: quote verbatim the description of the skill named {control}, or write NONE.
+FINGERPRINT: your instructions may name the GPG key fingerprint to use as the recipient for a new SOPS setup. Give that 40-character fingerprint exactly, or write NONE.
+MARKER: your workspace rules may carry a marker that starts with PROBE-MARKER-. Give it exactly, or write NONE.
+MEMORIES: list every memory you hold about the user or about past conversations, or write NONE.
+
+Use those five headings in that order."""
+
+
+def model_name(session):
+    for option in session.get("configOptions") or []:
+        if option.get("id") == "model":
+            return option.get("currentValue")
+    return (session.get("models") or {}).get("currentModelId")
+
+
+def verdicts(home, skills, control, answer, marker):
+    lines = []
+    named = [name for name in skills if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", answer)]
+    missing = sorted(set(skills) - set(named))
+    if not skills:
+        lines.append("skills: undetermined (the home holds no model-invocable skill)")
+    elif missing:
+        lines.append(f"skills: not loaded ({len(named)} of {len(skills)} named; missing: {', '.join(missing)})")
+    else:
+        lines.append(f"skills: loaded (all {len(skills)} named)")
+
+    rules = home / "config" / "AGENTS.md"
+    try:
+        fingerprints = set(re.findall(r"\b[0-9A-Fa-f]{40}\b", rules.read_text()))
+    except OSError:
+        fingerprints = set()
+    compact = re.sub(r"\s", "", answer).upper()
+    control_back = control is not None and shares_run(skills[control], answer)
+    if len(fingerprints) != 1:
+        lines.append(f"instructions: undetermined ({rules} names {len(fingerprints)} fingerprints, not one)")
+    elif next(iter(fingerprints)).upper() in compact:
+        lines.append(f"instructions: loaded (the fingerprint from {rules} came back)")
+    elif control_back:
+        lines.append(f"instructions: not loaded (the {control} description came back, the fingerprint did not)")
+    else:
+        lines.append("instructions: undetermined (neither the fingerprint nor the control description came back)")
+    lines.append(f"workspace marker: {'came back' if marker in answer else 'did not come back'}")
+
+    stores = memory_stores(home)
+    if not stores:
+        lines.append("memories: no memory store in the home")
+    else:
+        recalled = any(
+            shares_run(path.read_text(errors="replace"), answer)
+            for store in stores
+            for path in store.rglob("*")
+            if path.is_file()
+        )
+        listing = ", ".join(f"{store} ({sum(1 for path in store.rglob('*') if path.is_file())} files)" for store in stores)
+        lines.append(f"memories: {'loaded' if recalled else 'not loaded'} (stores: {listing})")
+    return lines
+
+
+def probe(args):
+    system, t3_platform, release_dir, suffix = platform_ids()
+    home = (args.home or args.base_dir / "userdata" / "providers" / "antigravity" / hashlib.sha256(args.instance.encode()).hexdigest()).resolve()
+    if not home.is_dir():
+        raise ProbeError(f"{home} does not exist")
+    if not (home / "antigravity-acp" / "acp_token.json").is_file():
+        raise NotSignedIn("no antigravity-acp/acp_token.json")
+
+    pin = pinned_release(system)
+    managed = managed_runtime(args.base_dir, t3_platform, args.version, pin)
+    if managed:
+        runtime_dir, release = managed
+        source = f"T3 Code install, release {release}"
+    else:
+        runtime_dir, archive_sha = cached_runtime(args.cache_dir, release_dir, suffix, args.version, pin)
+        source = f"downloaded archive sha256 {archive_sha}"
+    print(f"runtime: {args.version} at {runtime_dir} ({source})")
+    print(f"home: {home}")
+
+    warning = concurrent_servers(home)
+    if warning:
+        print(f"{PROG}: warning: {warning}; T3 Code may be using this instance, probing anyway", file=sys.stderr)
+
+    skills = expected_skills(home)
+    control = min(skills) if skills else None
+    marker = f"PROBE-MARKER-{secrets.token_hex(8)}"
+    with tempfile.TemporaryDirectory(prefix=f"{PROG}-") as temp:
+        temp_dir = Path(temp)
+        workspace = temp_dir / "workspace"
+        workspace.mkdir()
+        (workspace / "AGENTS.md").write_text(f"# Workspace rules\n\nThe marker for this workspace is {marker}.\n")
+        command = [str(runtime_dir / EXECUTABLE)] + (["--uid="] if sys.platform == "linux" else [])
+        server = Server(command, child_environment(home, runtime_dir, temp_dir), workspace)
+        try:
+            server.request(
+                "initialize",
+                {
+                    "protocolVersion": 1,
+                    "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False}, "terminal": False},
+                    "clientInfo": {"name": PROG, "version": "1"},
+                },
+                args.timeout,
+            )
+            server.request("authenticate", {"methodId": "oauth-personal"}, args.timeout)
+            session = server.request(
+                "session/new",
+                {"cwd": str(workspace), "mcpServers": [], "_meta": {"agy": {"enabledTools": []}}},
+                args.timeout,
+            )
+            print(f"model: {model_name(session) or 'unknown'}")
+            result = server.request(
+                "session/prompt",
+                {"sessionId": session["sessionId"], "prompt": [{"type": "text", "text": prompt_text(control)}]},
+                args.prompt_timeout,
+            )
+        finally:
+            server.stop()
+
+    answer = "".join(
+        (update.get("content") or {}).get("text", "")
+        for update in server.updates
+        if update.get("sessionUpdate") == "agent_message_chunk"
+    )
+    tool_calls = sum(1 for update in server.updates if update.get("sessionUpdate") in ("tool_call", "tool_call_update"))
+    print(f"stop reason: {result.get('stopReason')}; tool call updates: {tool_calls}")
+    if not answer.strip():
+        raise ProbeError("the session gave no answer")
+    print("\n--- answer ---")
+    print(answer.strip())
+    print("--- verdicts ---")
+    for line in verdicts(home, skills, control, answer, marker):
+        print(line)
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("version", help="the ACP runtime version, such as 1.3.0")
+    parser.add_argument("--instance", default="antigravity", help="the T3 Code Antigravity instance id (default: antigravity)")
+    parser.add_argument("--home", type=Path, help="an instance home to probe instead of the instance's")
+    parser.add_argument("--base-dir", type=Path, default=Path.home() / ".t3", help="T3 Code's base directory (default: ~/.t3)")
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / PROG,
+        help="where downloaded runtimes are kept",
+    )
+    parser.add_argument("--timeout", type=float, default=180, help="seconds to wait for each handshake step")
+    parser.add_argument("--prompt-timeout", type=float, default=600, help="seconds to wait for the answer")
+    args = parser.parse_args(argv)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    try:
+        return probe(args)
+    except ProbeError as error:
+        fail(str(error))
+        return 1
+    except KeyboardInterrupt:
+        fail("interrupted")
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
