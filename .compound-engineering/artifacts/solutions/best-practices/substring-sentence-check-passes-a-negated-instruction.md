@@ -1,7 +1,7 @@
 ---
 title: "A substring check for a required instruction sentence passes when the sentence is negated"
 date: 2026-10-12
-last_updated: 2026-10-14
+last_updated: 2026-10-15
 category: best-practices
 module: "Agent instructions render check (tests/agent-instructions.nix)"
 problem_type: best_practice
@@ -12,6 +12,7 @@ applies_when:
   - "The guarded text is an imperative whose meaning flips when words are added in front of it, such as Do not or Never"
   - "Mutation-testing a prose check where the mutation list only deletes guarded sentences"
   - "A rule whose reversal could be added as a separate sentence beside the guarded one, which no required-sentence check can see"
+  - "A pinned section whose sentences lean on their neighbours, such as one starting with This holds, or whose meaning changes when a sentence is repeated"
 root_cause: logic_error
 resolution_type: test_fix
 related_components:
@@ -22,6 +23,7 @@ tags:
   - nix
   - grep
   - agent-instructions
+  - sentence-order
 ---
 
 # A substring check for a required instruction sentence passes when the sentence is negated
@@ -38,7 +40,7 @@ A deletion round proves only that the check notices the text is gone. Prose inst
 
 Match a required sentence only where a sentence begins, and add a negation round to the mutation list.
 
-The helper now accepts a sentence only when the text before its first occurrence on a line is empty, a list marker (a hyphen and a space), or ends with the full stop and space of the previous sentence (`tests/agent-instructions.nix:266-281`):
+The helper now accepts a sentence only when the text before its first occurrence on a line is empty, a list marker (a hyphen and a space), or ends with the full stop and space of the previous sentence (`tests/agent-instructions.nix:350-365`):
 
 ```nix
 requireSentences = message: sentences: ''
@@ -63,7 +65,7 @@ requireSentences = message: sentences: ''
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
-Close it with an allowlist over the section instead: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (`tests/agent-instructions.nix:283-311`). The pinned subset is derived from the required list, so there is one list to maintain:
+Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (`tests/agent-instructions.nix:376-395`). The pinned subset is derived from the required list, so there is one list to maintain:
 
 ```nix
 antigravitySentences = lib.filter (
@@ -72,6 +74,30 @@ antigravitySentences = lib.filter (
 ```
 
 `onlyPinnedSentences` takes the lines under `# Cross-model delegation` up to the next top-level heading, strips the list marker, splits sentences on a full stop followed by a space, keeps those matching `Antigravity|Argon`, and fails on any that is not in the pinned list. The split assumes no guarded sentence contains a full stop followed by a space, such as "e.g. "; a sentence that did would be reported as unpinned, which fails red.
+
+Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` (`tests/agent-instructions.nix:400-413`) checks that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
+
+For a section pinned whole, compare the section's sentence stream to the pinned list in order (`tests/agent-instructions.nix:419-433`):
+
+```nix
+sentencesInOrder = message: heading: sentences: ''
+  expected=$(mktemp)
+  actual=$(mktemp)
+  printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
+  awk -v h=${esc heading} '
+    $0 == h { inside = 1; next }
+    /^# / { inside = 0 }
+    inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+  ' "$file" | grep -E -- . > "$actual" || true
+  if ! cmp -s "$expected" "$actual"; then
+    echo ${esc message} >&2
+    diff "$expected" "$actual" >&2 || true
+    failed=1
+  fi
+'';
+```
+
+The pinned list must then be written in section order, which also makes it read as the section does. `grep -E -- .` drops the blank lines the awk split leaves. The diff names the lines out of place.
 
 When a rule has a safety stop, guard the stop as its own sentence. The review-findings rule tells autonomous runs to apply the recommended fix. Without a guarded sentence for the stop that protects user decisions, deleting the stop leaves the permissive half guarded and green.
 
@@ -84,6 +110,7 @@ A guard on agent instructions exists to catch an edit that changes what agents d
 - Any check that requires sentences of prose, not identifiers, to be present.
 - Whenever a prose guard is mutation-tested: add one round that prefixes a guarded sentence with "Do not", and one that adds a reversal as a separate sentence and as a separate bullet, beside the deletion rounds.
 - When a section's rules about one subject must not be contradicted, check that every sentence in the section naming that subject is pinned, not only that the pinned sentences are present.
+- When a section is pinned whole and any sentence leans on a neighbour or a repeat would change it: check order and count, and add a move round and a duplicate round to the mutation list.
 - When a rule pairs a permission with a limit on it, such as "apply the recommended fix" with "stop when it reverses a user decision": guard the limit too.
 
 ## Examples
@@ -107,6 +134,15 @@ For the Antigravity peer, the same runner showed:
 | Add "Do not delegate the pass to Antigravity." after the pinned bullet's last sentence | green (missed) | red |
 | Add a bullet "Never use Argon for a cross-model pass." | green (missed) | red |
 | Rename the `# Cross-model delegation` heading | green | red, section missing |
+
+For the T3 Code PR watch rules in `# Pull and merge requests`:
+
+| Mutation | Membership helpers | With `sentencesInOrder` |
+| --- | --- | --- |
+| Move "This holds when ..." to the end of the section | green (missed) | red |
+| Duplicate the `link_pull_request` bullet | green (missed) | red |
+| Delete any one of the 13 new sentences | red | red |
+| Add an unpinned contradicting bullet | red | red |
 
 ## Related
 

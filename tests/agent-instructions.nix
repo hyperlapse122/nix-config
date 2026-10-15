@@ -86,14 +86,20 @@
     skipping only steps with no counterpart, babysitting every request opened
     or pushed without being asked and drafts only on request, the T3 Code
     link, first tick, watch, and tick order, the settle-window and 30-minute fallback
-    waits, the paths without T3 Code and the GitLab watcher's exit events, the
+    waits, when the T3 Code tools count as available, T3 Code's watch
+    replacing only the wait on every path, one invocation across every wake,
+    `lfg` printing DONE at its CI-decided stop and babysitting on after it,
+    the bounded bridge watcher after a failed T3 Code call, a failed unwatch
+    at a stop, the skill rules that give way inside T3 Code, the paths
+    without T3 Code and the GitLab watcher's exit events, the
     GitLab tick's state, a successful head pipeline as readiness evidence,
     the GitLab settle window, missing CI and pending approval as blockers,
     never rebasing on GitLab, unwatching before hand-back, and leaving the
     forge substitution out of the report. Every sentence in that section must
-    be pinned, so a missing heading, or any of those sentences dropped,
-    reworded, negated, contradicted by an added sentence, moved into another
-    section, or moved into one harness's branch, fails.
+    be pinned, in order, so a missing heading, or any of those sentences
+    dropped, reworded, negated, contradicted by an added sentence, duplicated,
+    reordered, moved into another section, or moved into one harness's branch,
+    fails.
   - it carries the shared issue and pull request media rule: which GitHub and
     GitLab items it covers, attaching the conversation's media, capturing
     media when showing would help and when not to, logs as code blocks,
@@ -181,6 +187,19 @@ let
     "On each T3 Code wake, stop the background waits you started, then run one babysit tick in the skill's order: review feedback first, then CI on the current head, then branch currency."
     "When a tick finds the request ready except for the skill's settle window or its bounded wait for a review still coming, keep the watch and start a background wait for that window, then run another tick when it ends."
     "While T3 Code watches, also start one background wait of 30 minutes after each tick that runs a tick when no wake has arrived, so a watch that stopped reading the request does not strand it."
+    "The T3 Code pull request tools are available when the session lists `link_pull_request`, `watch_pull_request`, and `unwatch_pull_request` by name, even when the harness must load their schemas before the first call."
+    "Inside T3 Code, `ce-babysit-pr` still runs every tick, but where it would arm `pr-snapshot watch` or wait between pipeline ticks, call `watch_pull_request` and end your turn instead."
+    "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10."
+    "On every wake, whether T3 Code, the bridge watcher, or a background wait started it, run the next tick under the invocation the first tick started, presenting its recorded `RUN_INVOCATION_ID`, `RUN_STARTED_AT`, and `RUN_BUDGET_SECONDS`, and never pass `--start-invocation` again."
+    "When those values are no longer in your context, read them back from the request's `state.json` in `ce-babysit-pr`'s state directory, and at a stack layer transition also pass `--continue-invocation` as the skill directs."
+    "Under T3 Code, `lfg` runs a `ce-babysit-pr mode:pipeline` tick on each wake until one reaches its CI-decided stop, and prints its close-out and `<promise>DONE</promise>` in that turn."
+    "In that close-out, say that T3 Code watches the request instead of pointing the user to run `ce-babysit-pr`."
+    "When that tick also reached looks-ready, a blocker, or the budget, unwatch as the stop rule below says; otherwise keep the watch and end the turn, and later wakes keep babysitting under the same invocation until looks-ready, a blocker, or the budget, with every delegate still in `mode:pipeline`."
+    "A failed call to `link_pull_request` or `watch_pull_request`, such as `The calling provider no longer owns an active thread run`, does not make T3 Code unavailable: when `link_pull_request` failed, still call `watch_pull_request` in that turn, and while the watch has not succeeded, arm a bridge watcher in place of the 30-minute wait and retry each failed call at the next tick."
+    "The bridge watcher is `ce-babysit-pr`'s own watcher on GitHub and the GitLab background watcher below on GitLab, and you stop it after at most 30 minutes, so a retry tick runs even when the request has not changed."
+    "Once `watch_pull_request` succeeds, stop the bridge watcher and start the 30-minute wait."
+    "When `unwatch_pull_request` fails at a babysitting stop, arm no bridge and schedule no tick, and say in your final report that T3 Code still watches the request."
+    "Inside T3 Code, these skill rules give way to this section: `ce-babysit-pr`'s default `pr-snapshot watch` sustain mode, except for the bridge watcher above, its pipeline mode's wait between ticks and its rule never to wait on the settle window or human review, `ce-commit-push-pr`'s rule against arming a watcher outside `ce-babysit-pr`, which does not reach `watch_pull_request` or the waits this section starts, `lfg`'s stop once CI is decided, its close-out line that points the user to `ce-babysit-pr`, and its rule not to end the turn before `<promise>DONE</promise>`."
     "When T3 Code is unavailable, babysit a GitHub pull request with `ce-babysit-pr` unchanged."
     "When T3 Code is unavailable, babysit a GitLab merge request with the same ticks and a background watcher that polls every two to three minutes and exits when the head pipeline finishes, a note or discussion appears, the conflict or merge status changes, or the merge request closes or merges."
     "Never wait in a foreground sleep loop; when your harness cannot run a background command, rely on T3 Code's wakes alone, and when a tick then finds only a wait outstanding, call `unwatch_pull_request` and report the open request and how to resume babysitting."
@@ -393,6 +412,26 @@ let
     done
   '';
 
+  # Fails the build when the section under `heading`, read top to bottom, is
+  # not exactly `sentences` in that order. Membership checks pass a
+  # duplicated sentence, or one moved away from the sentence it leans on,
+  # such as "This holds when ...".
+  sentencesInOrder = message: heading: sentences: ''
+    expected=$(mktemp)
+    actual=$(mktemp)
+    printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
+    awk -v h=${esc heading} '
+      $0 == h { inside = 1; next }
+      /^# / { inside = 0 }
+      inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
+    ' "$file" | grep -E -- . > "$actual" || true
+    if ! cmp -s "$expected" "$actual"; then
+      echo ${esc message} >&2
+      diff "$expected" "$actual" >&2 || true
+      failed=1
+    fi
+  '';
+
   assertHarness =
     hostName: userConfig: harness:
     let
@@ -446,6 +485,10 @@ let
           pullRequestSentences
         }
         ${sentencesInSection "${label} moves a pull and merge request sentence out of its section:"
+          "# Pull and merge requests"
+          pullRequestSentences
+        }
+        ${sentencesInOrder "${label} reorders or duplicates a pull and merge request sentence:"
           "# Pull and merge requests"
           pullRequestSentences
         }
