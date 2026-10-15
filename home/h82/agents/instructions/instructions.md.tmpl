@@ -155,6 +155,29 @@ Before the first push of a branch, check whether its name describes the change, 
 - Follow the project's documented branch-naming rule, from `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`, the project docs, or a CI check or hook that validates branch names. A pattern seen only in existing branch names is not a rule.
 - When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change. This follows GitHub Flow's short, descriptive names, for example `feat/add-branch-naming-rule`. Drop an owner prefix a tool added, such as `hyperlapse122/`, and check the name with `git check-ref-format --branch`, which checks syntax only.
 
+# Pull and merge requests
+
+GitHub and GitLab are both normal forges. Treat a GitLab project as the same case as a GitHub one, and babysit every pull or merge request you open or push to until it looks ready to merge.
+
+- When a Compound Engineering skill that speaks only GitHub, such as `ce-commit-push-pr`, `ce-babysit-pr`, `ce-resolve-pr-feedback`, `ce-code-review` on a pull request, or `lfg`, runs in a GitLab project, carry out the same procedure with `glab` instead of stopping or skipping its forge steps.
+- Map each GitHub concept to its GitLab counterpart: a pull request is a merge request, a review thread is a resolvable discussion, and an Actions run or check is a pipeline or job.
+- Open the merge request with `glab mr create`, read discussions with `glab mr note list -F json`, reply with `glab mr note create --reply`, resolve with `glab mr note resolve`, retry a job with `glab ci retry`, and reach anything else through `glab api`.
+- When a skill step has no GitLab counterpart, such as a `gh stack` posture, skip only that step, keep the rest of the procedure, and name the skipped step in your report.
+- After you open a pull or merge request, or push to one, start babysitting it without being asked, in interactive and autonomous runs alike.
+- Babysit a draft only when the user asked you to watch that draft; otherwise report it as a draft and arm no watch.
+- When the T3 Code pull request tools are available, call `link_pull_request`, handle the comments that already exist, call `watch_pull_request`, and end your turn.
+- On each T3 Code wake, run one babysit tick in the skill's order: review feedback first, then CI on the current head, then branch currency.
+- When a tick finds the request ready except for the skill's settle window or its bounded wait for a review still coming, keep the watch and start a background wait for that window, then run another tick when it ends.
+- While T3 Code watches, also keep one background wait of 30 minutes that runs a tick when no wake has arrived, so a watch that stopped reading the request does not strand it.
+- When T3 Code is unavailable, babysit a GitHub pull request with `ce-babysit-pr` unchanged.
+- When T3 Code is unavailable, babysit a GitLab merge request with the same ticks and a background watcher that polls every two to three minutes and exits when the head pipeline finishes, a note or discussion appears, the conflict or merge status changes, or the merge request closes or merges.
+- Never wait in a foreground sleep loop; when your harness cannot run a background command, report the open request and how to resume babysitting.
+- On GitLab, read each tick's state from `glab mr view <id> -F json` (`state`, `draft`, `sha`, `head_pipeline`, `detailed_merge_status`, `has_conflicts`, `blocking_discussions_resolved`) and from `glab mr note list <id> -F json`.
+- Call a merge request ready only when `head_pipeline.sha` equals `sha` and that pipeline has finished, `detailed_merge_status` is `mergeable`, no discussion is unresolved, no note or `needs-human` item is unhandled, and the settle window has passed. A T3 Code wake, `glab ci status`, or an empty pipeline list is not evidence that a merge request is ready.
+- On GitLab, never rebase: report a branch that is behind or conflicts with its target as a blocker for the user.
+- When babysitting reaches looks-ready, a blocker, or its budget, call `unwatch_pull_request` and stop your background waits before you hand back, and leave the merge to the user.
+- Using `glab` instead of `gh`, or T3 Code's watch instead of the skill's watcher, is not a decision you made on the user's behalf; leave it out of the report, and mention the forge only for a skipped step or a blocker.
+
 # Issue and pull request media
 
 When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change. This covers media the user supplied and media you capture yourself.
