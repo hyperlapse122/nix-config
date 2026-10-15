@@ -751,6 +751,53 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
+  # No delivery path carries the Antigravity T3 Code part yet, so no host
+  # renders it. Rendered here, so the template's Antigravity branches in that
+  # part keep producing the part minus the rules about Antigravity peers.
+  antigravityT3 = (import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; }).render {
+    harness = "antigravity";
+    parts = [ "t3code" ];
+  };
+  # The broad-scout rule and the Antigravity-peer bullet, the two places the
+  # template leaves out for Antigravity.
+  antigravityT3Omitted = [
+    "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
+  ]
+  ++ lib.filter (
+    sentence:
+    lib.any (prefix: lib.hasPrefix prefix sentence) [
+      "When a skill's cross-model pass runs through T3 Code, also delegate"
+      "The Antigravity peer belongs"
+      "It mirrors every job"
+      "It obeys the skill's recipient restrictions"
+      "When a gate or restriction excludes it"
+    ]
+  ) delegationSentences;
+  antigravityT3Rules =
+    assert lib.assertMsg (lib.length antigravityT3Omitted == 6)
+      "tests/agent-instructions.nix: antigravityT3Omitted no longer names the six sentences the Antigravity branches leave out";
+    ''
+      file=${antigravityT3}
+      ${countSentences "the Antigravity T3 Code part does not carry this sentence exactly once" 1 (
+        lib.subtractLists antigravityT3Omitted (
+          t3IntroSentences ++ delegationSentences ++ t3PullRequestSentences
+        )
+      )}
+      ${countSentences "the Antigravity T3 Code part carries a rule about Antigravity peers" 0
+        antigravityT3Omitted
+      }
+      for tool in ${lib.escapeShellArgs harnesses.antigravity.absent}; do
+        if grep -qF -- "$tool" "$file"; then
+          echo "the Antigravity T3 Code part names another harness's tool $tool" >&2
+          failed=1
+        fi
+      done
+      if grep -qE '\{\{|\}\}|<no value>' "$file"; then
+        echo 'the Antigravity T3 Code part carries an unrendered template action' >&2
+        failed=1
+      fi
+    '';
+
   forceT3Off = {
     my.t3.cli.enable = lib.mkForce false;
     my.t3.desktop.enable = lib.mkForce false;
@@ -817,6 +864,7 @@ pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 
   seen=$(mktemp)
 
   ${lib.concatMapStringsSep "\n" assertEntry users}
+  ${antigravityT3Rules}
 
   if [ "$failed" != "0" ]; then
     exit 1

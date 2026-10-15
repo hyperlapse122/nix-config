@@ -31,16 +31,16 @@ ENCODINGS = {
 
 def main(argv):
     base, out, rest = argv[0], argv[1], argv[2:]
-    with open(base) as handle:
+    with open(base, encoding='utf-8') as handle:
         declared = json.load(handle)
     while rest:
         flag, path, encoding, source, rest = rest[0], rest[1], rest[2], rest[3], rest[4:]
         if flag != '--leaf':
             raise SystemExit('declare.py: expected --leaf, got {}'.format(flag))
-        with open(source) as handle:
+        with open(source, encoding='utf-8') as handle:
             text = handle.read()
         declared.setdefault('setPaths', []).append({'path': json.loads(path), 'value': ENCODINGS[encoding](text)})
-    with open(out, 'w') as handle:
+    with open(out, 'w', encoding='utf-8') as handle:
         json.dump(declared, handle, separators=(',', ':'), ensure_ascii=False)
 
 

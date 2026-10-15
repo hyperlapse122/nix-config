@@ -69,6 +69,9 @@ let
         driver = "antigravity";
         enabled = true;
       };
+      # --add-dir also makes the directory a working directory of every T3
+      # Code Claude session; it holds only the T3 Code part, so that is
+      # harmless.
       claudeAgent = {
         driver = "claudeAgent";
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
@@ -92,12 +95,18 @@ let
   # written value on every machine forever. Move it here instead, and delete
   # the entry once every host has rebuilt past it. defaultThreadEnvMode is left
   # to each repository's t3.json, which a value in settings.json outranks.
-  # providers is the retired per-kind block T3 Code migrates into
-  # providerInstances once and then deletes.
-  retiredKeys = [
-    "defaultThreadEnvMode"
-    "providers"
-  ];
+  retiredKeys = [ "defaultThreadEnvMode" ];
+
+  # providers is the retired per-kind block T3 Code moves into
+  # providerInstances on load, but only into an instance that does not exist
+  # yet. The instances declared above would make it skip theirs and drop the
+  # user's fields, so the merge moves those kinds first, the same way, and
+  # leaves the others for T3 Code.
+  instanceMigration = {
+    from = "providers";
+    to = "providerInstances";
+    kinds = lib.attrNames settings.providerInstances;
+  };
 
   # The instance environment is a list the app also edits, so the one entry
   # is upserted by name and the user's other entries stay. `sensitive` is the
@@ -150,13 +159,15 @@ let
       owned ? { },
       remove ? [ ],
       upsertPaths ? [ ],
+      migrateInstances ? null,
     }:
     {
       inherit remove upsertPaths;
       set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
-    };
+    }
+    // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
     t3codeSettings = {
@@ -168,6 +179,7 @@ let
           owned = modelSelections;
           remove = retiredKeys;
           upsertPaths = upserts;
+          migrateInstances = instanceMigration;
         };
         leaves = [
           {
@@ -230,10 +242,6 @@ in
     };
   };
 
-  # The desktop app and the CLI share ~/.t3. One settings entry per file, so a
-  # refusal on one does not hide the other. Ordered after installPackages, as
-  # the Claude Code merge in agents/claude.nix is, so a refusal cannot strand
-  # linkGeneration. `run` leaves the files alone on a dry run.
   home.file.t3code-claude-instructions = lib.mkIf t3 {
     target = "${claudeInstructionsDir}/CLAUDE.md";
     source = instructions.render {
@@ -241,6 +249,11 @@ in
       parts = [ "t3code" ];
     };
   };
+
+  # The desktop app and the CLI share ~/.t3. One settings entry per file, so a
+  # refusal on one does not hide the other. Ordered after installPackages, as
+  # the Claude Code merge in agents/claude.nix is, so a refusal cannot strand
+  # linkGeneration. `run` leaves the files alone on a dry run.
 
   home.activation = lib.mkIf t3 (
     lib.mapAttrs (

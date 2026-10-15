@@ -30,7 +30,8 @@
     settings.json declaration names the provider instances' leaves: the Claude
     instance's --add-dir under that configuration's home, its environment
     entry upserted by name, and the Codex launch argument built from the
-    rendered Codex system and T3 Code parts; `providers` is removed.
+    rendered Codex system and T3 Code parts; the retired `providers` block
+    of those three instances is migrated into them first.
   - ~/.t3/instructions/claude-code/CLAUDE.md, which the Claude instance's
     --add-dir loads, exists exactly when either trait is on and holds the
     rendered Claude Code T3 Code part.
@@ -173,10 +174,16 @@ let
       enableDeviceSupport = true;
       snoozeLimitedThreads = true;
     };
-    remove = [
-      "defaultThreadEnvMode"
-      "providers"
-    ];
+    remove = [ "defaultThreadEnvMode" ];
+    migrateInstances = {
+      from = "providers";
+      to = "providerInstances";
+      kinds = [
+        "antigravity"
+        "claudeAgent"
+        "codex"
+      ];
+    };
     upsertPaths = [
       {
         path = [

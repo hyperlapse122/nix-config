@@ -34,7 +34,8 @@ path's marker, and is not loaded and undetermined on the same terms.
 
 The probe needs the instance home signed in through T3 Code's settings, which
 no check or CI runner has, so it is a manual utility: run it from a checkout in
-a desktop session. It is not installed on hosts and no check runs it. Its
+a desktop session. It is not installed on hosts and no check runs it, though
+tests/test_antigravity_acp_probe.py covers its verdicts and cleanup. Its
 conversations stay in the instance home.
 """
 
@@ -116,6 +117,62 @@ class RuleProbe(NamedTuple):
     heading: str  # the answer heading the marker should come back under
     marker: str
     path: Path  # relative to the workspace, or absolute in the instance home
+
+
+# Names the probe gives its global rule files and the marker each one holds,
+# so a later run can find a file a killed run left behind.
+GLOBAL_RULE_GLOB = f"{PROG}-*.md"
+GLOBAL_RULE_MARKER = "PROBE-GLOBAL-RULE-"
+
+
+def remove_stale_global_rules(rules_dir):
+    """Remove global rule files an earlier run left behind.
+
+    A run killed with SIGKILL, or one whose cleanup failed, leaves its file in
+    the instance home, and every later T3 Code session there would load it.
+    Only a file with the probe's name that holds the probe's marker is removed.
+    """
+    removed = []
+    for path in sorted(rules_dir.glob(GLOBAL_RULE_GLOB)) if rules_dir.is_dir() else []:
+        try:
+            if path.is_file() and not path.is_symlink() and GLOBAL_RULE_MARKER in path.read_text():
+                path.unlink()
+                removed.append(path)
+        except OSError as error:
+            fail(f"warning: could not remove the stale rule {path}: {error}")
+    return removed
+
+
+def plant_global_rule(rule, created):
+    """Write the global rule file, adding each directory created for it to `created`, deepest first.
+
+    `created` is the caller's list, so a failure part way still leaves it
+    naming every directory made so far.
+    """
+    directory = rule.path.parent
+    missing = []
+    while not directory.exists():
+        missing.append(directory)
+        directory = directory.parent
+    for directory in reversed(missing):
+        directory.mkdir()
+        created.insert(0, directory)
+    rule.path.write_text(f"# Global rule\n\nThe rule marker for the instance home is {rule.marker}.\n")
+
+
+def remove_global_rule(rule, created):
+    """Undo plant_global_rule, reporting rather than raising, so an error the run hit stays the one shown."""
+    try:
+        rule.path.unlink(missing_ok=True)
+    except OSError as error:
+        fail(f"warning: could not remove {rule.path}; remove it, or every T3 Code session in this home loads it: {error}")
+        return
+    for directory in created:
+        try:
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+        except OSError as error:
+            fail(f"warning: could not remove the directory {directory} the probe created: {error}")
 
 
 class Platform(NamedTuple):
@@ -684,8 +741,8 @@ def probe(args):
     global_rule = RuleProbe(
         "global rule", "GLOBAL_RULE", f"PROBE-GLOBAL-RULE-{secrets.token_hex(8)}", home / "config" / "rules" / rule_name
     )
-    # Removed after the run only when the probe created it.
-    global_rules_dir_existed = global_rule.path.parent.exists()
+    for path in remove_stale_global_rules(global_rule.path.parent):
+        print(f"removed a rule an earlier run left behind: {path}")
     with tempfile.TemporaryDirectory(prefix=f"{PROG}-") as temp:
         temp_dir = Path(temp)
         workspace = temp_dir / "workspace"
@@ -695,9 +752,9 @@ def probe(args):
         (workspace / workspace_rule.path).write_text(f"# Workspace rule\n\nThe rule marker for this workspace is {workspace_rule.marker}.\n")
         command = [str(runtime_dir / EXECUTABLE)] + (["--uid="] if sys.platform == "linux" else [])
         server = Server(command, child_environment(home, runtime_dir, temp_dir), workspace)
+        created = []
         try:
-            global_rule.path.parent.mkdir(parents=True, exist_ok=True)
-            global_rule.path.write_text(f"# Global rule\n\nThe rule marker for the instance home is {global_rule.marker}.\n")
+            plant_global_rule(global_rule, created)
             server.start()
             server.request(
                 "initialize",
@@ -721,10 +778,10 @@ def probe(args):
                 args.prompt_timeout,
             )
         finally:
-            server.stop()
-            global_rule.path.unlink(missing_ok=True)
-            if not global_rules_dir_existed and global_rule.path.parent.is_dir() and not any(global_rule.path.parent.iterdir()):
-                global_rule.path.parent.rmdir()
+            try:
+                server.stop()
+            finally:
+                remove_global_rule(global_rule, created)
 
     answer = "".join(
         (update.get("content") or {}).get("text", "")

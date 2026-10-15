@@ -29,7 +29,7 @@ def leaf(declared, path):
 
 
 def main(mode, declared_path, out=None):
-    with open(declared_path) as handle:
+    with open(declared_path, encoding='utf-8') as handle:
         declared = json.load(handle)
     if mode == 'developer':
         text = leaf(declared, ['developer_instructions'])
@@ -58,7 +58,7 @@ def main(mode, declared_path, out=None):
         return
     else:
         sys.exit('unknown mode {}'.format(mode))
-    with open(out, 'w') as handle:
+    with open(out, 'w', encoding='utf-8') as handle:
         handle.write(text)
 
 

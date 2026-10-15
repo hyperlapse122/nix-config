@@ -58,7 +58,7 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 | Change part of an existing file | `apply_patch` | `sed -i`, `awk`, `perl -i` |
 | Create or fully rewrite a file | `apply_patch` | heredocs, `echo >`, `tee` |
 | Look at an image | `view_image` | opening it in another program |
-| Search the web | `web_search` | `curl` against a search engine |
+| Search the web, or read a web page by its URL | `web_search` | `curl`, `wget` |
 | Ask the user to choose | `request_user_input` | an open question at the end of a turn |
 | Delegate parallel or broad work | `spawn_agent` | nested `codex exec` invocations |
 | Track a multi-step task | `update_plan` | a checklist in a reply |
