@@ -600,27 +600,29 @@
           # directory when the variable is set. A pin bump that drops one fails
           # here instead of silently leaving T3 Code sessions without the part.
           t3code-instruction-channels = pkgs.runCommand "t3code-instruction-channels" { } ''
-            bundle=${self.packages.${system}.t3code-cli}/libexec/t3code/t3
-            for fragment in \
-              'environment: optionalKey(ProviderInstanceEnvironment),' \
-              'description: "Additional CLI arguments passed on session start.",' \
-              '...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;' \
-              '...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }' \
-              'const codexLaunchArgv = (launchArgs) => tokenizeCliArgs(launchArgs);' \
-              'const codexAppServerArgs = (launchArgs) => ["app-server", ...codexLaunchArgv(launchArgs)];'; do
-              if ! grep -aqF -- "$fragment" "$bundle"; then
-                echo "the pinned T3 Code no longer contains: $fragment" >&2
-                exit 1
-              fi
-            done
-            for fragment in \
-              CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD \
-              '--add-dir <directories...>'; do
-              if ! grep -raqF -- "$fragment" ${self.packages.${system}.claude-code}/bin; then
-                echo "the pinned Claude Code no longer contains: $fragment" >&2
-                exit 1
-              fi
-            done
+            # One grep pass per artifact: list the fragments it holds, then
+            # name each pinned fragment missing from that list.
+            check() {
+              found=$(grep -rhaoF -f "$2" "$3" | sort -u || true)
+              while IFS= read -r fragment; do
+                if ! printf '%s\n' "$found" | grep -qxF -- "$fragment"; then
+                  echo "the pinned $1 no longer contains: $fragment" >&2
+                  exit 1
+                fi
+              done < "$2"
+            }
+            check "T3 Code" ${pkgs.writeText "t3code-instruction-fragments" ''
+              environment: optionalKey(ProviderInstanceEnvironment),
+              description: "Additional CLI arguments passed on session start.",
+              ...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;
+              ...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }
+              codexLaunchArgv = (launchArgs) => tokenizeCliArgs(launchArgs);
+              codexAppServerArgs = (launchArgs) => ["app-server", ...codexLaunchArgv(launchArgs)];
+            ''} ${self.packages.${system}.t3code-cli}/libexec/t3code/t3
+            check "Claude Code" ${pkgs.writeText "claude-code-instruction-fragments" ''
+              CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
+              --add-dir <directories...>
+            ''} ${self.packages.${system}.claude-code}/bin
             touch $out
           '';
           # Drives the packaged helper, so a package that lost nokogiri from its
