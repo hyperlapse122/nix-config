@@ -15,17 +15,14 @@ let
 in
 assert lib.assertMsg safeTokenFile
   "opencode: tokenFile '${tokenFile}' is not a plain absolute path";
-stdenv.mkDerivation (finalAttrs: {
+stdenv.mkDerivation {
   pname = "opencode";
   inherit (source) version;
 
-  src = pkgs.fetchurl {
-    url = "https://github.com/anomalyco/opencode/releases/download/v${finalAttrs.version}/${pin.asset}";
-    inherit (pin) hash;
-  };
+  src = pkgs.fetchurl { inherit (pin) url hash; };
 
-  # Each archive holds one bare executable with no top-level directory.
-  sourceRoot = ".";
+  # Each npm tarball holds package.json and one executable, bin/opencode.
+  sourceRoot = "package";
 
   # OpenCode is a Bun-compiled executable whose JavaScript payload rides at
   # the end of the file; stripping it leaves the bare Bun runtime. The -musl
@@ -35,8 +32,7 @@ stdenv.mkDerivation (finalAttrs: {
   nativeBuildInputs = [
     pkgs.writableTmpDirAsHomeHook
   ]
-  ++ lib.optional stdenv.hostPlatform.isLinux pkgs.autoPatchelfHook
-  ++ lib.optional stdenv.hostPlatform.isDarwin pkgs.unzip;
+  ++ lib.optional stdenv.hostPlatform.isLinux pkgs.autoPatchelfHook;
   buildInputs = lib.optional stdenv.hostPlatform.isLinux stdenv.cc.cc.lib;
 
   dontConfigure = true;
@@ -45,7 +41,7 @@ stdenv.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    install -Dm755 opencode $out/libexec/opencode/opencode
+    install -Dm755 bin/opencode $out/libexec/opencode/opencode
     install -Dm755 ${../scripts/opencode} $out/bin/opencode
     substituteInPlace $out/bin/opencode \
       --replace-fail '@TOKEN_FILE@' '${tokenFile}' \
@@ -68,4 +64,4 @@ stdenv.mkDerivation (finalAttrs: {
     platforms = lib.attrNames source.platforms;
     mainProgram = "opencode";
   };
-})
+}

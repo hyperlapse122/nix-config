@@ -463,7 +463,7 @@
             pkgs.linkFarm "antigravity-cli-sources" (
               pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
-          # Fetches every platform's pinned OpenCode asset, so a bumped pin
+          # Fetches every platform's pinned OpenCode tarball, so a bumped pin
           # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
           # instead of after it lands.
           opencode-sources =
@@ -471,13 +471,7 @@
               release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
             in
             pkgs.linkFarm "opencode-sources" (
-              pkgs.lib.mapAttrs (
-                _: platform:
-                pkgs.fetchurl {
-                  url = "https://github.com/anomalyco/opencode/releases/download/v${release.version}/${platform.asset}";
-                  inherit (platform) hash;
-                }
-              ) release.platforms
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
@@ -1559,7 +1553,7 @@
                 ''
               ) guardCases;
             in
-            pkgs.runCommand "opencode-wrapper-tests" { } ''
+            pkgs.runCommand "opencode-wrapper-tests" { nativeBuildInputs = [ pkgs.procps ]; } ''
               export HOME=$TMPDIR
               ${guardChecks}
               mkdir -p scripts tests
@@ -1573,6 +1567,12 @@
               # The pinned binary, not only the wrapper's export, must keep a
               # checkout's opencode.json out of the process holding the key.
               # The bare binary loading the canary proves the probe can see it.
+              # debug config asks a server; with the service disabled each
+              # probe starts its own and stops it on exit, instead of leaving
+              # the detached background server running in the sandbox.
+              export XDG_CONFIG_HOME=$TMPDIR/config XDG_STATE_HOME=$TMPDIR/state XDG_DATA_HOME=$TMPDIR/data
+              mkdir -p "$XDG_CONFIG_HOME/opencode"
+              printf '{"disabled": true}\n' > "$XDG_CONFIG_HOME/opencode/service.json"
               mkdir -p project
               printf '{"username": "canary-project-config"}\n' > project/opencode.json
               (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
@@ -1583,6 +1583,10 @@
               fi
               if grep -qF canary-project-config wrapped.json; then
                 echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
+                exit 1
+              fi
+              if pgrep -f ${packaged}/libexec/opencode/opencode; then
+                echo "opencode debug config left a server running despite the disabled service" >&2
                 exit 1
               fi
               touch $out

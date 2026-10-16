@@ -1,20 +1,20 @@
 {
-  "version": "1.19.3",
+  "version": "2.0.31",
   "platforms": {
     "x86_64-linux": {
-      "asset": "opencode-linux-x64.tar.gz",
-      "sha256": "13a8fb2978302071b86f9d7e00da9c8895f9cd846978379c3bdc6a5333536c9b",
-      "hash": "sha256-E6j7KXgwIHG4b51+ANqciJX5zYRpeDecO9xqUzNTbJs="
+      "package": "@opencode/cli-linux-x64",
+      "url": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.31.tgz",
+      "hash": "sha512-RYbqR/HzKTH9OSh98VOt78bgQ8sgidUCCCKR9CABSc06AFxZdycezIg8dUmh+uBdp2mf4ckWVq9BbGblbxtFZQ=="
     },
     "aarch64-linux": {
-      "asset": "opencode-linux-arm64.tar.gz",
-      "sha256": "7900818a6a98881edbbadab4b7525940eff3b9750040c200481f9f56cacee405",
-      "hash": "sha256-eQCBimqYiB7butq0t1JZQO/zuXUAQMIASB+fVsrO5AU="
+      "package": "@opencode/cli-linux-arm64",
+      "url": "https://registry.npmjs.org/@opencode/cli-linux-arm64/-/cli-linux-arm64-2.0.31.tgz",
+      "hash": "sha512-LGAcODO4N9L+508pfVolMxPapGw+O3VG/Jo+1VlbuLC+RDH7IIX6Hi1bw5ofD4cfsC+zIJuZ/NF7cHPNSvH0mw=="
     },
     "aarch64-darwin": {
-      "asset": "opencode-darwin-arm64.zip",
-      "sha256": "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64",
-      "hash": "sha256-wtD+zSes9uCL4CwfXThGFNB0lVh3ZrzEpr/zlxdJu2Q="
+      "package": "@opencode/cli-darwin-arm64",
+      "url": "https://registry.npmjs.org/@opencode/cli-darwin-arm64/-/cli-darwin-arm64-2.0.31.tgz",
+      "hash": "sha512-NMRKzz9CO4DKOOZzPn5JZRBMdjN+qQj7CG5tg5xkq+uyrBYwF1P/n/0KMjKbjPOOxTLXk9K856Qi5z+b1uHMeg=="
     }
   }
 }
