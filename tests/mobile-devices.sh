@@ -3,7 +3,9 @@
 #
 # Drives the device helper against a stub xcrun and a stub avdmanager. It
 # downloads the newest iOS runtime only when it is missing, creates only the
-# declared devices whose versioned names do not exist yet, keeps devices of an
+# declared devices whose versioned names do not exist yet, on the newest
+# runtime that supports the model, retries a simctl listing that fails while
+# CoreSimulatorService is replaced, keeps devices of an
 # older version, a hand-made device, and an undeclared one, skips a platform
 # whose tool is missing with one message, reports a device it cannot create or
 # a platform step that stops early, and always exits 0. avdmanager runs only
@@ -25,6 +27,7 @@ bad() { echo "mobile-devices: $*" >&2; fail=1; }
 #              installed Xcode: the next simctl call removes it and fails,
 #              and the call after it succeeds
 #   dead-service  present when every simctl call fails to reach the service
+#   bad-runtimes  present when simctl prints a runtime list that is not JSON
 #   runtimes   one installed runtime per line: <version>[|<device type id>,...];
 #              a runtime without types supports every stub device type
 #   sims       one simulator per line: <runtime id>|<name>
@@ -67,6 +70,10 @@ case "$1 $2" in
     fi
     case "$3" in
       runtimes)
+        if [ -e "$STUB/bad-runtimes" ]; then
+          echo "CoreSimulator is out of date"
+          exit 0
+        fi
         sep=
         printf '{"runtimes":['
         while IFS='|' read -r v ts; do
@@ -317,7 +324,8 @@ run --android-api 37.0 --device "ios:iPhone 18 Pro"
   || bad "$label: the device type listing was tried $(count 'xcrun|simctl|list|devicetypes|-j') times, not twice"
 grep -qx 'mobile-devices: simctl could not list device types, so the iOS Simulators were skipped' "$STUB/err" \
   || bad "$label: the skip was not reported on a line of its own: $(cat "$STUB/err")"
-said serviceContext || bad "$label: simctl's own error was not shown: $(cat "$STUB/err")"
+grep -qx 'Error getting a serviceContext: Connection refused' "$STUB/err" \
+  || bad "$label: simctl's error was not shown once on a line of its own: $(cat "$STUB/err")"
 [ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created"
 nothing_removed
 
@@ -344,6 +352,16 @@ printf '%s\n' 27.0 '27.1|iPhone-Duo' > "$STUB/runtimes"
 run --android-api 37.0 --device "ios:iPhone 18 Pro:27.1"
 said "so iPhone 18 Pro (iOS 27.1) was skipped" || bad "$label: the device was not reported as skipped: $(cat "$STUB/err")"
 [ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created on a runtime that does not support the model"
+nothing_removed
+
+label="a runtime listing that fails"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+touch "$STUB/bad-runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
+[ "$(downloads)" = 0 ] || bad "$label: a failed runtime listing was taken for a missing runtime and downloaded"
+said "the iOS step stopped early" || bad "$label: the failed listing did not stop the iOS step: $(cat "$STUB/err")"
+[ "$(count "$(avd_create pixel_9 37.0)")" = 1 ] || bad "$label: the Android device was not created after the iOS step failed"
 nothing_removed
 
 label="a failed runtime download"

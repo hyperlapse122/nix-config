@@ -50,7 +50,8 @@ in
             default = null;
             description = ''
               The iOS version or pinned Android API key (such as `37.0`); null
-              means the newest the installed Xcode or the SDK pin offers.
+              means the newest installed iOS runtime that supports the model,
+              or the newest API level the SDK pin offers.
             '';
           };
         };
