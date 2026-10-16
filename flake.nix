@@ -463,6 +463,22 @@
             pkgs.linkFarm "antigravity-cli-sources" (
               pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
+          # Fetches every platform's pinned OpenCode asset, so a bumped pin
+          # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
+          # instead of after it lands.
+          opencode-sources =
+            let
+              release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
+            in
+            pkgs.linkFarm "opencode-sources" (
+              pkgs.lib.mapAttrs (
+                _: platform:
+                pkgs.fetchurl {
+                  url = "https://github.com/anomalyco/opencode/releases/download/v${release.version}/${platform.asset}";
+                  inherit (platform) hash;
+                }
+              ) release.platforms
+            );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -1553,6 +1569,22 @@
               patchShebangs scripts/opencode
               bash tests/opencode.sh scripts/opencode
               bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
+
+              # The pinned binary, not only the wrapper's export, must keep a
+              # checkout's opencode.json out of the process holding the key.
+              # The bare binary loading the canary proves the probe can see it.
+              mkdir -p project
+              printf '{"username": "canary-project-config"}\n' > project/opencode.json
+              (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
+              (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
+              if ! grep -qF canary-project-config bare.json; then
+                echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
+                exit 1
+              fi
+              if grep -qF canary-project-config wrapped.json; then
+                echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
+                exit 1
+              fi
               touch $out
             '';
           lint-staged-markdown =

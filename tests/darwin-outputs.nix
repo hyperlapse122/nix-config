@@ -23,7 +23,8 @@
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
   - the opencode wrapper on PATH reads its key from the state directory
-    host-secrets publishes to;
+    host-secrets publishes to, and activation merges the declared OpenCode
+    config into ~/.config/opencode/opencode.json after writeBoundary;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -205,6 +206,15 @@ let
         bad "no opencode on PATH"
       elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/opencode_api_key'"} "$opencode"; then
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/opencode_api_key"
+      fi
+
+      # The OpenCode config merge runs after writeBoundary and targets the
+      # user's ~/.config/opencode/opencode.json.
+      opencodeSettings=$(step opencodeSettings); opencodeSettings=''${opencodeSettings:-0}
+      if [ "$opencodeSettings" = 0 ] || [ "$opencodeSettings" -le "$boundary" ]; then
+        bad "the activation script has no opencodeSettings step after writeBoundary"
+      elif ! grep -qF -- ${lib.escapeShellArg "--settings ${config.my.user.home}/.config/opencode/opencode.json"} "$gen/activate"; then
+        bad "the OpenCode config merge does not target ${config.my.user.home}/.config/opencode/opencode.json"
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \

@@ -15,10 +15,10 @@ RIPGREP_BIN='@RIPGREP_BIN@'
 # bootstrap generations, and saying nothing about it keeps every run quiet.
 if [[ -z ${OPENCODE_API_KEY:-} ]]; then
   unset OPENCODE_API_KEY
+  # A missing, unreadable, or directory path fails the read, which leaves
+  # token empty.
   token=
-  if [[ -f $TOKEN_FILE && -r $TOKEN_FILE ]]; then
-    { IFS= read -r -d '' -N 16384 token <"$TOKEN_FILE"; } 2>/dev/null || true
-  fi
+  { IFS= read -r -d '' -N 16384 token <"$TOKEN_FILE"; } 2>/dev/null || true
   token=${token%"${token##*[![:space:]]}"}
   if [[ -n $token && ${#token} -le 8192 && $token != *[[:space:][:cntrl:]]* ]]; then
     export OPENCODE_API_KEY=$token

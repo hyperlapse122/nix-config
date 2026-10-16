@@ -266,7 +266,7 @@ let
     "When a skill's cross-model pass runs through T3 Code, also delegate that pass to OpenCode on `opencode/glm-5.3-flash-free` on provider instance `opencode`, even though the skill's mapping has no OpenCode entry."
     "The OpenCode peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs."
     "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `opencode` as the provider name."
-    "It obeys the same recipient restrictions and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`."
+    "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`."
     "When a gate or restriction excludes it, or OpenCode is not runnable, skip it and say why in one line."
     "Run every delegated task in full-access runtime mode."
   ]
@@ -349,7 +349,7 @@ let
   # Argon, or OpenCode. Any other sentence in that section naming them, such
   # as an added reversal kept beside the pinned rule, fails.
   peerPattern = "Antigravity|Argon|OpenCode|opencode";
-  antigravitySentences = lib.filter (
+  extraPeerSentences = lib.filter (
     sentence: builtins.match ".*(${peerPattern}).*" sentence != null
   ) delegationSentences;
 
@@ -523,7 +523,7 @@ let
     ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
     ${onlyPinnedSentences "${label} carries an unpinned extra-peer sentence:" "# Cross-model delegation"
       peerPattern
-      antigravitySentences
+      extraPeerSentences
     }
     ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
       "# Cross-model delegation"

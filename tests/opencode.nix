@@ -16,7 +16,8 @@
   - home-path/bin/opencode is the packaged wrapper, reading the key from
     /run/secrets/cli-auth/opencode_api_key.
   - home.activation.opencodeSettings runs after installPackages, invokes the
-    packaged merger without swallowing its exit status, points it at
+    packaged merger without swallowing its exit status (the script, run with
+    a failing merger in its place, fails too), points it at
     ~/.config/opencode/opencode.json, and passes a declared document equal to
     the one stated here.
   - running that exact merger with that exact declared document against a
@@ -26,7 +27,9 @@
   - a production configuration's sops manifest carries
     cli-auth/opencode_api_key owned by h82 with mode 0400, its gh/glab
     publisher does not read that key, and a bootstrap configuration's
-    manifests carry no OpenCode secret at all.
+    manifests carry no OpenCode secret at all. Neither does one production
+    configuration re-evaluated with my.cliAuth.enableOpencodeApiKey forced
+    off.
 
   The wrapper's run-time behaviour is covered by the opencode-wrapper check,
   and the installed version and switches by the opencode check. This check
@@ -92,7 +95,9 @@ let
     entry:
     let
       hostName = entry.name;
-      production = !entry.bootstrap;
+      # A production configuration decrypts the key unless the option is
+      # forced off; the forced-off entries prove the option still gates it.
+      decryptsKey = !entry.bootstrap && !(entry.keyForcedOff or false);
       hm = entry.user;
       homePath = hm.home.path or null;
 
@@ -149,24 +154,39 @@ let
       script=${esc script}
       # Comment lines are stripped so an explanatory sentence cannot match.
       # The merger call spans several lines, so the whole block is searched.
-      if printf '%s' "$script" | grep -v '^[[:space:]]*#' \
-        | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+      # A here-string, not a pipe: under pipefail an early grep -q match can
+      # fail the writer and turn the condition false.
+      uncommented=$(grep -v '^[[:space:]]*#' <<<"$script" || true)
+      if grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' <<<"$uncommented"; then
         fail ${host'}": the opencodeSettings activation script swallows the merger exit status"
       fi
 
-      merger=$(printf '%s' "$script" | tr '\n' ' ' \
+      flat=$(printf '%s' "$script" | tr '\n' ' ')
+      merger=$(printf '%s' "$flat" \
         | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
       if [ -z "$merger" ]; then
         fail ${host'}": the opencodeSettings activation script does not invoke the packaged merger"
+      else
+        # Whatever form a suppression takes, the script run the way activation
+        # runs it must fail when the merger does.
+        stub=$TMPDIR/failing-agent-settings
+        printf '#!%s\nexit 3\n' "$(command -v bash)" > "$stub"
+        chmod +x "$stub"
+        stubbed=''${script//"$merger"/"$stub"}
+        if [ "$stubbed" = "$script" ]; then
+          fail ${host'}": could not substitute a failing merger into the opencodeSettings activation script"
+        elif bash -euo pipefail -c "$stubbed" >/dev/null 2>&1; then
+          fail ${host'}": the opencodeSettings activation script succeeds when the merger fails"
+        fi
       fi
 
-      settingsArg=$(printf '%s' "$script" | tr '\n' ' ' \
+      settingsArg=$(printf '%s' "$flat" \
         | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
       if [ "$settingsArg" != /home/h82/.config/opencode/opencode.json ]; then
         fail ${host'}": the merger must be pointed at ~/.config/opencode/opencode.json, got: '$settingsArg'"
       fi
 
-      declaredPath=$(printf '%s' "$script" | tr '\n' ' ' \
+      declaredPath=$(printf '%s' "$flat" \
         | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -1 | awk '{print $2}' || true)
       if [ -z "$declaredPath" ]; then
         fail ${host'}": the opencodeSettings activation script passes no declared document"
@@ -175,7 +195,7 @@ let
       elif [ -n "$merger" ]; then
         # Keys OpenCode and its CLI wrote survive while the declared keys
         # return, driven through the exact merger and document activation uses.
-        seeded=$TMPDIR/${hostName}-opencode.json
+        seeded=$TMPDIR/opencode-seeded.json
         cp ${seededSettings} "$seeded"
         chmod 600 "$seeded"
         if ! env -i "$merger" --label OpenCode --settings "$seeded" --declared "$declaredPath"; then
@@ -196,13 +216,13 @@ let
       opencodeSecrets=$(python3 - $manifests <<'PY'
       import json, sys
       for path in sys.argv[1:]:
-          for secret in json.load(open(path)).get('secrets', []):
-              if 'opencode' in secret.get("name", "") or 'opencode' in secret.get("key", ""):
-                  print(secret.get('name'), secret.get('key'), secret.get('owner'), secret.get('mode'))
+          for secret in json.load(open(path)).get("secrets", []):
+              if "opencode" in secret.get("name", "") or "opencode" in secret.get("key", ""):
+                  print(secret.get("name"), secret.get("key"), secret.get("owner"), secret.get("mode"))
       PY
       )
       ${
-        if production then
+        if decryptsKey then
           ''
             if [ "$opencodeSecrets" != "cli-auth/opencode_api_key opencode_api_key h82 0400" ]; then
               fail ${host'}": expected cli-auth/opencode_api_key owned by h82 with mode 0400, got: '$opencodeSecrets'"
@@ -217,11 +237,22 @@ let
         else
           ''
             if [ -n "$opencodeSecrets" ]; then
-              fail ${host'}": a bootstrap host must not decrypt an OpenCode secret, got: '$opencodeSecrets'"
+              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableOpencodeApiKey off, must not decrypt an OpenCode secret, got: '$opencodeSecrets'"
             fi
           ''
       }
     '';
+
+  # One production configuration re-evaluated with the key option forced off,
+  # so the check proves the option, not only the bootstrap split, gates the
+  # secret.
+  keyForcedOff = map (
+    entry:
+    configurations.withTraitForcedOff "my.cliAuth.enableOpencodeApiKey" entry
+    // {
+      keyForcedOff = true;
+    }
+  ) (lib.take 1 configurations.production);
 
   compareJson = pkgs.writeText "compare-json.py" ''
     import json, sys
@@ -230,6 +261,10 @@ let
 in
 pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   ${configurations.guard}
+  ${lib.optionalString (keyForcedOff == [ ]) ''
+    echo "no production configuration to re-evaluate with my.cliAuth.enableOpencodeApiKey off" >&2
+    exit 1
+  ''}
   failed=0
   fail() {
     echo "$1" >&2
@@ -237,7 +272,7 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
   }
   compareJson=${compareJson}
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}
 
   if [ "$failed" != 0 ]; then
     exit 1

@@ -77,9 +77,8 @@ let
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
       };
       codex.driver = "codex";
-      # Off in T3 Code until enabled. The opencode on PATH is the wrapper
-      # that carries the API key, so no binaryPath is needed and the key never
-      # reaches this file.
+      # The opencode on PATH is the wrapper that carries the API key, so no
+      # binaryPath is needed and the key never reaches this file.
       opencode = {
         driver = "opencode";
         enabled = true;

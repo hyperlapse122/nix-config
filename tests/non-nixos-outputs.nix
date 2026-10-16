@@ -18,10 +18,11 @@
     changes and publish after the links, and bootstrap never does; both carry
     the user-mode identity installer, and ~/.ssh/config names the host key
     rather than the 1Password agent;
+  - activation merges the declared OpenCode config into
+    ~/.config/opencode/opencode.json after installPackages;
   - on fixtures of the builder's own architecture, the Tokscale and OpenCode
     wrappers and the registry credential helper read the tokens host-secrets
-    publishes, not
-    /run/secrets, which a non-NixOS host does not have;
+    publishes, not /run/secrets, which a non-NixOS host does not have;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
@@ -145,6 +146,15 @@ let
         fi
       '')
       (check sshInstalled "${entry.name}: activation must install ~/.ssh/config as a user-owned copy, not a store link")
+      (check
+        (
+          lib.elem "installPackages" (activation.opencodeSettings.after or [ ])
+          && lib.hasInfix "--settings ${hm.home.homeDirectory}/.config/opencode/opencode.json" (
+            builtins.unsafeDiscardStringContext (activation.opencodeSettings.data or "")
+          )
+        )
+        "${entry.name}: activation must merge the OpenCode config into ~/.config/opencode/opencode.json after installPackages"
+      )
       (check (desktopFiles == [ ])
         "${entry.name}: desktop configuration reached a non-NixOS host: ${lib.concatStringsSep ", " desktopFiles}"
       )

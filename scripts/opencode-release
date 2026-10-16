@@ -21,12 +21,12 @@ import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/anomalyco/opencode/releases/latest"
-DEFAULT_FETCH = "curl -sfL"
+DEFAULT_FETCH = "curl -sfL --max-time 60"
 
 # Every system a host in this flake can be, and the archive installed on it.
-# The Linux -musl builds load the musl loader dynamically, so they need
-# patching on NixOS as much as the glibc builds do; the glibc builds are the
-# ones autoPatchelfHook can point at the store's loader.
+# The Linux -musl builds load the musl loader dynamically, so they would need
+# patching on NixOS too; the glibc builds are pinned and patched to the
+# store's glibc loader instead.
 TARGET_ASSETS = {
     "x86_64-linux": "opencode-linux-x64.tar.gz",
     "aarch64-linux": "opencode-linux-arm64.tar.gz",

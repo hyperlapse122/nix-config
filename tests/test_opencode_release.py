@@ -189,6 +189,19 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
 
+    def test_unparseable_pinned_version_is_replaced(self):
+        self.write_pin("garbage")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
+
+    def test_unwritable_output_path_fails_with_a_message(self):
+        missing = Path(self.tmp.name) / "missing" / "opencode-release.json"
+        result = self.run_release(extra_args=["-o", str(missing)])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("opencode-release:", result.stderr)
+        self.assertFalse(missing.exists())
+
     def test_refuses_a_release_without_a_pinned_asset(self):
         for kwargs, needle in [
             ({"x64_count": 0}, TARGET),
