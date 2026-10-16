@@ -22,6 +22,8 @@
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
+  - the opencode wrapper on PATH reads its key from the state directory
+    host-secrets publishes to;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -196,6 +198,14 @@ let
         /nix/store/*-nr-darwin-*) ;;
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
+
+      # host-secrets publishes the OpenCode key into the state directory.
+      opencode=$(readlink -f "$gen/home-path/bin/opencode" || true)
+      if [ -z "$opencode" ] || [ ! -f "$opencode" ]; then
+        bad "no opencode on PATH"
+      elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/opencode_api_key'"} "$opencode"; then
+        bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/opencode_api_key"
+      fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \
         || bad "the VSCodium settings merge does not target Application Support"

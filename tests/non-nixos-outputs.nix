@@ -18,8 +18,9 @@
     changes and publish after the links, and bootstrap never does; both carry
     the user-mode identity installer, and ~/.ssh/config names the host key
     rather than the 1Password agent;
-  - on fixtures of the builder's own architecture, the Tokscale wrapper and
-    the registry credential helper read the tokens host-secrets publishes, not
+  - on fixtures of the builder's own architecture, the Tokscale and OpenCode
+    wrappers and the registry credential helper read the tokens host-secrets
+    publishes, not
     /run/secrets, which a non-NixOS host does not have;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
@@ -158,6 +159,7 @@ let
       hm = entry.host.home.config;
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
+      opencode = packageNamed "opencode";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -170,6 +172,16 @@ let
             ''
               if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/tokscale_token'"} ${tokscale}/bin/tokscale; then
                 ${fail "${entry.name}: the tokscale wrapper does not read ${state}/tokscale_token"}
+              fi
+            ''
+        )
+        (
+          if opencode == null then
+            fail "${entry.name}: no opencode wrapper in home.packages"
+          else
+            ''
+              if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/opencode_api_key'"} ${opencode}/bin/opencode; then
+                ${fail "${entry.name}: the opencode wrapper does not read ${state}/opencode_api_key"}
               fi
             ''
         )

@@ -1206,6 +1206,54 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
+          opencode =
+            let
+              # The version is compared with the pin for the reason given on
+              # the claude-code check. The switches are read from the
+              # installed bin/opencode itself, because they are what hold
+              # under the inline config and config directories T3 Code
+              # supplies, and what keep a checkout's config and Claude Code's
+              # files away from the key.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/opencode-release.json)).version;
+              switches = [
+                "export OPENCODE_DISABLE_AUTOUPDATE=true"
+                "export OPENCODE_DISABLE_PROJECT_CONFIG=true"
+                "export OPENCODE_DISABLE_CLAUDE_CODE=true"
+              ];
+              assertConfiguration =
+                entry:
+                let
+                  opencodePkg = userPackageOf "opencode" entry;
+                  versionMismatch =
+                    pkgs.lib.optionalString (opencodePkg != null && opencodePkg.version != pinnedVersion)
+                      ''
+                        echo "opencode on ${entry.name} is built from version '${opencodePkg.version}', expected pin ${pinnedVersion}" >&2
+                        fail=1
+                      '';
+                  switchesMissing = pkgs.lib.optionalString (opencodePkg != null) ''
+                    for switch in ${pkgs.lib.escapeShellArgs switches}; do
+                      if ! grep -qxF -- "$switch" ${opencodePkg}/bin/opencode; then
+                        echo "opencode on ${entry.name} lacks the wrapper line $switch" >&2
+                        fail=1
+                      fi
+                    done
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "opencode";
+                    executables = [ "opencode" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${switchesMissing}
+                '';
+            in
+            pkgs.runCommand "opencode-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
           antigravity-cli =
             let
               # The version is compared with the pin for the reason given on the
@@ -1430,6 +1478,7 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
+          opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           vscodium = import ./tests/vscodium.nix { inherit pkgs self; };
           tokscale-wrapper =
