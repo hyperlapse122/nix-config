@@ -3,8 +3,9 @@
 # exist yet, on a macOS host, from Home Manager activation as the user.
 # usage() below gives the arguments.
 #
-# An iOS device without a version uses the newest iOS Simulator SDK the
-# installed Xcode reports, and that runtime is downloaded when it is missing.
+# An iOS device without a version uses the newest installed iOS runtime that
+# supports its model; the runtime of the newest iOS Simulator SDK the
+# installed Xcode reports is downloaded first when it is missing.
 # An Android device without an API uses --android-api, the pin's platform key
 # (37.0). Names carry the version, `<model> (iOS <version>)` and
 # `<device id>_API_<api>`, so a newer version creates new devices beside the
@@ -25,6 +26,9 @@ usage() {
   exit 2
 }
 say() { echo "mobile-devices: $*" >&2; }
+# Picks the newest of a list by a dotted version, compared as numbers.
+jq_newest='def newest(f): sort_by(f | split(".") | map(tonumber)) | last // empty; '
+
 
 xcrun=
 sdk_root=
@@ -60,48 +64,85 @@ split_spec() {
   version=${version#:}
 }
 
-# Sets runtime to the id of an installed iOS runtime for version $1, or to
-# empty; a runtime's version may carry a patch level the SDK version lacks
-# (26.0.1 for the 26.0 SDK). The runtime list is read once, and again only
-# after ios_devices clears runtimes_listed.
+# Sets runtime to the id of the newest installed iOS runtime for version $1
+# that supports device type $2, and runtime_version to its major.minor
+# version, or both to empty. An empty $1 takes any version, and an empty $2
+# any device type. A runtime's version may carry a patch level the SDK
+# version lacks (26.0.1 for the 26.0 SDK), and a runtime may support only
+# some models (Xcode 27.1's iOS 27.1 runtime supports only the iPhone Duo).
+# A runtime that lists no device types is taken to support them all. The
+# runtime list is read once, and again only after ios_devices clears
+# runtimes_listed. A failed listing or one that is not JSON stops the iOS
+# step, so it is never taken for a missing runtime and downloaded again.
 ios_runtime() {
   if [ -z "$runtimes_listed" ]; then
-    runtimes=$("$xcrun" simctl list runtimes -j) || runtimes=
+    runtimes=$(simctl_list runtimes)
     runtimes_listed=1
   fi
-  runtime=$(jq -r --arg v "$1" '
-    last(.runtimes[]
+  local found
+  found=$(jq -r --arg v "$1" --arg t "$2" "$jq_newest"'
+    [.runtimes[]
       | select(.identifier | startswith("com.apple.CoreSimulator.SimRuntime.iOS-"))
       | select(.isAvailable != false)
-      | select(.version == $v or (.version | startswith($v + ".")))
-      | .identifier) // empty' <<<"$runtimes")
+      | select($v == "" or .version == $v or (.version | startswith($v + ".")))
+      | select($t == "" or (.supportedDeviceTypes == null) or any(.supportedDeviceTypes[]; .identifier == $t))]
+    | newest(.version)
+    | "\(.identifier) \(.version | split(".")[:2] | join("."))"' <<<"$runtimes")
+  read -r runtime runtime_version <<<"$found"
+}
+
+# Prints simctl's JSON listing of $1. The first simctl call after an Xcode
+# upgrade that ships a newer CoreSimulator finds the old CoreSimulatorService
+# still loaded: it removes that service and fails, and the next call starts
+# the new one. So a failed listing is tried once more, and the second try's
+# errors are shown when it fails too, ended with the newline simctl's last
+# error line lacks.
+simctl_list() {
+  local out err status=0
+  err=$(mktemp)
+  if out=$("$xcrun" simctl list "$1" -j 2>/dev/null) || out=$("$xcrun" simctl list "$1" -j 2>"$err"); then
+    printf '%s\n' "$out"
+  else
+    printf '%s\n' "$(<"$err")" >&2
+    status=1
+  fi
+  rm -f "$err"
+  return "$status"
+}
+
+# Whether simulator $1 exists or this run created it; created holds the
+# devices this run made, which the listing predates.
+exists() {
+  grep -qFx "$1" <<<"$created" \
+    || jq -e --arg n "$1" 'any(.devices[][]; .name == $n)' <<<"$devices" >/dev/null
 }
 
 ios_devices() {
-  local sdks newest types devices spec model version name type runtime runtimes
-  local created='' runtimes_listed='' downloaded=''
+  local sdks newest types devices spec model version name candidate type runtime runtime_version runtimes
+  local created='' runtimes_listed='' newest_checked=''
   if ! sdks=$("$xcrun" xcodebuild -showsdks -json 2>/dev/null) \
-    || ! newest=$(jq -r '[.[] | select(.platform == "iphonesimulator") | .platformVersion]
-        | sort_by(split(".") | map(tonumber)) | last // empty' <<<"$sdks") \
+    || ! newest=$(jq -r "$jq_newest"'[.[] | select(.platform == "iphonesimulator") | .platformVersion]
+        | newest(.)' <<<"$sdks") \
     || [ -z "$newest" ]; then
     say "Xcode is not installed or not set up, so the iOS Simulators were skipped. Sign in to the Mac App Store so apply can install Xcode, then apply again."
     return 0
   fi
-  if ! types=$("$xcrun" simctl list devicetypes -j); then
+  if ! types=$(simctl_list devicetypes); then
     say "simctl could not list device types, so the iOS Simulators were skipped"
     return 0
   fi
-  if ! devices=$("$xcrun" simctl list devices -j); then
+  if ! devices=$(simctl_list devices); then
     say "simctl could not list simulators, so the iOS Simulators were skipped"
     return 0
   fi
   for spec in "${ios[@]}"; do
     split_spec "$spec"
-    version=${version:-$newest}
-    name="$model (iOS $version)"
-    # created holds the devices this run made, which the listing predates.
-    if grep -qFx "$name" <<<"$created" \
-      || jq -e --arg n "$name" 'any(.devices[][]; .name == $n)' <<<"$devices" >/dev/null; then
+    # A device without a version is named for the newest runtime that
+    # supports its model, which is the newest SDK's unless that runtime
+    # supports only some models.
+    candidate="$model (iOS ${version:-$newest})"
+    name=$candidate
+    if exists "$name"; then
       continue
     fi
     type=$(jq -r --arg m "$model" 'first(.devicetypes[] | select(.name == $m) | .identifier) // empty' <<<"$types")
@@ -109,16 +150,24 @@ ios_devices() {
       say "Xcode has no simulator device type named \"$model\", so $name was skipped"
       continue
     fi
-    ios_runtime "$version"
-    if [ -z "$runtime" ] && [ "$version" = "$newest" ] && [ -z "$downloaded" ]; then
-      downloaded=1
-      say "downloading the iOS $version Simulator runtime"
-      "$xcrun" xcodebuild -downloadPlatform iOS >&2 || say "downloading the iOS $version Simulator runtime failed"
-      runtimes_listed=
-      ios_runtime "$version"
+    # Whether the newest SDK's runtime is installed is checked once, for any
+    # device type, and a missing one is downloaded once.
+    if [ "${version:-$newest}" = "$newest" ] && [ -z "$newest_checked" ]; then
+      newest_checked=1
+      ios_runtime "$newest" ""
+      if [ -z "$runtime" ]; then
+        say "downloading the iOS $newest Simulator runtime"
+        "$xcrun" xcodebuild -downloadPlatform iOS >&2 || say "downloading the iOS $newest Simulator runtime failed"
+        runtimes_listed=
+      fi
     fi
+    ios_runtime "$version" "$type"
     if [ -z "$runtime" ]; then
-      say "no iOS $version Simulator runtime is installed, so $name was skipped"
+      say "no installed iOS ${version:+$version }Simulator runtime supports $model, so $name was skipped; install one in Xcode's Components settings, then apply again"
+      continue
+    fi
+    name="$model (iOS ${version:-$runtime_version})"
+    if [ "$name" != "$candidate" ] && exists "$name"; then
       continue
     fi
     if "$xcrun" simctl create "$name" "$type" "$runtime" >/dev/null; then
