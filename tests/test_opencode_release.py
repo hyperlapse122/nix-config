@@ -1,7 +1,7 @@
-"""Drive opencode-release against fake GitHub latest-release fixtures.
+"""Drive opencode-release against fake npm registry fixtures.
 
-The helper's network call goes through an overridable command, so these tests
-feed it a fixture body instead of a network call.
+The helper's network calls go through an overridable command, so these tests
+feed it a fixture body per URL instead of making network calls.
 """
 
 import base64
@@ -15,69 +15,82 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/opencode-release"
 
-TARGET = "opencode-linux-x64.tar.gz"
-ARM_TARGET = "opencode-linux-arm64.tar.gz"
-DARWIN_TARGET = "opencode-darwin-arm64.zip"
-X64_HEX = "13a8fb2978302071b86f9d7e00da9c8895f9cd846978379c3bdc6a5333536c9b"
-ARM_HEX = "7900818a6a98881edbbadab4b7525940eff3b9750040c200481f9f56cacee405"
-DARWIN_HEX = "c2d0fecd27acf6e08be02c1f5d384614d07495587766bcc4a6bff3971749bb64"
-OTHER_HEX = "2148d2485d1e6e48eb918729d86af4ecd438f9b5b63be360fb26005c85f0d853"
+BASE = "https://registry.npmjs.org"
+VERSION = "2.0.31"
+PACKAGES = {
+    "x86_64-linux": "@opencode/cli-linux-x64",
+    "aarch64-linux": "@opencode/cli-linux-arm64",
+    "aarch64-darwin": "@opencode/cli-darwin-arm64",
+}
+INTEGRITY = {
+    "@opencode/cli-linux-x64": "sha512-RYbqR/HzKTH9OSh98VOt78bgQ8sgidUCCCKR9CABSc06AFxZdycezIg8dUmh+uBdp2mf4ckWVq9BbGblbxtFZQ==",
+    "@opencode/cli-linux-arm64": "sha512-LGAcODO4N9L+508pfVolMxPapGw+O3VG/Jo+1VlbuLC+RDH7IIX6Hi1bw5ofD4cfsC+zIJuZ/NF7cHPNSvH0mw==",
+    "@opencode/cli-darwin-arm64": "sha512-NMRKzz9CO4DKOOZzPn5JZRBMdjN+qQj7CG5tg5xkq+uyrBYwF1P/n/0KMjKbjPOOxTLXk9K856Qi5z+b1uHMeg==",
+}
 
 
-def asset(name, hex_digest):
+def tarball(package, version=VERSION, host=BASE):
+    short = package.split("/")[1]
+    return f"{host}/{package}/-/{short}-{version}.tgz"
+
+
+def latest_url(base=BASE):
+    return f"{base}/@opencode/cli/latest"
+
+
+def platform_url(package, version=VERSION, base=BASE):
+    return f"{base}/{package}/{version}"
+
+
+def platform_manifest(package, version=VERSION):
     return {
-        "name": name,
-        "digest": f"sha256:{hex_digest}",
-        "browser_download_url": f"https://github.com/anomalyco/opencode/releases/download/x/{name}",
+        "name": package,
+        "version": version,
+        "dist": {
+            "integrity": INTEGRITY[package],
+            "tarball": tarball(package, version),
+        },
     }
 
 
-def release(version, x64_digest=None, x64_count=1, prerelease=False, draft=False,
-            tag=None, arm_count=1, darwin_count=1):
-    """Build a latest-release body shaped like GitHub's REST API response.
-
-    The x86_64 archive comes last, so a test can edit assets[-1]. The musl,
-    baseline, and desktop assets sit beside it, as they do upstream, so a
-    prefix or substring match would pick the wrong one.
-    """
-    assets = [
-        asset("opencode-linux-x64-musl.tar.gz", OTHER_HEX),
-        asset("opencode-linux-x64-baseline.tar.gz", OTHER_HEX),
-        asset("opencode-linux-x64-baseline-musl.tar.gz", OTHER_HEX),
-        asset("opencode-linux-arm64-musl.tar.gz", OTHER_HEX),
-        asset("opencode-darwin-x64.zip", OTHER_HEX),
-        asset("opencode-desktop-linux-x86_64.AppImage", OTHER_HEX),
-        asset("latest-linux.yml", OTHER_HEX),
-    ]
-    for _ in range(darwin_count):
-        assets.append(asset(DARWIN_TARGET, DARWIN_HEX))
-    for _ in range(arm_count):
-        assets.append(asset(ARM_TARGET, ARM_HEX))
-    for _ in range(x64_count):
-        entry = asset(TARGET, X64_HEX)
-        if x64_digest is not None:
-            entry["digest"] = x64_digest
-        assets.append(entry)
-    return json.dumps(
-        {
-            "tag_name": tag if tag is not None else f"v{version}",
-            "prerelease": prerelease,
-            "draft": draft,
-            "assets": assets,
+def registry(version=VERSION, base=BASE):
+    """Build a URL -> manifest map shaped like the npm registry's responses."""
+    routes = {
+        latest_url(base): {
+            "name": "@opencode/cli",
+            "version": version,
+            "optionalDependencies": {package: version for package in PACKAGES.values()},
         }
-    )
+    }
+    for package in PACKAGES.values():
+        routes[platform_url(package, version, base)] = platform_manifest(package, version)
+    return routes
 
 
-def sri(hex_digest):
-    return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
+def pin(version=VERSION):
+    return {
+        "version": version,
+        "platforms": {
+            system: {
+                "package": package,
+                "url": tarball(package, version),
+                "hash": INTEGRITY[package],
+            }
+            for system, package in PACKAGES.items()
+        },
+    }
 
 
 FAKE_FETCH = """#!/usr/bin/env python3
-import os, sys
+import json, os, sys
 status = int(os.environ.get('FAKE_STATUS', '0'))
 if status:
     sys.exit(status)
-sys.stdout.write(os.environ.get('FAKE_BODY', ''))
+routes = json.loads(os.environ.get('FAKE_ROUTES', '{}'))
+body = routes.get(sys.argv[-1])
+if body is None:
+    sys.exit(22)
+sys.stdout.write(body if isinstance(body, str) else json.dumps(body))
 """
 
 
@@ -91,14 +104,12 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.fetch.chmod(0o755)
         self.output = root / "opencode-release.json"
 
-    def run_release(self, body=None, extra_args=None, status=0, fetch=None):
-        if body is None:
-            body = release("1.19.3")
+    def run_release(self, routes=None, extra_args=None, status=0, fetch=None):
         env = dict(os.environ)
         env["OPENCODE_RELEASE_FETCH"] = (
             f"{sys.executable} {self.fetch}" if fetch is None else fetch
         )
-        env["FAKE_BODY"] = body
+        env["FAKE_ROUTES"] = json.dumps(registry() if routes is None else routes)
         env["FAKE_STATUS"] = str(status)
         args = [sys.executable, str(SCRIPT)]
         args.extend(extra_args if extra_args is not None else ["--dry-run"])
@@ -107,68 +118,52 @@ class OpencodeReleaseTestCase(unittest.TestCase):
     def write_pin(self, version):
         self.output.write_text(json.dumps({"version": version, "platforms": {}}))
 
-    def assert_refused(self, result, needle):
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("opencode-release:", result.stderr)
-        self.assertIn(needle, result.stderr)
-        self.assertFalse(self.output.exists())
+    def write_github_pin(self):
+        self.output.write_text(
+            json.dumps(
+                {
+                    "version": "1.19.3",
+                    "platforms": {
+                        "x86_64-linux": {
+                            "asset": "opencode-linux-x64.tar.gz",
+                            "sha256": "13a8fb2978302071b86f9d7e00da9c8895f9cd846978379c3bdc6a5333536c9b",
+                            "hash": "sha256-E6j7KXgwIHG4b51+ANqciJX5zYRpeDecO9xqUzNTbJs=",
+                        }
+                    },
+                }
+            )
+        )
 
-    def assert_refused_keeping_pin(self, body, needle):
-        self.write_pin("1.19.2")
+    def assert_refused(self, routes, needle):
+        """Run against an existing older pin and expect a refusal that leaves it alone."""
+        self.write_pin("2.0.0")
         before = self.output.read_bytes()
-        result = self.run_release(body=body, extra_args=["-o", str(self.output)])
-        self.assertEqual(result.returncode, 1)
+        result = self.run_release(routes=routes, extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("opencode-release:", result.stderr)
         self.assertIn(needle, result.stderr)
         self.assertEqual(self.output.read_bytes(), before)
 
-    def test_writes_version_and_each_digest_when_newer(self):
-        self.write_pin("1.19.2")
+    def test_writes_version_package_url_and_integrity_verbatim(self):
+        self.write_github_pin()
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)
-        self.assertEqual(
-            json.loads(self.output.read_text()),
-            {
-                "version": "1.19.3",
-                "platforms": {
-                    "x86_64-linux": {"asset": TARGET, "sha256": X64_HEX, "hash": sri(X64_HEX)},
-                    "aarch64-linux": {
-                        "asset": ARM_TARGET,
-                        "sha256": ARM_HEX,
-                        "hash": sri(ARM_HEX),
-                    },
-                    "aarch64-darwin": {
-                        "asset": DARWIN_TARGET,
-                        "sha256": DARWIN_HEX,
-                        "hash": sri(DARWIN_HEX),
-                    },
-                },
-            },
-        )
-
-    def test_uppercase_digest_is_pinned_lowercase(self):
-        body = json.loads(release("1.19.3"))
-        body["assets"][-1]["digest"] = "sha256:" + X64_HEX.upper()
-        result = self.run_release(body=json.dumps(body), extra_args=["-o", str(self.output)])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        pin = json.loads(self.output.read_text())["platforms"]["x86_64-linux"]
-        self.assertEqual(pin["sha256"], X64_HEX)
-        self.assertEqual(pin["hash"], sri(X64_HEX))
+        self.assertEqual(json.loads(self.output.read_text()), pin())
 
     def test_writes_a_pin_when_none_exists(self):
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
+        self.assertEqual(json.loads(self.output.read_text()), pin())
 
     def test_numeric_version_comparison_beats_lexical(self):
-        self.write_pin("1.9.0")
+        self.write_pin("2.0.9")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
+        self.assertEqual(json.loads(self.output.read_text())["version"], VERSION)
 
     def test_same_version_leaves_the_pin_byte_identical(self):
-        self.write_pin("1.19.3")
+        self.write_pin(VERSION)
         before = self.output.read_bytes()
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -176,7 +171,7 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), before)
 
     def test_older_version_leaves_the_pin_byte_identical(self):
-        self.write_pin("1.20.0")
+        self.write_pin("2.0.40")
         before = self.output.read_bytes()
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -187,13 +182,13 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.output.write_text("{not json")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
+        self.assertEqual(json.loads(self.output.read_text())["version"], VERSION)
 
     def test_unparseable_pinned_version_is_replaced(self):
         self.write_pin("garbage")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(self.output.read_text())["version"], "1.19.3")
+        self.assertEqual(json.loads(self.output.read_text())["version"], VERSION)
 
     def test_unwritable_output_path_fails_with_a_message(self):
         missing = Path(self.tmp.name) / "missing" / "opencode-release.json"
@@ -202,76 +197,102 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.assertIn("opencode-release:", result.stderr)
         self.assertFalse(missing.exists())
 
-    def test_refuses_a_release_without_a_pinned_asset(self):
-        for kwargs, needle in [
-            ({"x64_count": 0}, TARGET),
-            ({"arm_count": 0}, ARM_TARGET),
-            ({"darwin_count": 0}, DARWIN_TARGET),
+    def test_source_url_sets_the_registry_base(self):
+        base = "https://mirror.example/npm"
+        routes = registry(base=base)
+        # A mirror may serve tarballs from the real registry host.
+        result = self.run_release(routes=routes, extra_args=["--dry-run", "--source-url", base])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), pin())
+
+    def test_refuses_a_version_that_is_not_a_plain_release(self):
+        for version in ["0.0.0-dev-19274", "2.1.0-beta.1"]:
+            with self.subTest(version=version):
+                self.assert_refused(registry(version=version), version)
+
+    def test_refuses_a_deprecated_latest(self):
+        routes = registry()
+        routes[latest_url()]["deprecated"] = "use something else"
+        self.assert_refused(routes, "deprecated")
+
+    def test_refuses_a_deprecated_platform_package(self):
+        for package in PACKAGES.values():
+            with self.subTest(package=package):
+                routes = registry()
+                routes[platform_url(package)]["deprecated"] = "broken build"
+                self.assert_refused(routes, "deprecated")
+
+    def test_refuses_a_missing_or_mismatched_optional_dependency(self):
+        missing = registry()
+        del missing[latest_url()]["optionalDependencies"]["@opencode/cli-linux-arm64"]
+        self.assert_refused(missing, "@opencode/cli-linux-arm64")
+
+        other = registry()
+        other[latest_url()]["optionalDependencies"]["@opencode/cli-linux-arm64"] = "2.0.30"
+        self.assert_refused(other, "@opencode/cli-linux-arm64")
+
+        absent = registry()
+        del absent[latest_url()]["optionalDependencies"]
+        self.assert_refused(absent, "@opencode/cli-linux-x64")
+
+    def test_refuses_a_platform_manifest_for_another_version_or_name(self):
+        package = "@opencode/cli-linux-x64"
+        for field, value in [("version", "2.0.30"), ("name", "@opencode/cli-linux-arm64")]:
+            with self.subTest(field=field):
+                routes = registry()
+                routes[platform_url(package)][field] = value
+                self.assert_refused(routes, package)
+
+    def test_refuses_integrity_that_is_not_a_single_sha512_digest(self):
+        short = "sha512-" + base64.b64encode(b"x" * 63).decode("ascii")
+        for integrity in [
+            "sha1-" + base64.b64encode(b"x" * 20).decode("ascii"),
+            short,
+            INTEGRITY["@opencode/cli-linux-x64"] + " sha1-AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "sha512-not base64!",
+            None,
         ]:
-            with self.subTest(missing=needle):
-                self.output.unlink(missing_ok=True)
-                self.assert_refused(
-                    self.run_release(
-                        body=release("1.19.3", **kwargs), extra_args=["-o", str(self.output)]
-                    ),
-                    needle,
-                )
-                self.assert_refused_keeping_pin(release("1.19.3", **kwargs), needle)
+            with self.subTest(integrity=integrity):
+                routes = registry()
+                routes[platform_url("@opencode/cli-linux-x64")]["dist"]["integrity"] = integrity
+                self.assert_refused(routes, "integrity")
 
-    def test_refuses_two_matching_assets(self):
-        result = self.run_release(
-            body=release("1.19.3", x64_count=2), extra_args=["-o", str(self.output)]
-        )
-        self.assert_refused(result, TARGET)
-
-    def test_refuses_a_digest_that_is_not_sha256(self):
-        for digest in ["sha512:" + X64_HEX, "sha256:abc123", X64_HEX, None]:
-            with self.subTest(digest=digest):
-                body = json.loads(release("1.19.3", x64_digest=digest or ""))
-                if digest is None:
-                    del body["assets"][-1]["digest"]
-                result = self.run_release(
-                    body=json.dumps(body), extra_args=["-o", str(self.output)]
-                )
-                self.assert_refused(result, "digest")
-
-    def test_refuses_a_prerelease_or_draft(self):
-        for kwargs in [{"prerelease": True}, {"draft": True}]:
-            with self.subTest(**kwargs):
-                self.assert_refused_keeping_pin(release("1.20.0", **kwargs), "prerelease or draft")
-
-    def test_refuses_a_release_that_omits_the_draft_flag(self):
-        body = json.loads(release("1.20.0"))
-        del body["draft"]
-        self.assert_refused_keeping_pin(json.dumps(body), "prerelease or draft")
-
-    def test_refuses_a_tag_without_the_v_prefix(self):
-        result = self.run_release(
-            body=release("1.19.3", tag="1.19.3"), extra_args=["-o", str(self.output)]
-        )
-        self.assert_refused(result, "'1.19.3'")
-
-    def test_refuses_a_non_numeric_version(self):
-        result = self.run_release(
-            body=release("1.20.0-beta.1"), extra_args=["-o", str(self.output)]
-        )
-        self.assert_refused(result, "1.20.0-beta.1")
+    def test_refuses_a_tarball_outside_the_npm_registry(self):
+        for url in [
+            "https://evil.example/x.tgz",
+            "http://registry.npmjs.org/x.tgz",
+            "https://registry.npmjs.org.evil.example/x.tgz",
+            None,
+        ]:
+            with self.subTest(url=url):
+                routes = registry()
+                routes[platform_url("@opencode/cli-linux-x64")]["dist"]["tarball"] = url
+                self.assert_refused(routes, "tarball")
 
     def test_refuses_a_body_that_is_not_json(self):
-        result = self.run_release(body="<html>rate limited</html>")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("opencode-release:", result.stderr)
+        for url in [latest_url(), platform_url("@opencode/cli-linux-x64")]:
+            with self.subTest(url=url):
+                routes = registry()
+                routes[url] = "<html>bad gateway</html>"
+                self.assert_refused(routes, "not JSON")
+
+    def test_refuses_a_body_that_is_not_an_object(self):
+        routes = registry()
+        routes[latest_url()] = "[]"
+        self.assert_refused(routes, "not a JSON object")
 
     def test_fetch_error_fails_naming_the_url(self):
+        self.write_pin("2.0.0")
+        before = self.output.read_bytes()
         result = self.run_release(status=22, extra_args=["-o", str(self.output)])
-        self.assert_refused(result, "releases/latest failed with status 22")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("@opencode/cli/latest failed with status 22", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
 
     def test_dry_run_prints_json_and_writes_nothing(self):
         result = self.run_release(extra_args=["--dry-run", "-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout)["platforms"]["x86_64-linux"]["hash"], sri(X64_HEX)
-        )
+        self.assertEqual(json.loads(result.stdout), pin())
         self.assertFalse(self.output.exists())
 
     def test_empty_fetch_command_fails(self):

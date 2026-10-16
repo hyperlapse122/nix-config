@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Resolve the newest upstream OpenCode release from GitHub's release API.
+"""Resolve the newest upstream OpenCode release from the npm registry.
 
-Fetches anomalyco/opencode's latest GitHub release, reads the version from its
-v tag and the sha256 digest GitHub records for the archive packages/opencode.nix
-installs on each supported system, and writes or checks the pin file that
-package consumes. Refuses to write a pin for a prerelease or draft, or for a
-release missing any of those archives or their digests, and leaves the pin
-alone when the resolved version is not strictly newer than the one already
-pinned, so neither an incomplete release nor a downgrade ever reaches the pin
-file.
+OpenCode v2 is published as @opencode/cli, with one @opencode/cli-<platform>
+package per supported system. Reads the registry's latest manifest for the
+version, requires each pinned platform package in its optionalDependencies at
+exactly that version, reads each platform manifest for its tarball URL and
+sha512 integrity, and writes or checks the pin file packages/opencode.nix
+consumes. Refuses a version that is not plain dotted numbers (the dev and beta
+builds), a deprecated package, a manifest whose name or version differs from
+the request, an integrity that is not one sha512 digest, and a tarball outside
+registry.npmjs.org. Leaves the pin alone when the resolved version is not
+strictly newer than the one already pinned, so neither an incomplete release
+nor a downgrade ever reaches the pin file.
 """
 
 import argparse
 import base64
+import binascii
 import json
 import os
 import re
@@ -20,22 +24,21 @@ import shlex
 import subprocess
 import sys
 
-DEFAULT_SOURCE_URL = "https://api.github.com/repos/anomalyco/opencode/releases/latest"
+DEFAULT_SOURCE_URL = "https://registry.npmjs.org"
 DEFAULT_FETCH = "curl -sfL --max-time 60"
+CLI_PACKAGE = "@opencode/cli"
+TARBALL_PREFIX = "https://registry.npmjs.org/"
 
-# Every system a host in this flake can be, and the archive installed on it.
-# The Linux -musl builds load the musl loader dynamically, so they would need
-# patching on NixOS too; the glibc builds are pinned and patched to the
-# store's glibc loader instead.
-TARGET_ASSETS = {
-    "x86_64-linux": "opencode-linux-x64.tar.gz",
-    "aarch64-linux": "opencode-linux-arm64.tar.gz",
-    "aarch64-darwin": "opencode-darwin-arm64.zip",
+# Every system a host in this flake can be, and the platform package installed
+# on it.
+TARGET_PACKAGES = {
+    "x86_64-linux": "@opencode/cli-linux-x64",
+    "aarch64-linux": "@opencode/cli-linux-arm64",
+    "aarch64-darwin": "@opencode/cli-darwin-arm64",
 }
-TAG_PREFIX = "v"
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
-DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
+SHA512_BYTES = 64
 
 
 class Failure(Exception):
@@ -62,48 +65,67 @@ def fetch(url):
     return proc.stdout
 
 
-def hex_to_sri(sha256_hex):
-    """Convert a 64-character hex sha256 string to Nix SRI format."""
-    return "sha256-" + base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
-
-
-def parse_release(body):
-    """Return the pin for each system's archive in one GitHub release object."""
+def fetch_manifest(url):
+    """Fetch one registry manifest and return it as a JSON object."""
     try:
-        data = json.loads(body)
+        data = json.loads(fetch(url))
     except json.JSONDecodeError as exc:
-        raise Failure(f"release response is not JSON: {exc}") from None
+        raise Failure(f"response from {url} is not JSON: {exc}") from None
     if not isinstance(data, dict):
-        raise Failure("release response is not a JSON object")
+        raise Failure(f"response from {url} is not a JSON object")
+    if "deprecated" in data:
+        raise Failure(f"{url} is deprecated: {data['deprecated']!r}; refusing to pin it")
+    return data
 
-    tag = data.get("tag_name")
-    if data.get("prerelease") is not False or data.get("draft") is not False:
-        raise Failure(f"release {tag!r} is a prerelease or draft; refusing to pin it")
-    if not isinstance(tag, str) or not tag.startswith(TAG_PREFIX):
-        raise Failure(f"release tag {tag!r} does not start with {TAG_PREFIX!r}")
-    version = tag[len(TAG_PREFIX):]
-    if not VERSION_PATTERN.match(version):
+
+def check_integrity(package, integrity):
+    """Require one sha512 SRI whose digest is 64 bytes, and return it unchanged."""
+    ok = False
+    if isinstance(integrity, str) and integrity.startswith("sha512-"):
+        try:
+            digest = base64.b64decode(integrity[len("sha512-"):], validate=True)
+            ok = len(digest) == SHA512_BYTES
+        except binascii.Error:
+            pass
+    if not ok:
+        raise Failure(f"invalid sha512 integrity for {package}: {integrity!r}")
+    return integrity
+
+
+def resolve(base):
+    """Return the pin for the registry's latest @opencode/cli release."""
+    base = base.rstrip("/")
+    latest = fetch_manifest(f"{base}/{CLI_PACKAGE}/latest")
+    version = latest.get("version")
+    if not isinstance(version, str) or not VERSION_PATTERN.match(version):
         raise Failure(f"release version is not a plain version string: {version!r}")
 
-    assets = data.get("assets")
-    assets = assets if isinstance(assets, list) else []
+    optional = latest.get("optionalDependencies")
+    optional = optional if isinstance(optional, dict) else {}
     platforms = {}
-    for system, name in TARGET_ASSETS.items():
-        matches = [a for a in assets if isinstance(a, dict) and a.get("name") == name]
-        if len(matches) != 1:
+    for system, package in TARGET_PACKAGES.items():
+        if optional.get(package) != version:
             raise Failure(
-                f"release {tag} lists {len(matches)} {name} assets, "
-                "expected exactly one; refusing to write an incomplete pin"
+                f"{CLI_PACKAGE} {version} does not list {package} at {version} "
+                f"(found {optional.get(package)!r}); refusing to write an incomplete pin"
             )
-        digest = matches[0].get("digest")
-        match = DIGEST_PATTERN.match(digest) if isinstance(digest, str) else None
-        if not match:
-            raise Failure(f"invalid sha256 digest for {name} in {tag}: {digest!r}")
-        sha256_hex = match.group(1).lower()
+        manifest = fetch_manifest(f"{base}/{package}/{version}")
+        if manifest.get("name") != package or manifest.get("version") != version:
+            raise Failure(
+                f"manifest for {package} {version} names "
+                f"{manifest.get('name')!r} {manifest.get('version')!r}"
+            )
+        dist = manifest.get("dist")
+        dist = dist if isinstance(dist, dict) else {}
+        url = dist.get("tarball")
+        if not isinstance(url, str) or not url.startswith(TARBALL_PREFIX):
+            raise Failure(
+                f"tarball for {package} {version} is not under {TARBALL_PREFIX}: {url!r}"
+            )
         platforms[system] = {
-            "asset": name,
-            "sha256": sha256_hex,
-            "hash": hex_to_sri(sha256_hex),
+            "package": package,
+            "url": url,
+            "hash": check_integrity(package, dist.get("integrity")),
         }
     return {"version": version, "platforms": platforms}
 
@@ -129,7 +151,7 @@ def main(argv=None):
     parser.add_argument(
         "--source-url",
         default=DEFAULT_SOURCE_URL,
-        help="URL of the latest-release GitHub API object",
+        help="Base URL of the npm registry to read",
     )
     parser.add_argument(
         "--output",
@@ -144,7 +166,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        resolved = parse_release(fetch(args.source_url))
+        resolved = resolve(args.source_url)
         out_json = json.dumps(resolved, indent=2) + "\n"
 
         if args.dry_run or not args.output:

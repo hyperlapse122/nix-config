@@ -81,9 +81,10 @@ let
   # so the sandboxed repository check can drive it with fixtures.
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
 
-  # Resolves the latest OpenCode release and its per-platform asset digests
-  # from the GitHub releases API. Its network call goes through an overridable
-  # command so the sandboxed repository check can drive it with fixtures.
+  # Resolves the latest OpenCode release, its per-platform tarball URLs, and
+  # their sha512 integrity from the npm registry's @opencode/cli packages. Its
+  # network calls go through an overridable command so the sandboxed repository
+  # check can drive it with fixtures.
   opencodeRelease = pythonHelper "opencode-release" ../scripts/opencode-release;
 
   # Resolves the latest Antigravity CLI release and its per-platform digests
