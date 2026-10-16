@@ -15,15 +15,24 @@
   Verifies, on every configuration:
   - home-path/bin/opencode is the packaged wrapper, reading the key from
     /run/secrets/cli-auth/opencode_api_key.
-  - home.activation.opencodeSettings runs after installPackages, invokes the
-    packaged merger without swallowing its exit status (the script, run with
-    a failing merger in its place, fails too), points it at
-    ~/.config/opencode/opencode.json, and passes a declared document equal to
-    the one stated here.
-  - running that exact merger with that exact declared document against a
-    seeded, divergent config reasserts the declared values and leaves every
-    other key, an MCP server and a plugin included, as it was.
-  - no Home Manager file targets .config/opencode/opencode.json.
+  - home.activation.opencodeSettings and home.activation.opencodeService each
+    run after installPackages, invoke the packaged merger without swallowing
+    its exit status (the script, run with a failing merger in its place, fails
+    too), point it at ~/.config/opencode/opencode.json and
+    ~/.config/opencode/service.json respectively, and pass a declared document
+    equal to the one stated here.
+  - running that exact merger with that exact declared document reasserts the
+    declared values and leaves every other key as it was, against a seeded
+    divergent file (an MCP server and a plugin in opencode.json, a password and
+    a port in service.json), and creates a missing file holding only the
+    declared keys. The result is mode 0600 in every case. opencode.json drops
+    the retired autoupdate key; service.json disables OpenCode's shared
+    background server.
+  - no Home Manager file targets .config/opencode/opencode.json or
+    .config/opencode/service.json.
+  - home.activation.opencodeServiceStop runs after opencodeService and runs
+    the installed wrapper's `opencode service stop`, so a server started
+    before the service was disabled does not keep running.
   - a production configuration's sops manifest carries
     cli-auth/opencode_api_key owned by h82 with mode 0400, its gh/glab
     publisher does not read that key, and a bootstrap configuration's
@@ -58,9 +67,10 @@ let
       "set": {
         "$schema": "https://opencode.ai/config.json",
         "model": "opencode/glm-5.3-flash-free",
-        "autoupdate": false,
+        "update": "disable",
         "share": "disabled"
-      }
+      },
+      "remove": ["autoupdate"]
     }
   '';
 
@@ -81,7 +91,7 @@ let
     {
       "$schema": "https://opencode.ai/config.json",
       "model": "opencode/glm-5.3-flash-free",
-      "autoupdate": false,
+      "update": "disable",
       "share": "disabled",
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
@@ -90,6 +100,165 @@ let
       }
     }
   '';
+
+  createdExpected = pkgs.writeText "opencode-created-settings.json" ''
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "model": "opencode/glm-5.3-flash-free",
+      "update": "disable",
+      "share": "disabled"
+    }
+  '';
+
+  # OpenCode v2 shares one detached background server, spawned with the first
+  # client's environment, unless service.json says disabled.
+  serviceDeclaredExpected = pkgs.writeText "opencode-expected-service.json" ''
+    {
+      "set": {"disabled": true}
+    }
+  '';
+
+  serviceSeeded = pkgs.writeText "opencode-seeded-service.json" ''
+    {
+      "disabled": false,
+      "password": "fake-password",
+      "port": 4096
+    }
+  '';
+
+  serviceMergedExpected = pkgs.writeText "opencode-merged-service.json" ''
+    {
+      "disabled": true,
+      "password": "fake-password",
+      "port": 4096
+    }
+  '';
+
+  serviceCreatedExpected = pkgs.writeText "opencode-created-service.json" ''
+    {
+      "disabled": true
+    }
+  '';
+
+  # One declared merge entry: the activation name, the file it must target,
+  # the declared document it must pass, and the seeded cases it is driven
+  # through. A null seed is a file that does not exist yet.
+  merges = [
+    {
+      name = "opencodeSettings";
+      file = "/home/h82/.config/opencode/opencode.json";
+      declared = declaredExpected;
+      cases = [
+        {
+          label = "seeded";
+          seed = seededSettings;
+          expected = mergedExpected;
+        }
+        {
+          label = "missing";
+          seed = null;
+          expected = createdExpected;
+        }
+      ];
+    }
+    {
+      name = "opencodeService";
+      file = "/home/h82/.config/opencode/service.json";
+      declared = serviceDeclaredExpected;
+      cases = [
+        {
+          label = "seeded";
+          seed = serviceSeeded;
+          expected = serviceMergedExpected;
+        }
+        {
+          label = "missing";
+          seed = null;
+          expected = serviceCreatedExpected;
+        }
+      ];
+    }
+  ];
+
+  assertMerge =
+    host': hm: spec:
+    let
+      activation = hm.home.activation.${spec.name} or null;
+      script = if activation == null then "" else (activation.data or "");
+      runsAfterPackages = lib.elem "installPackages" (
+        if activation == null then [ ] else (activation.after or [ ])
+      );
+
+    in
+    ''
+      ${lib.optionalString (activation == null) ''
+        fail ${host'}": missing home.activation.${spec.name}"
+      ''}
+      if [ ${esc (lib.boolToString runsAfterPackages)} != "true" ]; then
+        fail ${host'}": home.activation.${spec.name} must run after installPackages"
+      fi
+
+      script=${esc script}
+      # Comment lines are stripped so an explanatory sentence cannot match.
+      # The merger call spans several lines, so the whole block is searched.
+      # A here-string, not a pipe: under pipefail an early grep -q match can
+      # fail the writer and turn the condition false.
+      uncommented=$(grep -v '^[[:space:]]*#' <<<"$script" || true)
+      if grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' <<<"$uncommented"; then
+        fail ${host'}": the ${spec.name} activation script swallows the merger exit status"
+      fi
+
+      flat=$(printf '%s' "$script" | tr '\n' ' ')
+      merger=$(printf '%s' "$flat" \
+        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+      if [ -z "$merger" ]; then
+        fail ${host'}": the ${spec.name} activation script does not invoke the packaged merger"
+      else
+        # Whatever form a suppression takes, the script run the way activation
+        # runs it must fail when the merger does.
+        stub=$TMPDIR/failing-agent-settings
+        printf '#!%s\nexit 3\n' "$(command -v bash)" > "$stub"
+        chmod +x "$stub"
+        stubbed=''${script//"$merger"/"$stub"}
+        if [ "$stubbed" = "$script" ]; then
+          fail ${host'}": could not substitute a failing merger into the ${spec.name} activation script"
+        elif bash -euo pipefail -c "$stubbed" >/dev/null 2>&1; then
+          fail ${host'}": the ${spec.name} activation script succeeds when the merger fails"
+        fi
+      fi
+
+      settingsArg=$(printf '%s' "$flat" \
+        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
+      if [ "$settingsArg" != ${esc spec.file} ]; then
+        fail ${host'}": the ${spec.name} merger must be pointed at ${spec.file}, got: '$settingsArg'"
+      fi
+
+      declaredPath=$(printf '%s' "$flat" \
+        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -1 | awk '{print $2}' || true)
+      if [ -z "$declaredPath" ]; then
+        fail ${host'}": the ${spec.name} activation script passes no declared document"
+      elif ! python3 "$compareJson" "$declaredPath" ${spec.declared}; then
+        fail ${host'}": the declared settings drifted from the asserted values"
+      elif [ -n "$merger" ] && [ -z "''${merged["$merger $declaredPath"]:-}" ]; then
+        # Keys OpenCode and its CLI wrote survive while the declared keys
+        # return, driven through the exact merger and document activation uses.
+        # Hosts sharing that merger and document would repeat the same runs.
+        merged["$merger $declaredPath"]=1
+        ${lib.concatMapStringsSep "\n" (case: ''
+          target=$TMPDIR/${spec.name}-${case.label}.json
+          rm -f "$target"
+          ${lib.optionalString (case.seed != null) ''
+            cp ${case.seed} "$target"
+            chmod 644 "$target"
+          ''}
+          if ! env -i "$merger" --label ${esc spec.name} --settings "$target" --declared "$declaredPath"; then
+            fail ${host'}": the ${spec.name} merger refused the ${case.label} file"
+          elif ! python3 "$compareJson" "$target" ${case.expected} 600; then
+            fail ${host'}": merging the ${case.label} ${spec.name} file did not yield the expected document at mode 0600"
+          fi
+        '') spec.cases}
+      fi
+    '';
 
   assertEntry =
     entry:
@@ -101,14 +270,18 @@ let
       hm = entry.user;
       homePath = hm.home.path or null;
 
-      activation = hm.home.activation.opencodeSettings or null;
-      script = if activation == null then "" else (activation.data or "");
-      runsAfterPackages = lib.elem "installPackages" (
-        if activation == null then [ ] else (activation.after or [ ])
-      );
+      settingsTargeted = lib.any (
+        file:
+        lib.elem (file.target or "") [
+          ".config/opencode/opencode.json"
+          ".config/opencode/service.json"
+        ]
+      ) (lib.attrValues (hm.home.file or { }));
 
-      settingsTargeted = lib.any (file: (file.target or "") == ".config/opencode/opencode.json") (
-        lib.attrValues (hm.home.file or { })
+      serviceStop = hm.home.activation.opencodeServiceStop or null;
+      serviceStopScript = if serviceStop == null then "" else (serviceStop.data or "");
+      serviceStopAfterMerge = lib.elem "opencodeService" (
+        if serviceStop == null then [ ] else (serviceStop.after or [ ])
       );
 
       # sops-nix installs through a systemd unit when my.cliAuth is enabled
@@ -126,7 +299,10 @@ let
     ''
       ${
         if homePath == null then
-          ''fail ${host'}": no home-path"''
+          ''
+            resolved=
+            fail ${host'}": no home-path"
+          ''
         else
           ''
             wrapper=${homePath}/bin/opencode
@@ -144,69 +320,26 @@ let
             fi
           ''
       }
-      ${lib.optionalString (activation == null) ''
-        fail ${host'}": missing home.activation.opencodeSettings"
-      ''}
-      if [ ${esc (lib.boolToString runsAfterPackages)} != "true" ]; then
-        fail ${host'}": home.activation.opencodeSettings must run after installPackages"
-      fi
-
-      script=${esc script}
-      # Comment lines are stripped so an explanatory sentence cannot match.
-      # The merger call spans several lines, so the whole block is searched.
-      # A here-string, not a pipe: under pipefail an early grep -q match can
-      # fail the writer and turn the condition false.
-      uncommented=$(grep -v '^[[:space:]]*#' <<<"$script" || true)
-      if grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' <<<"$uncommented"; then
-        fail ${host'}": the opencodeSettings activation script swallows the merger exit status"
-      fi
-
-      flat=$(printf '%s' "$script" | tr '\n' ' ')
-      merger=$(printf '%s' "$flat" \
-        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
-      if [ -z "$merger" ]; then
-        fail ${host'}": the opencodeSettings activation script does not invoke the packaged merger"
-      else
-        # Whatever form a suppression takes, the script run the way activation
-        # runs it must fail when the merger does.
-        stub=$TMPDIR/failing-agent-settings
-        printf '#!%s\nexit 3\n' "$(command -v bash)" > "$stub"
-        chmod +x "$stub"
-        stubbed=''${script//"$merger"/"$stub"}
-        if [ "$stubbed" = "$script" ]; then
-          fail ${host'}": could not substitute a failing merger into the opencodeSettings activation script"
-        elif bash -euo pipefail -c "$stubbed" >/dev/null 2>&1; then
-          fail ${host'}": the opencodeSettings activation script succeeds when the merger fails"
-        fi
-      fi
-
-      settingsArg=$(printf '%s' "$flat" \
-        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
-      if [ "$settingsArg" != /home/h82/.config/opencode/opencode.json ]; then
-        fail ${host'}": the merger must be pointed at ~/.config/opencode/opencode.json, got: '$settingsArg'"
-      fi
-
-      declaredPath=$(printf '%s' "$flat" \
-        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -1 | awk '{print $2}' || true)
-      if [ -z "$declaredPath" ]; then
-        fail ${host'}": the opencodeSettings activation script passes no declared document"
-      elif ! python3 "$compareJson" "$declaredPath" ${declaredExpected}; then
-        fail ${host'}": the declared settings drifted from the asserted values"
-      elif [ -n "$merger" ]; then
-        # Keys OpenCode and its CLI wrote survive while the declared keys
-        # return, driven through the exact merger and document activation uses.
-        seeded=$TMPDIR/opencode-seeded.json
-        cp ${seededSettings} "$seeded"
-        chmod 600 "$seeded"
-        if ! env -i "$merger" --label OpenCode --settings "$seeded" --declared "$declaredPath"; then
-          fail ${host'}": the activation merger refused the seeded config"
-        elif ! python3 "$compareJson" "$seeded" ${mergedExpected}; then
-          fail ${host'}": merging the seeded config did not yield the expected document"
-        fi
-      fi
+      ${lib.concatMapStringsSep "\n" (assertMerge host' hm) merges}
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
-        fail ${host'}": Home Manager must not target .config/opencode/opencode.json; OpenCode rewrites it"
+        fail ${host'}": Home Manager must not target .config/opencode/opencode.json or service.json; OpenCode rewrites them"
+      fi
+
+      ${lib.optionalString (serviceStop == null) ''
+        fail ${host'}": missing home.activation.opencodeServiceStop"
+      ''}
+      if [ ${esc (lib.boolToString serviceStopAfterMerge)} != "true" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop must run after opencodeService"
+      fi
+      # The stop must run the wrapper home-path installs, so it reaches the
+      # server the same binary and config directory started.
+      stopUncommented=$(grep -v '^[[:space:]]*#' <<<${esc serviceStopScript} || true)
+      stopCommand=$(grep -oE '/nix/store/[^[:space:]]+/bin/opencode service stop' <<<"$stopUncommented" | head -1 || true)
+      if [ -z "$stopCommand" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop does not run the packaged opencode service stop"
+      elif [ -n "''${resolved:-}" ] && [ "$stopCommand" != "$resolved service stop" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop runs '$stopCommand', not the installed wrapper $resolved"
       fi
 
       manifests=$(printf '%s' ${esc installers} | grep -oE '/nix/store/[^[:space:]]+-manifest\.json' || true)
@@ -255,8 +388,10 @@ let
   ) (lib.take 1 configurations.production);
 
   compareJson = pkgs.writeText "compare-json.py" ''
-    import json, sys
-    sys.exit(0 if json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])) else 1)
+    import json, os, stat, sys
+    same = json.load(open(sys.argv[1])) == json.load(open(sys.argv[2]))
+    mode_ok = len(sys.argv) < 4 or stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == int(sys.argv[3], 8)
+    sys.exit(0 if same and mode_ok else 1)
   '';
 in
 pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
@@ -271,6 +406,7 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
     failed=1
   }
   compareJson=${compareJson}
+  declare -A merged
 
   ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}
 
