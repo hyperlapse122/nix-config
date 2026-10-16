@@ -2,7 +2,7 @@
 title: "autoPatchelfHook corrupts static-pie and prebuilt Go binaries bundled in a .deb, and postFixup runs before the hook"
 date: "2026-10-01"
 category: integration-issues
-module: "ChatGPT and WiFiman Desktop packages (packages/chatgpt.nix, packages/wifiman-desktop.nix)"
+module: "T3 Code CLI and WiFiman Desktop packages (packages/t3code-cli.nix, packages/wifiman-desktop.nix); first found in the since-removed ChatGPT desktop package"
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -24,7 +24,7 @@ retire_when: "auto-patchelf in nixpkgs skips static-pie executables (ET_DYN with
 
 ## Problem
 
-The ChatGPT desktop package (`packages/chatgpt.nix`) repackages the upstream `.deb` with `autoPatchelfHook` and sets `appendRunpaths` to libGL and libpulseaudio so Chromium can `dlopen` them (`packages/chatgpt.nix:63-66`). The ChatGPT 26.928.31416 `.deb` also bundles three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
+The problem first appeared in the ChatGPT desktop package, which this repository no longer carries: the package was removed on 2026-10-17, and `packages/t3code-cli.nix` now carries the workaround. That package repackaged the upstream `.deb` with `autoPatchelfHook` and set `appendRunpaths` to libGL and libpulseaudio so Chromium could `dlopen` them. The ChatGPT 26.928.31416 `.deb` also bundled three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
 
 autoPatchelf's static-binary skip does not cover static-pie, so the binaries have to be protected by hand. The first attempt at that also failed, because of the order in which stdenv runs a `postFixup` attribute and the `postFixupHooks` array.
 
@@ -33,11 +33,11 @@ autoPatchelf's static-binary skip does not cover static-pie, so the binaries hav
 - `resources/codex --version` and `resources/rg --version` in the built package exit with status 139 (SIGSEGV).
 - `readelf -d` on the bundled binaries shows a `RUNPATH` of `<libglvnd>/lib:<libpulseaudio>/lib`, the `appendRunpaths` value, on files that have no `DT_NEEDED` entries and no interpreter.
 - `file -b` reports them as `static-pie linked`, which is ELF type `ET_DYN` with no `.interp`.
-- The original `chatgpt` flake check stayed green the whole time. It asserted only that `bin/chatgpt` is executable, that the desktop entry exists, and that the wrapper has no ozone flag. Every bundled file was present and executable, so the check never noticed that the binaries crashed.
+- The ChatGPT package's original flake check stayed green the whole time. It asserted only that `bin/chatgpt` is executable, that the desktop entry exists, and that the wrapper has no ozone flag. Every bundled file was present and executable, so the check never noticed that the binaries crashed.
 
 ## What Didn't Work
 
-**Trusting autoPatchelf to skip static binaries.** It does skip some. The `pkgs/...` paths cited below are files in the flake's locked nixpkgs input (`nix eval --raw --impure --expr '(builtins.getFlake (toString ./.)).inputs.nixpkgs.outPath'`), not in this repository. `is_static_executable` returns true only for `e_type == 'ET_EXEC'` with no `.interp` section (`pkgs/by-name/au/auto-patchelf/source/auto-patchelf.py:34-36`), and `auto_patchelf_file` skips only those files (`auto-patchelf.py:364-367`). A static-pie binary is `ET_DYN`, so it is not skipped. It gets no interpreter, because `is_dynamic_executable` checks for `.interp` (`auto-patchelf.py:40-44`, used at `:403`), but `append_rpaths` is still added to its rpath (`auto-patchelf.py:471`), and any non-empty rpath is written with `patchelf --set-rpath` (`auto-patchelf.py:485-489`). In this package that rpath is never empty, because `appendRunpaths` is always set.
+**Trusting autoPatchelf to skip static binaries.** It does skip some. The `pkgs/...` paths cited below are files in the flake's locked nixpkgs input (`nix eval --raw --impure --expr '(builtins.getFlake (toString ./.)).inputs.nixpkgs.outPath'`), not in this repository. `is_static_executable` returns true only for `e_type == 'ET_EXEC'` with no `.interp` section (`pkgs/by-name/au/auto-patchelf/source/auto-patchelf.py:34-36`), and `auto_patchelf_file` skips only those files (`auto-patchelf.py:364-367`). A static-pie binary is `ET_DYN`, so it is not skipped. It gets no interpreter, because `is_dynamic_executable` checks for `.interp` (`auto-patchelf.py:40-44`, used at `:403`), but `append_rpaths` is still added to its rpath (`auto-patchelf.py:471`), and any non-empty rpath is written with `patchelf --set-rpath` (`auto-patchelf.py:485-489`). In the ChatGPT package that rpath was never empty, because `appendRunpaths` was always set. In `packages/t3code-cli.nix` it is empty today, because nothing sets `appendRunpaths` or `runtimeDependencies`, but that is one attribute away.
 
 **Setting the binaries aside in `installPhase` and restoring them in the `postFixup` attribute.** The idea was to copy each static-pie file to `$TMPDIR` before the hook ran and to copy it back in `postFixup`, assuming the automatic patching had already happened by then. The restored files still had the `RUNPATH`. The automatic hook does not run before `postFixup`. It is registered as an element of the array, `postFixupHooks+=(autoPatchelfPostFixup)` (`pkgs/by-name/au/autoPatchelfHook/auto-patchelf.sh:104`), and `fixupPhase` ends with `runHook postFixup` (`pkgs/stdenv/generic/setup.sh:1658`). `runHook` iterates `"_callImplicitHook 0 $hookName"` first and the `${hookName}Hooks` array after it (`setup.sh:203-217`, the loop at `:211`). `_callImplicitHook` evaluates the derivation's `postFixup` string (`setup.sh:246-259`). So the restore ran first, and `autoPatchelfPostFixup` then patched the restored originals.
 
@@ -56,34 +56,34 @@ Before (the failed attempt, never committed; `installPhase` already set the file
   '';
 ```
 
-After (`packages/chatgpt.nix:95-104` and `:125-134`):
+After, as `packages/t3code-cli.nix` carries it today (`packages/t3code-cli.nix:57-71` and `:84-90`):
 
 ```nix
   installPhase = ''
     ...
-    (cd usr/lib/chatgpt && find . -type f -print0 | while IFS= read -r -d "" file; do
-      if file -b "$file" | grep -q 'static-pie linked'; then
-        install -Dm755 "$file" "$TMPDIR/static-pie/$file"
-      fi
-    done)
-    mv usr/lib/chatgpt $out/lib/
+    mkdir -p "$TMPDIR/static-pie"
+    find . -type f -exec file -0 -- {} + | while IFS= read -r -d "" path && IFS= read -r type; do
+      case $type in
+        *'static-pie linked'*) install -Dm755 "$path" "$TMPDIR/static-pie/$path" ;;
+      esac
+    done
     ...
   '';
 
   dontAutoPatchelf = true;
-  postFixup = ''
+  postFixup = lib.optionalString isLinux ''
     autoPatchelf -- "$out"
     (cd "$TMPDIR/static-pie" && find . -type f -print0 | while IFS= read -r -d "" file; do
-      install -Dm755 "$file" "$out/lib/chatgpt/$file"
+      install -Dm755 "$file" "$out/libexec/t3code/$file"
     done)
   '';
 ```
 
-`pkgs.file` is added to `nativeBuildInputs` (`packages/chatgpt.nix:20`) for the detection. The files are found by `file -b … | grep 'static-pie linked'` rather than by a fixed list of names, so a static binary added in a later release is protected too.
+`pkgs.file` is in `nativeBuildInputs` (`packages/t3code-cli.nix:31-34`) for the detection. The files are found by their `file` type rather than by a fixed list of names, so a static binary added in a later release is protected too. On x86_64 that covers the Cursor SDK's `rg` and `cursorsandbox`; the arm64 tarball has none, because its `rg` is `ET_EXEC`, which is why the set-aside directory is created even when nothing is set aside.
 
-The `chatgpt` flake check now runs the bundled binaries instead of only checking that they exist: `HOME="$TMPDIR" …/lib/chatgpt/resources/$binary --version` for `codex` and `rg` (the `--version` loop in the `chatgpt` check in `flake.nix`). The ChatGPT pin has since moved (`packages/chatgpt-version.json`); the versions in this paragraph are the ones the fix was verified against.
+The `t3code` check in `flake.nix` runs the binaries instead of only checking that they exist: `t3 --version`, and the bundled static-pie `rg` under `node_modules/@cursor/sdk-<platform>/bin/rg`, which fails with "the bundled static-pie rg in t3code-cli does not run".
 
-Verified after the fix: the bundled binaries report `codex-cli 0.159.2` and `ripgrep 15.2.0`, and the ChatGPT Electron binary still has its `RUNPATH`, so the libGL and libpulseaudio `dlopen` path is unchanged. As a mutation test in this session, re-enabling the automatic hook turned the `chatgpt` check red.
+When the fix was first made in the ChatGPT package, the bundled binaries reported `codex-cli 0.159.2` and `ripgrep 15.2.0`, and the ChatGPT Electron binary kept its `RUNPATH`, so the libGL and libpulseaudio `dlopen` path was unchanged. As a mutation test in that session, re-enabling the automatic hook turned the ChatGPT package's check red.
 
 ## Why This Works
 
@@ -96,9 +96,8 @@ A static-pie binary relocates itself at startup and has no dynamic loader that w
 - When a package uses `autoPatchelfHook` with `appendRunpaths` or `runtimeDependencies`, run `file` over the unpacked tree and look for `static-pie linked`. autoPatchelf skips only `ET_EXEC` static binaries (`auto-patchelf.py:34-36`), so a static-pie binary will be patched.
 - Do not try to undo the hook's work in the `postFixup` attribute. A derivation's own `pre*`/`post*` string runs before that hook's `*Hooks` array (`setup.sh:211`), so it cannot run after `autoPatchelfPostFixup`. Set `dontAutoPatchelf = true` and call `autoPatchelf` yourself where the order matters.
 - When a check covers a binary that patching or wrapping can break, run it (`--version` is enough). Checking that the file exists and is executable passes on a binary that segfaults. Mutation-test the check by re-enabling the breaking step, as described in [mutation testing for check assertions](../best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md).
-- Before removing this workaround, confirm that nixpkgs' `is_static_executable` also covers `ET_DYN` files without `.interp`, or that `autoPatchelfPostFixup` skips them. Then rebuild with the automatic hook re-enabled and confirm that the `chatgpt` check stays green.
+- Before removing this workaround, confirm that nixpkgs' `is_static_executable` also covers `ET_DYN` files without `.interp`, or that `autoPatchelfPostFixup` skips them. Then rebuild with the automatic hook re-enabled and confirm that the `t3code` check stays green on x86_64.
 - A prebuilt Go binary with an interpreter breaks the same way; see the next section. Give a runpath only to the files that `dlopen` the library, never through `appendRunpaths`, which reaches every ELF file.
-- `packages/t3code-cli.nix` applies the same pattern, setting aside every static-pie file at install time and restoring it after `autoPatchelf` in `postFixup`, for the Cursor SDK's `rg` and `cursorsandbox` on x86_64. Its `t3code` check in `flake.nix` runs `t3 --version` and the bundled `rg --version`.
 
 ## Dynamically linked Go binaries break the same way
 
