@@ -27,11 +27,12 @@
     must fail the script; and with Home Manager's `run` turned into a no-op,
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned. The
-    settings.json declaration names the provider instances' leaves: the Claude
-    instance's --add-dir under that configuration's home, its environment
-    entry upserted by name, and the Codex launch argument built from the
-    rendered Codex system and T3 Code parts; the retired `providers` block
-    of those three instances is migrated into them first.
+    settings.json declaration names the provider instances' leaves: the
+    enabled Antigravity and OpenCode instances, the Claude instance's
+    --add-dir under that configuration's home, its environment entry upserted
+    by name, and the Codex launch argument built from the rendered Codex
+    system and T3 Code parts; the retired `providers` block of those four
+    instances is migrated into them first.
   - ~/.t3/instructions/claude-code/CLAUDE.md, which the Claude instance's
     --add-dir loads, exists exactly when either trait is on and holds the
     rendered Claude Code T3 Code part.
@@ -182,6 +183,7 @@ let
         "antigravity"
         "claudeAgent"
         "codex"
+        "opencode"
       ];
     };
     upsertPaths = [
@@ -240,6 +242,22 @@ let
           "driver"
         ];
         value = "codex";
+      }
+      {
+        path = [
+          "providerInstances"
+          "opencode"
+          "driver"
+        ];
+        value = "opencode";
+      }
+      {
+        path = [
+          "providerInstances"
+          "opencode"
+          "enabled"
+        ];
+        value = true;
       }
       {
         path = [

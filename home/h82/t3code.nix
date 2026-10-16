@@ -55,8 +55,8 @@ let
   # value left at its default follows T3 Code when that default changes. App
   # state (onboarding marks, folded panels, favorites, and every provider
   # instance field not declared here) stays the app's. T3 Code leaves its
-  # built-in Antigravity instance off until it is enabled, so it never shows
-  # up on its own.
+  # built-in Antigravity and OpenCode instances off until they are enabled,
+  # so neither shows up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -77,6 +77,13 @@ let
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
       };
       codex.driver = "codex";
+      # Off in T3 Code until enabled. The opencode on PATH is the wrapper
+      # that carries the API key, so no binaryPath is needed and the key never
+      # reaches this file.
+      opencode = {
+        driver = "opencode";
+        enabled = true;
+      };
     };
     snoozeLimitedThreads = true;
     sourceControlWritingStyle.mode = "conventional_commits";
