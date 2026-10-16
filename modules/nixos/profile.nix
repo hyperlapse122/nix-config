@@ -20,6 +20,7 @@
     ./services/tailscale.nix
     ./services/proton-vpn.nix
     ./services/resolved.nix
+    ./services/wifiman.nix
     ./system/secrets.nix
     ./system/desktop-ssh.nix
     ./wifi.nix
@@ -41,5 +42,6 @@
     cliAuth.enableTokscaleToken = lib.mkDefault true;
     tailscale.enable = lib.mkDefault (!config.my.bootstrap);
     protonVpn.enable = lib.mkDefault (!config.my.bootstrap);
+    wifiman.enable = lib.mkDefault true;
   };
 }

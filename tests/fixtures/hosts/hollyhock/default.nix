@@ -1,5 +1,8 @@
-# The x86_64 fixture: a non-default account, as on a work machine.
+# The x86_64 fixture: a non-default account, as on a work machine. It sets
+# the NixOS-only WiFiman trait, so a check sees that the trait installs
+# nothing on a non-NixOS host.
 {
   my.user.name = "tester";
   my.user.home = "/home/tester";
+  my.wifiman.enable = true;
 }

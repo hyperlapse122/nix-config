@@ -1,8 +1,8 @@
 ---
-title: "autoPatchelfHook corrupts static-pie binaries bundled in a .deb, and postFixup runs before the hook"
+title: "autoPatchelfHook corrupts static-pie and prebuilt Go binaries bundled in a .deb, and postFixup runs before the hook"
 date: "2026-10-01"
 category: integration-issues
-module: "ChatGPT desktop package (packages/chatgpt.nix)"
+module: "ChatGPT and WiFiman Desktop packages (packages/chatgpt.nix, packages/wifiman-desktop.nix)"
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -11,12 +11,13 @@ symptoms:
   - "readelf -d shows a RUNPATH on those files, although they are static-pie executables with no PT_INTERP"
   - "Restoring the set-aside originals from the derivation's postFixup attribute leaves the patched files in place, because the restore runs before the patching"
   - "A presence-only flake check passes, because the patched binary still exists and is executable"
+  - "The WiFiman Desktop .deb's dynamically linked Go binaries (wg, wireguard-go, wifiman-desktopd) segfault (exit 139) once any RUNPATH is added, although ldd resolves every library"
 root_cause: wrong_api
 resolution_type: code_fix
 related_components:
   - testing_framework
-tags: ["autopatchelf", "static-pie", "nixpkgs", "stdenv", "postfixup", "postfixuphooks", "deb-package", "flake-checks"]
-retire_when: "auto-patchelf in nixpkgs skips static-pie executables (ET_DYN with no PT_INTERP) in is_static_executable; check pkgs/by-name/au/auto-patchelf/source/auto-patchelf.py in the locked nixpkgs rev"
+tags: ["autopatchelf", "static-pie", "nixpkgs", "stdenv", "postfixup", "postfixuphooks", "deb-package", "flake-checks", "go", "runpath", "wifiman"]
+retire_when: "auto-patchelf in nixpkgs skips static-pie executables (ET_DYN with no PT_INTERP) in is_static_executable; check pkgs/by-name/au/auto-patchelf/source/auto-patchelf.py in the locked nixpkgs rev. The Go-binary section retires only when `patchelf --add-rpath` leaves the WiFiman .deb's wg and wireguard-go runnable"
 ---
 
 # autoPatchelf adds a runpath to static-pie binaries, and an implicit postFixup cannot undo it
@@ -96,4 +97,15 @@ A static-pie binary relocates itself at startup and has no dynamic loader that w
 - Do not try to undo the hook's work in the `postFixup` attribute. A derivation's own `pre*`/`post*` string runs before that hook's `*Hooks` array (`setup.sh:211`), so it cannot run after `autoPatchelfPostFixup`. Set `dontAutoPatchelf = true` and call `autoPatchelf` yourself where the order matters.
 - When a check covers a binary that patching or wrapping can break, run it (`--version` is enough). Checking that the file exists and is executable passes on a binary that segfaults. Mutation-test the check by re-enabling the breaking step, as described in [mutation testing for check assertions](../best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md).
 - Before removing this workaround, confirm that nixpkgs' `is_static_executable` also covers `ET_DYN` files without `.interp`, or that `autoPatchelfPostFixup` skips them. Then rebuild with the automatic hook re-enabled and confirm that the `chatgpt` check stays green.
+- A prebuilt Go binary with an interpreter breaks the same way; see the next section. Give a runpath only to the files that `dlopen` the library, never through `appendRunpaths`, which reaches every ELF file.
 - `packages/t3code-cli.nix` applies the same pattern, setting aside every static-pie file at install time and restoring it after `autoPatchelf` in `postFixup`, for the Cursor SDK's `rg` and `cursorsandbox` on x86_64. Its `t3code` check in `flake.nix` runs `t3 --version` and the bundled `rg --version`.
+
+## Dynamically linked Go binaries break the same way
+
+The WiFiman Desktop 1.3.0 `.deb` (`packages/wifiman-desktop.nix`) bundles three Go binaries under `lib/wifiman-desktop`: `wg`, `wireguard-go`, and the `wifiman-desktopd` daemon. These are not static-pie. `file` reports `ELF 64-bit LSB executable ... dynamically linked`, each has an `INTERP` and one `DT_NEEDED` entry, `libc.so.6`, so autoPatchelf rightly gives them the Nix interpreter, and they run. The Tauri GUI needs `libayatana-appindicator3.so.1` on its runpath for the tray, because it `dlopen`s it by name. Once that runpath reached the Go binaries too, all three exited 139 on `--version` or `-h`. `ldd` still listed every library as resolved, so an `ldd`-only check passed.
+
+Reproduced on copies of the built files: `patchelf --add-rpath <glibc>/lib wg`, and the same on `wireguard-go`, turns a working binary into one that exits 139. `readelf -lW` shows why patchelf had to make room. In the shipped file, `DYNAMIC` sits at `0x679540`, inside the last, writable `LOAD` segment. After the patch, a new `DYNAMIC` of `0x130` bytes sits at `0x400238`, inside the first `LOAD`, which is `R E`. The loader writes to the dynamic section at startup, so that relocation plausibly explains the crash. This session observed the move and the crash, but did not trace the write itself.
+
+The fix uses the same structure as above: `dontAutoPatchelf = true`, then in `postFixup`, `autoPatchelf -- "$out"` with no `appendRunpaths`, so the Go binaries get only their interpreter and no `RUNPATH`, then `patchelf --add-rpath` with libayatana-appindicator on `$out/bin/.wifiman-desktop-wrapped` alone (`packages/wifiman-desktop.nix:66-77`). The `wifiman` check (`tests/wifiman.nix`) runs `wireguard-go --version`, `wg -h` (the bundled `wg` takes no `--version`; `-h` prints `Usage of ...` and exits 2), and the daemon under `timeout 5`. Status 128 or more, other than `timeout`'s 124, fails. A mutation that adds the runpath to the Go binaries turned the check red with "the bundled wireguard-go does not run".
+
+Inside the build sandbox the daemon exits 2 by itself: it has no `/etc/machine-id` and panics after it has started. The check therefore accepts any status below 128 and also requires the daemon's `Running Go service version` line in `$BASE/wifiman-desktop.log`, so a daemon that never starts still fails.

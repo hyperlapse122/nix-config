@@ -52,6 +52,8 @@ let
     "winbox"
     "yubioath-flutter"
     "claude-desktop"
+    "chatgpt"
+    "wifiman-desktop"
     "t3code-desktop"
     "vscodium"
     "ghostty"

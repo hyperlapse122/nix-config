@@ -105,6 +105,7 @@
           "printing"
           "proton-vpn"
           "user-avatar"
+          "wifiman"
           "winbox"
           "yubikey-fido"
         ]
@@ -142,6 +143,8 @@
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
         chatgpt-release = agentTools.chatgptRelease;
         chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
+        wifiman-desktop-release = agentTools.wifimanDesktopRelease;
+        wifiman-desktop = import ./packages/wifiman-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
@@ -500,6 +503,16 @@
                 cp ${./scripts/chatgpt-release} scripts/chatgpt-release
                 cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
                 python tests/test_chatgpt_release.py
+                touch $out
+              '';
+          wifiman-desktop-release =
+            pkgs.runCommand "wifiman-desktop-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/wifiman-desktop-release} scripts/wifiman-desktop-release
+                cp ${./tests/test_wifiman_desktop_release.py} tests/test_wifiman_desktop_release.py
+                python tests/test_wifiman_desktop_release.py
                 touch $out
               '';
           claude-code-release =
@@ -1373,6 +1386,7 @@
           iphone-restore = import ./tests/iphone-restore.nix { inherit pkgs self; };
           printing = import ./tests/printing.nix { inherit pkgs self; };
           winbox = import ./tests/winbox.nix { inherit pkgs self; };
+          wifiman = import ./tests/wifiman.nix { inherit pkgs self; };
           nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           vm-checks-guard = import ./tests/vm-checks-guard.nix {
