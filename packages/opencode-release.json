@@ -2,17 +2,14 @@
   "version": "2.0.31",
   "platforms": {
     "x86_64-linux": {
-      "package": "@opencode/cli-linux-x64",
       "url": "https://registry.npmjs.org/@opencode/cli-linux-x64/-/cli-linux-x64-2.0.31.tgz",
       "hash": "sha512-RYbqR/HzKTH9OSh98VOt78bgQ8sgidUCCCKR9CABSc06AFxZdycezIg8dUmh+uBdp2mf4ckWVq9BbGblbxtFZQ=="
     },
     "aarch64-linux": {
-      "package": "@opencode/cli-linux-arm64",
       "url": "https://registry.npmjs.org/@opencode/cli-linux-arm64/-/cli-linux-arm64-2.0.31.tgz",
       "hash": "sha512-LGAcODO4N9L+508pfVolMxPapGw+O3VG/Jo+1VlbuLC+RDH7IIX6Hi1bw5ofD4cfsC+zIJuZ/NF7cHPNSvH0mw=="
     },
     "aarch64-darwin": {
-      "package": "@opencode/cli-darwin-arm64",
       "url": "https://registry.npmjs.org/@opencode/cli-darwin-arm64/-/cli-darwin-arm64-2.0.31.tgz",
       "hash": "sha512-NMRKzz9CO4DKOOZzPn5JZRBMdjN+qQj7CG5tg5xkq+uyrBYwF1P/n/0KMjKbjPOOxTLXk9K856Qi5z+b1uHMeg=="
     }

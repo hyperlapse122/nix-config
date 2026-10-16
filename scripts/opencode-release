@@ -15,8 +15,7 @@ nor a downgrade ever reaches the pin file.
 """
 
 import argparse
-import base64
-import binascii
+import concurrent.futures
 import json
 import os
 import re
@@ -27,7 +26,7 @@ import sys
 DEFAULT_SOURCE_URL = "https://registry.npmjs.org"
 DEFAULT_FETCH = "curl -sfL --max-time 60"
 CLI_PACKAGE = "@opencode/cli"
-TARBALL_PREFIX = "https://registry.npmjs.org/"
+TARBALL_PREFIX = DEFAULT_SOURCE_URL + "/"
 
 # Every system a host in this flake can be, and the platform package installed
 # on it.
@@ -38,7 +37,8 @@ TARGET_PACKAGES = {
 }
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
-SHA512_BYTES = 64
+# One sha512 SRI: a 64-byte digest is always 86 base64 characters plus "==".
+INTEGRITY_PATTERN = re.compile(r"sha512-[A-Za-z0-9+/]{86}==")
 
 
 class Failure(Exception):
@@ -80,14 +80,7 @@ def fetch_manifest(url):
 
 def check_integrity(package, integrity):
     """Require one sha512 SRI whose digest is 64 bytes, and return it unchanged."""
-    ok = False
-    if isinstance(integrity, str) and integrity.startswith("sha512-"):
-        try:
-            digest = base64.b64decode(integrity[len("sha512-"):], validate=True)
-            ok = len(digest) == SHA512_BYTES
-        except binascii.Error:
-            pass
-    if not ok:
+    if not isinstance(integrity, str) or not INTEGRITY_PATTERN.fullmatch(integrity):
         raise Failure(f"invalid sha512 integrity for {package}: {integrity!r}")
     return integrity
 
@@ -103,30 +96,36 @@ def resolve(base):
     optional = latest.get("optionalDependencies")
     optional = optional if isinstance(optional, dict) else {}
     platforms = {}
-    for system, package in TARGET_PACKAGES.items():
-        if optional.get(package) != version:
-            raise Failure(
-                f"{CLI_PACKAGE} {version} does not list {package} at {version} "
-                f"(found {optional.get(package)!r}); refusing to write an incomplete pin"
-            )
-        manifest = fetch_manifest(f"{base}/{package}/{version}")
-        if manifest.get("name") != package or manifest.get("version") != version:
-            raise Failure(
-                f"manifest for {package} {version} names "
-                f"{manifest.get('name')!r} {manifest.get('version')!r}"
-            )
-        dist = manifest.get("dist")
-        dist = dist if isinstance(dist, dict) else {}
-        url = dist.get("tarball")
-        if not isinstance(url, str) or not url.startswith(TARBALL_PREFIX):
-            raise Failure(
-                f"tarball for {package} {version} is not under {TARBALL_PREFIX}: {url!r}"
-            )
-        platforms[system] = {
-            "package": package,
-            "url": url,
-            "hash": check_integrity(package, dist.get("integrity")),
+    # The platform manifests are fetched together and read in the fixed order
+    # below, so a refusal names the same package a serial fetch would.
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        manifests = {
+            package: pool.submit(fetch_manifest, f"{base}/{package}/{version}")
+            for package in TARGET_PACKAGES.values()
         }
+        for system, package in TARGET_PACKAGES.items():
+            if optional.get(package) != version:
+                raise Failure(
+                    f"{CLI_PACKAGE} {version} does not list {package} at {version} "
+                    f"(found {optional.get(package)!r}); refusing to write an incomplete pin"
+                )
+            manifest = manifests[package].result()
+            if manifest.get("name") != package or manifest.get("version") != version:
+                raise Failure(
+                    f"manifest for {package} {version} names "
+                    f"{manifest.get('name')!r} {manifest.get('version')!r}"
+                )
+            dist = manifest.get("dist")
+            dist = dist if isinstance(dist, dict) else {}
+            url = dist.get("tarball")
+            if not isinstance(url, str) or not url.startswith(TARBALL_PREFIX):
+                raise Failure(
+                    f"tarball for {package} {version} is not under {TARBALL_PREFIX}: {url!r}"
+                )
+            platforms[system] = {
+                "url": url,
+                "hash": check_integrity(package, dist.get("integrity")),
+            }
     return {"version": version, "platforms": platforms}
 
 

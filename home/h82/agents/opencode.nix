@@ -45,7 +45,9 @@ let
   # first client's environment, so it would keep that run's API key, switches
   # and version. Disabled, every run owns its server and the wrapper's
   # exported key and switches apply. The password, port and env OpenCode
-  # writes beside this key stay as they are.
+  # writes beside this key stay as they are. A caller that sets
+  # OPENCODE_CONFIG_DIR reads service.json from there instead; T3 Code sets
+  # none and runs `opencode serve`, which never uses the shared server.
   declaredService = pkgs.writeText "opencode-declared-service.json" (
     builtins.toJSON {
       set = {
@@ -53,6 +55,15 @@ let
       };
     }
   );
+
+  mergeInto =
+    label: file: document:
+    lib.hm.dag.entryAfter [ "installPackages" ] ''
+      ${merger} \
+        --label ${lib.escapeShellArg label} \
+        --settings ${config.home.homeDirectory}/.config/opencode/${file} \
+        --declared ${document}
+    '';
 in
 {
   home.packages = [ wrapper ];
@@ -60,17 +71,15 @@ in
   # Unguarded and after installPackages for the reasons given on
   # claudeSettings in claude.nix: a refusal must fail the rebuild loudly
   # without stranding linkGeneration or installPackages behind it.
-  home.activation.opencodeSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label OpenCode \
-      --settings ${config.home.homeDirectory}/.config/opencode/opencode.json \
-      --declared ${declared}
-  '';
+  home.activation.opencodeSettings = mergeInto "OpenCode" "opencode.json" declared;
+  home.activation.opencodeService = mergeInto "OpenCode service" "service.json" declaredService;
 
-  home.activation.opencodeService = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label "OpenCode service" \
-      --settings ${config.home.homeDirectory}/.config/opencode/service.json \
-      --declared ${declaredService}
+  # Writing disabled = true leaves a server already running, with its old key
+  # and binary, until it is stopped; `opencode service set disabled true`
+  # stops it too, so activation does the same. A server that will not stop
+  # does not undo the declared settings, so it warns instead of failing.
+  home.activation.opencodeServiceStop = lib.hm.dag.entryAfter [ "opencodeService" ] ''
+    ${wrapper}/bin/opencode service stop \
+      || echo "OpenCode: could not stop the background server; run 'opencode service stop'" >&2
   '';
 }

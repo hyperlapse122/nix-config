@@ -72,7 +72,6 @@ def pin(version=VERSION):
         "version": version,
         "platforms": {
             system: {
-                "package": package,
                 "url": tarball(package, version),
                 "hash": INTEGRITY[package],
             }
@@ -144,7 +143,7 @@ class OpencodeReleaseTestCase(unittest.TestCase):
         self.assertIn(needle, result.stderr)
         self.assertEqual(self.output.read_bytes(), before)
 
-    def test_writes_version_package_url_and_integrity_verbatim(self):
+    def test_writes_version_url_and_integrity_verbatim(self):
         self.write_github_pin()
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)

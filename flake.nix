@@ -1228,6 +1228,7 @@
               switches = [
                 "export OPENCODE_DISABLE_AUTOUPDATE=true"
                 "export OPENCODE_DISABLE_PROJECT_CONFIG=true"
+                "export OPENCODE_CONFIG_PROJECT_DISABLE=true"
                 "export OPENCODE_DISABLE_CLAUDE_CODE=true"
               ];
               assertConfiguration =
@@ -1577,6 +1578,9 @@
               printf '{"username": "canary-project-config"}\n' > project/opencode.json
               (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
               (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
+              # v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first, so a caller's
+              # value for it must not turn project config back on either.
+              (cd project && OPENCODE_CONFIG_PROJECT_DISABLE=0 ${packaged}/bin/opencode debug config) > wrapped-override.json
               if ! grep -qF canary-project-config bare.json; then
                 echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
                 exit 1
@@ -1585,6 +1589,18 @@
                 echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
                 exit 1
               fi
+              if grep -qF canary-project-config wrapped-override.json; then
+                echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
+                exit 1
+              fi
+              # A missing pgrep would read as "no server", so its absence fails.
+              # A per-run server may take a moment to exit after its client; the
+              # detached shared server never does.
+              command -v pgrep >/dev/null || { echo "pgrep is missing; the leftover-server probe is blind" >&2; exit 1; }
+              for _ in $(seq 50); do
+                pgrep -f ${packaged}/libexec/opencode/opencode >/dev/null || break
+                sleep 0.1
+              done
               if pgrep -f ${packaged}/libexec/opencode/opencode; then
                 echo "opencode debug config left a server running despite the disabled service" >&2
                 exit 1

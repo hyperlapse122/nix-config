@@ -28,7 +28,11 @@
     declared keys. The result is mode 0600 in every case. opencode.json drops
     the retired autoupdate key; service.json disables OpenCode's shared
     background server.
-  - no Home Manager file targets .config/opencode/opencode.json.
+  - no Home Manager file targets .config/opencode/opencode.json or
+    .config/opencode/service.json.
+  - home.activation.opencodeServiceStop runs after opencodeService and runs
+    the installed wrapper's `opencode service stop`, so a server started
+    before the service was disabled does not keep running.
   - a production configuration's sops manifest carries
     cli-auth/opencode_api_key owned by h82 with mode 0400, its gh/glab
     publisher does not read that key, and a bootstrap configuration's
@@ -235,9 +239,11 @@ let
         fail ${host'}": the ${spec.name} activation script passes no declared document"
       elif ! python3 "$compareJson" "$declaredPath" ${spec.declared}; then
         fail ${host'}": the declared settings drifted from the asserted values"
-      elif [ -n "$merger" ]; then
+      elif [ -n "$merger" ] && [ -z "''${merged["$merger $declaredPath"]:-}" ]; then
         # Keys OpenCode and its CLI wrote survive while the declared keys
         # return, driven through the exact merger and document activation uses.
+        # Hosts sharing that merger and document would repeat the same runs.
+        merged["$merger $declaredPath"]=1
         ${lib.concatMapStringsSep "\n" (case: ''
           target=$TMPDIR/${spec.name}-${case.label}.json
           rm -f "$target"
@@ -252,7 +258,6 @@ let
           fi
         '') spec.cases}
       fi
-      fi
     '';
 
   assertEntry =
@@ -265,8 +270,18 @@ let
       hm = entry.user;
       homePath = hm.home.path or null;
 
-      settingsTargeted = lib.any (file: (file.target or "") == ".config/opencode/opencode.json") (
-        lib.attrValues (hm.home.file or { })
+      settingsTargeted = lib.any (
+        file:
+        lib.elem (file.target or "") [
+          ".config/opencode/opencode.json"
+          ".config/opencode/service.json"
+        ]
+      ) (lib.attrValues (hm.home.file or { }));
+
+      serviceStop = hm.home.activation.opencodeServiceStop or null;
+      serviceStopScript = if serviceStop == null then "" else (serviceStop.data or "");
+      serviceStopAfterMerge = lib.elem "opencodeService" (
+        if serviceStop == null then [ ] else (serviceStop.after or [ ])
       );
 
       # sops-nix installs through a systemd unit when my.cliAuth is enabled
@@ -284,7 +299,10 @@ let
     ''
       ${
         if homePath == null then
-          ''fail ${host'}": no home-path"''
+          ''
+            resolved=
+            fail ${host'}": no home-path"
+          ''
         else
           ''
             wrapper=${homePath}/bin/opencode
@@ -305,7 +323,23 @@ let
       ${lib.concatMapStringsSep "\n" (assertMerge host' hm) merges}
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
-        fail ${host'}": Home Manager must not target .config/opencode/opencode.json; OpenCode rewrites it"
+        fail ${host'}": Home Manager must not target .config/opencode/opencode.json or service.json; OpenCode rewrites them"
+      fi
+
+      ${lib.optionalString (serviceStop == null) ''
+        fail ${host'}": missing home.activation.opencodeServiceStop"
+      ''}
+      if [ ${esc (lib.boolToString serviceStopAfterMerge)} != "true" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop must run after opencodeService"
+      fi
+      # The stop must run the wrapper home-path installs, so it reaches the
+      # server the same binary and config directory started.
+      stopUncommented=$(grep -v '^[[:space:]]*#' <<<${esc serviceStopScript} || true)
+      stopCommand=$(grep -oE '/nix/store/[^[:space:]]+/bin/opencode service stop' <<<"$stopUncommented" | head -1 || true)
+      if [ -z "$stopCommand" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop does not run the packaged opencode service stop"
+      elif [ -n "''${resolved:-}" ] && [ "$stopCommand" != "$resolved service stop" ]; then
+        fail ${host'}": home.activation.opencodeServiceStop runs '$stopCommand', not the installed wrapper $resolved"
       fi
 
       manifests=$(printf '%s' ${esc installers} | grep -oE '/nix/store/[^[:space:]]+-manifest\.json' || true)
@@ -372,6 +406,7 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
     failed=1
   }
   compareJson=${compareJson}
+  declare -A merged
 
   ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}
 

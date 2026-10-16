@@ -31,9 +31,12 @@ fi
 # A process holding the key loads no project opencode.json or .opencode/
 # directory, whose plugins and provider overrides are the reviewed checkout's
 # code, and no Claude Code instructions or skills, so a review peer runs on its
-# brief alone.
+# brief alone. OpenCode v2 reads OPENCODE_CONFIG_PROJECT_DISABLE before
+# OPENCODE_DISABLE_PROJECT_CONFIG, so both are set and a caller's value for
+# either cannot turn project config back on.
 export OPENCODE_DISABLE_AUTOUPDATE=true
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
+export OPENCODE_CONFIG_PROJECT_DISABLE=true
 export OPENCODE_DISABLE_CLAUDE_CODE=true
 
 # OpenCode downloads ripgrep into its data directory when none is on PATH.
