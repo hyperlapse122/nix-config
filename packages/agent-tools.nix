@@ -55,11 +55,6 @@ let
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
-  # Resolves the latest ChatGPT desktop release from OpenAI's APT repository.
-  # Its network call goes through an overridable command so the sandboxed
-  # repository check can drive it with fixtures.
-  chatgptRelease = pythonHelper "chatgpt-release" ../scripts/chatgpt-release;
-
   # Resolves the latest WiFiman Desktop release from Ubiquiti's releases API
   # and hashes its .deb, which upstream publishes no checksum for. Its network
   # calls go through overridable commands so the sandboxed repository check
@@ -119,7 +114,6 @@ in
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
-    chatgptRelease
     wifimanDesktopRelease
     claudeCodeRelease
     miseRelease

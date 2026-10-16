@@ -25,7 +25,6 @@ let
   # home/h82/default.nix installs.
   installed = pname: lib.findFirst (p: (p.pname or "") == pname) null config.home.packages;
   claudeDesktop = installed "claude-desktop";
-  chatgpt = installed "chatgpt";
 in
 lib.mkIf (!config.my.bootstrap) {
   # force = true rather than home-manager.backupFileExtension: these apps rewrite
@@ -91,20 +90,6 @@ lib.mkIf (!config.my.bootstrap) {
       Type=Application
       Name=Claude
       Exec=${claudeDesktop}/bin/claude-desktop --startup
-      Hidden=false
-      NoDisplay=true
-      X-KDE-autostart-phase=2
-    '';
-  };
-
-  # ChatGPT has no hidden-start argument, so it opens its window at login.
-  xdg.configFile."autostart/chatgpt.desktop" = {
-    force = true;
-    text = ''
-      [Desktop Entry]
-      Type=Application
-      Name=ChatGPT
-      Exec=${chatgpt}/bin/chatgpt
       Hidden=false
       NoDisplay=true
       X-KDE-autostart-phase=2

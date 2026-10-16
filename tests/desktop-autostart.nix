@@ -17,9 +17,8 @@
     --silent.
   - The same for autostart/kleopatra.desktop with --daemon,
     autostart/discord.desktop with --start-minimized,
-    autostart/telegram.desktop with -startintray,
-    autostart/claude-desktop.desktop with --startup, and
-    autostart/chatgpt.desktop with no argument, each running the package
+    autostart/telegram.desktop with -startintray, and
+    autostart/claude-desktop.desktop with --startup, each running the package
     found in that configuration's user package list.
   - Where services.tailscale.enable is true, the same for
     autostart/tailscale-systray.desktop running that configuration's
@@ -111,7 +110,6 @@ let
     "autostart/discord.desktop"
     "autostart/telegram.desktop"
     "autostart/claude-desktop.desktop"
-    "autostart/chatgpt.desktop"
     "autostart/tailscale-systray.desktop"
   ];
 
@@ -135,7 +133,6 @@ let
       discordPackage = userPackage "discord";
       telegramPackage = userPackage "telegram-desktop";
       claudePackage = userPackage "claude-desktop";
-      chatgptPackage = userPackage "chatgpt";
       tailscaleEnabled = entry.config.services.tailscale.enable;
       tailscalePackage = entry.config.services.tailscale.package;
       operatorFlag = "--operator=${entry.config.my.user.name}";
@@ -145,7 +142,6 @@ let
       discordEntry = entryFor user "autostart/discord.desktop";
       telegramEntry = entryFor user "autostart/telegram.desktop";
       claudeEntry = entryFor user "autostart/claude-desktop.desktop";
-      chatgptEntry = entryFor user "autostart/chatgpt.desktop";
       tailscaleEntry = entryFor user "autostart/tailscale-systray.desktop";
 
       missing = name: fail "no Home Manager autostart entry targets ${name} on ${host}";
@@ -200,10 +196,6 @@ let
 
       claudeExec = lib.optionalString (claudeEntry != null && claudePackage != null) (
         "Exec=${claudePackage}/bin/claude-desktop --startup"
-      );
-
-      chatgptExec = lib.optionalString (chatgptEntry != null && chatgptPackage != null) (
-        "Exec=${chatgptPackage}/bin/chatgpt"
       );
 
       tailscaleExec = lib.optionalString (tailscaleEntry != null) (
@@ -300,10 +292,6 @@ let
       ${packageAbsent "claude-desktop" claudePackage}
       ${lib.optionalString (claudeEntry == null) (missing "autostart/claude-desktop.desktop")}
       ${present "Claude Desktop" claudeEntry claudeExec}
-
-      ${packageAbsent "chatgpt" chatgptPackage}
-      ${lib.optionalString (chatgptEntry == null) (missing "autostart/chatgpt.desktop")}
-      ${present "ChatGPT" chatgptEntry chatgptExec}
 
       ${
         if tailscaleEnabled then

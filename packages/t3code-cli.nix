@@ -59,7 +59,7 @@ pkgs.stdenv.mkDerivation {
     # and any runpath it writes into one leaves it segfaulting. None is written
     # today, as nothing sets appendRunpaths or runtimeDependencies, but that is
     # one attribute away. Set every static-pie file aside here and put it back
-    # after autoPatchelf in postFixup, as packages/chatgpt.nix does. The arm64
+    # after autoPatchelf in postFixup. The arm64
     # tarball has none (its rg is ET_EXEC), so the directory must exist even
     # when nothing is set aside.
     # One file(1) run per batch: -0 ends each name with NUL, then ": <type>".
