@@ -59,6 +59,11 @@ in
       (import ../../packages/claude-desktop.nix { inherit pkgs; })
       (import ../../packages/chatgpt.nix { inherit pkgs; })
     ]
+    # Its root daemon comes from modules/nixos/services/wifiman.nix under the
+    # same trait.
+    ++ lib.optionals (nixos && config.my.wifiman.enable) [
+      (import ../../packages/wifiman-desktop.nix { inherit pkgs; })
+    ]
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
       (import ../../packages/codex.nix { inherit pkgs; })
