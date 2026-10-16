@@ -65,19 +65,20 @@ requireSentences = message: sentences: ''
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
-Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (`tests/agent-instructions.nix:376-395`). The pinned subset is derived from the required list, so there is one list to maintain:
+Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (`tests/agent-instructions.nix:367-382`). The pinned subset is derived from the required list, so there is one list to maintain:
 
 ```nix
-antigravitySentences = lib.filter (
-  sentence: lib.hasInfix "Antigravity" sentence || lib.hasInfix "Argon" sentence
+peerPattern = "Antigravity|Argon|OpenCode|opencode";
+extraPeerSentences = lib.filter (
+  sentence: builtins.match ".*(${peerPattern}).*" sentence != null
 ) delegationSentences;
 ```
 
-`onlyPinnedSentences` takes the lines under `# Cross-model delegation` up to the next top-level heading, strips the list marker, splits sentences on a full stop followed by a space, keeps those matching `Antigravity|Argon`, and fails on any that is not in the pinned list. The split assumes no guarded sentence contains a full stop followed by a space, such as "e.g. "; a sentence that did would be reported as unpinned, which fails red.
+`onlyPinnedSentences` takes the lines under `# Cross-model delegation` up to the next top-level heading, strips the list marker, splits sentences on a full stop followed by a space, keeps those matching `peerPattern` (`Antigravity|Argon|OpenCode|opencode`, widened when the OpenCode peer joined for issue #229), and fails on any that is not in the pinned list. The split assumes no guarded sentence contains a full stop followed by a space, such as "e.g. "; a sentence that did would be reported as unpinned, which fails red.
 
-Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` (`tests/agent-instructions.nix:400-413`) checks that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
+Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` (`tests/agent-instructions.nix:387-396`) checks that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
 
-For a section pinned whole, compare the section's sentence stream to the pinned list in order (`tests/agent-instructions.nix:419-433`):
+For a section pinned whole, compare the section's sentence stream to the pinned list in order (`tests/agent-instructions.nix:402-412`):
 
 ```nix
 sentencesInOrder = message: heading: sentences: ''
