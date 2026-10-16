@@ -55,10 +55,7 @@ in
       ++ [ uv ]
       ++ gui [ yubioath-flutter ]
     )
-    ++ gui [
-      (import ../../packages/claude-desktop.nix { inherit pkgs; })
-      (import ../../packages/chatgpt.nix { inherit pkgs; })
-    ]
+    ++ gui [ (import ../../packages/claude-desktop.nix { inherit pkgs; }) ]
     # Its root daemon comes from modules/nixos/services/wifiman.nix under the
     # same trait.
     ++ lib.optionals (nixos && config.my.wifiman.enable) [

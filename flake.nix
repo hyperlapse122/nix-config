@@ -141,8 +141,6 @@
         agent-plugin-release = agentTools.agentPluginRelease;
         claude-desktop-release = agentTools.claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
-        chatgpt-release = agentTools.chatgptRelease;
-        chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
         wifiman-desktop-release = agentTools.wifimanDesktopRelease;
         wifiman-desktop = import ./packages/wifiman-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
@@ -511,16 +509,6 @@
                 cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
                 cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
                 python tests/test_claude_desktop_release.py
-                touch $out
-              '';
-          chatgpt-release =
-            pkgs.runCommand "chatgpt-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/chatgpt-release} scripts/chatgpt-release
-                cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
-                python tests/test_chatgpt_release.py
                 touch $out
               '';
           wifiman-desktop-release =
@@ -1076,53 +1064,6 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
-          chatgpt =
-            let
-              # No version-pin comparison: the package reads its version from the
-              # pin file, so that assertion could only ever hold. The wrapper is
-              # read for an ozone flag because upstream marks Wayland
-              # experimental; the app must stay on its X11 default. The
-              # bundled static binaries are run, because a patched one still
-              # exists and is executable.
-              assertConfiguration =
-                entry:
-                let
-                  chatgptPkg = userPackageOf "chatgpt" entry;
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "chatgpt";
-                    executables = [ "chatgpt" ];
-                    desktopEntries = [ "chatgpt.desktop" ];
-                  } entry}
-                  ${pkgs.lib.optionalString (chatgptPkg != null) ''
-                    if grep -q -- 'ozone' ${chatgptPkg}/bin/chatgpt; then
-                      echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
-                      fail=1
-                    fi
-                    # The bundled Codex sandboxes with bwrap, which NixOS has nowhere
-                    # else on PATH.
-                    if ! grep -qF -- '-bubblewrap-' ${chatgptPkg}/bin/chatgpt; then
-                      echo 'the chatgpt wrapper on ${entry.name} puts no bubblewrap on PATH' >&2
-                      fail=1
-                    fi
-                    # Run, not just inspect: autoPatchelf adding a runpath to these
-                    # static-pie binaries leaves them segfaulting while every file
-                    # still exists.
-                    for binary in codex rg; do
-                      if ! HOME="$TMPDIR" ${chatgptPkg}/lib/chatgpt/resources/$binary --version > /dev/null 2>&1; then
-                        echo "the bundled $binary in chatgpt on ${entry.name} does not run" >&2
-                        fail=1
-                      fi
-                    done
-                  ''}
-                '';
-            in
-            pkgs.runCommand "chatgpt-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
           claude-code =
             let
               # Presence and an executable bin/claude alone would stay green even if
@@ -1193,8 +1134,8 @@
                   '';
                   # Codex looks for codex-code-mode-host beside the binary the
                   # wrapper execs, never on PATH, so the host is found from that
-                  # exec target. It is run, not just inspected, as the chatgpt
-                  # check does for its bundled binaries.
+                  # exec target. It is run, not just inspected, because a binary
+                  # that exists and is executable can still fail to start.
                   codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
                     target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
                     if [ -z "$target" ]; then

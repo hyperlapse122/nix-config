@@ -82,10 +82,7 @@ jobs:
           # 7. Update Codex
           nix run .#codex-release -- --output packages/codex-release.json
 
-          # 8. Update the ChatGPT app
-          nix run .#chatgpt-release -- --output packages/chatgpt-version.json
-
-          # 9. Update T3 Code. A nightly can be published before its assets
+          # 8. Update T3 Code. A nightly can be published before its assets
           # and digests are, so a failure here keeps the current pin and lets
           # the other updates through.
           if ! nix run .#t3code-release -- --output packages/t3code-release.json; then
@@ -93,21 +90,21 @@ jobs:
             git checkout -- packages/t3code-release.json
           fi
 
-          # 10. Update the Antigravity CLI. A feed failure keeps the current
+          # 9. Update the Antigravity CLI. A feed failure keeps the current
           # pin and lets the other updates through, as T3 Code's does.
           if ! nix run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json; then
             echo "::warning title=Antigravity CLI update skipped::antigravity-cli-release failed; keeping the current pin in packages/antigravity-cli-release.json."
             git checkout -- packages/antigravity-cli-release.json
           fi
 
-          # 11. Update WiFiman Desktop. An API failure keeps the current pin
+          # 10. Update WiFiman Desktop. An API failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
           if ! nix run .#wifiman-desktop-release -- --output packages/wifiman-desktop-version.json; then
             echo "::warning title=WiFiman Desktop update skipped::wifiman-desktop-release failed; keeping the current pin in packages/wifiman-desktop-version.json."
             git checkout -- packages/wifiman-desktop-version.json
           fi
 
-          # 12. Update OpenCode. A release can be published before all of its
+          # 11. Update OpenCode. A release can be published before all of its
           # assets are, so a failure keeps the current pin and lets the other
           # updates through, as T3 Code's does.
           if ! nix run .#opencode-release -- --output packages/opencode-release.json; then
@@ -202,12 +199,6 @@ jobs:
             NEW_VER=$(jq -r .version packages/antigravity-cli-release.json)
             git add packages/antigravity-cli-release.json
             git commit -m "chore(packages): bump antigravity-cli to $NEW_VER"
-          fi
-
-          if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then
-            NEW_VER=$(jq -r .version packages/chatgpt-version.json)
-            git add packages/chatgpt-version.json
-            git commit -m "chore(packages): bump chatgpt to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/wifiman-desktop-version.json)" ]; then
