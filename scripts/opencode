@@ -27,7 +27,7 @@ if [[ -z ${OPENCODE_API_KEY:-} ]]; then
 fi
 
 # The self-update switch holds under any config T3 Code supplies inline or
-# through OPENCODE_CONFIG_DIR, which never see the declared autoupdate key.
+# through OPENCODE_CONFIG_DIR, which never see the declared update key.
 # A process holding the key loads no project opencode.json or .opencode/
 # directory, whose plugins and provider overrides are the reviewed checkout's
 # code, and no Claude Code instructions or skills, so a review peer runs on its

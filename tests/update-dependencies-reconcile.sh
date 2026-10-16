@@ -103,7 +103,7 @@ setup_clone() {
   "$git_bin" -C "$clone" checkout -qb main
   mkdir -p "$clone/packages"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
-  printf '{"version": "1.19.2", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
+  printf '{"version": "2.0.31", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json
   "$git_bin" -C "$clone" commit -qm init
@@ -354,7 +354,7 @@ pass 'a succeeding t3code-release updates the pin without a warning'
 # --- OpenCode bump commit ---------------------------------------------------
 
 read -r origin clone <<<"$(setup_clone opencode)"
-oc_version=1.19.3
+oc_version=2.0.32
 printf '{"version": "%s", "platforms": {}}\n' "$oc_version" >"$clone/packages/opencode-release.json"
 # A second changed file, so a commit that sweeps in more than the pin shows.
 printf 'changed\n' >>"$clone/tracked.txt"
@@ -377,7 +377,7 @@ grep -Eq '^[^#]*nix run \.#opencode-release -- --output packages/opencode-releas
 pass 'the update step runs opencode-release against packages/opencode-release.json'
 
 # The OpenCode part of the update step, cut the way the T3 Code part is. A
-# release can be published before all of its assets are, so opencode-release
+# release can be published before all of its platform packages are, so opencode-release
 # failing must leave the pin alone and let the step go on.
 oc_script=$(awk '/^# [0-9]+\. Update OpenCode/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
 [[ -n $oc_script ]] || fail "could not find the OpenCode part of the update step in $workflow"
@@ -391,10 +391,10 @@ run_opencode_step() {
 #!$BASH
 if [[ $fails == 1 ]]; then
   printf '{"version": "partial' >packages/opencode-release.json
-  echo 'release 1.19.3 has no digest for opencode-linux-x64.tar.gz' >&2
+  echo '@opencode/cli 2.0.32 does not list @opencode/cli-linux-x64 at 2.0.32; refusing to write an incomplete pin' >&2
   exit 1
 fi
-printf '{"version": "1.19.3", "platforms": {}}\n' >packages/opencode-release.json
+printf '{"version": "2.0.32", "platforms": {}}\n' >packages/opencode-release.json
 EOF
   chmod +x "$scratch/$name-bin/nix"
   (
@@ -417,7 +417,7 @@ grep -q '^::warning' "$scratch/oc-fails-step.log" ||
 pass 'a failing opencode-release warns, keeps the pin, and lets the update step go on'
 
 clone=$(run_opencode_step oc-succeeds 0)
-grep -q '"1.19.3"' "$clone/packages/opencode-release.json" ||
+grep -q '"2.0.32"' "$clone/packages/opencode-release.json" ||
   fail 'a succeeding opencode-release did not update the pin'
 if grep -q '^::warning' "$scratch/oc-succeeds-step.log"; then
   fail 'a succeeding opencode-release still emitted a warning'
