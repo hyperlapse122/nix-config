@@ -151,6 +151,8 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
+        opencode-release = agentTools.opencodeRelease;
+        opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -541,6 +543,16 @@
             python tests/test_codex_release.py
             touch $out
           '';
+          opencode-release =
+            pkgs.runCommand "opencode-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/opencode-release} scripts/opencode-release
+                cp ${./tests/test_opencode_release.py} tests/test_opencode_release.py
+                python tests/test_opencode_release.py
+                touch $out
+              '';
           antigravity-cli-release =
             pkgs.runCommand "antigravity-cli-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -1437,6 +1449,61 @@
               patchShebangs scripts/tokscale
               bash tests/tokscale.sh scripts/tokscale
               bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
+              touch $out
+            '';
+          opencode-wrapper =
+            let
+              tokenFile = "/var/empty/opencode-test/opencode_api_key";
+              packaged = import ./packages/opencode.nix { inherit pkgs tokenFile; };
+              # The token path lands inside single quotes in the wrapper.
+              guardCases = [
+                {
+                  label = "a relative token path";
+                  tokenFile = "run/secrets/cli-auth/opencode_api_key";
+                  accept = false;
+                }
+                {
+                  label = "a quote in the token path";
+                  tokenFile = "/run/secrets/bad'path";
+                  accept = false;
+                }
+                {
+                  label = "a space in the token path";
+                  tokenFile = "/run/secrets/bad path";
+                  accept = false;
+                }
+                {
+                  label = "a plain absolute token path";
+                  tokenFile = "/home/test-user/.local/state/nix-config/secrets/opencode_api_key";
+                  accept = true;
+                }
+              ];
+              guardChecks = lib.concatMapStrings (
+                case:
+                let
+                  evaluated =
+                    builtins.tryEval
+                      (import ./packages/opencode.nix {
+                        inherit pkgs;
+                        inherit (case) tokenFile;
+                      }).drvPath;
+                in
+                lib.optionalString (evaluated.success != case.accept) ''
+                  echo ${lib.escapeShellArg "packages/opencode.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"} >&2
+                  exit 1
+                ''
+              ) guardCases;
+            in
+            pkgs.runCommand "opencode-wrapper-tests" { } ''
+              export HOME=$TMPDIR
+              ${guardChecks}
+              mkdir -p scripts tests
+              cp ${./scripts/opencode} scripts/opencode
+              cp ${./tests/opencode.sh} tests/opencode.sh
+              chmod +x scripts/opencode
+              patchShebangs scripts/opencode
+              bash tests/opencode.sh scripts/opencode
+              bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
               touch $out
             '';
           lint-staged-markdown =
