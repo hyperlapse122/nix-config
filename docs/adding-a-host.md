@@ -42,6 +42,7 @@ A trait is a `my.*.enable` option that defaults to `false`. Hardware-specific mo
 | `my.nuphyGem80.enable` | Device access for the NuPhy Gem80 configurator and firmware flashing. |
 | `my.t3.cli.enable` | The headless T3 Code server, `t3` (`packages/t3code-cli.nix`). It also works on a non-NixOS host. |
 | `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS and macOS hosts only. |
+| `my.wifiman.enable` | UniFi WiFiman Desktop (`packages/wifiman-desktop.nix`) and its root daemon (`modules/nixos/services/wifiman.nix`). On by default on every NixOS output, bootstrap included; set it to `false` to drop both. NixOS hosts only; a macOS host gets the `wifiman` cask regardless. |
 
 Other per-host options keep their own meaning. `my.tailscale.advertiseRoutes` makes the host the tailnet's subnet router, which only one host should be, and `my.cliAuth.enableDockerToken` decrypts the Docker Hub token (see `secrets/README.md`). Keep anything that is not a trait, such as an extra mount, in the host's `default.nix`.
 
