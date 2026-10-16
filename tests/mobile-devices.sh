@@ -21,7 +21,12 @@ bad() { echo "mobile-devices: $*" >&2; fail=1; }
 #   no-xcode   present when xcrun cannot find xcodebuild or simctl
 #   no-download  present when the runtime download fails
 #   bad-types  present when simctl prints a device type list that is not JSON
-#   runtimes   one installed runtime version per line
+#   stale-service  present when the loaded CoreSimulatorService predates the
+#              installed Xcode: the next simctl call removes it and fails,
+#              and the call after it succeeds
+#   dead-service  present when every simctl call fails to reach the service
+#   runtimes   one installed runtime per line: <version>[|<device type id>,...];
+#              a runtime without types supports every stub device type
 #   sims       one simulator per line: <runtime id>|<name>
 #   avds       one AVD name per line
 #   calls      every call, its arguments joined with |
@@ -54,12 +59,23 @@ case "$1 $2" in
     head -n1 "$STUB/sdk" >> "$STUB/runtimes"
     ;;
   "simctl list")
+    # Like the real simctl, its last error line has no newline.
+    if [ -e "$STUB/dead-service" ] || [ -e "$STUB/stale-service" ]; then
+      rm -f "$STUB/stale-service"
+      printf 'Error getting a serviceContext: Connection refused' >&2
+      exit 1
+    fi
     case "$3" in
       runtimes)
         sep=
         printf '{"runtimes":['
-        while read -r v; do
-          printf '%s{"platform":"iOS","version":"%s","identifier":"%s","isAvailable":true}' "$sep" "$v" "$(runtime_id "$v")"
+        while IFS='|' read -r v ts; do
+          supported=
+          for t in ${ts:-iPhone-18 iPhone-18-Pro iPhone-18-Pro-Max iPhone-Duo}; do
+            supported+=${supported:+,}'{"identifier":"com.apple.CoreSimulator.SimDeviceType.'$t'"}'
+          done
+          printf '%s{"platform":"iOS","version":"%s","identifier":"%s","isAvailable":true,"supportedDeviceTypes":[%s]}' \
+            "$sep" "$v" "$(runtime_id "$v")" "$supported"
           sep=,
         done < "$STUB/runtimes"
         printf ']}\n'
@@ -72,7 +88,8 @@ case "$1 $2" in
         printf '{"devicetypes":['
         printf '{"name":"iPhone 18","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18"},'
         printf '{"name":"iPhone 18 Pro","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro"},'
-        printf '{"name":"iPhone 18 Pro Max","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max"}'
+        printf '{"name":"iPhone 18 Pro Max","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro-Max"},'
+        printf '{"name":"iPhone Duo","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-Duo"}'
         printf ']}\n'
         ;;
       devices)
@@ -277,6 +294,56 @@ run --android-api 37.0 --device "ios:iPhone 18 Pro" --device android:pixel_9
 said "the iOS step stopped early" || bad "$label: the iOS step's failure was not reported: $(cat "$STUB/err")"
 [ "$(count "$(avd_create pixel_9 37.0)")" = 1 ] || bad "$label: the Android device was not created after the iOS step failed"
 [ "$(creates)" = 1 ] || bad "$label: $(creates) devices were created, not 1"
+nothing_removed
+
+# The first simctl call after an Xcode upgrade that ships a newer
+# CoreSimulator removes the stale service and fails; the call after it works.
+label="a stale CoreSimulatorService after an Xcode upgrade"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+touch "$STUB/stale-service"
+run --android-api 37.0 --device "ios:iPhone 18 Pro"
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] \
+  || bad "$label: iPhone 18 Pro (iOS 27.0) was not created after the stale service was replaced: $(cat "$STUB/err")"
+if said serviceContext; then bad "$label: the error of the call that replaced the service was shown: $(cat "$STUB/err")"; fi
+nothing_removed
+
+label="a CoreSimulatorService that never answers"
+scenario 27.0
+echo 27.0 > "$STUB/runtimes"
+touch "$STUB/dead-service"
+run --android-api 37.0 --device "ios:iPhone 18 Pro"
+[ "$(count 'xcrun|simctl|list|devicetypes|-j')" = 2 ] \
+  || bad "$label: the device type listing was tried $(count 'xcrun|simctl|list|devicetypes|-j') times, not twice"
+grep -qx 'mobile-devices: simctl could not list device types, so the iOS Simulators were skipped' "$STUB/err" \
+  || bad "$label: the skip was not reported on a line of its own: $(cat "$STUB/err")"
+said serviceContext || bad "$label: simctl's own error was not shown: $(cat "$STUB/err")"
+[ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created"
+nothing_removed
+
+# Xcode 27.1's iOS 27.1 runtime supports only the iPhone Duo, so an iPhone 18
+# Pro without a version goes on the newest runtime that supports it.
+label="a newest runtime that supports only some models"
+scenario 27.1
+printf '%s\n' 27.0 '27.1|iPhone-Duo' > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device "ios:iPhone Duo"
+[ "$(downloads)" = 0 ] || bad "$label: the installed iOS 27.1 runtime was downloaded again"
+[ "$(count "$(sim_create "iPhone 18 Pro (iOS 27.0)" iPhone-18-Pro 27.0)")" = 1 ] \
+  || bad "$label: iPhone 18 Pro was not created on the iOS 27.0 runtime that supports it: $(cat "$STUB/calls")"
+[ "$(count "$(sim_create "iPhone Duo (iOS 27.1)" iPhone-Duo 27.1)")" = 1 ] \
+  || bad "$label: iPhone Duo was not created on the iOS 27.1 runtime: $(cat "$STUB/calls")"
+[ "$(creates)" = 2 ] || bad "$label: $(creates) devices were created, not 2"
+again
+run --android-api 37.0 --device "ios:iPhone 18 Pro" --device "ios:iPhone Duo"
+[ "$(creates)" = 0 ] || bad "$label: a second apply created devices again: $(cat "$STUB/calls")"
+nothing_removed
+
+label="an explicit version whose runtime does not support the model"
+scenario 27.1
+printf '%s\n' 27.0 '27.1|iPhone-Duo' > "$STUB/runtimes"
+run --android-api 37.0 --device "ios:iPhone 18 Pro:27.1"
+said "so iPhone 18 Pro (iOS 27.1) was skipped" || bad "$label: the device was not reported as skipped: $(cat "$STUB/err")"
+[ "$(creates)" = 0 ] || bad "$label: $(creates) devices were created on a runtime that does not support the model"
 nothing_removed
 
 label="a failed runtime download"
