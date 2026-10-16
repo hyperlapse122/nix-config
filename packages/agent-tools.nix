@@ -60,6 +60,12 @@ let
   # repository check can drive it with fixtures.
   chatgptRelease = pythonHelper "chatgpt-release" ../scripts/chatgpt-release;
 
+  # Resolves the latest WiFiman Desktop release from Ubiquiti's releases API
+  # and hashes its .deb, which upstream publishes no checksum for. Its network
+  # calls go through overridable commands so the sandboxed repository check
+  # can drive it with fixtures.
+  wifimanDesktopRelease = pythonHelper "wifiman-desktop-release" ../scripts/wifiman-desktop-release;
+
   # Resolves the latest claude-code release manifest from Anthropic's own
   # release endpoints. Its network calls go through an overridable command so
   # the sandboxed repository check can drive it with fixtures.
@@ -109,6 +115,7 @@ in
     agentPluginRelease
     claudeDesktopRelease
     chatgptRelease
+    wifimanDesktopRelease
     claudeCodeRelease
     miseRelease
     codexRelease

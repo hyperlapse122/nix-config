@@ -142,6 +142,8 @@
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
         chatgpt-release = agentTools.chatgptRelease;
         chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
+        wifiman-desktop-release = agentTools.wifimanDesktopRelease;
+        wifiman-desktop = import ./packages/wifiman-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
@@ -500,6 +502,16 @@
                 cp ${./scripts/chatgpt-release} scripts/chatgpt-release
                 cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
                 python tests/test_chatgpt_release.py
+                touch $out
+              '';
+          wifiman-desktop-release =
+            pkgs.runCommand "wifiman-desktop-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/wifiman-desktop-release} scripts/wifiman-desktop-release
+                cp ${./tests/test_wifiman_desktop_release.py} tests/test_wifiman_desktop_release.py
+                python tests/test_wifiman_desktop_release.py
                 touch $out
               '';
           claude-code-release =
