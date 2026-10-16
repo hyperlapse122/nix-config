@@ -27,6 +27,8 @@
 #   pin change on its own, as `chore(packages): bump t3code to <version>`.
 # - The update step must run t3code-release, and a failing t3code-release
 #   must warn and keep the pin rather than abort the other updates.
+# - The same holds for opencode-release and the OpenCode pin, which the push
+#   step commits on its own as `chore(packages): bump opencode to <version>`.
 
 set -euo pipefail
 
@@ -101,8 +103,9 @@ setup_clone() {
   "$git_bin" -C "$clone" checkout -qb main
   mkdir -p "$clone/packages"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
+  printf '{"version": "1.19.2", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
   printf 'base\n' >"$clone/tracked.txt"
-  "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json
+  "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -347,3 +350,76 @@ if grep -q '^::warning' "$scratch/t3-succeeds-step.log"; then
   fail 'a succeeding t3code-release still emitted a warning'
 fi
 pass 'a succeeding t3code-release updates the pin without a warning'
+
+# --- OpenCode bump commit ---------------------------------------------------
+
+read -r origin clone <<<"$(setup_clone opencode)"
+oc_version=1.19.3
+printf '{"version": "%s", "platforms": {}}\n' "$oc_version" >"$clone/packages/opencode-release.json"
+# A second changed file, so a commit that sweeps in more than the pin shows.
+printf 'changed\n' >>"$clone/tracked.txt"
+base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/opencode-step.log" 2>&1 ||
+  fail "the push step failed on an OpenCode pin change: $(tail -n 5 "$scratch/opencode-step.log")"
+bump_shas=$("$git_bin" --git-dir "$origin" log --format=%H \
+  --grep "^chore(packages): bump opencode to $oc_version\$" "$base_sha..main")
+[[ -n $bump_shas && $(wc -l <<<"$bump_shas") -eq 1 ]] ||
+  fail "an OpenCode pin change did not land as exactly one bump commit: ${bump_shas:-none}"
+files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$bump_shas")
+[[ $files == packages/opencode-release.json ]] ||
+  fail "the opencode bump commit carries more than the pin: $files"
+pass 'an OpenCode pin change lands as its own chore(packages): bump opencode commit'
+
+# --- OpenCode update --------------------------------------------------------
+
+grep -Eq '^[^#]*nix run \.#opencode-release -- --output packages/opencode-release\.json' <<<"$update_script" ||
+  fail 'the update step no longer runs opencode-release against packages/opencode-release.json'
+pass 'the update step runs opencode-release against packages/opencode-release.json'
+
+# The OpenCode part of the update step, cut the way the T3 Code part is. A
+# release can be published before all of its assets are, so opencode-release
+# failing must leave the pin alone and let the step go on.
+oc_script=$(awk '/^# [0-9]+\. Update OpenCode/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $oc_script ]] || fail "could not find the OpenCode part of the update step in $workflow"
+
+# run_opencode_step <name> <fails>: as run_t3_step, for the OpenCode part.
+run_opencode_step() {
+  local name=$1 fails=$2 origin clone
+  read -r origin clone <<<"$(setup_clone "$name")"
+  mkdir -p "$scratch/$name-bin"
+  cat >"$scratch/$name-bin/nix" <<EOF
+#!$BASH
+if [[ $fails == 1 ]]; then
+  printf '{"version": "partial' >packages/opencode-release.json
+  echo 'release 1.19.3 has no digest for opencode-linux-x64.tar.gz' >&2
+  exit 1
+fi
+printf '{"version": "1.19.3", "platforms": {}}\n' >packages/opencode-release.json
+EOF
+  chmod +x "$scratch/$name-bin/nix"
+  (
+    cd "$clone"
+    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
+$oc_script
+echo after-opencode"
+  ) >"$scratch/$name-step.log" 2>&1 ||
+    fail "the OpenCode update aborted the update step ($name): $(tail -n 5 "$scratch/$name-step.log")"
+  grep -qx after-opencode "$scratch/$name-step.log" ||
+    fail "the update step stopped after the OpenCode update ($name)"
+  printf '%s\n' "$clone"
+}
+
+clone=$(run_opencode_step oc-fails 1)
+grep -q '^::warning' "$scratch/oc-fails-step.log" ||
+  fail "a failing opencode-release emitted no ::warning:: annotation: $(cat "$scratch/oc-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/opencode-release.json) ]] ||
+  fail 'a failing opencode-release left packages/opencode-release.json changed'
+pass 'a failing opencode-release warns, keeps the pin, and lets the update step go on'
+
+clone=$(run_opencode_step oc-succeeds 0)
+grep -q '"1.19.3"' "$clone/packages/opencode-release.json" ||
+  fail 'a succeeding opencode-release did not update the pin'
+if grep -q '^::warning' "$scratch/oc-succeeds-step.log"; then
+  fail 'a succeeding opencode-release still emitted a warning'
+fi
+pass 'a succeeding opencode-release updates the pin without a warning'

@@ -11,8 +11,9 @@
   - other-key.txt: a valid age identity that is not a recipient of either file.
   - recipient.txt: the public recipient of key.txt.
   - tokens.yaml: the token schema from secrets/README.md. The Tokscale token
-    carries a space and the canary FAKE-CANARY, so a publisher that starts
-    reading it fails, and any log that prints a token is caught.
+    and the OpenCode API key carry a space and the canary FAKE-CANARY, so a
+    publisher that starts reading either fails, and any log that prints a
+    token is caught.
   - ssh.yaml: `ssh_private_key`, a fresh ed25519 key; ssh.pub is its public
     half, for asserting what was published.
 */
@@ -33,7 +34,7 @@ pkgs.runCommand "fake-non-nixos-secrets"
     recipient=$(age-keygen -y $out/key.txt)
     printf '%s\n' "$recipient" > $out/recipient.txt
 
-    printf 'github_token: FAKE-CANARY-github\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\n' > tokens.yaml
+    printf 'github_token: FAKE-CANARY-github\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nopencode_api_key: FAKE-CANARY opencode\n' > tokens.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml tokens.yaml > $out/tokens.yaml
 
     ssh-keygen -q -t ed25519 -N "" -C fake-non-nixos-host -f ssh_key
@@ -46,7 +47,7 @@ pkgs.runCommand "fake-non-nixos-secrets"
     # that is not a private key.
     other=$(age-keygen -y $out/other-key.txt)
     sops --encrypt --age "$other" --input-type yaml --output-type yaml ssh.yaml > $out/ssh-other.yaml
-    printf 'github_token: FAKE-CANARY has spaces\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\n' > bad-tokens.yaml
+    printf 'github_token: FAKE-CANARY has spaces\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nopencode_api_key: FAKE-CANARY opencode\n' > bad-tokens.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-tokens.yaml > $out/tokens-invalid.yaml
     printf 'ssh_private_key: not a key\n' > bad-ssh.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-ssh.yaml > $out/ssh-invalid.yaml

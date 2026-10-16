@@ -6,6 +6,7 @@
     ./codex.nix
     ./gemini.nix
     ./instructions
+    ./opencode.nix
     ./tokscale.nix
   ];
 }

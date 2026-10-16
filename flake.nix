@@ -151,6 +151,8 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
+        opencode-release = agentTools.opencodeRelease;
+        opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -461,6 +463,22 @@
             pkgs.linkFarm "antigravity-cli-sources" (
               pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
+          # Fetches every platform's pinned OpenCode asset, so a bumped pin
+          # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
+          # instead of after it lands.
+          opencode-sources =
+            let
+              release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
+            in
+            pkgs.linkFarm "opencode-sources" (
+              pkgs.lib.mapAttrs (
+                _: platform:
+                pkgs.fetchurl {
+                  url = "https://github.com/anomalyco/opencode/releases/download/v${release.version}/${platform.asset}";
+                  inherit (platform) hash;
+                }
+              ) release.platforms
+            );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -541,6 +559,16 @@
             python tests/test_codex_release.py
             touch $out
           '';
+          opencode-release =
+            pkgs.runCommand "opencode-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/opencode-release} scripts/opencode-release
+                cp ${./tests/test_opencode_release.py} tests/test_opencode_release.py
+                python tests/test_opencode_release.py
+                touch $out
+              '';
           antigravity-cli-release =
             pkgs.runCommand "antigravity-cli-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -1194,6 +1222,54 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
+          opencode =
+            let
+              # The version is compared with the pin for the reason given on
+              # the claude-code check. The switches are read from the
+              # installed bin/opencode itself, because they are what hold
+              # under the inline config and config directories T3 Code
+              # supplies, and what keep a checkout's config and Claude Code's
+              # files away from the key.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/opencode-release.json)).version;
+              switches = [
+                "export OPENCODE_DISABLE_AUTOUPDATE=true"
+                "export OPENCODE_DISABLE_PROJECT_CONFIG=true"
+                "export OPENCODE_DISABLE_CLAUDE_CODE=true"
+              ];
+              assertConfiguration =
+                entry:
+                let
+                  opencodePkg = userPackageOf "opencode" entry;
+                  versionMismatch =
+                    pkgs.lib.optionalString (opencodePkg != null && opencodePkg.version != pinnedVersion)
+                      ''
+                        echo "opencode on ${entry.name} is built from version '${opencodePkg.version}', expected pin ${pinnedVersion}" >&2
+                        fail=1
+                      '';
+                  switchesMissing = pkgs.lib.optionalString (opencodePkg != null) ''
+                    for switch in ${pkgs.lib.escapeShellArgs switches}; do
+                      if ! grep -qxF -- "$switch" ${opencodePkg}/bin/opencode; then
+                        echo "opencode on ${entry.name} lacks the wrapper line $switch" >&2
+                        fail=1
+                      fi
+                    done
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "opencode";
+                    executables = [ "opencode" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${switchesMissing}
+                '';
+            in
+            pkgs.runCommand "opencode-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
           antigravity-cli =
             let
               # The version is compared with the pin for the reason given on the
@@ -1418,6 +1494,7 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
+          opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           vscodium = import ./tests/vscodium.nix { inherit pkgs self; };
           tokscale-wrapper =
@@ -1437,6 +1514,77 @@
               patchShebangs scripts/tokscale
               bash tests/tokscale.sh scripts/tokscale
               bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
+              touch $out
+            '';
+          opencode-wrapper =
+            let
+              tokenFile = "/var/empty/opencode-test/opencode_api_key";
+              packaged = import ./packages/opencode.nix { inherit pkgs tokenFile; };
+              # The token path lands inside single quotes in the wrapper.
+              guardCases = [
+                {
+                  label = "a relative token path";
+                  tokenFile = "run/secrets/cli-auth/opencode_api_key";
+                  accept = false;
+                }
+                {
+                  label = "a quote in the token path";
+                  tokenFile = "/run/secrets/bad'path";
+                  accept = false;
+                }
+                {
+                  label = "a space in the token path";
+                  tokenFile = "/run/secrets/bad path";
+                  accept = false;
+                }
+                {
+                  label = "a plain absolute token path";
+                  tokenFile = "/home/test-user/.local/state/nix-config/secrets/opencode_api_key";
+                  accept = true;
+                }
+              ];
+              guardChecks = lib.concatMapStrings (
+                case:
+                let
+                  evaluated =
+                    builtins.tryEval
+                      (import ./packages/opencode.nix {
+                        inherit pkgs;
+                        inherit (case) tokenFile;
+                      }).drvPath;
+                in
+                lib.optionalString (evaluated.success != case.accept) ''
+                  echo ${lib.escapeShellArg "packages/opencode.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"} >&2
+                  exit 1
+                ''
+              ) guardCases;
+            in
+            pkgs.runCommand "opencode-wrapper-tests" { } ''
+              export HOME=$TMPDIR
+              ${guardChecks}
+              mkdir -p scripts tests
+              cp ${./scripts/opencode} scripts/opencode
+              cp ${./tests/opencode.sh} tests/opencode.sh
+              chmod +x scripts/opencode
+              patchShebangs scripts/opencode
+              bash tests/opencode.sh scripts/opencode
+              bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
+
+              # The pinned binary, not only the wrapper's export, must keep a
+              # checkout's opencode.json out of the process holding the key.
+              # The bare binary loading the canary proves the probe can see it.
+              mkdir -p project
+              printf '{"username": "canary-project-config"}\n' > project/opencode.json
+              (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
+              (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
+              if ! grep -qF canary-project-config bare.json; then
+                echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
+                exit 1
+              fi
+              if grep -qF canary-project-config wrapped.json; then
+                echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
+                exit 1
+              fi
               touch $out
             '';
           lint-staged-markdown =

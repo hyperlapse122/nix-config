@@ -56,8 +56,8 @@
       sentence pinned, in order, inside their sections.
     - T3 Code: the T3 Code introduction in order, the cross-model delegation
       rules inside their section with only pinned sentences naming
-      Antigravity or Argon or speaking of waiting, and the T3 Code pull and
-      merge request rules with every sentence pinned, in order.
+      Antigravity, Argon, or OpenCode or speaking of waiting, and the T3 Code
+      pull and merge request rules with every sentence pinned, in order.
   - every required sentence starts where a sentence starts, so a guarded
     sentence negated by a prefix ("Do not ...") fails.
   - no channel carries a superseded directive, another harness's native
@@ -261,6 +261,13 @@ let
     "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `antigravity` as the provider name."
     "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content."
     "When a gate or restriction excludes it, or Antigravity is not runnable, skip it and say why in one line."
+    # Literal, not read from home/h82/agents/opencode-model.nix, so the
+    # rendered model id is checked against an independent value.
+    "When a skill's cross-model pass runs through T3 Code, also delegate that pass to OpenCode on `opencode/glm-5.3-flash-free` on provider instance `opencode`, even though the skill's mapping has no OpenCode entry."
+    "The OpenCode peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs."
+    "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `opencode` as the provider name."
+    "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`."
+    "When a gate or restriction excludes it, or OpenCode is not runnable, skip it and say why in one line."
     "Run every delegated task in full-access runtime mode."
   ]
   ++ asyncDelegationSentences
@@ -268,7 +275,7 @@ let
     "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
     "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider."
     "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map."
-    "Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity peer is not retried elsewhere and a failed skill peer does not land beside a running Argon peer."
+    "Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer."
     "Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
     "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
   ];
@@ -338,11 +345,12 @@ let
     done
   '';
 
-  # The pinned delegation sentences that name Antigravity or Argon. Any other
-  # sentence in that section naming them, such as an added reversal kept
-  # beside the pinned rule, fails.
-  antigravitySentences = lib.filter (
-    sentence: lib.hasInfix "Antigravity" sentence || lib.hasInfix "Argon" sentence
+  # The pinned delegation sentences that name an extra peer: Antigravity,
+  # Argon, or OpenCode. Any other sentence in that section naming them, such
+  # as an added reversal kept beside the pinned rule, fails.
+  peerPattern = "Antigravity|Argon|OpenCode|opencode";
+  extraPeerSentences = lib.filter (
+    sentence: builtins.match ".*(${peerPattern}).*" sentence != null
   ) delegationSentences;
 
   # Prints the section under `heading` one sentence per line, list markers
@@ -513,10 +521,9 @@ let
       t3IntroSentences
     }
     ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
-    ${onlyPinnedSentences "${label} carries an unpinned Antigravity sentence:"
-      "# Cross-model delegation"
-      "Antigravity|Argon"
-      antigravitySentences
+    ${onlyPinnedSentences "${label} carries an unpinned extra-peer sentence:" "# Cross-model delegation"
+      peerPattern
+      extraPeerSentences
     }
     ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
       "# Cross-model delegation"
@@ -759,13 +766,15 @@ let
     parts = [ "t3code" ];
   };
   # The broad-scout rule and the Antigravity-peer bullet, the two places the
-  # template leaves out for Antigravity.
+  # template leaves out for Antigravity. The OpenCode-peer bullet shares its
+  # openings but stays, so its sentences are kept out of this list.
   antigravityT3Omitted = [
     "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
   ]
   ++ lib.filter (
     sentence:
-    lib.any (prefix: lib.hasPrefix prefix sentence) [
+    !(lib.hasInfix "OpenCode" sentence || lib.hasInfix "`opencode`" sentence)
+    && lib.any (prefix: lib.hasPrefix prefix sentence) [
       "When a skill's cross-model pass runs through T3 Code, also delegate"
       "The Antigravity peer belongs"
       "It mirrors every job"

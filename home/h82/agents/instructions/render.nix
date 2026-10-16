@@ -16,6 +16,9 @@ let
     "t3code"
   ];
 
+  # The OpenCode peer's model, shared with OpenCode's own config.
+  opencodeContext = contextFile "opencode" { model = import ../opencode-model.nix; };
+
   contextFile = name: value: pkgs.writeText "agent-instructions-${name}.json" (builtins.toJSON value);
 in
 {
@@ -39,6 +42,7 @@ in
         gomplate \
           --missing-key error \
           --context harness=file://${harnessContext} \
+          --context opencode=file://${opencodeContext} \
           --context part=file://${contextFile "part-${part}" { id = part; }} \
           --file ${./instructions.md.tmpl} \
           --out ${part}.md
