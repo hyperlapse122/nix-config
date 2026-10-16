@@ -157,7 +157,7 @@ WiFiman Desktop is a two-part app: a Tauri GUI and a root network daemon. The up
   - A pin already at 1.3.0 is left unchanged; a pin at 1.4.0 is not downgraded.
   - A response with no Desktop item, malformed JSON, or a failing fetch exits non-zero with a message and leaves the pin untouched.
   - A version string that is not dotted digits is skipped.
-  - The prefetch hex output converts to the expected SRI string.
+  - The SRI hash `nix store prefetch-file --json` prints is pinned with its hex digest, and prefetch output without a sha256 SRI hash fails.
 - **Verification:** `nix build --no-link .#checks.x86_64-linux.wifiman-desktop-release`; `nix run .#wifiman-desktop-release -- --dry-run` prints 1.3.0 with the hash in Sources.
 
 ---

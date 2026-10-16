@@ -45,6 +45,9 @@ pkgs.stdenv.mkDerivation {
     # daemon's state directory.
     mkdir -p $out/lib
     cp -r usr/lib/wifiman-desktop $out/lib/
+    # The .deb ships it without an exec bit, and patchShebangs only rewrites
+    # executable files, so its #!/bin/bash would survive.
+    chmod 0755 $out/lib/wifiman-desktop/wg_report.sh
     install -Dm755 usr/bin/wifiman-desktop $out/bin/wifiman-desktop
 
     runHook postInstall

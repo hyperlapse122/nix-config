@@ -8,18 +8,17 @@ let
   package = import ../../../packages/wifiman-desktop.nix { inherit pkgs; };
   bundled = "${package}/lib/wifiman-desktop";
   stateDir = "/var/lib/wifiman-desktop";
+  helperNames = [
+    "wg"
+    "wg-quick"
+    "wireguard-go"
+  ];
   # `path` adds each entry's bin/, which the bundled directory lacks.
   helpers = pkgs.linkFarm "wifiman-desktop-helpers" (
-    map
-      (helper: {
-        name = "bin/${helper}";
-        path = "${bundled}/${helper}";
-      })
-      [
-        "wg"
-        "wg-quick"
-        "wireguard-go"
-      ]
+    map (helper: {
+      name = "bin/${helper}";
+      path = "${bundled}/${helper}";
+    }) helperNames
   );
 in
 {
@@ -54,7 +53,7 @@ in
       # daemon chmods it before running it, which a link into the store fails.
       environment.BASE = stateDir;
       preStart = ''
-        for helper in .env wg wg-quick wireguard-go; do
+        for helper in .env ${lib.escapeShellArgs helperNames}; do
           ln -sfn ${bundled}/$helper ${stateDir}/$helper
         done
         install -m 0755 ${bundled}/wg_report.sh ${stateDir}/wg_report.sh
@@ -63,6 +62,8 @@ in
       serviceConfig = {
         ExecStart = "${bundled}/wifiman-desktopd";
         StateDirectory = "wifiman-desktop";
+        # utun.conf holds the Teleport tunnel's private key.
+        StateDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 30;
       };

@@ -17,8 +17,8 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/wifiman-desktop-release"
 
 HEX = "2bb75b73c092e43592bbd40841628f222000bea95a28389aafe84adaf279cd78"
 SRI = "sha256-K7dbc8CS5DWSu9QIQWKPIiAAvqlaKDiar+hK2vJ5zXg="
-# Output of `nix hash convert --hash-algo sha256 --to nix32 <SRI>`.
-NIX32 = "0y6dg7rdljp8myd3ha2sm6z00812ixi4226lpf93br4jq1rmpdrb"
+# What `nix store prefetch-file --json --hash-type sha256 <URL>` prints.
+PREFETCHED = json.dumps({"hash": SRI, "storePath": "/nix/store/fake-wifiman-desktop-1.3.0-amd64.deb"})
 URL = "https://desktop.wifiman.com/wifiman-desktop-1.3.0-amd64.deb"
 
 
@@ -55,6 +55,8 @@ import os, sys
 with open(os.environ['FAKE_PREFETCH_LOG'], 'a') as f:
     f.write(sys.argv[-1] + '\\n')
 status = int(os.environ.get('FAKE_PREFETCH_STATUS', '0'))
+if sys.argv[-1] == os.environ.get('FAKE_PREFETCH_FAIL_URL'):
+    status = 4
 if status:
     sys.exit(status)
 sys.stdout.write(os.environ['FAKE_PREFETCH_OUT'])
@@ -79,8 +81,9 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         body=SAMPLE,
         extra_args=None,
         fetch_status=0,
-        prefetch_out=NIX32 + "\n",
+        prefetch_out=PREFETCHED + "\n",
         prefetch_status=0,
+        prefetch_fail_url="",
     ):
         env = dict(os.environ)
         env["WIFIMAN_DESKTOP_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
@@ -90,6 +93,7 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         env["FAKE_FETCH_LOG"] = str(self.fetch_log)
         env["FAKE_PREFETCH_OUT"] = prefetch_out
         env["FAKE_PREFETCH_STATUS"] = str(prefetch_status)
+        env["FAKE_PREFETCH_FAIL_URL"] = prefetch_fail_url
         env["FAKE_PREFETCH_LOG"] = str(self.prefetch_log)
         args = [sys.executable, str(SCRIPT)]
         args.extend(extra_args if extra_args else ["--dry-run"])
@@ -144,15 +148,8 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["version"], "1.3.0")
 
-    def test_hex_prefetch_output_converts_to_the_same_hash(self):
-        result = self.run_release(prefetch_out=HEX.upper() + "\n")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        data = json.loads(result.stdout)
-        self.assertEqual(data["sha256"], HEX)
-        self.assertEqual(data["hash"], SRI)
-
-    def test_base32_prefetch_output_converts_to_hex_and_sri(self):
-        result = self.run_release(prefetch_out=NIX32)
+    def test_prefetched_sri_pins_the_hash_and_its_hex(self):
+        result = self.run_release()
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads(result.stdout)
         self.assertEqual(data["sha256"], HEX)
@@ -197,6 +194,55 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.output.read_text())["version"], "1.3.0")
 
+    def test_non_dotted_pin_is_replaced_by_the_resolved_version(self):
+        self.write_pin("abc")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "1.3.0")
+
+    def test_falls_back_when_the_newest_release_has_no_deb(self):
+        self.write_pin("1.1.0")
+        result = self.run_release(prefetch_fail_url=URL, extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("skipping 1.3.0", result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "1.2.8")
+        self.assertEqual(self.prefetched(), [URL, URL.replace("1.3.0", "1.2.8")])
+
+    def test_dry_run_falls_back_when_the_newest_release_has_no_deb(self):
+        result = self.run_release(prefetch_fail_url=URL)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["version"], "1.2.8")
+
+    def test_no_newer_release_with_a_deb_fails_and_leaves_the_pin(self):
+        self.write_pin("1.2.8")
+        before = self.output.read_bytes()
+        result = self.run_release(prefetch_fail_url=URL, extra_args=["-o", str(self.output)])
+        self.assert_failure(result, "failed with status 4")
+        self.assertEqual(self.output.read_bytes(), before)
+        self.assertEqual(self.prefetched(), [URL])
+
+    def test_a_hung_prefetch_times_out_and_leaves_the_pin(self):
+        self.write_pin("1.2.8")
+        before = self.output.read_bytes()
+        env = dict(os.environ)
+        hang = Path(self.tmp.name) / "hang"
+        hang.write_text("import time\ntime.sleep(30)\n")
+        script = SCRIPT.read_text().replace("COMMAND_TIMEOUT = 900", "COMMAND_TIMEOUT = 1")
+        patched = Path(self.tmp.name) / "wifiman-desktop-release"
+        patched.write_text(script)
+        env["WIFIMAN_DESKTOP_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
+        env["WIFIMAN_DESKTOP_RELEASE_PREFETCH"] = f"{sys.executable} {hang}"
+        env["FAKE_FETCH_BODY"] = SAMPLE
+        env["FAKE_FETCH_LOG"] = str(self.fetch_log)
+        result = subprocess.run(
+            [sys.executable, str(patched), "-o", str(self.output)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assert_failure(result, "timed out after 1s")
+        self.assertEqual(self.output.read_bytes(), before)
+
     def assert_failure(self, result, message):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertTrue(result.stderr.startswith("wifiman-desktop-release: "), result.stderr)
@@ -236,9 +282,11 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), before)
 
     def test_unparsable_prefetch_output_fails(self):
-        result = self.run_release(prefetch_out="garbage\n", extra_args=["-o", str(self.output)])
-        self.assert_failure(result, "not a sha256 hash")
-        self.assertFalse(self.output.exists())
+        for output in ("garbage\n", HEX + "\n", json.dumps({"hash": "sha512-" + SRI[7:]}), "[]"):
+            with self.subTest(output=output):
+                result = self.run_release(prefetch_out=output, extra_args=["-o", str(self.output)])
+                self.assert_failure(result, "carries no sha256 SRI hash")
+                self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":

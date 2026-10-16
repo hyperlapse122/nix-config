@@ -19,15 +19,15 @@ import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://community.svc.ui.com/"
-DEFAULT_FETCH = "curl -s -X POST -H 'content-type: application/json' --data-binary @-"
-DEFAULT_PREFETCH = "nix-prefetch-url --type sha256"
+DEFAULT_FETCH = "curl -s --max-time 60 -X POST -H 'content-type: application/json' --data-binary @-"
+DEFAULT_PREFETCH = "nix store prefetch-file --json --hash-type sha256"
+# Bounds a stalled download; the .deb is about 30 MB.
+COMMAND_TIMEOUT = 900
 QUERY = 'query { releases(tags: ["wifiman"]) { items { title version } } }'
 DEB_URL = "https://desktop.wifiman.com/wifiman-desktop-{version}-amd64.deb"
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
-SHA256_HEX_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
-NIX32_PATTERN = re.compile(r"^[0-9a-df-np-sv-z]{52}$")
-NIX32_ALPHABET = "0123456789abcdfghijklmnpqrsvwxyz"
+SRI_PATTERN = re.compile(r"^sha256-[A-Za-z0-9+/]{43}=$")
 
 
 class Failure(Exception):
@@ -43,13 +43,17 @@ def run_command(env_name, default, url, stdin_text=None):
     command = shlex.split(os.environ.get(env_name, default))
     if not command:
         raise Failure(f"{env_name} is empty")
-    proc = subprocess.run(
-        command + [url],
-        input=stdin_text,
-        stdin=None if stdin_text is not None else subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            command + [url],
+            input=stdin_text,
+            stdin=None if stdin_text is not None else subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise Failure(f"{command[0]} for {url} timed out after {COMMAND_TIMEOUT}s")
     if proc.returncode != 0:
         raise Failure(f"{command[0]} for {url} failed with status {proc.returncode}")
     return proc.stdout
@@ -89,43 +93,34 @@ def parse_releases(content):
     return candidates
 
 
-def resolve_latest(candidates):
-    """Return the numerically highest version."""
+def newest_first(candidates):
+    """Return the versions from the highest down."""
     if not candidates:
         raise Failure("no Desktop release found in response")
-    return max(candidates, key=lambda c: c[0])[1]
-
-
-def nix32_to_bytes(text):
-    """Decode a Nix base32 sha256, whose digits run from the least significant end."""
-    value = 0
-    for n, char in enumerate(reversed(text)):
-        value |= NIX32_ALPHABET.index(char) << (5 * n)
-    if value >> 256:
-        raise Failure(f"not a sha256 hash: {text!r}")
-    return value.to_bytes(32, "little")
+    return [version for _, version in sorted(set(candidates), reverse=True)]
 
 
 def parse_hash(output):
-    """Return the sha256 hex digest from a prefetch command's stdout."""
-    text = output.strip()
-    if SHA256_HEX_PATTERN.match(text):
-        return text.lower()
-    if NIX32_PATTERN.match(text):
-        return nix32_to_bytes(text).hex()
-    raise Failure(f"prefetch output is not a sha256 hash: {text!r}")
-
-
-def hex_to_sri(sha256_hex):
-    """Convert a 64-character hex sha256 string to Nix SRI format."""
-    return "sha256-" + base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
+    """Return the SRI hash from `nix store prefetch-file --json` output."""
+    try:
+        sri = json.loads(output).get("hash")
+    except (ValueError, AttributeError):
+        sri = None
+    if not isinstance(sri, str) or not SRI_PATTERN.match(sri):
+        raise Failure(f"prefetch output carries no sha256 SRI hash: {output.strip()!r}")
+    return sri
 
 
 def resolve_pin(version):
     """Download the .deb for a version through the prefetch command and pin it."""
     url = DEB_URL.format(version=version)
-    sha256_hex = parse_hash(run_command("WIFIMAN_DESKTOP_RELEASE_PREFETCH", DEFAULT_PREFETCH, url))
-    return {"version": version, "sha256": sha256_hex, "hash": hex_to_sri(sha256_hex)}
+    sri = parse_hash(run_command("WIFIMAN_DESKTOP_RELEASE_PREFETCH", DEFAULT_PREFETCH, url))
+    sha256_hex = base64.b64decode(sri.removeprefix("sha256-")).hex()
+    return {"version": version, "sha256": sha256_hex, "hash": sri}
+
+
+def render_pin(version):
+    return json.dumps(resolve_pin(version), indent=2) + "\n"
 
 
 def pinned_version(path):
@@ -158,30 +153,41 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        version = resolve_latest(parse_releases(fetch(args.source_url)))
+        versions = newest_first(parse_releases(fetch(args.source_url)))
+        write = not args.dry_run and bool(args.output)
+        current_version = pinned_version(args.output) if write else None
 
-        if args.dry_run or not args.output:
-            sys.stdout.write(json.dumps(resolve_pin(version), indent=2) + "\n")
-            return 0
-
-        current_version = pinned_version(args.output)
-        if current_version is not None:
+        # A release can list a Desktop build with no amd64 .deb yet, such as a
+        # macOS-only one; the next lower version is tried, down to the pin.
+        failure = None
+        for version in versions:
+            if current_version is not None:
+                try:
+                    is_newer = version_tuple(version) > version_tuple(current_version)
+                except ValueError:
+                    is_newer = True
+                if not is_newer:
+                    if failure is not None:
+                        raise failure
+                    print(
+                        f"{args.output} is already up to date at version {current_version} "
+                        f"(resolved {version} is not newer)"
+                    )
+                    return 0
             try:
-                is_newer = version_tuple(version) > version_tuple(current_version)
-            except ValueError:
-                is_newer = True
-            if not is_newer:
-                print(
-                    f"{args.output} is already up to date at version {current_version} "
-                    f"(resolved {version} is not newer)"
-                )
+                out_json = render_pin(version)
+            except Failure as exc:
+                print(f"wifiman-desktop-release: skipping {version}: {exc}", file=sys.stderr)
+                failure = failure or exc
+                continue
+            if not write:
+                sys.stdout.write(out_json)
                 return 0
-
-        out_json = json.dumps(resolve_pin(version), indent=2) + "\n"
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(out_json)
-        print(f"updated {args.output} to version {version}")
-        return 0
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(out_json)
+            print(f"updated {args.output} to version {version}")
+            return 0
+        raise failure
 
     except (Failure, OSError) as exc:
         print(f"wifiman-desktop-release: {exc}", file=sys.stderr)
