@@ -55,10 +55,9 @@
       rules, and the commit-hook and pull and merge request rules with every
       sentence pinned, in order, inside their sections.
     - T3 Code: the T3 Code introduction in order, including the rule that
-      every subagent job goes through T3 Code, the cross-model delegation
-      rules inside their section with only pinned sentences naming
-      Antigravity, Argon, or OpenCode or speaking of waiting, and the T3 Code
-      pull and merge request rules with every sentence pinned, in order.
+      every subagent job goes through T3 Code, and the cross-model
+      delegation and T3 Code pull and merge request rules with every
+      sentence pinned, in order, inside their sections.
   - every required sentence starts where a sentence starts, so a guarded
     sentence negated by a prefix ("Do not ...") fails.
   - no channel carries a superseded directive, another harness's native
@@ -256,8 +255,13 @@ let
   delegationSentences = [
     "Delegate subagent work through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you."
     "This section applies to every subagent job whenever the T3 Code MCP tools are available in this session, whether the job runs on your own provider or another."
+    "Tools the session lists by name count as available even when the harness must load their schemas before the first call."
+    "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`."
+    "A harness may expose them under a prefix such as `mcp__t3-code__`."
     "When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens."
+    "Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified."
     "Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose the provider and model that suit the task, following Model routing: your own provider for a same-provider cell of the table, another provider for cross-model work."
+    "A job that would inherit your session model under your native subagent tool, such as a skill's reviewer with no tier of its own, runs on your session model, and a retry on another provider gives it that provider's class at the Opus tier: Opus for Claude, Sol for Codex, or Argon at medium effort for Gemini."
     "Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Argon, at the Opus tier, or Flash, between Sonnet and Haiku, for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable."
     "Compare versions only within that class: a newer model of another class does not outrank the class the task needs."
     "Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model."
@@ -274,7 +278,9 @@ let
     "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `opencode` as the provider name."
     "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`."
     "When a gate or restriction excludes it, or OpenCode is not runnable, skip it and say why in one line."
+    "Tell the user which provider and model you delegated to."
     "Run every delegated task in full-access runtime mode."
+    "Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation."
     "When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so explicitly in the task prompt."
   ]
   ++ asyncDelegationSentences
@@ -282,7 +288,7 @@ let
     "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
     "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider."
     "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map."
-    "A retried job that is not a cross-model pass goes only to a provider with a column in the Model routing table, never to OpenCode, and takes its role's class from that column."
+    "A retried job that is not a cross-model pass goes only to a provider with a column in the Model routing table, never to OpenCode, and takes its role's class from that column, or the Opus-tier class when it has no role there."
     "Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer."
     "Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
     "When no T3 Code provider succeeds for a job that is not a cross-model pass, run it with your native subagent tool and tell the user in one line that you did."
@@ -299,6 +305,7 @@ let
     "and the work needs a provider other than your own or a model your native subagent tool cannot serve"
     "instead of letting the subagent inherit your session model"
     "choose a provider other than your own and a model"
+    "work that needs another model"
   ];
 
   claudeTools = [
@@ -541,6 +548,15 @@ let
       "# Cross-model delegation"
       "task_status|[Pp]oll|[Nn]otif|[Ww]ait|[Ww]ake|[Bb]lock|[Ss]leep|[Tt]imer|[Cc]heck|[Ff]inish|[Bb]ackground|[Ss]chedul"
       waitTopicSentences
+    }
+    ${onlyPinnedSentences "${label} carries an unpinned cross-model delegation sentence:"
+      "# Cross-model delegation"
+      "."
+      delegationSentences
+    }
+    ${sentencesInOrder "${label} reorders or duplicates a cross-model delegation sentence:"
+      "# Cross-model delegation"
+      delegationSentences
     }
     ${sentencesInSection "${label} moves a cross-model delegation sentence out of its section:"
       "# Cross-model delegation"
