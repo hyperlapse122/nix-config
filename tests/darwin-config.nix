@@ -231,17 +231,15 @@ let
       vscodiumData = plain (activation.vscodiumSettings.data or "");
       marker = config.environment.etc."nix-config-host".text or "";
       production = !entry.bootstrap;
-      # The Xcode and KakaoTalk steps run as root inside the activate script,
-      # which is `set -e`; every command that can fail must sit in an `if !`
-      # condition.
-      xcodeUser = config.system.primaryUser;
+      primaryUser = config.system.primaryUser;
+      xcodeId = "497799835";
+      kakaoTalkId = "869223134";
       masExe = plain (lib.getExe entry.host.pkgs.mas);
       postActivation = plain config.system.activationScripts.postActivation.text;
       homeManagerCall = "Activating home-manager configuration";
       beforeHomeManager = lib.head (lib.splitString homeManagerCall postActivation);
       rootLines = map lib.trim (lib.splitString "\n" beforeHomeManager);
       guarded = line: lib.hasPrefix "if ! " line || lib.hasPrefix "elif ! " line;
-      # Each step's wrapper runs mas in the primary user's session.
       masAsUser =
         prefix:
         ''/bin/launchctl asuser "${prefix}Uid" /usr/bin/env SUDO_UID="${prefix}Uid" SUDO_GID="${prefix}Gid" ${masExe} '';
@@ -250,14 +248,13 @@ let
         "xcodeMas"
         "appStoreMas"
       ];
-      # Calls through a wrapper function, not its definition.
-      masCalls = lib.filter (
+      masWrapperCalls = lib.filter (
         line:
         lib.any (wrapper: lib.hasInfix "${wrapper} " line && !lib.hasPrefix "${wrapper}()" line) masWrappers
       ) rootLines;
       lineIndex = line: lib.lists.findFirstIndex (l: l == line) null rootLines;
-      xcodeInstall = "if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then";
-      kakaoInstall = "if ! appStoreMas install 869223134 && ! appStoreMas get 869223134; then";
+      xcodeInstall = "if ! xcodeMas install ${xcodeId} && ! xcodeMas get ${xcodeId}; then";
+      kakaoInstall = "if ! appStoreMas install ${kakaoTalkId} && ! appStoreMas get ${kakaoTalkId}; then";
       xcodebuildActions = lib.filter (
         line:
         lib.hasInfix "-license accept" line
@@ -456,30 +453,42 @@ let
         "${entry.name}: every mas call must run through launchctl asuser with SUDO_UID and SUDO_GID of the primary user"
       )
       (check (
-        lib.elem "xcodeUid=$(/usr/bin/id -u ${xcodeUser} 2>/dev/null) || xcodeUid=" rootLines
-        && lib.elem "xcodeGid=$(/usr/bin/id -g ${xcodeUser} 2>/dev/null) || xcodeGid=" rootLines
-      ) "${entry.name}: the Xcode step must resolve the uid and gid of ${xcodeUser} at activation time")
+        lib.elem "xcodeUid=$(/usr/bin/id -u ${primaryUser} 2>/dev/null) || xcodeUid=" rootLines
+        && lib.elem "xcodeGid=$(/usr/bin/id -g ${primaryUser} 2>/dev/null) || xcodeGid=" rootLines
+      ) "${entry.name}: the Xcode step must resolve the uid and gid of ${primaryUser} at activation time")
       (check
         (
-          lib.all (line: lib.hasSuffix " \"$@\"" line) masLines && masCalls != [ ] && lib.all guarded masCalls
+          lib.all (line: lib.hasSuffix " \"$@\"" line) masLines
+          && masWrapperCalls != [ ]
+          && lib.all guarded masWrapperCalls
         )
         "${entry.name}: every mas call must be guarded by if !, so a failed App Store call cannot abort activation"
       )
       (check (lib.elem xcodeInstall rootLines) "${entry.name}: Xcode (497799835) must be installed with mas install, falling back to mas get")
-      (check (lib.elem "elif ! xcodeMas upgrade 497799835; then" rootLines) "${entry.name}: an installed Xcode must be upgraded with mas upgrade 497799835")
+      (check (lib.elem "elif ! xcodeMas upgrade ${xcodeId}; then" rootLines) "${entry.name}: an installed Xcode must be upgraded with mas upgrade 497799835")
       (check (lib.any
         (line: lib.hasPrefix "echo \"xcode: " line && lib.hasInfix "sign in to the App Store" line)
         rootLines
       ) "${entry.name}: a failed Xcode install must print a message naming the App Store sign-in")
       (check
         (
-          lib.elem "appStoreUid=$(/usr/bin/id -u ${xcodeUser} 2>/dev/null) || appStoreUid=" rootLines
-          && lib.elem "appStoreGid=$(/usr/bin/id -g ${xcodeUser} 2>/dev/null) || appStoreGid=" rootLines
+          lib.elem "appStoreUid=$(/usr/bin/id -u ${primaryUser} 2>/dev/null) || appStoreUid=" rootLines
+          && lib.elem "appStoreGid=$(/usr/bin/id -g ${primaryUser} 2>/dev/null) || appStoreGid=" rootLines
         )
-        "${entry.name}: the KakaoTalk step must resolve the uid and gid of ${xcodeUser} at activation time"
+        "${entry.name}: the KakaoTalk step must resolve the uid and gid of ${primaryUser} at activation time"
       )
       (check (lib.elem kakaoInstall rootLines) "${entry.name}: KakaoTalk (869223134) must be installed with mas install, falling back to mas get")
-      (check (lib.elem "elif ! appStoreMas upgrade 869223134; then" rootLines) "${entry.name}: an installed KakaoTalk must be upgraded with mas upgrade 869223134")
+      (check
+        (
+          let
+            missing = lineIndex "elif [[ ! -d /Applications/KakaoTalk.app ]]; then";
+            install = lineIndex kakaoInstall;
+            upgrade = lineIndex "elif ! appStoreMas upgrade ${kakaoTalkId}; then";
+          in
+          missing != null && install != null && upgrade != null && missing < install && install < upgrade
+        )
+        "${entry.name}: KakaoTalk must be installed when /Applications/KakaoTalk.app is missing and upgraded with mas upgrade 869223134 otherwise"
+      )
       (check (
         let
           xcode = lineIndex xcodeInstall;

@@ -331,7 +331,6 @@ let
       elif ! [ "$bundleline" -lt "$masline" ] || ! [ "$masline" -lt "$installline" ] || ! [ "$installline" -lt "$hmline" ]; then
         bad "the Xcode step does not run after brew bundle and before Home Manager"
       fi
-      # KakaoTalk follows Xcode and still runs before Home Manager, as root.
       if [ "$kakaomasline" = 0 ] || [ "$kakaoline" = 0 ]; then
         bad "the system activation has no KakaoTalk step running mas through launchctl asuser for 869223134"
       elif ! [ "$installline" -lt "$kakaomasline" ] || ! [ "$kakaomasline" -lt "$kakaoline" ] || ! [ "$kakaoline" -lt "$hmline" ]; then

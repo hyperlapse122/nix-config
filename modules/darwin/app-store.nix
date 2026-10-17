@@ -32,7 +32,7 @@ in
         echo "kakaotalk: App Store install failed; sign in to the App Store as ${user} and apply again" >&2
       fi
     elif ! appStoreMas upgrade ${kakaoTalkId}; then
-      echo "kakaotalk: App Store upgrade failed; check that ${user} is signed in to the App Store" >&2
+      echo "kakaotalk: App Store upgrade failed; check that ${user} is signed in to the App Store and that /Applications/KakaoTalk.app came from the App Store" >&2
     fi
   '';
 }
