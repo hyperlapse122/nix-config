@@ -55,11 +55,6 @@ let
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
-  # Resolves the latest ChatGPT desktop release from OpenAI's APT repository.
-  # Its network call goes through an overridable command so the sandboxed
-  # repository check can drive it with fixtures.
-  chatgptRelease = pythonHelper "chatgpt-release" ../scripts/chatgpt-release;
-
   # Resolves the latest WiFiman Desktop release from Ubiquiti's releases API
   # and hashes its .deb, which upstream publishes no checksum for. Its network
   # calls go through overridable commands so the sandboxed repository check
@@ -81,9 +76,10 @@ let
   # so the sandboxed repository check can drive it with fixtures.
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
 
-  # Resolves the latest OpenCode release and its per-platform asset digests
-  # from the GitHub releases API. Its network call goes through an overridable
-  # command so the sandboxed repository check can drive it with fixtures.
+  # Resolves the latest OpenCode release, its per-platform tarball URLs, and
+  # their sha512 integrity from the npm registry's @opencode/cli packages. Its
+  # network calls go through an overridable command so the sandboxed repository
+  # check can drive it with fixtures.
   opencodeRelease = pythonHelper "opencode-release" ../scripts/opencode-release;
 
   # Resolves the latest Antigravity CLI release and its per-platform digests
@@ -119,7 +115,6 @@ in
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
-    chatgptRelease
     wifimanDesktopRelease
     claudeCodeRelease
     miseRelease

@@ -210,18 +210,20 @@ This session runs inside T3 Code. These rules add to the Tool use, Model routing
 {{- if ne .harness.id "antigravity" }}
 - A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table.
 {{- end }}
-- When your native subagent tool cannot select the table's class, delegate through T3 Code as Cross-model delegation describes instead of letting the subagent inherit your session model.
+- When the T3 Code MCP tools are available, delegate every subagent job through T3 Code as Cross-model delegation describes instead of using your native subagent tool, whatever provider or model the job needs.
+- This covers short and broad scouts, workers, and the reviewers or other parallel agents a skill dispatches in-process, such as `ce-code-review`'s reviewers. It overrides Tool use's instruction to hand parallel work to the subagent tool and T3 Code's own guidance to prefer native subagent tools for same-provider work.
+- Use your native subagent tool only when the T3 Code MCP tools are not available in this session, or when no T3 Code provider succeeds for a job, as Cross-model delegation describes.
 
 # Cross-model delegation
 
-Delegate work that needs another model through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you.
+Delegate subagent work through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you.
 
-- This section applies only when the T3 Code MCP tools are available in this session and the work needs a provider other than your own or a model your native subagent tool cannot serve; otherwise, keep using the native subagent tool.
+- This section applies to every subagent job whenever the T3 Code MCP tools are available in this session, whether the job runs on your own provider or another.
 - Tools the session lists by name count as available even when the harness must load their schemas before the first call.
 - The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`. A harness may expose them under a prefix such as `mcp__t3-code__`.
 - When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens.
 - Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
-- Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose a provider other than your own and a model that suit the task, following Model routing.
+- Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose the provider and model that suit the task, following Model routing: your own provider for a same-provider cell of the table, another provider for cross-model work. A job that would inherit your session model under your native subagent tool, such as a skill's reviewer with no tier of its own, runs on your session model, and a retry on another provider gives it that provider's class at the Opus tier: Opus for Claude, Sol for Codex, or Argon at medium effort for Gemini.
 - Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Argon, at the Opus tier, or Flash, between Sonnet and Haiku, for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable.
 - Compare versions only within that class: a newer model of another class does not outrank the class the task needs.
 - Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model.
@@ -233,7 +235,7 @@ Delegate work that needs another model through the T3 Code MCP server, which kno
 - Tell the user which provider and model you delegated to.
 - Run every delegated task in full-access runtime mode.
 - Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation.
-- When the delegated work must not change files, such as a review, say so explicitly in the task prompt.
+- When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so explicitly in the task prompt.
 - `delegate_task` does not block in its default `async` mode: it returns a `taskId` at once, and when the child finishes, T3 Code sends this thread a notification, steered into your current turn where the harness supports that or queued to start your next turn otherwise.
 - The notification only reports that the task finished; read the task's result with one `task_status` call, which returns at once and never waits.
 - Launch with `mode: "wait"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it.
@@ -243,7 +245,7 @@ Delegate work that needs another model through the T3 Code MCP server, which kno
 - Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: "wait"` launch returns `waitTimedOut`.
 - Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited.
 - When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run.
-- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider. A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map. Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer. Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did.
+- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider. A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map. A retried job that is not a cross-model pass goes only to a provider with a column in the Model routing table, never to OpenCode, and takes its role's class from that column, or the Opus-tier class when it has no role there. Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer. Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did. When no T3 Code provider succeeds for a job that is not a cross-model pass, run it with your native subagent tool and tell the user in one line that you did.
 - Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact.
 
 # Pull and merge requests in T3 Code

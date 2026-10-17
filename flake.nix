@@ -44,7 +44,7 @@
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
     compound-engineering-plugin = {
-      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.30.5";
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.31.0";
       flake = false;
     };
   };
@@ -141,8 +141,6 @@
         agent-plugin-release = agentTools.agentPluginRelease;
         claude-desktop-release = agentTools.claudeDesktopRelease;
         claude-desktop = import ./packages/claude-desktop.nix { inherit pkgs; };
-        chatgpt-release = agentTools.chatgptRelease;
-        chatgpt = import ./packages/chatgpt.nix { inherit pkgs; };
         wifiman-desktop-release = agentTools.wifimanDesktopRelease;
         wifiman-desktop = import ./packages/wifiman-desktop.nix { inherit pkgs; };
         claude-code-release = agentTools.claudeCodeRelease;
@@ -463,7 +461,7 @@
             pkgs.linkFarm "antigravity-cli-sources" (
               pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
-          # Fetches every platform's pinned OpenCode asset, so a bumped pin
+          # Fetches every platform's pinned OpenCode tarball, so a bumped pin
           # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
           # instead of after it lands.
           opencode-sources =
@@ -471,13 +469,7 @@
               release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
             in
             pkgs.linkFarm "opencode-sources" (
-              pkgs.lib.mapAttrs (
-                _: platform:
-                pkgs.fetchurl {
-                  url = "https://github.com/anomalyco/opencode/releases/download/v${release.version}/${platform.asset}";
-                  inherit (platform) hash;
-                }
-              ) release.platforms
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
@@ -511,16 +503,6 @@
                 cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
                 cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
                 python tests/test_claude_desktop_release.py
-                touch $out
-              '';
-          chatgpt-release =
-            pkgs.runCommand "chatgpt-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/chatgpt-release} scripts/chatgpt-release
-                cp ${./tests/test_chatgpt_release.py} tests/test_chatgpt_release.py
-                python tests/test_chatgpt_release.py
                 touch $out
               '';
           wifiman-desktop-release =
@@ -1076,53 +1058,6 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
-          chatgpt =
-            let
-              # No version-pin comparison: the package reads its version from the
-              # pin file, so that assertion could only ever hold. The wrapper is
-              # read for an ozone flag because upstream marks Wayland
-              # experimental; the app must stay on its X11 default. The
-              # bundled static binaries are run, because a patched one still
-              # exists and is executable.
-              assertConfiguration =
-                entry:
-                let
-                  chatgptPkg = userPackageOf "chatgpt" entry;
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "chatgpt";
-                    executables = [ "chatgpt" ];
-                    desktopEntries = [ "chatgpt.desktop" ];
-                  } entry}
-                  ${pkgs.lib.optionalString (chatgptPkg != null) ''
-                    if grep -q -- 'ozone' ${chatgptPkg}/bin/chatgpt; then
-                      echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
-                      fail=1
-                    fi
-                    # The bundled Codex sandboxes with bwrap, which NixOS has nowhere
-                    # else on PATH.
-                    if ! grep -qF -- '-bubblewrap-' ${chatgptPkg}/bin/chatgpt; then
-                      echo 'the chatgpt wrapper on ${entry.name} puts no bubblewrap on PATH' >&2
-                      fail=1
-                    fi
-                    # Run, not just inspect: autoPatchelf adding a runpath to these
-                    # static-pie binaries leaves them segfaulting while every file
-                    # still exists.
-                    for binary in codex rg; do
-                      if ! HOME="$TMPDIR" ${chatgptPkg}/lib/chatgpt/resources/$binary --version > /dev/null 2>&1; then
-                        echo "the bundled $binary in chatgpt on ${entry.name} does not run" >&2
-                        fail=1
-                      fi
-                    done
-                  ''}
-                '';
-            in
-            pkgs.runCommand "chatgpt-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
           claude-code =
             let
               # Presence and an executable bin/claude alone would stay green even if
@@ -1193,8 +1128,8 @@
                   '';
                   # Codex looks for codex-code-mode-host beside the binary the
                   # wrapper execs, never on PATH, so the host is found from that
-                  # exec target. It is run, not just inspected, as the chatgpt
-                  # check does for its bundled binaries.
+                  # exec target. It is run, not just inspected, because a binary
+                  # that exists and is executable can still fail to start.
                   codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
                     target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
                     if [ -z "$target" ]; then
@@ -1234,6 +1169,7 @@
               switches = [
                 "export OPENCODE_DISABLE_AUTOUPDATE=true"
                 "export OPENCODE_DISABLE_PROJECT_CONFIG=true"
+                "export OPENCODE_CONFIG_PROJECT_DISABLE=true"
                 "export OPENCODE_DISABLE_CLAUDE_CODE=true"
               ];
               assertConfiguration =
@@ -1559,7 +1495,7 @@
                 ''
               ) guardCases;
             in
-            pkgs.runCommand "opencode-wrapper-tests" { } ''
+            pkgs.runCommand "opencode-wrapper-tests" { nativeBuildInputs = [ pkgs.procps ]; } ''
               export HOME=$TMPDIR
               ${guardChecks}
               mkdir -p scripts tests
@@ -1573,16 +1509,41 @@
               # The pinned binary, not only the wrapper's export, must keep a
               # checkout's opencode.json out of the process holding the key.
               # The bare binary loading the canary proves the probe can see it.
+              # debug config asks a server; with the service disabled each
+              # probe starts its own and stops it on exit, instead of leaving
+              # the detached background server running in the sandbox.
+              export XDG_CONFIG_HOME=$TMPDIR/config XDG_STATE_HOME=$TMPDIR/state XDG_DATA_HOME=$TMPDIR/data
+              mkdir -p "$XDG_CONFIG_HOME/opencode"
+              printf '{"disabled": true}\n' > "$XDG_CONFIG_HOME/opencode/service.json"
               mkdir -p project
               printf '{"username": "canary-project-config"}\n' > project/opencode.json
               (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
               (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
+              # v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first, so a caller's
+              # value for it must not turn project config back on either.
+              (cd project && OPENCODE_CONFIG_PROJECT_DISABLE=0 ${packaged}/bin/opencode debug config) > wrapped-override.json
               if ! grep -qF canary-project-config bare.json; then
                 echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
                 exit 1
               fi
               if grep -qF canary-project-config wrapped.json; then
                 echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
+                exit 1
+              fi
+              if grep -qF canary-project-config wrapped-override.json; then
+                echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
+                exit 1
+              fi
+              # A missing pgrep would read as "no server", so its absence fails.
+              # A per-run server may take a moment to exit after its client; the
+              # detached shared server never does.
+              command -v pgrep >/dev/null || { echo "pgrep is missing; the leftover-server probe is blind" >&2; exit 1; }
+              for _ in $(seq 50); do
+                pgrep -f ${packaged}/libexec/opencode/opencode >/dev/null || break
+                sleep 0.1
+              done
+              if pgrep -f ${packaged}/libexec/opencode/opencode; then
+                echo "opencode debug config left a server running despite the disabled service" >&2
                 exit 1
               fi
               touch $out

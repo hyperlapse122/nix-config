@@ -75,7 +75,7 @@ cat >"$stub" <<STUB
 printf '%s\0' "\$@" >"$rec/argv"
 printf '%s' "\$#" >"$rec/argc"
 [[ -n \${OPENCODE_API_KEY+x} ]] && printf '%s' "\$OPENCODE_API_KEY" >"$rec/key"
-for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_DISABLE_CLAUDE_CODE PATH; do
+for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_CONFIG_PROJECT_DISABLE OPENCODE_DISABLE_CLAUDE_CODE PATH; do
   [[ -n \${!var+x} ]] && printf '%s' "\${!var}" >"$rec/\$var"
 done
 printf 'stub-opencode ran\n'
@@ -124,7 +124,7 @@ assert_key_hidden() {
 
 assert_switches() {
   local label=$1 var
-  for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_DISABLE_CLAUDE_CODE; do
+  for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_CONFIG_PROJECT_DISABLE OPENCODE_DISABLE_CLAUDE_CODE; do
     [[ $(recorded "$var") == true ]] || fail "$label: $var is '$(recorded "$var")', want 'true'"
   done
 }
@@ -157,7 +157,7 @@ pass 'a bare run passes no arguments'
 
 run
 assert_switches 'default run'
-run OPENCODE_DISABLE_AUTOUPDATE=false OPENCODE_DISABLE_PROJECT_CONFIG=0 OPENCODE_DISABLE_CLAUDE_CODE=
+run OPENCODE_DISABLE_AUTOUPDATE=false OPENCODE_DISABLE_PROJECT_CONFIG=0 OPENCODE_CONFIG_PROJECT_DISABLE=0 OPENCODE_DISABLE_CLAUDE_CODE=
 assert_switches 'caller values'
 pass 'the self-update, project-config, and Claude Code switches are always true'
 
