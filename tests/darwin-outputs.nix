@@ -46,7 +46,8 @@
     automatic appearance without pinning AppleInterfaceStyle;
   - the system activate script runs the Xcode step, mas through launchctl
     asuser for App Store id 497799835, after brew bundle and before the Home
-    Manager activation call;
+    Manager activation call, then the KakaoTalk step for App Store id
+    869223134, through its own launchctl asuser wrapper, before that call;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
     apply takes over an existing /opt/homebrew instead of stopping.
 
@@ -320,6 +321,8 @@ let
       bundleline=$(lineof "brew bundle --file="); bundleline=''${bundleline:-0}
       masline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$xcodeUid" /usr/bin/env SUDO_UID="$xcodeUid" SUDO_GID="$xcodeGid" ${masExe} "$@"''}); masline=''${masline:-0}
       installline=$(lineof 'if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then'); installline=''${installline:-0}
+      kakaomasline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$appStoreUid" /usr/bin/env SUDO_UID="$appStoreUid" SUDO_GID="$appStoreGid" ${masExe} "$@"''}); kakaomasline=''${kakaomasline:-0}
+      kakaoline=$(lineof 'if ! appStoreMas install 869223134 && ! appStoreMas get 869223134; then'); kakaoline=''${kakaoline:-0}
       hmline=$(lineof "echo Activating home-manager configuration for "); hmline=''${hmline:-0}
       if [ "$bundleline" = 0 ] || [ "$hmline" = 0 ]; then
         bad "the system activation has no brew bundle or Home Manager activation call"
@@ -327,6 +330,11 @@ let
         bad "the system activation has no Xcode step running mas through launchctl asuser for 497799835"
       elif ! [ "$bundleline" -lt "$masline" ] || ! [ "$masline" -lt "$installline" ] || ! [ "$installline" -lt "$hmline" ]; then
         bad "the Xcode step does not run after brew bundle and before Home Manager"
+      fi
+      if [ "$kakaomasline" = 0 ] || [ "$kakaoline" = 0 ]; then
+        bad "the system activation has no KakaoTalk step running mas through launchctl asuser for 869223134"
+      elif ! [ "$installline" -lt "$kakaomasline" ] || ! [ "$kakaomasline" -lt "$kakaoline" ] || ! [ "$kakaoline" -lt "$hmline" ]; then
+        bad "the KakaoTalk step does not run after the Xcode step and before Home Manager"
       fi
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \

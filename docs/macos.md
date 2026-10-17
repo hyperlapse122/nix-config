@@ -12,9 +12,9 @@ Before the first setup, have:
 
 - the host directory and its secrets pushed to `main`;
 - an administrator account on the Mac, for `sudo`;
-- an Apple Account for the Mac App Store, which Xcode comes from;
+- an Apple Account for the Mac App Store, which Xcode and KakaoTalk come from;
 - one of the three YubiKeys and its PIN, for the identity recovery in step 10;
-- network and time for the first apply, which downloads Homebrew, every cask, the Podman machine image, Xcode, an iOS Simulator runtime, and the Android SDK;
+- network and time for the first apply, which downloads Homebrew, every cask, the Podman machine image, Xcode, KakaoTalk, an iOS Simulator runtime, and the Android SDK;
 - no directory at `~/Library/Android/sdk`, where Android Studio installs its SDK by default. Home Manager links the SDK there and stops the apply when it finds a real directory in the way. Move an existing one aside with `mv ~/Library/Android/sdk ~/Library/Android/sdk.before-nix-config`.
 
 ## What the configuration manages
@@ -24,7 +24,8 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **Nix.** nix-darwin owns `/etc/nix/nix.conf` and keeps `auto-optimise-store` off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - **Host marker.** `/etc/nix-config-host` records the host name and whether the bootstrap or production output is applied. `nr` reads the host from it, so the name macOS shows for the machine does not matter.
 - **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, and the other GUI apps, plus Parallels Desktop, which has no NixOS counterpart, and the Tailscale app, which NixOS hosts run as a system service instead. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones. Installing Parallels Desktop runs a privileged setup step, so the apply that installs it may ask for your administrator password. Its license is not managed here: enter your key, such as an education key, in Parallels Desktop after that apply. Tailscale installs from a package, so its first apply may also ask for the password. Nothing registers the Mac on the tailnet: open Tailscale, allow its system extension in System Settings → Privacy & Security when macOS asks, and log in in the app. Launch at login, exit nodes, and accepting subnet routes are settings in the app, not in this repository.
-- **Xcode.** Xcode is the one Mac App Store app the configuration manages. `modules/darwin/xcode.nix` installs it with `mas` after the casks, or upgrades it when the App Store has a newer version, so the App Store decides the version. When `xcode-select` points at the Command Line Tools or nowhere, the step points it at Xcode. The step also accepts the license and runs first-launch setup when either is pending. It needs the App Store signed in; see step 6.
+- **Xcode.** Xcode is one of the two Mac App Store apps the configuration manages. `modules/darwin/xcode.nix` installs it with `mas` after the casks, or upgrades it when the App Store has a newer version, so the App Store decides the version. When `xcode-select` points at the Command Line Tools or nowhere, the step points it at Xcode. The step also accepts the license and runs first-launch setup when either is pending. It needs the App Store signed in; see step 6.
+- **KakaoTalk.** The other Mac App Store app. `modules/darwin/app-store.nix` installs it with `mas` after Xcode, or upgrades it when the App Store has a newer version. A copy already installed from the App Store is kept and upgraded in place. Signing in to KakaoTalk itself is done in the app. Like Xcode, it needs the App Store signed in.
 - **Android SDK.** A Mac gets the same pinned Android SDK as a Linux x86_64 host, from `packages/android-sdk.nix`, built for Apple silicon with `arm64-v8a` system images. It sits at `~/Library/Android/sdk`, a read-only link into the Nix store. `ANDROID_HOME` and `ANDROID_SDK_ROOT` point there. An SDK Android Studio already installed at that path must be moved aside before the first apply; see the prerequisites above.
 - **Mobile devices.** The iOS Simulators and Android Virtual Devices listed in `my.mobileDevices`; see [Mobile devices](#mobile-devices).
 - **Nix apps.** VSCodium and the T3 Code desktop app come from Nix. Home Manager copies their bundles into `~/Applications/Home Manager Apps`.
@@ -79,9 +80,9 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
 
    It must print exactly one name. When it prints none, the Mac has no host directory yet; see [adding a host](adding-a-host.md#macos-hosts). When it prints more than one, set `host` to the right one by hand.
 
-6. Open the App Store app and sign in with your Apple Account. The apply downloads Xcode with the App Store account signed in to your login session, so it cannot install Xcode until you sign in. On a Mac where you already installed Xcode from the App Store, apply keeps that copy and upgrades it in place.
+6. Open the App Store app and sign in with your Apple Account. The apply downloads Xcode and KakaoTalk with the App Store account signed in to your login session, so it cannot install them until you sign in. On a Mac where you already installed either from the App Store, apply keeps that copy and upgrades it in place.
 
-   Without the sign-in, the apply still succeeds. It prints a line asking you to sign in to the App Store, skips Xcode and the iOS Simulators, and sets up everything else, the Android SDK and Android Virtual Devices included. Sign in later and apply again to add Xcode and the iOS Simulators.
+   Without the sign-in, the apply still succeeds. It prints a line for each app asking you to sign in to the App Store, skips Xcode, KakaoTalk, and the iOS Simulators, and sets up everything else, the Android SDK and Android Virtual Devices included. Sign in later and apply again to add them.
 
 7. Apply the bootstrap output. `nr` is not installed yet, so run nix-darwin's `darwin-rebuild` from its flake. With `nix.conf` moved aside, flakes are not enabled yet, so the command enables them for this one run:
 
@@ -91,7 +92,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
      switch --flake ".#$host-bootstrap"
    ```
 
-   This apply also installs Homebrew, the casks, and Xcode, downloads an iOS Simulator runtime, creates the Podman machine, and creates the declared mobile devices, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+   This apply also installs Homebrew, the casks, Xcode, and KakaoTalk, downloads an iOS Simulator runtime, creates the Podman machine, and creates the declared mobile devices, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
 
 8. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
 
@@ -269,6 +270,9 @@ AVDs live in `~/.android/avd` and name their system image by its SDK path. When 
 | The apply stops with `Existing file '…/Library/Android/sdk' would be clobbered` | An SDK, usually Android Studio's, is a real directory at `~/Library/Android/sdk`, where Home Manager links the pinned SDK. Run `mv ~/Library/Android/sdk ~/Library/Android/sdk.before-nix-config` and apply again. Point Android Studio at the linked SDK, or delete the old one once nothing uses it. |
 | `mobile-devices` prints `simctl could not list device types, so the iOS Simulators were skipped` after `CoreSimulator detected version change` | An Xcode upgrade left the old CoreSimulatorService loaded. The helper tries the listing twice, because the first call replaces the service; when both fail, run `xcrun simctl list devicetypes` once and apply again. |
 | The apply prints `xcode: App Store install failed; sign in to the App Store …`, and `mobile-devices` reports that the iOS Simulators were skipped | The App Store is not signed in, so the apply skipped Xcode and the iOS Simulators and set up everything else. Open the App Store, sign in with your Apple Account, and apply again. `xcode: App Store upgrade failed; …` has the same fix; the installed Xcode stays at its version until then. |
+| The apply prints `kakaotalk: App Store install failed; sign in to the App Store …` | The App Store is not signed in, so the apply skipped KakaoTalk. Sign in to the App Store and apply again. |
+| The apply prints `kakaotalk: App Store upgrade failed; …` | Either the App Store is not signed in, or `/Applications/KakaoTalk.app` was installed from a download rather than the App Store, which `mas` cannot upgrade. Sign in to the App Store, or delete the app so the next apply installs it from the App Store. |
+| The apply prints `kakaotalk: cannot resolve the ids of …` | `system.primaryUser`, which comes from `my.user.name` in the host's `default.nix`, does not name an account on this Mac. Fix the account name and apply again. |
 
 ## Verification
 
