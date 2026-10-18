@@ -23,8 +23,9 @@
     equal to the one stated here.
   - running that exact merger with that exact declared document reasserts the
     declared values and leaves every other key as it was, against a seeded
-    divergent file (an MCP server and a plugin in opencode.json, a password and
-    a port in service.json), and creates a missing file holding only the
+    divergent file (an MCP server, a 1.x plugin key, a user plugins entry, and
+    a stale syn: model entry in opencode.json, a password and a port in
+    service.json), and creates a missing file holding only the
     declared keys. The result is mode 0600 in every case. opencode.json drops
     the retired autoupdate key; service.json disables OpenCode's shared
     background server.
@@ -67,13 +68,10 @@ let
     {
       "set": {
         "$schema": "https://opencode.ai/config.json",
-        "model": "synthetic/syn:large:text",
+        "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
         "update": "disable",
         "share": "disabled"
       },
-      "setPaths": [
-        {"path": ["provider", "synthetic", "models", "syn:large:text", "name"], "value": "syn:large:text"}
-      ],
       "remove": ["autoupdate"]
     }
   '';
@@ -85,6 +83,7 @@ let
       "share": "auto",
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
+      "plugins": ["opencode-user-plugin@1.2.0"],
       "mcp": {
         "example": {"type": "local", "command": ["example-mcp"], "enabled": true}
       },
@@ -92,7 +91,10 @@ let
         "anthropic": {"options": {"timeout": 600000}},
         "synthetic": {
           "options": {"timeout": 300000},
-          "models": {"hf:zai-org/GLM-4.7": {"name": "GLM 4.7"}}
+          "models": {
+            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
+            "syn:large:text": {"name": "syn:large:text"}
+          }
         }
       }
     }
@@ -101,11 +103,12 @@ let
   mergedExpected = pkgs.writeText "opencode-merged-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/syn:large:text",
+      "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
       "share": "disabled",
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
+      "plugins": ["opencode-user-plugin@1.2.0"],
       "mcp": {
         "example": {"type": "local", "command": ["example-mcp"], "enabled": true}
       },
@@ -125,12 +128,9 @@ let
   createdExpected = pkgs.writeText "opencode-created-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/syn:large:text",
+      "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
-      "share": "disabled",
-      "provider": {
-        "synthetic": {"models": {"syn:large:text": {"name": "syn:large:text"}}}
-      }
+      "share": "disabled"
     }
   '';
 
