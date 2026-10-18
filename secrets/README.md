@@ -52,7 +52,7 @@ gitlab_token: <GitLab.com token>
 jpi_token: <git.jpi.app token>
 docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
 tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
-opencode_api_key: <OpenCode Zen API key> # opt-in: my.cliAuth.enableOpencodeApiKey
+synthetic_api_key: <Synthetic API key> # opt-in: my.cliAuth.enableSyntheticApiKey
 ```
 
 The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
@@ -62,7 +62,7 @@ key fails the build.
 
 A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
 decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, and
-`opencode_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
+`synthetic_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
