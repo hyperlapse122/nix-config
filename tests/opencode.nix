@@ -23,11 +23,13 @@
     equal to the one stated here.
   - running that exact merger with that exact declared document reasserts the
     declared values and leaves every other key as it was, against a seeded
-    divergent file (an MCP server, a 1.x plugin key, a user plugins entry, and
-    a stale syn: model entry in opencode.json, a password and a port in
+    divergent file (an MCP server, a 1.x plugin key, a user plugins entry, a
+    user-added provider entry, and the stale syn: model alias that the
+    declaration removes in opencode.json, a password and a port in
     service.json), and creates a missing file holding only the
     declared keys. The result is mode 0600 in every case. opencode.json drops
-    the retired autoupdate key; service.json disables OpenCode's shared
+    the retired autoupdate key and the stale syn: alias, and allowlists the
+    synthetic provider; service.json disables OpenCode's shared
     background server.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json, and the generation's home-files hold no
@@ -72,7 +74,13 @@ let
         "update": "disable",
         "share": "disabled"
       },
-      "remove": ["autoupdate"]
+      "remove": ["autoupdate"],
+      "own": {
+        "enabled_providers": ["synthetic"]
+      },
+      "removePaths": [
+        {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
+      ]
     }
   '';
 
@@ -106,6 +114,7 @@ let
       "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
       "share": "disabled",
+      "enabled_providers": ["synthetic"],
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
       "plugins": ["opencode-user-plugin@1.2.0"],
@@ -117,8 +126,7 @@ let
         "synthetic": {
           "options": {"timeout": 300000},
           "models": {
-            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "syn:large:text": {"name": "syn:large:text"}
+            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"}
           }
         }
       }
@@ -130,7 +138,8 @@ let
       "$schema": "https://opencode.ai/config.json",
       "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
-      "share": "disabled"
+      "share": "disabled",
+      "enabled_providers": ["synthetic"]
     }
   '';
 
