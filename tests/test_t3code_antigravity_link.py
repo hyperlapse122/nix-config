@@ -85,8 +85,6 @@ class LinkTest(unittest.TestCase):
         self.assert_linked(home)
 
     def test_old_instructions_link_is_removed(self):
-        # The CLI's global rules are no longer written, so the link an earlier
-        # helper made would dangle.
         home = self.make_t3_home()
         os.symlink(self.gemini / "AGENTS.md", home / "config/AGENTS.md")
         result = self.run_helper("antigravity")

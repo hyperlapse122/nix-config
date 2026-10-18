@@ -192,8 +192,6 @@ let
           failed=1
         fi
 
-        # Codex was removed; a membership row left for it would drive an agent
-        # no host installs.
         if grep -qF -- '--harness codex' <<< ${esc script}; then
           echo 'the agentPlugins activation script still syncs a plugin for codex on ${hostName}' >&2
           failed=1

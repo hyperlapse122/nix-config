@@ -700,7 +700,6 @@ class OwnedKeyTests(unittest.TestCase):
 
 class FormatTests(unittest.TestCase):
     def test_process_rejects_the_retired_toml_format(self):
-        # The TOML mode served only Codex's config.toml and left with it.
         with tempfile.TemporaryDirectory() as tmp:
             settings = Path(tmp) / 'settings.toml'
             declared = Path(tmp) / 'declared.json'

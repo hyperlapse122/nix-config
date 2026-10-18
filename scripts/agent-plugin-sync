@@ -336,10 +336,12 @@ def resolves_to(harness, entry, segment, destination):
 
 def remove_entry(path):
     """Delete a symlink, or a directory tree this script created."""
-    try:
-        path.unlink()
-    except IsADirectoryError:
+    # unlink() on a directory raises IsADirectoryError on Linux but
+    # PermissionError on macOS, so decide by what the path is instead.
+    if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path)
+    else:
+        path.unlink()
 
 
 def prune(base, segment, dry_run):

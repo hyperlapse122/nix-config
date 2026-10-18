@@ -496,8 +496,6 @@ class RetireTestCase(FakeCliCase):
 
 class RemovedHarnessTestCase(FakeCliCase):
     def test_codex_is_no_longer_a_harness(self):
-        # Codex left the repository; a stale --harness codex row is refused
-        # before any CLI call instead of driving a missing agent.
         result = self.invoke([
             '--harness', 'codex', '--cli', str(self.cli), '--source', str(self.source),
             '--base', str(self.base), '--segment', 'v3.28.0',

@@ -1010,15 +1010,13 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
-          # Codex was removed; no user environment may install it or write its
-          # home again.
           codex-absent =
             let
               assertUser =
                 entry:
                 let
-                  codexFiles = builtins.filter (name: pkgs.lib.hasPrefix ".codex/" name) (
-                    builtins.attrNames (entry.user.home.file or { })
+                  codexFiles = builtins.filter (pkgs.lib.hasPrefix ".codex/") (
+                    map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }))
                   );
                 in
                 ''

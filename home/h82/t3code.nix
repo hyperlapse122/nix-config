@@ -74,8 +74,7 @@ let
         driver = "claudeAgent";
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
       };
-      # T3 Code enables its built-in Codex instance unless told otherwise, and
-      # Codex is no longer installed.
+      # T3 Code enables its built-in Codex instance unless one is declared.
       codex = {
         driver = "codex";
         enabled = false;

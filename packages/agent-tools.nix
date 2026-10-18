@@ -1,27 +1,12 @@
 { pkgs }:
 
 let
-  # patchShebangs resolves the interpreter from the build PATH, so python3
-  # has to be here for the `#!/usr/bin/env python3` line to be rewritten
-  # into a store path rather than left dangling.
-  # The source is passed per helper rather than derived from a directory, so a
-  # change to one script does not rebuild the others.
-  pythonHelper =
-    name: src:
-    pkgs.stdenvNoCC.mkDerivation {
-      pname = name;
-      version = "1";
-      dontUnpack = true;
-      nativeBuildInputs = [ pkgs.python3 ];
-      installPhase = ''
-        install -Dm755 ${src} $out/bin/${name}
-        patchShebangs $out/bin/${name}
-      '';
-      meta.mainProgram = name;
-    };
-
-  # The same shape for a helper that needs libraries: patchShebangs resolves
-  # the interpreter to the one wrapped with the helper's packages.
+  # patchShebangs resolves the interpreter from the build PATH, so it has to be
+  # here for the `#!/usr/bin/env python3` line to be rewritten into a store
+  # path rather than left dangling; a helper that needs libraries passes the
+  # interpreter wrapped with them. The source is passed per helper rather than
+  # derived from a directory, so a change to one script does not rebuild the
+  # others.
   helperWith =
     name: src: interpreter:
     pkgs.stdenvNoCC.mkDerivation {
@@ -35,6 +20,8 @@ let
       '';
       meta.mainProgram = name;
     };
+
+  pythonHelper = name: src: helperWith name src pkgs.python3;
 
   agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
 

@@ -5,7 +5,7 @@
 
   Asserts that every configuration `tests/lib/configurations.nix` yields gives
   h82 the OpenCode wrapper and the declared config merge, and that only the
-  production configurations decrypt the OpenCode API key. Which side a
+  production configurations decrypt the Synthetic API key. Which side a
   configuration is on comes from the helper's `bootstrap` field, never from
   the sops manifest under test. It reads what the generations materialize --
   home-path, the rendered activation script and the sops manifests -- rather
@@ -37,7 +37,7 @@
   - a production configuration's sops manifest carries
     cli-auth/synthetic_api_key owned by h82 with mode 0400, its gh/glab
     publisher does not read that key, and a bootstrap configuration's
-    manifests carry no OpenCode secret at all. Neither does one production
+    manifests carry no Synthetic secret at all. Neither does one production
     configuration re-evaluated with my.cliAuth.enableSyntheticApiKey forced
     off.
 
@@ -381,31 +381,31 @@ let
       if [ -z "$manifests" ]; then
         fail ${host'}": found no sops manifest"
       fi
-      opencodeSecrets=$(python3 - $manifests <<'PY'
+      syntheticSecrets=$(python3 - $manifests <<'PY'
       import json, sys
       for path in sys.argv[1:]:
           for secret in json.load(open(path)).get("secrets", []):
-              if "opencode" in secret.get("name", "") or "opencode" in secret.get("key", ""):
+              if "synthetic" in secret.get("name", "") or "synthetic" in secret.get("key", ""):
                   print(secret.get("name"), secret.get("key"), secret.get("owner"), secret.get("mode"))
       PY
       )
       ${
         if decryptsKey then
           ''
-            if [ "$opencodeSecrets" != "cli-auth/synthetic_api_key synthetic_api_key h82 0400" ]; then
-              fail ${host'}": expected cli-auth/synthetic_api_key owned by h82 with mode 0400, got: '$opencodeSecrets'"
+            if [ "$syntheticSecrets" != "cli-auth/synthetic_api_key synthetic_api_key h82 0400" ]; then
+              fail ${host'}": expected cli-auth/synthetic_api_key owned by h82 with mode 0400, got: '$syntheticSecrets'"
             fi
             publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
             if [ -z "$publisher" ]; then
               fail ${host'}": sops-install-secrets no longer runs publish-cli-auth"
-            elif grep -q opencode "$publisher"; then
-              fail ${host'}": publish-cli-auth must not read the OpenCode API key"
+            elif grep -q synthetic_api_key "$publisher"; then
+              fail ${host'}": publish-cli-auth must not read the Synthetic API key"
             fi
           ''
         else
           ''
-            if [ -n "$opencodeSecrets" ]; then
-              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableSyntheticApiKey off, must not decrypt an OpenCode secret, got: '$opencodeSecrets'"
+            if [ -n "$syntheticSecrets" ]; then
+              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableSyntheticApiKey off, must not decrypt a Synthetic secret, got: '$syntheticSecrets'"
             fi
           ''
       }

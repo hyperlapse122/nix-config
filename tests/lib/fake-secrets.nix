@@ -11,7 +11,7 @@
   - other-key.txt: a valid age identity that is not a recipient of either file.
   - recipient.txt: the public recipient of key.txt.
   - tokens.yaml: the token schema from secrets/README.md. The Tokscale token
-    and the OpenCode API key carry a space and the canary FAKE-CANARY, so a
+    and the Synthetic API key carry a space and the canary FAKE-CANARY, so a
     publisher that starts reading either fails, and any log that prints a
     token is caught.
   - ssh.yaml: `ssh_private_key`, a fresh ed25519 key; ssh.pub is its public

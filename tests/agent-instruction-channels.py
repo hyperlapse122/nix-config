@@ -1,8 +1,8 @@
-"""Reads an instruction channel out of a declared-settings file.
+"""Reads the Claude instructions directory out of a declared-settings file.
 
-    agent-instruction-channels.py claude-dir DECLARED
+    agent-instruction-channels.py DECLARED
 
-`claude-dir` requires the Claude instance's launch arguments to be exactly
+Requires the Claude instance's launch arguments to be exactly
 `--add-dir <dir>`, and its environment to upsert
 CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1, and prints the directory.
 
@@ -21,11 +21,9 @@ def leaf(declared, path):
     return values[0]
 
 
-def main(mode, declared_path):
+def main(declared_path):
     with open(declared_path, encoding='utf-8') as handle:
         declared = json.load(handle)
-    if mode != 'claude-dir':
-        sys.exit('unknown mode {}'.format(mode))
     words = shlex.split(leaf(declared, ['providerInstances', 'claudeAgent', 'config', 'launchArgs']))
     if len(words) != 2 or words[0] != '--add-dir':
         sys.exit('the Claude launch arguments are not one --add-dir <dir>: {!r}'.format(words))

@@ -24,6 +24,7 @@ let
   );
 
   model = import ./opencode-model.nix;
+  alias = lib.removePrefix "synthetic/" model;
 
   # `opencode mcp add` and `opencode plugin add` rewrite this file, so
   # activation assigns these keys and leaves everything else as OpenCode wrote
@@ -49,10 +50,10 @@ let
             "provider"
             "synthetic"
             "models"
-            (lib.removePrefix "synthetic/" model)
+            alias
             "name"
           ];
-          value = lib.removePrefix "synthetic/" model;
+          value = alias;
         }
       ];
       remove = [ "autoupdate" ];

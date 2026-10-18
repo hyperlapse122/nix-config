@@ -721,7 +721,7 @@ let
         if t3 then
           ''
             declared=$(${declaredOf (t3Activation.data or "")})
-            dir=$(python3 ${channels} claude-dir "$declared" || true)
+            dir=$(python3 ${channels} "$declared" || true)
             if [ "$dir" != ${esc "${home}/.t3/instructions/claude-code"} ]; then
               echo ${esc "the Claude instance on ${label} must --add-dir the directory of ~/${claudeT3Target}, got"} "'$dir'" >&2
               failed=1

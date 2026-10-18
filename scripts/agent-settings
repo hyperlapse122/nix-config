@@ -54,6 +54,7 @@ import tempfile
 # needs told about rather than one worth spinning on.
 ATTEMPTS = 3
 
+
 def check_directory(path):
     """Refuse a symlinked parent without touching anything.
 
@@ -376,9 +377,6 @@ def swap(settings, text, before):
 
 def merge(settings, declared):
     assign, retire, paths, owned, upserts, migration = declaration(declared)
-    # Looked up per call rather than bound at import, so a test that patches
-    # the reader reaches this merge.
-    read = read_settings
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -386,11 +384,11 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read(settings), assign, retire, paths, owned, upserts, migration)
+    apply(read_settings(settings), assign, retire, paths, owned, upserts, migration)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
-        current = read(settings)
+        current = read_settings(settings)
         merged = apply(current, assign, retire, paths, owned, upserts, migration)
         if merged == current and before is not None:
             try:
