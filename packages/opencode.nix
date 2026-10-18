@@ -13,9 +13,8 @@ let
   # The path lands inside single quotes in the wrapper.
   safeTokenFile = builtins.match "/[A-Za-z0-9._/+-]+" tokenFile != null;
 
-  # The agent instructions, which a standalone session loads through this
-  # added config file. OpenCode v2 always loads ~/.config/opencode/AGENTS.md,
-  # so the file goes here instead, where the wrapper can leave it out of a
+  # OpenCode v2 always loads ~/.config/opencode/AGENTS.md, so the instructions
+  # go in this added config instead, where the wrapper can leave them out of a
   # reviewer run.
   instructions = ../home/h82/agents/instructions/instructions.md;
   instructionsConfig = pkgs.writeText "opencode-instructions-config.json" (

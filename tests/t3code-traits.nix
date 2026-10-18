@@ -123,12 +123,9 @@ let
 
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
 
-  # Rendered here rather than read back from the module, so a mutation of the
-  # declaration turns the check red. Scalars are assigned, objects T3 Code
-  # may extend are declared leaf by leaf, the model selections, which T3
-  # Code writes whole, are owned whole, and a retired key is removed.
-  settingsExpected =
-    _home: pkgs.writeText "t3code-expected-settings.json" (builtins.toJSON settingsExpectedBase);
+  settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
+    builtins.toJSON settingsExpectedBase
+  );
 
   settingsExpectedBase = {
     set = {
@@ -151,7 +148,6 @@ let
         "opencode"
       ];
     };
-    upsertPaths = [ ];
     setPaths = [
       {
         path = [
@@ -289,17 +285,14 @@ let
     };
   };
 
-  clientSettingsExpected =
-    _home:
-    pkgs.writeText "t3code-expected-client-settings.json" (
-      builtins.toJSON {
-        set.fontFamilyCode = "JetBrains Mono";
-        remove = [ ];
-        setPaths = [ ];
-        upsertPaths = [ ];
-        own = { };
-      }
-    );
+  clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
+    builtins.toJSON {
+      set.fontFamilyCode = "JetBrains Mono";
+      remove = [ ];
+      setPaths = [ ];
+      own = { };
+    }
+  );
 
   # Without string context, so neither the runtime nor the scripts the
   # activation names are built: the check compares the paths, and the paths
@@ -342,9 +335,7 @@ let
           lib.boolToString (activation != null)
         } ${esc (activation.data or "")} ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${
-          merge.expected (user.home.homeDirectory or "")
-        }
+        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected}
       ''
     ) merges
     + (

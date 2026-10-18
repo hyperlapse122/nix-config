@@ -67,15 +67,13 @@ let
     "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
     "# Review findings"
     "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks."
+    "Leave a finding unapplied only when you verified it is wrong or its fix would weaken a safety check, and say why."
+    "When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made."
     "# T3 Code"
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
   ];
 
-  # Names of what this repository removed from the instructions: the system
-  # part's sections, Codex, every Antigravity and Gemini mention, the OpenCode
-  # Zen peer, Model routing, and the disclosure that reviewed content leaves
-  # for another provider.
   removedTerms = [
     "# Tool use"
     "# Cross-model review"
@@ -119,9 +117,6 @@ let
     done
   '';
 
-  # Checks the instruction file at `$file`. The same file recurs across
-  # hosts; a repeat of one already checked is skipped, since it can only
-  # repeat the first check's result.
   fileRules = label: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2

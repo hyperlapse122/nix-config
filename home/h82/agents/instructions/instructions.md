@@ -22,7 +22,7 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 
 # Review findings
 
-Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks. Leave a finding unapplied only when you verified it is wrong, and say why. When the user asked only for a review, report the findings and ask once whether to apply them all. Report what you applied in the pull request body and the final report.
+Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks. Leave a finding unapplied only when you verified it is wrong or its fix would weaken a safety check, and say why. When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made. When the user asked only for a review, report the findings and ask once whether to apply them all. Report what you applied in the pull request body and the final report.
 
 # T3 Code
 

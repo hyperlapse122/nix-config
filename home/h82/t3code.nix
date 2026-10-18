@@ -58,11 +58,6 @@ let
         driver = "antigravity";
         enabled = true;
       };
-      # T3 Code's Claude sessions read the same ~/.claude/CLAUDE.md as a
-      # terminal. The merge can retire only top-level keys, so the --add-dir
-      # an earlier generation wrote here, which loaded a separate T3 Code
-      # instruction file, is overwritten with nothing. The environment entry
-      # that generation upserted stays: without --add-dir it has no effect.
       claudeAgent = {
         driver = "claudeAgent";
         config.launchArgs = "";
@@ -144,11 +139,10 @@ let
       values,
       owned ? { },
       remove ? [ ],
-      upsertPaths ? [ ],
       migrateInstances ? null,
     }:
     {
-      inherit remove upsertPaths;
+      inherit remove;
       set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
