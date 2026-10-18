@@ -186,6 +186,13 @@ def check_top_level(path, assign, retire, owned):
         raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
 
 
+def assigned_paths(paths, upserts, prefixes):
+    """Every leaf path another declaration assigns or manages."""
+    return ([other for other, _ in paths]
+            + [other for other, _, _ in upserts]
+            + [other for other, _, _ in prefixes])
+
+
 def upsert_entries(entries, assign, retire, owned, paths, declared):
     if not isinstance(entries, list):
         raise ValueError('declared "upsertPaths" is not a list: {}'.format(declared))
@@ -225,9 +232,7 @@ def prefix_entries(entries, assign, retire, owned, paths, upserts, declared):
         if value is not None and (not isinstance(value, str) or not value.startswith(prefix)):
             raise ValueError('declared prefix entry must be null or a string under its prefix: {}'.format(describe(path)))
         check_top_level(path, assign, retire, owned)
-        check_disjoint(path, [other for other, _ in paths]
-                       + [other for other, _, _ in upserts]
-                       + [other for other, _, _ in prefixes])
+        check_disjoint(path, assigned_paths(paths, upserts, prefixes))
         prefixes.append((path, prefix, value))
     return prefixes
 
@@ -251,9 +256,7 @@ def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, decl
         # with an outcome that depends on the order they run in.  Two removals
         # under one object name different leaves, so they do not conflict.
         leaf = path + [key]
-        check_disjoint(leaf, [other for other, _ in paths]
-                       + [other for other, _, _ in upserts]
-                       + [other for other, _, _ in prefixes])
+        check_disjoint(leaf, assigned_paths(paths, upserts, prefixes))
         removals.append((path, key))
     for index, (path, key) in enumerate(removals):
         check_disjoint(path + [key], [other + [other_key]
@@ -477,14 +480,14 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read_settings(settings), assign, retire, paths, owned, upserts, migration, prefixes,
-          removals)
+    apply(read_settings(settings), assign=assign, retire=retire, paths=paths, owned=owned,
+          upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
-        merged = apply(current, assign, retire, paths, owned, upserts, migration, prefixes,
-                       removals)
+        merged = apply(current, assign=assign, retire=retire, paths=paths, owned=owned,
+                       upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)
