@@ -662,7 +662,7 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, owned, upserts, _, _ = merger.declaration(self.declared)
+        assign, retire, paths, _, owned, upserts, _, _ = merger.declaration(self.declared)
         merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
@@ -1138,6 +1138,160 @@ class PrefixEntryTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])
+
+
+REMOVE_EXISTING = {
+    'colorPalette': 'blue',
+    'scanner': {'bucketTimezone': 'Asia/Seoul', 'retired': 'stale', 'live': 'keep'},
+    'autosubmit': {'enabled': False},
+}
+
+
+class RemovePathTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.config/tokscale/settings.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare([{'path': ['scanner'], 'key': 'retired'}],
+                     assign={'colorPalette': 'blue'})
+
+    def declare(self, removes, assign=None, **fields):
+        document = {'set': assign or {}, 'remove': [], 'removePaths': removes}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else REMOVE_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def assert_refused(self, document):
+        self.declared.write_text(json.dumps(document))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_the_named_key_is_removed_and_its_siblings_survive(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['scanner'], {'bucketTimezone': 'Asia/Seoul', 'live': 'keep'})
+        self.assertEqual(result['colorPalette'], 'blue')
+        self.assertEqual(result['autosubmit'], REMOVE_EXISTING['autosubmit'])
+
+    def test_removing_an_absent_key_is_a_no_op(self):
+        self.seed()
+        self.declare([{'path': ['scanner'], 'key': 'elsewhere'}])
+        self.merge()
+        self.assertEqual(self.read()['scanner'], REMOVE_EXISTING['scanner'])
+
+    def test_an_absent_or_non_object_path_is_a_no_op(self):
+        # Mirrors top-level remove: a key that cannot be there is not an error.
+        self.seed(dict(REMOVE_EXISTING, scanner='flat'))
+        self.declare([{'path': ['scanner'], 'key': 'retired'},
+                      {'path': ['nope', 'deep'], 'key': 'gone'}])
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['scanner'], 'flat')
+        self.assertNotIn('nope', result)
+
+    def test_deeper_removals_remove_only_the_named_leaf(self):
+        self.seed({'a': {'keep': 1, 'b': {'retired': 2, 'live': 3}}})
+        self.declare([{'path': ['a', 'b'], 'key': 'retired'}])
+        self.merge()
+        self.assertEqual(self.read(), {'a': {'keep': 1, 'b': {'live': 3}}})
+
+    def test_a_missing_file_creates_no_declared_keys(self):
+        self.declare([{'path': ['scanner'], 'key': 'retired'}])
+        self.merge()
+        self.assertEqual(self.read(), {})
+
+    def test_second_run_does_not_rewrite_the_file(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual(before.st_ino, after.st_ino)
+        self.assertEqual(before.st_mtime_ns, after.st_mtime_ns)
+
+    def test_a_segment_containing_a_dot_is_one_key(self):
+        self.seed({'a.b': {'retired': 1}})
+        self.declare([{'path': ['a.b'], 'key': 'retired'}])
+        self.merge()
+        self.assertEqual(self.read(), {'a.b': {}})
+
+    def test_refuses_malformed_remove_declarations(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for document in (
+            {'removePaths': entry},
+            {'removePaths': [{'path': ['scanner']}]},
+            {'removePaths': [dict(entry, extra=1)]},
+            {'removePaths': [dict(entry, path=[])]},
+            {'removePaths': [dict(entry, path='scanner')]},
+            {'removePaths': [dict(entry, key=3)]},
+        ):
+            with self.subTest(document=document):
+                self.assert_refused(document)
+
+    def test_refuses_a_removal_on_a_key_set_removed_or_owned(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for field in ({'set': {'scanner': 1}},
+                      {'remove': ['scanner']},
+                      {'own': {'scanner': {}}}):
+            with self.subTest(field=field):
+                self.assert_refused(dict(field, removePaths=[entry]))
+
+    def test_refuses_a_removal_whose_leaf_another_declaration_claims(self):
+        # The removal's leaf is scanner.retired. A declaration that sets or
+        # manages that node, or an ancestor of it, would fight the removal
+        # with an outcome that depends on the order they run in.
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for field in ({'setPaths': [{'path': ['scanner', 'retired'], 'value': 1}]},
+                      {'setPaths': [{'path': ['scanner'], 'value': 1}]},
+                      {'upsertPaths': [{'path': ['scanner', 'retired'], 'key': 'name',
+                                        'value': {'name': 'a'}}]},
+                      {'prefixEntries': [{'path': ['scanner', 'retired'], 'prefix': 'p',
+                                          'value': 'pv'}]}):
+            with self.subTest(field=field):
+                self.assert_refused(dict(field, removePaths=[entry]))
+
+    def test_refuses_overlapping_or_repeated_removals(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for second in (
+            entry,
+            dict(entry, path=['scanner', 'retired'], key='inner'),
+        ):
+            with self.subTest(second=second):
+                self.assert_refused({'removePaths': [entry, second]})
+
+    def test_two_removals_may_name_different_keys_of_one_object(self):
+        self.seed()
+        self.declare([{'path': ['scanner'], 'key': 'retired'},
+                      {'path': ['scanner'], 'key': 'live'}])
+        self.merge()
+        self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul'})
+
+    def test_process_removes_the_named_leaf(self):
+        self.seed()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--settings', str(self.settings),
+             '--declared', str(self.declared), '--label', 'Tokscale'],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul', 'live': 'keep'})
 
 
 if __name__ == '__main__':
