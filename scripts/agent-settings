@@ -175,6 +175,11 @@ def nested_paths(entries, assign, retire, declared):
     return paths
 
 
+def check_top_level(path, assign, retire, owned):
+    if path[0] in assign or path[0] in retire or path[0] in owned:
+        raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
+
+
 def upsert_entries(entries, assign, retire, owned, paths, declared):
     if not isinstance(entries, list):
         raise ValueError('declared "upsertPaths" is not a list: {}'.format(declared))
@@ -188,8 +193,7 @@ def upsert_entries(entries, assign, retire, owned, paths, declared):
             raise ValueError('declared upsert value must be an object holding its key field: {}'.format(describe(path)))
         # Same reasoning as setPaths: another declaration on the top-level key
         # would fight this one, with the outcome depending on order.
-        if path[0] in assign or path[0] in retire or path[0] in owned:
-            raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
+        check_top_level(path, assign, retire, owned)
         check_disjoint(path, [other for other, _ in paths])
         # Two upserts on one list are fine when they name different entries;
         # anything else would have the later one undo the earlier.
@@ -212,14 +216,9 @@ def prefix_entries(entries, assign, retire, owned, paths, upserts, declared):
         check_path(path, declared)
         if not isinstance(prefix, str) or not prefix:
             raise ValueError('declared prefix must be a non-empty string: {}'.format(describe(path)))
-        # A value outside its own prefix would survive the next run's filter
-        # and be appended again beside itself.
         if value is not None and (not isinstance(value, str) or not value.startswith(prefix)):
             raise ValueError('declared prefix entry must be null or a string under its prefix: {}'.format(describe(path)))
-        if path[0] in assign or path[0] in retire or path[0] in owned:
-            raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
-        # Another declaration on the same list would drop or reorder this
-        # entry, with the outcome depending on order.
+        check_top_level(path, assign, retire, owned)
         check_disjoint(path, [other for other, _ in paths]
                        + [other for other, _, _ in upserts]
                        + [other for other, _, _ in prefixes])

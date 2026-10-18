@@ -301,13 +301,7 @@ class Antigravity(Harness):
             # agy reports success for a plugin that is not installed.
             require([self.cli, 'plugin', 'uninstall', args.plugin], args.dry_run,
                     'plugin uninstall')
-            if args.dry_run:
-                print('would remove {}'.format(args.base))
-                return 0
-            try:
-                remove_entry(args.base)
-            except FileNotFoundError:
-                pass
+            remove_base(args.base, args.dry_run)
             return 0
         except (Failure, OSError) as exc:
             print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
@@ -328,6 +322,8 @@ class OpenCode(Harness):
         return Path.home() / '.config' / 'opencode' / 'opencode.json'
 
     def write_entry(self, base, value, dry_run):
+        if value is None and not dry_run and not self.settings().exists():
+            return
         document = {'prefixEntries': [
             {'path': ['plugins'], 'prefix': '{}/'.format(base), 'value': value},
         ]}
@@ -363,17 +359,8 @@ class OpenCode(Harness):
 
     def retire(self, args):
         try:
-            # The merger creates a missing file, and a retired plugin has no
-            # reason to leave one behind.
-            if args.dry_run or self.settings().exists():
-                self.write_entry(args.base, None, args.dry_run)
-            if args.dry_run:
-                print('would remove {}'.format(args.base))
-                return 0
-            try:
-                remove_entry(args.base)
-            except FileNotFoundError:
-                pass
+            self.write_entry(args.base, None, args.dry_run)
+            remove_base(args.base, args.dry_run)
             return 0
         except (Failure, OSError) as exc:
             print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
@@ -412,6 +399,17 @@ def remove_entry(path):
         path.unlink()
 
 
+def remove_base(base, dry_run):
+    """Delete a retired plugin's base directory, which may already be gone."""
+    if dry_run:
+        print('would remove {}'.format(base))
+        return
+    try:
+        remove_entry(base)
+    except FileNotFoundError:
+        pass
+
+
 def prune(base, segment, dry_run):
     """Remove superseded version entries, leaving anything this script did not create."""
     if dry_run or not base.is_dir():
@@ -445,10 +443,7 @@ def marketplace_retire(args, harness):
             harness.remove_plugin(plugin_id, False)
         if find(registrations(harness, False), args.marketplace) is not None:
             harness.remove_marketplace(args.marketplace, False)
-        try:
-            remove_entry(args.base)
-        except FileNotFoundError:
-            pass
+        remove_base(args.base, False)
         return 0
     except (Failure, OSError) as exc:
         print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)

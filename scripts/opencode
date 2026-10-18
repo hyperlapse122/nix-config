@@ -33,9 +33,10 @@ fi
 # A process holding the key loads no project opencode.json or .opencode/
 # directory, whose plugins and provider overrides are the reviewed checkout's
 # code, and no Claude Code instructions or skills. A review peer still loads
-# the plugins the global opencode.json lists. OpenCode v2 reads OPENCODE_CONFIG_PROJECT_DISABLE before
-# OPENCODE_DISABLE_PROJECT_CONFIG, so both are set and a caller's value for
-# either cannot turn project config back on.
+# the plugins the global opencode.json lists. OpenCode v2 reads
+# OPENCODE_CONFIG_PROJECT_DISABLE before OPENCODE_DISABLE_PROJECT_CONFIG, so
+# both are set and a caller's value for either cannot turn project config back
+# on.
 export OPENCODE_DISABLE_AUTOUPDATE=true
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_CONFIG_PROJECT_DISABLE=true
