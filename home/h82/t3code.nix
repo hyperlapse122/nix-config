@@ -51,6 +51,9 @@ let
     autoResumeLimitedThreads = true;
     branchNamingMode = "semantic";
     defaultAutoPull = true;
+    # New threads start in a new worktree. A value here outranks every
+    # repository's t3.json; only a per-project override in the app wins.
+    defaultThreadEnvMode = "worktree";
     enableAgentDeviceAccess = true;
     enableDeviceSupport = true;
     providerInstances = {
@@ -93,9 +96,8 @@ let
   # Keys that used to be declared. agent-settings removes these: the merge only
   # assigns, so dropping a key from settings alone would leave its last
   # written value on every machine forever. Move it here instead, and delete
-  # the entry once every host has rebuilt past it. defaultThreadEnvMode is left
-  # to each repository's t3.json, which a value in settings.json outranks.
-  retiredKeys = [ "defaultThreadEnvMode" ];
+  # the entry once every host has rebuilt past it.
+  retiredKeys = [ ];
 
   # providers is the retired per-kind block T3 Code moves into
   # providerInstances on load, but only into an instance that does not exist

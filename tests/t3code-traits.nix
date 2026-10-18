@@ -133,11 +133,12 @@ let
       autoResumeLimitedThreads = true;
       branchNamingMode = "semantic";
       defaultAutoPull = true;
+      defaultThreadEnvMode = "worktree";
       enableAgentDeviceAccess = true;
       enableDeviceSupport = true;
       snoozeLimitedThreads = true;
     };
-    remove = [ "defaultThreadEnvMode" ];
+    remove = [ ];
     migrateInstances = {
       from = "providers";
       to = "providerInstances";
