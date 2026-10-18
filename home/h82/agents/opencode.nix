@@ -52,7 +52,11 @@ let
         # The retired cross-reviewer alias: the merge that once wrote it can
         # only assign, so activation takes it back out.
         {
-          path = [ "provider" "synthetic" "models" ];
+          path = [
+            "provider"
+            "synthetic"
+            "models"
+          ];
           key = "syn:large:text";
         }
       ];
