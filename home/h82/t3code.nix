@@ -28,15 +28,6 @@ let
   linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
   t3 = cfg.cli.enable || cfg.desktop.enable;
 
-  # The T3 Code part of the agent instructions reaches only sessions T3 Code
-  # starts, through the Claude instance's launch arguments; a terminal session
-  # never reads it. Claude Code loads CLAUDE.md from a directory passed with
-  # --add-dir when CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD is set, which
-  # the instance environment sets. --append-system-prompt-file would not work:
-  # T3 Code's own appended prompt, sent at initialize, replaces it.
-  instructions = import ./agents/instructions/render.nix { inherit pkgs lib; };
-  claudeInstructionsDir = ".t3/instructions/claude-code";
-
   # The Antigravity instances this file selects a model on. Each gets its home
   # prepared on activation, so the plugin skills are there before
   # T3 Code first starts it.
@@ -67,12 +58,9 @@ let
         driver = "antigravity";
         enabled = true;
       };
-      # --add-dir also makes the directory a working directory of every T3
-      # Code Claude session; it holds only the T3 Code part, so that is
-      # harmless.
       claudeAgent = {
         driver = "claudeAgent";
-        config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
+        config.launchArgs = "";
       };
       # T3 Code enables its built-in Codex instance unless one is declared.
       # The merge can retire only top-level keys, so the launch arguments an
@@ -120,25 +108,6 @@ let
     kinds = lib.attrNames settings.providerInstances;
   };
 
-  # The instance environment is a list the app also edits, so the one entry
-  # is upserted by name and the user's other entries stay. `sensitive` is the
-  # value the app writes back, so a later activation finds nothing to change.
-  upserts = [
-    {
-      path = [
-        "providerInstances"
-        "claudeAgent"
-        "environment"
-      ];
-      key = "name";
-      value = {
-        name = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
-        value = "1";
-        sensitive = false;
-      };
-    }
-  ];
-
   # T3 Code writes a model selection whole, with options that belong to the
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
@@ -170,11 +139,10 @@ let
       values,
       owned ? { },
       remove ? [ ],
-      upsertPaths ? [ ],
       migrateInstances ? null,
     }:
     {
-      inherit remove upsertPaths;
+      inherit remove;
       set = lib.filterAttrs (_: value: !lib.isAttrs value) values;
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
@@ -189,7 +157,6 @@ let
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
-          upsertPaths = upserts;
           migrateInstances = instanceMigration;
         })
       );
@@ -232,14 +199,6 @@ in
         "1"
       ];
       RunAtLoad = true;
-    };
-  };
-
-  home.file.t3code-claude-instructions = lib.mkIf t3 {
-    target = "${claudeInstructionsDir}/CLAUDE.md";
-    source = instructions.render {
-      harness = "claude-code";
-      parts = [ "t3code" ];
     };
   };
 
