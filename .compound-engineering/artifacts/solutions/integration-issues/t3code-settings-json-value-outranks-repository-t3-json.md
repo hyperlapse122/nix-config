@@ -35,7 +35,9 @@ retire_when: "T3 Code changes its project-file-backed tier order so t3.json outr
 
 ## Solution
 
-Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,gemini}.nix` use:
+The module declares `defaultThreadEnvMode = "worktree"` again, on purpose. New Worktree is the chosen machine-wide default, and the cost of that choice is the precedence below: the value outranks every repository's `t3.json`, and only a per-project override in the app beats it. `retiredKeys` in `home/h82/t3code.nix` is an empty list, and `tests/t3code-traits.nix` expects the key in `set` and `remove = [ ]`.
+
+For issue #224 the key was retired instead, and that remains the way to hand a project-file-backed key back to `t3.json`. Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,gemini}.nix` use:
 
 ```nix
 # home/h82/t3code.nix
@@ -44,26 +46,28 @@ retiredKeys = [ "defaultThreadEnvMode" ];
 declared = render "t3code-declared-settings.json" settings modelSelections retiredKeys;
 ```
 
-`render` adds `inherit remove;` to the JSON, so activation deletes the key from `settings.json`. Removing a key that is already absent is a no-op. `tests/t3code-traits.nix` expects `remove = [ "defaultThreadEnvMode" ]` in the settings declaration and `remove = [ ]` in the client-settings one. Putting the key back in `settings`, emptying `retiredKeys`, or dropping `inherit remove` each fails the check (mutations run in this session).
+`render` adds `inherit remove;` to the JSON, so activation deletes the key from `settings.json`. Removing a key that is already absent is a no-op. While the key was retired, `tests/t3code-traits.nix` expected `remove = [ "defaultThreadEnvMode" ]`, and putting the key back in `settings`, emptying `retiredKeys`, or dropping `inherit remove` each failed the check. With the key declared again, dropping it from `settings` or putting it back in `retiredKeys` each fails the check.
 
 The removal runs only when activation runs, which needs a new Home Manager generation; see [activation does not re-run when the generation is unchanged](../best-practices/home-manager-activation-does-not-run-on-every-rebuild.md).
 
 ## Why This Works
 
-T3 Code `0.0.46-nightly.20261015.3158` resolves each project-file-backed setting (`defaultThreadEnvMode`, `worktreeSubmodules`) in four tiers, per its client bundle `t3ProjectFile-*.js`:
+T3 Code `0.0.46-nightly.20261015.3158` and `0.1.1-nightly.20261018.3302` (checked against `t3ProjectFile-15I54s5F.js` in the pinned CLI) resolve each project-file-backed setting (`defaultThreadEnvMode`, `worktreeSubmodules`) in four tiers:
 
 1. `projectSettingsOverrides[projectId]`, the per-project override T3 Code stores in its own state (plus, until `projectSettingsFolded` is true, the project record's own `defaultThreadEnvMode`).
 2. The environment value in `settings.json`. When it is set, the resolver returns it with source `environment` and never looks further.
 3. The repository's `t3.json`, returned with source `t3.json`.
 4. The built-in default (`local` for `defaultThreadEnvMode`, `recursive` for `worktreeSubmodules`).
 
-With no value at tier 2, a project without an override falls through to its own `t3.json`, which is what issue #224 asked for.
+The module fills tier 2 with `"worktree"` on purpose, so a project without an override never reaches its `t3.json` for this key. A project reaches its `t3.json` only if the declared value is removed, which is what retiring the key did for issue #224.
+
+`0.1.1-nightly.20261018.3302` adds one exception for `defaultThreadEnvMode`: when the value comes from tier 2, the project has no threads yet, and its workspace root is a direct child of the new-projects directory (`addProjectBaseDirectory`, `~/src` here), the first thread starts `local`. Repositories under `~/src/github.com/<owner>/<repo>` are not direct children, so they get the worktree default.
 
 Scripts follow a different rule. Stored `projectSettingsOverrides[*].defaultProjectScripts` win over `t3.json` scripts: once `projectSettingsFolded` is true, T3 Code falls back from the per-project override to the environment's `defaultProjectScripts`, and `t3.json` scripts are only offered for import. On this machine two projects store their own scripts, one still carrying an old "Setup Worktree" command. The module deliberately does not manage these overrides, because they are app state the user edits in the UI.
 
 ## Prevention
 
-- Before declaring a T3 Code key machine-wide, check whether it is project-file-backed. If a repository's `t3.json` can set it, a declared value overrides every repository; leave the key to `t3.json` unless every project should share it.
+- Before declaring a T3 Code key machine-wide, check whether it is project-file-backed. If a repository's `t3.json` can set it, a declared value overrides every repository; declare it only when every project should share it, as `defaultThreadEnvMode` now does.
 - To stop declaring any agent setting, move the key to `retiredKeys` instead of deleting the line, and drop the entry once every host has rebuilt past it.
 - When a project ignores its `t3.json`, look at `settings.json` and that project's entry in `projectSettingsOverrides` before suspecting the repository file.
 - A passing `t3code-traits` check says nothing about precedence. Confirm the effect with T3 Code running: open a thread in a project whose `t3.json` sets the mode.

@@ -58,7 +58,7 @@ Commit `e54b95b` (issue #224) stopped declaring `defaultThreadEnvMode` and retir
 ### Key Technical Decisions
 
 - KTD1. **Restore the key as a plain scalar in `settings`.** It lands in the declaration's `set` map like the other scalars, which is how it was declared before `e54b95b`. Governs R1.
-- KTD2. **Keep `retiredKeys` and the `remove` plumbing, with an empty list.** `home/h82/agents/codex.nix` and `home/h82/agents/gemini.nix` keep `retiredKeys = [ ]` the same way, so the next retirement needs no plumbing change. Governs R2.
+- KTD2. **Keep `retiredKeys` and the `remove` plumbing, with an empty list.** `home/h82/agents/gemini.nix` keeps `retiredKeys = [ ]` the same way, so the next retirement needs no plumbing change. Governs R2.
 - KTD3. **Update the existing learning in place rather than marking it stale.** Its precedence facts stay true; only the Solution, which describes the retired state, and the Prevention advice change. Governs R4.
 
 ### Assumptions
@@ -80,7 +80,7 @@ Commit `e54b95b` (issue #224) stopped declaring `defaultThreadEnvMode` and retir
   2. Set `retiredKeys = [ ];` and rewrite its comment so it describes the convention without naming `defaultThreadEnvMode`.
   3. In `settingsExpectedBase`, add the key to `set` and change `remove` to `[ ]`; update the comment above `settingsExpected` that says a retired key is removed.
   4. Confirm in the pinned T3 Code build's client bundle (`t3ProjectFile-*.js`, the file the learning's `retire_when` names) that the resolver still returns the `settings.json` value with source `environment` before `t3.json`, and record the pin checked in the learning (U2).
-- **Patterns to follow:** the `retiredKeys = [ ];` comment in `home/h82/agents/codex.nix`.
+- **Patterns to follow:** the `retiredKeys = [ ];` comment in `home/h82/agents/gemini.nix`.
 - **Test scenarios:**
   - The rendered `t3code-declared-settings.json` has `set.defaultThreadEnvMode = "worktree"` and `remove = [ ]`; `t3code-traits` passes.
   - Mutation: removing the key from `settings` fails `t3code-traits`.
