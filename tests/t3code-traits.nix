@@ -16,7 +16,7 @@
   - share/applications/t3code.desktop and bin/t3code-desktop resolve into the
     t3code-desktop package exactly when the desktop trait is on;
   - nothing else on PATH comes from a T3 Code package, so T3 Code brings no
-    codex or claude of its own and its sessions run the flake's.
+    claude of its own and its sessions run the flake's.
   - home.activation.t3codeSettings and home.activation.t3codeClientSettings
     exist exactly when either trait is on and run after installPackages. Each
     script is executed with the packaged merger swapped for a stub that
@@ -30,9 +30,9 @@
     settings.json declaration names the provider instances' leaves: the
     enabled Antigravity and OpenCode instances, the Claude instance's
     --add-dir under that configuration's home, its environment entry upserted
-    by name, and the Codex launch argument built from the rendered Codex
-    system and T3 Code parts; the retired `providers` block of those four
-    instances is migrated into them first.
+    by name, and the built-in Codex instance declared disabled, since Codex is
+    no longer installed; the retired `providers` block of those four instances
+    is migrated into them first.
   - ~/.t3/instructions/claude-code/CLAUDE.md, which the Claude instance's
     --add-dir loads, exists exactly when either trait is on and holds the
     rendered Claude Code T3 Code part.
@@ -141,29 +141,7 @@ let
   # Claude instance's launch argument names the home, so the declaration is
   # rendered per configuration.
   settingsExpected =
-    home:
-    instructions.declare {
-      name = "t3code-expected-settings.json";
-      base = settingsExpectedBase home;
-      leaves = [
-        {
-          path = [
-            "providerInstances"
-            "codex"
-            "config"
-            "launchArgs"
-          ];
-          encoding = "codex-launch";
-          source = instructions.render {
-            harness = "codex";
-            parts = [
-              "system"
-              "t3code"
-            ];
-          };
-        }
-      ];
-    };
+    home: pkgs.writeText "t3code-expected-settings.json" (builtins.toJSON (settingsExpectedBase home));
 
   settingsExpectedBase = home: {
     set = {
@@ -239,9 +217,26 @@ let
         path = [
           "providerInstances"
           "codex"
+          "config"
+          "launchArgs"
+        ];
+        value = "";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
           "driver"
         ];
         value = "codex";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
+          "enabled"
+        ];
+        value = false;
       }
       {
         path = [

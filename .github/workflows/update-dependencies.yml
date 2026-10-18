@@ -79,10 +79,7 @@ jobs:
           # 6. Update mise
           nix run .#mise-release -- --output packages/mise-release.json
 
-          # 7. Update Codex
-          nix run .#codex-release -- --output packages/codex-release.json
-
-          # 8. Update T3 Code. A nightly can be published before its assets
+          # 7. Update T3 Code. A nightly can be published before its assets
           # and digests are, so a failure here keeps the current pin and lets
           # the other updates through.
           if ! nix run .#t3code-release -- --output packages/t3code-release.json; then
@@ -90,21 +87,21 @@ jobs:
             git checkout -- packages/t3code-release.json
           fi
 
-          # 9. Update the Antigravity CLI. A feed failure keeps the current
+          # 8. Update the Antigravity CLI. A feed failure keeps the current
           # pin and lets the other updates through, as T3 Code's does.
           if ! nix run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json; then
             echo "::warning title=Antigravity CLI update skipped::antigravity-cli-release failed; keeping the current pin in packages/antigravity-cli-release.json."
             git checkout -- packages/antigravity-cli-release.json
           fi
 
-          # 10. Update WiFiman Desktop. An API failure keeps the current pin
+          # 9. Update WiFiman Desktop. An API failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
           if ! nix run .#wifiman-desktop-release -- --output packages/wifiman-desktop-version.json; then
             echo "::warning title=WiFiman Desktop update skipped::wifiman-desktop-release failed; keeping the current pin in packages/wifiman-desktop-version.json."
             git checkout -- packages/wifiman-desktop-version.json
           fi
 
-          # 11. Update OpenCode. The npm tag can move before every platform
+          # 10. Update OpenCode. The npm tag can move before every platform
           # package is published, so a failure keeps the current pin and lets
           # the other updates through, as T3 Code's does.
           if ! nix run .#opencode-release -- --output packages/opencode-release.json; then
@@ -175,12 +172,6 @@ jobs:
             NEW_VER=$(jq -r .version packages/claude-code-manifest.json)
             git add packages/claude-code-manifest.json
             git commit -m "chore(packages): bump claude-code to $NEW_VER"
-          fi
-
-          if [ -n "$(git status --porcelain packages/codex-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/codex-release.json)
-            git add packages/codex-release.json
-            git commit -m "chore(packages): bump codex to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/opencode-release.json)" ]; then

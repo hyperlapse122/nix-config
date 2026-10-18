@@ -4,8 +4,7 @@ let
   # for its native-tool section.
   harnesses = {
     claude-code = "Claude Code";
-    antigravity = "Antigravity";
-    codex = "Codex";
+    opencode = "OpenCode";
   };
 
   # A merged file always carries its parts in this order, so the system rules
@@ -55,22 +54,4 @@ in
         ${lib.concatMapStringsSep "\nprintf '\\n' >> $out\n" (part: "cat ${part}.md >> $out") parts}
       '';
 
-  # A declared-settings file: `base`, the declaration as a Nix value, with
-  # setPaths leaves appended that carry rendered instruction text. The text is
-  # read in the builder, not with builtins.readFile, so evaluating a host never
-  # builds a rendered part (no import-from-derivation). Each leaf is
-  # { path; encoding; source; }; see declare.py for encodings.
-  declare =
-    {
-      name,
-      base,
-      leaves,
-    }:
-    pkgs.runCommand name { nativeBuildInputs = [ pkgs.python3 ]; } ''
-      python3 ${./declare.py} ${pkgs.writeText "${name}-base" (builtins.toJSON base)} $out ${
-        lib.concatMapStringsSep " " (
-          leaf: "--leaf ${lib.escapeShellArg (builtins.toJSON leaf.path)} ${leaf.encoding} ${leaf.source}"
-        ) leaves
-      }
-    '';
 }

@@ -13,7 +13,6 @@ let
   # Single source of truth with home/h82/default.nix's package list, so each
   # command's --cli flag can never drift onto a different agent build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
-  codex = import ../../../packages/codex.nix { inherit pkgs; };
   antigravityCli = import ../../../packages/antigravity-cli.nix { inherit pkgs; };
 
   # Neutral source registry: what a plugin is and where it comes from, with no
@@ -41,7 +40,6 @@ let
       # because one harness can misclassify a tree another accepts.
       exclude = {
         claude = [ ];
-        codex = [ ];
         antigravity = [ ];
       };
     };
@@ -56,10 +54,6 @@ let
     }
     {
       name = "compound-engineering";
-      harness = "codex";
-    }
-    {
-      name = "compound-engineering";
       harness = "antigravity";
     }
   ];
@@ -67,15 +61,11 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; Codex's and agy's update overrides travel inside their wrappers instead.
+  # it; agy's update overrides travel inside its wrapper instead.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
       env = claudeEnv;
-    };
-    codex = {
-      cli = "${codex}/bin/codex";
-      env = "";
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";

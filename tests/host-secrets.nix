@@ -125,7 +125,7 @@ pkgs.runCommand "host-secrets-tests"
       for file in .config/gh/hosts.yml .config/glab-cli/config.yml .ssh/id_ed25519_nix_config; do
         [ "$(stat -c %a "$HOME/$file")" = 600 ] || fail "$round: $file is not 0600"
       done
-      for token in github_token gitlab_token jpi_token tokscale_token opencode_api_key; do
+      for token in github_token gitlab_token jpi_token tokscale_token synthetic_api_key; do
         [ "$(stat -c %a "$HOME/.local/state/cli-auth/$token")" = 400 ] || fail "$round: $token is not 0400"
       done
       [ "$(stat -c %a "$HOME/.local/state/cli-auth")" = 700 ] || fail "$round: the token directory is not 0700"
@@ -135,6 +135,17 @@ pkgs.runCommand "host-secrets-tests"
       [ ! -e "$HOME/.local/state/.cli-auth-stage" ] || fail "$round: staging was left behind"
     done
     pass 'stage then publish install every secret privately, twice in a row'
+
+    # --- a retired token leaves the state directory ---------------------------
+    fresh_home retired
+    install_key ${secrets}/key.txt
+    mkdir -p "$HOME/.local/state/cli-auth"
+    printf 'FAKE-CANARY retired\n' >"$HOME/.local/state/cli-auth/opencode_api_key"
+    hs stage 2>err || fail "retired: stage failed: $(cat err)"
+    hs publish 2>err || fail "retired: publish failed: $(cat err)"
+    [ ! -e "$HOME/.local/state/cli-auth/opencode_api_key" ] || fail 'publish left the retired opencode_api_key behind'
+    [ -f "$HOME/.local/state/cli-auth/synthetic_api_key" ] || fail 'publish did not publish synthetic_api_key'
+    pass 'publish deletes a retired token and publishes its replacement'
 
     # --- publish never writes through a symlink -----------------------------
     fresh_home planted

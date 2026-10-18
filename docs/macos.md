@@ -32,7 +32,7 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **Containers.** One Podman machine, with minikube inside it on production outputs; see [Containers](#containers).
 - **Fonts.** The NixOS font list is installed system-wide.
 - **System defaults.** `modules/darwin/defaults.nix` is where Dock, Finder, trackpad, and keyboard defaults go. It sets none yet.
-- **User environment.** zsh, Git, the development tools, Claude Code, Codex, and the other agents, configured as on a non-NixOS Linux host.
+- **User environment.** zsh, Git, the development tools, Claude Code, OpenCode, and the other agents, configured as on a non-NixOS Linux host.
 
 ## First setup on the Mac
 

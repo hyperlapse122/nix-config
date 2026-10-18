@@ -12,10 +12,10 @@ let
         mkdir -p $out
         age-keygen -o $out/key.txt
         recipient=$(age-keygen -y $out/key.txt)
-        # tokscale_token and opencode_api_key carry a space, which
+        # tokscale_token and synthetic_api_key carry a space, which
         # publish-cli-auth rejects, so gh and glab publication fails here if the
         # publisher ever starts reading either.
-        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\ntokscale_token: FAKE tokscale\nopencode_api_key: FAKE opencode\n' > plain.yaml
+        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\ntokscale_token: FAKE tokscale\nsynthetic_api_key: FAKE opencode\n' > plain.yaml
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tokens.yaml
       '';
 in
@@ -49,7 +49,7 @@ pkgs.testers.nixosTest {
       enable = true;
       sopsFile = "${fixtures}/tokens.yaml";
       enableTokscaleToken = true;
-      enableOpencodeApiKey = true;
+      enableSyntheticApiKey = true;
     };
     # Deliberately public fake key. Production never embeds a real key in the store.
     system.activationScripts.fixture = ''
@@ -92,7 +92,7 @@ pkgs.testers.nixosTest {
         tokscale = "/run/secrets/cli-auth/tokscale_token"
         machine.succeed("runuser -u h82 -- cat " + tokscale + " | grep -qx 'FAKE tokscale'")
         machine.succeed("test $(stat -L -c '%a:%U' " + tokscale + ") = 400:h82")
-        opencode = "/run/secrets/cli-auth/opencode_api_key"
+        opencode = "/run/secrets/cli-auth/synthetic_api_key"
         machine.succeed("runuser -u h82 -- cat " + opencode + " | grep -qx 'FAKE opencode'")
         machine.succeed("test $(stat -L -c '%a:%U' " + opencode + ") = 400:h82")
     verify()

@@ -40,7 +40,7 @@
     printing.enable = lib.mkDefault true;
     cliAuth.enable = lib.mkDefault (!config.my.bootstrap);
     cliAuth.enableTokscaleToken = lib.mkDefault true;
-    cliAuth.enableOpencodeApiKey = lib.mkDefault true;
+    cliAuth.enableSyntheticApiKey = lib.mkDefault true;
     tailscale.enable = lib.mkDefault (!config.my.bootstrap);
     protonVpn.enable = lib.mkDefault (!config.my.bootstrap);
     wifiman.enable = lib.mkDefault true;

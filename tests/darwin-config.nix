@@ -320,9 +320,7 @@ let
       (check (routingTable ? "docker.io" && !(routingTable ? "https://index.docker.io/v1/"))
         "${entry.name}: the credential helper must route docker.io and no longer the Docker Hub index alias"
       )
-      (check (
-        codex != null && !lib.hasInfix "bubblewrap" (plain (builtins.toJSON (codex.drvAttrs or { })))
-      ) "${entry.name}: codex must be installed and must not run under bubblewrap")
+      (check (codex == null) "${entry.name}: codex was removed and must not be installed")
       (lib.concatMapStrings (
         cask:
         check (

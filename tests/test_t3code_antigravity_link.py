@@ -2,8 +2,8 @@
 
 T3 Code keeps each Antigravity instance's GEMINI_HOME at
 <base>/userdata/providers/antigravity/<sha256 of the instance id>. The helper
-creates the declared homes and links the CLI's global instructions into config/
-of every home there. It links each plugin skill into ~/.gemini/antigravity-cli/skills,
+creates the declared homes and removes the config/ links an earlier version made
+in every home there. It links each plugin skill into ~/.gemini/antigravity-cli/skills,
 which T3 Code links into every home itself, because the ACP runtime loads skills
 but not plugins.
 """
@@ -42,9 +42,8 @@ class LinkTest(unittest.TestCase):
         return self.providers / key
 
     def assert_linked(self, home):
-        link = home / "config/AGENTS.md"
-        self.assertTrue(link.is_symlink(), link)
-        self.assertEqual(os.readlink(link), str(self.gemini / "AGENTS.md"))
+        self.assertTrue((home / "config").is_dir(), home)
+        self.assertFalse(os.path.lexists(home / "config/AGENTS.md"))
         self.assertFalse(os.path.lexists(home / "config/plugins"))
 
     def make_plugin_skill(self, plugin, name):
@@ -69,7 +68,7 @@ class LinkTest(unittest.TestCase):
         home = self.home()
         self.assertEqual(home.stat().st_mode & 0o777, 0o700)
         self.assert_linked(home)
-        self.assertEqual(len(result.stdout.splitlines()), 1)
+        self.assertEqual(result.stdout, "")
 
     def test_existing_t3_home_keeps_other_entries(self):
         home = self.make_t3_home()
@@ -85,13 +84,20 @@ class LinkTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_linked(home)
 
-    def test_wrong_link_replaced(self):
+    def test_old_instructions_link_is_removed(self):
         home = self.make_t3_home()
-        os.symlink("/wrong", home / "config/AGENTS.md")
+        os.symlink(self.gemini / "AGENTS.md", home / "config/AGENTS.md")
         result = self.run_helper("antigravity")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_linked(home)
-        self.assertEqual([p.name for p in (home / "config").iterdir() if p.name.startswith(".")], [])
+        self.assertIn(f"removed {home / 'config/AGENTS.md'}", result.stdout)
+
+    def test_foreign_instructions_link_is_left(self):
+        home = self.make_t3_home()
+        os.symlink("/elsewhere/AGENTS.md", home / "config/AGENTS.md")
+        result = self.run_helper("antigravity")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(os.readlink(home / "config/AGENTS.md"), "/elsewhere/AGENTS.md")
 
     def test_regular_file_left(self):
         home = self.make_t3_home()

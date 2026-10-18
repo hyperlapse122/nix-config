@@ -1,8 +1,8 @@
 /*
   T3 Code nightly, one artifact per trait: my.t3.cli.enable installs the
-  headless `t3` CLI and my.t3.desktop.enable the desktop app. Its Codex and
-  Claude sessions run the flake's own codex and claude with their user-level
-  settings, so nothing here adds a copy of either. The T3 Code settings that
+  headless `t3` CLI and my.t3.desktop.enable the desktop app. Its Claude
+  sessions run the flake's own claude with its user-level settings, so nothing
+  here adds a copy of it. The T3 Code settings that
   differ from the pinned nightly's defaults are merged into its own settings
   files on activation, and the Antigravity runtime it requires is installed
   where T3 Code looks for it.
@@ -29,18 +29,16 @@ let
   t3 = cfg.cli.enable || cfg.desktop.enable;
 
   # The T3 Code part of the agent instructions reaches only sessions T3 Code
-  # starts, through each instance's launch arguments; a terminal session never
-  # reads it. Claude Code loads CLAUDE.md from a directory passed with
+  # starts, through the Claude instance's launch arguments; a terminal session
+  # never reads it. Claude Code loads CLAUDE.md from a directory passed with
   # --add-dir when CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD is set, which
   # the instance environment sets. --append-system-prompt-file would not work:
-  # T3 Code's own appended prompt, sent at initialize, replaces it. Codex
-  # takes developer_instructions as a -c override, which replaces the
-  # config.toml value codex.nix declares, so it carries the system part too.
+  # T3 Code's own appended prompt, sent at initialize, replaces it.
   instructions = import ./agents/instructions/render.nix { inherit pkgs lib; };
   claudeInstructionsDir = ".t3/instructions/claude-code";
 
   # The Antigravity instances this file selects a model on. Each gets its home
-  # prepared on activation, so the plugins and instructions are there before
+  # prepared on activation, so the plugin skills are there before
   # T3 Code first starts it.
   antigravityInstances = [ textGenerationInstance ];
   # The instance T3 Code generates commit messages and titles with.
@@ -76,7 +74,15 @@ let
         driver = "claudeAgent";
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
       };
-      codex.driver = "codex";
+      # T3 Code enables its built-in Codex instance unless one is declared.
+      # The merge can retire only top-level keys, so the launch arguments an
+      # earlier generation wrote, which carried the old instructions, are
+      # overwritten with nothing.
+      codex = {
+        driver = "codex";
+        enabled = false;
+        config.launchArgs = "";
+      };
       # The opencode on PATH is the wrapper that carries the API key, so no
       # binaryPath is needed and the key never reaches this file.
       opencode = {
@@ -178,34 +184,15 @@ let
   merges = {
     t3codeSettings = {
       file = "settings.json";
-      declared = instructions.declare {
-        name = "t3code-declared-settings.json";
-        base = declaration {
+      declared = pkgs.writeText "t3code-declared-settings.json" (
+        builtins.toJSON (declaration {
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
           upsertPaths = upserts;
           migrateInstances = instanceMigration;
-        };
-        leaves = [
-          {
-            path = [
-              "providerInstances"
-              "codex"
-              "config"
-              "launchArgs"
-            ];
-            encoding = "codex-launch";
-            source = instructions.render {
-              harness = "codex";
-              parts = [
-                "system"
-                "t3code"
-              ];
-            };
-          }
-        ];
-      };
+        })
+      );
     };
     t3codeClientSettings = {
       file = "client-settings.json";
@@ -283,7 +270,8 @@ in
       # T3 Code runs each Antigravity instance under its own GEMINI_HOME,
       # whose ACP runtime loads skills but no plugins, so each plugin skill is
       # linked into ~/.gemini/antigravity-cli/skills, which T3 Code links into
-      # every instance home, and the CLI's global instructions into each home.
+      # every instance home; the linker also removes the config links an earlier
+      # version made in each home.
       # It runs after agentPlugins so a sync's new or retired skills are seen.
       # An instance added in the app gets its links on the next activation,
       # which on NixOS runs only when a rebuild produces a new Home Manager

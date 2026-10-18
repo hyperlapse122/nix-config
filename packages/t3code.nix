@@ -22,7 +22,7 @@ let
   };
 
   meta = {
-    description = "Desktop GUI for coding agents like Codex and Claude (nightly)";
+    description = "Desktop GUI for coding agents like Claude Code and OpenCode (nightly)";
     homepage = "https://github.com/pingdotgg/t3code";
     license = lib.licenses.mit;
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];

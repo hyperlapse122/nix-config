@@ -5,23 +5,22 @@
 
   Asserts that the shared agent instructions reach every delivery path for
   user `h82` on every host this flake declares, each part exactly once. The
-  template renders three parts: system (tool use, GPG, model routing), user
-  (review findings, learning refresh, branch names, commit hooks, pull and
-  merge requests, issue media), and T3 Code (the rules that only apply inside
-  T3 Code). The channels, and the parts each must hold:
+  template renders three parts: system (tool use, GPG, the cross-model peer),
+  user (review findings, learning refresh, branch names, commit hooks, pull
+  and merge requests, issue media), and T3 Code (the rules that only apply
+  inside T3 Code). The channels, and the parts each must hold:
 
     Claude Code   ~/.claude/CLAUDE.md                          system + user
                   ~/.t3/instructions/claude-code/CLAUDE.md     T3 Code
-    Antigravity   ~/.gemini/config/AGENTS.md                   system + user
-    Codex         ~/.codex/AGENTS.md                           user
-                  config.toml developer_instructions           system
-                  T3 Code launch -c developer_instructions     system + T3 Code
+    OpenCode      the file the wrapper's instructions config   system + user
+                  names, which only a standalone run loads
 
-  A terminal session reads the first row of each harness, plus Codex's
-  developer_instructions. A T3 Code session also reads the Claude Code T3
-  Code file, which the Claude instance's --add-dir loads, and Codex's launch
-  override, which replaces developer_instructions. Antigravity under T3 Code
-  has no channel yet and is not checked.
+  A terminal session reads the first row of each harness. A T3 Code session
+  also reads the Claude Code T3 Code file, which the Claude instance's
+  --add-dir loads. The OpenCode file is read from the installed wrapper itself:
+  its INSTRUCTIONS_CONFIG constant, then the one file that config lists.
+  Neither Codex's ~/.codex/AGENTS.md nor Antigravity's
+  ~/.gemini/config/AGENTS.md may come back.
 
   The user list is `userEntries` from `tests/lib/configurations.nix`, plus each
   production configuration and this architecture's production fixtures
@@ -37,31 +36,33 @@
     attribute name, and reads `enable`, because either can move the file
     without changing its text. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
-  - Codex's developer_instructions is read from the declared file the
-    codexSettings activation passes the merger. The launch override is read
-    from the t3codeSettings declared file, split as a shell would split it and
-    decoded as TOML, so a broken `'` or `"` escape fails. The Claude
-    instance's launch arguments must be `--add-dir` the directory of the T3
-    Code file, with the environment variable that makes Claude Code load it.
+  - the Claude instance's launch arguments, read from the t3codeSettings
+    declared file, must be `--add-dir` the directory of the T3 Code file,
+    with the environment variable that makes Claude Code load it.
   - on each delivery path, every pinned sentence of each part the path
     carries appears exactly once, and no pinned sentence of another part
     appears, so a part dropped, doubled, or delivered to the wrong path fails.
   - in each channel, the parts it holds pass their sentence rules, and no
     channel without the T3 Code part contains the string `T3 Code`:
-    - system: the opening sentence with this harness's name, the GPG rule
-      with every sentence pinned, the model-routing rule with each table row
-      matched whole, and every native tool its harness maps.
+    - system: the opening sentence with this harness's name, the tool-use
+      and GPG rules with every sentence pinned, every native tool its harness
+      maps, and, for Claude Code only, the cross-model peer rule as the whole
+      of its section. OpenCode's channel must not carry that rule, so a
+      standalone OpenCode session never names itself as its own peer.
     - user: the review-findings, learning-refresh, branch-name, and media
       rules, and the commit-hook and pull and merge request rules with every
       sentence pinned, in order, inside their sections.
     - T3 Code: the T3 Code introduction in order, including the rule that
-      every subagent job goes through T3 Code, and the cross-model
-      delegation and T3 Code pull and merge request rules with every
-      sentence pinned, in order, inside their sections.
+      every subagent job goes through T3 Code, and the delegation and T3 Code
+      pull and merge request rules with every sentence pinned, in order,
+      inside their sections, so a second cross-model peer, a retry onto
+      another provider, or a new wait rule fails.
   - every required sentence starts where a sentence starts, so a guarded
     sentence negated by a prefix ("Do not ...") fails.
-  - no channel carries a superseded directive, another harness's native
-    tool, an unrendered template action (`{{`, `}}`), or `<no value>`.
+  - no channel names a removed harness, model, or rule (Antigravity, Gemini,
+    Argon, Codex, OpenCode Zen, Model routing, the recipient disclosure),
+    another harness's native tool, an unrendered template action (`{{`,
+    `}}`), or `<no value>`.
 
   The expected sentences and tool names are literals here, not read from the
   module, so a mutation of the template turns this red.
@@ -88,24 +89,23 @@ let
     "Apply every finding that `ce-code-review` (its cross-model pass included), `ce-simplify-code`, and `ce-doc-review` report, whatever its severity (P2 and P3 included), its confidence, or the list it sits in."
     "This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`."
     "Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing."
-    "In an autonomous run, stop and ask with the question tool when a fix would reverse a decision the user made, such as a `session-settled` entry in the plan."
+    "In an autonomous run, such as `lfg`, apply the recommended fix and list the decision in the final report, but stop and ask with the question tool when the fix would reverse a decision the user made, such as a `session-settled` entry in the plan."
   ];
 
   learningRefreshSentences = [
     "Before each push, check whether the commits it would send break a learning, and refresh that learning on the branch before you push."
     "Check the commits the remote branch does not have yet, or, before the first push, the commits since the branch left the default branch."
-    "Leave a learning alone when it already carries `status: stale`, so a learning a refresh marked stale is not refreshed again."
-    "Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint."
-    "In an autonomous run, such as `lfg`, pass `mode:non-interactive`, which marks an ambiguous learning stale instead of asking."
-    "Commit the refresh as its own commit on the current branch, separate from the change that caused it, and push it with that change."
-    "Let `ce-compound-refresh` push nothing; push once, after every refresh run has finished, so the push carries every refresh commit."
+    "Leave a learning that already carries `status: stale` alone, so a learning a refresh marked stale is not refreshed again."
+    "Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint: in interactive mode in an interactive session, and with `mode:non-interactive`, which marks an ambiguous learning stale instead of asking, in an autonomous run such as `lfg`."
+    "Commit each refresh as its own commit on the current branch, separate from the change that caused it."
+    "Let `ce-compound-refresh` push nothing; push once, after every refresh run has finished, so the push carries the change and every refresh commit."
   ];
 
   branchNameSentences = [
     "Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not."
     "A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change."
     "Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it."
-    "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change."
+    "When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change, for example `feat/add-branch-naming-rule`."
   ];
 
   commitHookSentences = [
@@ -117,6 +117,13 @@ let
     "When the untrusted file is the checkout's own `mise.toml`, trusting it is the user's decision; report the failure instead."
   ];
 
+  toolUseSentences = [
+    "Ask with the question tool when the user's answer changes what you do next, rather than ending your turn on an open question."
+    "Hand independent work that can run in parallel to the subagent tool, on the model tier the invoked skill names for it."
+    "Keep the shell for work no native tool covers: builds, tests, formatters, `git`, package managers, and searches of the tree."
+    "When a native tool fails or cannot express an operation, say so and use the shell for that one operation only, then go back to the native tool."
+  ];
+
   gpgSentences = [
     "The user's GPG key is on an OpenPGP card, a YubiKey that stays connected, and its PIN is usually cached, so GPG works from your shell without the user."
     "Run GPG signing, decryption, and encryption yourself, along with work that goes through GPG, such as SOPS re-encryption and editing; do not ask the user to run these commands."
@@ -124,9 +131,15 @@ let
     "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing."
     "Never print decrypted values, pass them as command arguments, or read decrypted files with the file tools; send decrypted output straight into the command that consumes it."
     "Leave card administration and key management to the user: card-edit admin commands, PIN changes, key generation, secret-key export, and trust changes."
-    "When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key."
-    "When a machine or service must decrypt that file without the card, also add the machine's own recipient."
+    "When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key, and also add a machine's own recipient when that machine or service must decrypt the file without the card."
     "Keep the existing method in a project that already encrypts with age or another method."
+  ];
+
+  # The whole Cross-model review section. Only a harness that hosts CE's
+  # automatic pass carries it; an OpenCode session would name itself.
+  peerSentences = [
+    "Compound Engineering (CE) skills use `opencode` as the cross-model peer."
+    "When the peer fails, skip the pass and say why in one line; do not retry it or run another peer in its place."
   ];
 
   pullRequestSentences = [
@@ -154,13 +167,10 @@ let
 
   t3IntroSentences = [
     "This session runs inside T3 Code."
-    "These rules add to the Tool use, Model routing, and Pull and merge requests sections of your other instructions, and where they differ, these rules take precedence."
-    "Route to another provider only through T3 Code, as Cross-model delegation describes."
-    "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
-    "When the T3 Code MCP tools are available, delegate every subagent job through T3 Code as Cross-model delegation describes instead of using your native subagent tool, whatever provider or model the job needs."
-    "This covers short and broad scouts, workers, and the reviewers or other parallel agents a skill dispatches in-process, such as `ce-code-review`'s reviewers."
-    "It overrides Tool use's instruction to hand parallel work to the subagent tool and T3 Code's own guidance to prefer native subagent tools for same-provider work."
-    "Use your native subagent tool only when the T3 Code MCP tools are not available in this session, or when no T3 Code provider succeeds for a job, as Cross-model delegation describes."
+    "These rules add to the Tool use, Cross-model review, and Pull and merge requests sections of your other instructions, and where they differ, these rules take precedence."
+    "When the T3 Code MCP tools are available, delegate every subagent job through T3 Code as Delegation describes, instead of using your native subagent tool."
+    "This covers scouts, workers, and the reviewers or other parallel agents a skill dispatches in-process, such as `ce-code-review`'s reviewers, and overrides Tool use's instruction to hand parallel work to the subagent tool and T3 Code's own guidance to prefer native subagent tools for same-provider work."
+    "Use your native subagent tool only when the T3 Code MCP tools are not available in this session, or when a delegated job falls back to it as Delegation describes."
   ];
 
   t3PullRequestSentences = [
@@ -193,7 +203,7 @@ let
   ];
 
   mediaSentences = [
-    "When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change."
+    "When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change, whether the user supplied them or you capture them."
     "Attach every image or video from the conversation that relates to the item you are writing."
     "When showing the screen or behavior would help a reader and no media in the conversation already shows it, reproduce it with the tools this session offers, such as browser automation, an app preview, or a device simulator, and capture a screenshot, or a recording when the point is motion or a sequence of steps."
     "Do not capture when reproducing needs production data, a payment, a login you do not already hold, or another action with side effects; tell the user why you captured nothing."
@@ -215,20 +225,6 @@ let
     "When a skill defines the body of an issue or pull request, keep its structure and add the media to it."
   ];
 
-  routingSentences = [
-    "Each routing choice follows this order: the user's conversation, then the project's instructions and its CE config (`.compound-engineering/config.local.yaml`, then `.compound-engineering/config.yaml`) in the order the invoked skill defines, then the table below, then the skill's own default mapping."
-    "Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why."
-    "A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row."
-    "Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it."
-    "Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one."
-    "Apply the same-provider cells in every session; a subagent you start yourself runs on your own provider."
-    "When your native subagent tool cannot select the table's class, let the subagent inherit your session model and say so in one line."
-    # Role table rows, each matched whole so a changed cell fails.
-    "| Short scout | Haiku | Luna | Flash low |"
-    "| Broad scout | Haiku | Luna | Flash low |"
-    "| Worker | Sonnet | Luna | Flash medium |"
-  ];
-
   # How a T3 Code delegation returns and how to wait for it: async by
   # default, a completion notification instead of a blocking call, one
   # status read per task, and no polling or self-wake.
@@ -238,74 +234,68 @@ let
     "Launch with `mode: \"wait\"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it."
     "After an `async` launch, do the work that does not need the result; when a step needs results whose notifications have not all arrived, end your turn, and resume that step once every task it waits on has notified."
     "Never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself for a delegated task."
-    "Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the retry rule in this section."
+    "Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the failure rule in this section."
     "Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: \"wait\"` launch returns `waitTimedOut`."
     "Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited."
   ];
+
+  toolsSentence = "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`, possibly under a prefix such as `mcp__t3-code__`.";
 
   # Every sentence of the delegation section that may speak about status
   # reads, waiting, or self-wake. Any other such sentence there, such as an
   # added "keep polling `task_status`" or "wait five minutes and check
   # whether the child finished", fails.
-  waitTopicSentences = [
-    "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`."
-  ]
-  ++ asyncDelegationSentences;
+  waitTopicSentences = [ toolsSentence ] ++ asyncDelegationSentences;
 
   delegationSentences = [
     "Delegate subagent work through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you."
-    "This section applies to every subagent job whenever the T3 Code MCP tools are available in this session, whether the job runs on your own provider or another."
-    "Tools the session lists by name count as available even when the harness must load their schemas before the first call."
-    "The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`."
-    "A harness may expose them under a prefix such as `mcp__t3-code__`."
-    "When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens."
-    "Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified."
-    "Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose the provider and model that suit the task, following Model routing: your own provider for a same-provider cell of the table, another provider for cross-model work."
-    "A job that would inherit your session model under your native subagent tool, such as a skill's reviewer with no tier of its own, runs on your session model, and a retry on another provider gives it that provider's class at the Opus tier: Opus for Claude, Sol for Codex, or Argon at medium effort for Gemini."
-    "Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Argon, at the Opus tier, or Flash, between Sonnet and Haiku, for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable."
-    "Compare versions only within that class: a newer model of another class does not outrank the class the task needs."
+    toolsSentence
+    "They count as available when the session lists them by name, even when the harness must load their schemas before the first call."
+    "Before delegating, list the runnable providers and models with `orchestrator_capabilities`."
+    "Run each job on your own provider at the model its skill's tier names: Haiku for the cheapest capable tier, Sonnet for the mid-tier, and your session model when the skill names no tier."
+    "Choose the latest version of that model that `orchestrator_capabilities` lists as runnable; a newer model of another class does not outrank it."
     "Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model."
-    "When a skill's cross-model pass runs through T3 Code, take its model and effort from `cross_model_model` and `cross_model_effort` when they are set, otherwise from the skill's own mapping; the latest-version rule does not replace a model the skill names."
-    "When a skill's cross-model pass runs through T3 Code, also delegate that pass to Antigravity on the latest runnable Argon at medium effort (today `gemini-4-argon-medium` on provider instance `antigravity`), even though the skill's mapping has no Gemini entry."
-    "The Antigravity peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs."
-    "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `antigravity` as the provider name."
-    "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content."
-    "When a gate or restriction excludes it, or Antigravity is not runnable, skip it and say why in one line."
     # Literal, not read from home/h82/agents/opencode-model.nix, so the
     # rendered model id is checked against an independent value.
-    "When a skill's cross-model pass runs through T3 Code, also delegate that pass to OpenCode on `opencode/glm-5.3-flash-free` on provider instance `opencode`, even though the skill's mapping has no OpenCode entry."
-    "The OpenCode peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs."
-    "It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `opencode` as the provider name."
-    "It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`."
-    "When a gate or restriction excludes it, or OpenCode is not runnable, skip it and say why in one line."
+    "When a skill runs its cross-model pass, delegate that pass as one task to provider instance `opencode` on `synthetic/syn:large:text` instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, still decide whether the pass runs, and you never add a pass the skill would not run."
+    "Delegate the cross-model pass asynchronously in the same step that dispatches the skill's in-process reviewers, merge its result when it returns, and carry out the rest of the skill's procedure with it, adapting where the skill assumes its own route, such as a receipt that marks a peer as independently verified."
     "Tell the user which provider and model you delegated to."
     "Run every delegated task in full-access runtime mode."
     "Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation."
-    "When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so explicitly in the task prompt."
+    "When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so in the task prompt."
   ]
   ++ asyncDelegationSentences
   ++ [
-    "When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run."
-    "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider."
-    "A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map."
-    "A retried job that is not a cross-model pass goes only to a provider with a column in the Model routing table, never to OpenCode, and takes its role's class from that column, or the Opus-tier class when it has no role there."
-    "Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer."
-    "Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did."
-    "When no T3 Code provider succeeds for a job that is not a cross-model pass, run it with your native subagent tool and tell the user in one line that you did."
+    "When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel`."
+    "Skip a failed cross-model pass and say why in one line, with no retry and no other reviewer in its place."
+    "Run any other failed job with your native subagent tool and tell the user in one line that you did."
     "Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact."
   ];
 
-  supersededDirectives = [
-    "before any of the skill's own discovery or launch steps"
-    "for the task instead of inheriting its defaults"
-    "Apply every finding that `ce-code-review` and `ce-simplify-code` report"
-    "Flash for Gemini)"
-    "the latest Flash at high effort on Antigravity"
-    "Argon at high effort"
-    "and the work needs a provider other than your own or a model your native subagent tool cannot serve"
-    "instead of letting the subagent inherit your session model"
-    "choose a provider other than your own and a model"
-    "work that needs another model"
+  # The delegation sentences that speak about the cross-model pass or a
+  # peer. Any other such sentence in that section, such as a second peer or a
+  # retry onto another provider, fails with a message that names it.
+  peerPattern = "[Pp]eer|opencode|OpenCode|[Cc]ross-model|[Rr]eviewer";
+  delegationPeerSentences = lib.filter (
+    sentence: builtins.match ".*(${peerPattern}).*" sentence != null
+  ) delegationSentences;
+
+  # Names of what this repository removed from the instructions: Codex, every
+  # Antigravity and Gemini mention, the OpenCode Zen peer, Model routing, and
+  # the disclosure that reviewed content leaves for another provider.
+  removedTerms = [
+    "Antigravity"
+    "Gemini"
+    "gemini-"
+    "Argon"
+    "Flash"
+    "Codex"
+    "codex"
+    "Zen"
+    "glm-"
+    "Model routing"
+    "receives the reviewed content"
+    "data terms"
   ];
 
   claudeTools = [
@@ -320,27 +310,16 @@ let
     "`Bash`"
   ];
 
-  antigravityTools = [
-    "`view_file`"
-    "`replace_file_content`"
-    "`write_to_file`"
-    "`read_url_content`"
-    "`search_web`"
-    "`ask_question`"
-    "`invoke_subagent`"
-    "`manage_task`"
-    "`schedule`"
-    "`run_command`"
-  ];
-
-  codexTools = [
-    "`apply_patch`"
-    "`view_image`"
-    "`web_search`"
-    "`request_user_input`"
-    "`spawn_agent`"
-    "`update_plan`"
-    "`exec_command`"
+  opencodeTools = [
+    "`read`"
+    "`edit`"
+    "`write`"
+    "`glob`"
+    "`webfetch`"
+    "`websearch`"
+    "`question`"
+    "`subagent`"
+    "`shell`"
   ];
 
   # Fails the build, naming each sentence, when `$file` lacks any of them.
@@ -363,14 +342,6 @@ let
       fi
     done
   '';
-
-  # The pinned delegation sentences that name an extra peer: Antigravity,
-  # Argon, or OpenCode. Any other sentence in that section naming them, such
-  # as an added reversal kept beside the pinned rule, fails.
-  peerPattern = "Antigravity|Argon|OpenCode|opencode";
-  extraPeerSentences = lib.filter (
-    sentence: builtins.match ".*(${peerPattern}).*" sentence != null
-  ) delegationSentences;
 
   # Prints the section under `heading` one sentence per line, list markers
   # (nested ones included) dropped, splitting after each full stop.
@@ -435,25 +406,26 @@ let
       name = "Claude Code";
       sharedSentence = "Use the tools Claude Code provides natively before reaching for a shell equivalent.";
       present = claudeTools;
-      absent = antigravityTools ++ codexTools;
+      absent = opencodeTools;
+      peer = true;
     };
-    antigravity = {
-      name = "Antigravity";
-      sharedSentence = "Use the tools Antigravity provides natively before reaching for a shell equivalent.";
-      present = antigravityTools;
-      absent = claudeTools ++ codexTools;
-    };
-    codex = {
-      name = "Codex";
-      sharedSentence = "Use the tools Codex provides natively before reaching for a shell equivalent.";
-      present = codexTools;
-      absent = claudeTools ++ antigravityTools;
+    opencode = {
+      name = "OpenCode";
+      sharedSentence = "Use the tools OpenCode provides natively before reaching for a shell equivalent.";
+      present = opencodeTools;
+      absent = claudeTools;
+      peer = false;
     };
   };
 
   # Each part's pinned sentences, for the exactly-once and wrong-path counts.
   partSentences = harness: {
-    system = [ harness.sharedSentence ] ++ gpgSentences ++ routingSentences;
+    system = [
+      harness.sharedSentence
+    ]
+    ++ toolUseSentences
+    ++ gpgSentences
+    ++ lib.optionals harness.peer peerSentences;
     user =
       reviewFindingsSentences
       ++ learningRefreshSentences
@@ -490,11 +462,29 @@ let
       echo ${esc "${label} lacks the system part's opening sentence"} >&2
       failed=1
     fi
+    ${requireSentences "${label} lacks the tool-use rule:" toolUseSentences}
     ${requireSentences "${label} lacks the GPG rule:" gpgSentences}
     ${onlyPinnedSentences "${label} carries an unpinned GPG sentence:" "# GPG and encryption" "."
       gpgSentences
     }
-    ${requireSentences "${label} lacks the model-routing rule:" routingSentences}
+    ${
+      if harness.peer then
+        ''
+          ${requireSentences "${label} lacks the cross-model peer rule:" peerSentences}
+          ${sentencesInOrder "${label} reorders, duplicates, or adds to the cross-model peer rule:"
+            "# Cross-model review"
+            peerSentences
+          }
+        ''
+      else
+        ''
+          ${countSentences "${label} names its own harness as the cross-model peer" 0 peerSentences}
+          if grep -qxF '# Cross-model review' "$file"; then
+            echo ${esc "${label} carries the Cross-model review section"} >&2
+            failed=1
+          fi
+        ''
+    }
     for tool in ${lib.escapeShellArgs harness.present}; do
       if ! grep -qF -- "$tool" "$file"; then
         echo ${esc "${label} does not name"} "$tool" >&2
@@ -539,27 +529,22 @@ let
     ${sentencesInOrder "${label} reorders, duplicates, or adds to the T3 Code introduction:" "# T3 Code"
       t3IntroSentences
     }
-    ${requireSentences "${label} lacks the cross-model delegation rule:" delegationSentences}
-    ${onlyPinnedSentences "${label} carries an unpinned extra-peer sentence:" "# Cross-model delegation"
+    ${requireSentences "${label} lacks the delegation rule:" delegationSentences}
+    ${onlyPinnedSentences "${label} carries an unpinned cross-model peer sentence:" "# Delegation"
       peerPattern
-      extraPeerSentences
+      delegationPeerSentences
     }
-    ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:"
-      "# Cross-model delegation"
+    ${onlyPinnedSentences "${label} carries an unpinned delegation wait sentence:" "# Delegation"
       "task_status|[Pp]oll|[Nn]otif|[Ww]ait|[Ww]ake|[Bb]lock|[Ss]leep|[Tt]imer|[Cc]heck|[Ff]inish|[Bb]ackground|[Ss]chedul"
       waitTopicSentences
     }
-    ${onlyPinnedSentences "${label} carries an unpinned cross-model delegation sentence:"
-      "# Cross-model delegation"
-      "."
+    ${onlyPinnedSentences "${label} carries an unpinned delegation sentence:" "# Delegation" "."
       delegationSentences
     }
-    ${sentencesInOrder "${label} reorders or duplicates a cross-model delegation sentence:"
-      "# Cross-model delegation"
+    ${sentencesInOrder "${label} reorders or duplicates a delegation sentence:" "# Delegation"
       delegationSentences
     }
-    ${sentencesInSection "${label} moves a cross-model delegation sentence out of its section:"
-      "# Cross-model delegation"
+    ${sentencesInSection "${label} moves a delegation sentence out of its section:" "# Delegation"
       delegationSentences
     }
     ${requireSentences "${label} lacks the T3 Code pull and merge request rule:" t3PullRequestSentences}
@@ -604,9 +589,9 @@ let
           failed=1
         fi
       ''}
-      for directive in ${lib.escapeShellArgs supersededDirectives}; do
-        if grep -qF -- "$directive" "$file"; then
-          echo ${esc "${label} carries a superseded directive:"} "$directive" >&2
+      for term in ${lib.escapeShellArgs removedTerms}; do
+        if grep -qF -- "$term" "$file"; then
+          echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
           failed=1
         fi
       done
@@ -674,6 +659,29 @@ let
       cp ${source} ${dest}
     '';
 
+  # Copies the instruction file the installed opencode wrapper hands a
+  # standalone run to `dest`: the wrapper's INSTRUCTIONS_CONFIG constant
+  # names a config whose `instructions` must list exactly one file.
+  opencodeFile =
+    label: userConfig: dest:
+    let
+      package = lib.findFirst (p: (p.pname or "") == "opencode") null (userConfig.home.packages or [ ]);
+    in
+    lib.optionalString (package == null) ''
+      echo ${esc "missing opencode in user packages on ${label}"} >&2
+      failed=1
+    ''
+    + lib.optionalString (package != null) ''
+      config=$(sed -nE "s/^INSTRUCTIONS_CONFIG='(.*)'$/\1/p" ${package}/bin/opencode)
+      listed=$(jq -r '.instructions | if type == "array" and length == 1 then .[0] else empty end' "$config" 2>/dev/null || true)
+      if [ -n "$listed" ] && [ -f "$listed" ]; then
+        cp "$listed" ${dest}
+      else
+        echo ${esc "the opencode wrapper on ${label} hands a standalone run no single instructions file"} >&2
+        failed=1
+      fi
+    '';
+
   # Prints the store file an activation entry passes the merger as --declared.
   declaredOf = script: ''
     printf '%s\n' ${esc script} \
@@ -695,7 +703,6 @@ let
       user = entry.user;
       t3 = t3On user;
       home = user.home.homeDirectory or "";
-      codexScript = user.home.activation.codexSettings.data or "";
       t3Activation = user.home.activation.t3codeSettings or null;
       on = lib.optionalString t3;
     in
@@ -703,25 +710,18 @@ let
       d=$(mktemp -d)
 
       ${homeFile label user ".claude/CLAUDE.md" 1 "$d/claude"}
-      ${homeFile label user ".gemini/config/AGENTS.md" 1 "$d/antigravity"}
-      ${homeFile label user ".codex/AGENTS.md" 1 "$d/codex-agents"}
       ${homeFile label user claudeT3Target (if t3 then 1 else 0) "$d/claude-t3"}
-
-      declared=$(${declaredOf codexScript})
-      if [ -z "$declared" ] || ! python3 ${channels} developer "$declared" "$d/codex-dev"; then
-        echo ${esc "the Codex developer_instructions on ${label} cannot be read from the codexSettings declaration"} >&2
-        failed=1
-      fi
+      ${homeFile label user ".codex/AGENTS.md" 0 "$d/codex"}
+      ${homeFile label user ".gemini/config/AGENTS.md" 0 "$d/antigravity"}
+      ${homeFile label user ".gemini/GEMINI.md" 0 "$d/gemini"}
+      ${homeFile label user ".config/opencode/AGENTS.md" 0 "$d/opencode-global"}
+      ${opencodeFile label user "$d/opencode"}
 
       ${
         if t3 then
           ''
             declared=$(${declaredOf (t3Activation.data or "")})
-            if [ -z "$declared" ] || ! python3 ${channels} codex-launch "$declared" "$d/codex-launch"; then
-              echo ${esc "the Codex launch override on ${label} cannot be read from the t3codeSettings declaration"} >&2
-              failed=1
-            fi
-            dir=$(python3 ${channels} claude-dir "$declared" || true)
+            dir=$(python3 ${channels} "$declared" || true)
             if [ "$dir" != ${esc "${home}/.t3/instructions/claude-code"} ]; then
               echo ${esc "the Claude instance on ${label} must --add-dir the directory of ~/${claudeT3Target}, got"} "'$dir'" >&2
               failed=1
@@ -739,35 +739,22 @@ let
         "system"
         "user"
       ]}
-      file=$d/antigravity
-      ${channelRules "~/.gemini/config/AGENTS.md on ${label}" harnesses.antigravity [
+      file=$d/opencode
+      ${channelRules "the standalone OpenCode instructions on ${label}" harnesses.opencode [
         "system"
         "user"
       ]}
-      file=$d/codex-agents
-      ${channelRules "~/.codex/AGENTS.md on ${label}" harnesses.codex [ "user" ]}
-      file=$d/codex-dev
-      ${channelRules "Codex developer_instructions on ${label}" harnesses.codex [ "system" ]}
       ${on ''
         file=$d/claude-t3
         ${channelRules "~/${claudeT3Target} on ${label}" harnesses.claude-code [ "t3code" ]}
-        file=$d/codex-launch
-        ${channelRules "the T3 Code Codex launch override on ${label}" harnesses.codex [
-          "system"
-          "t3code"
-        ]}
       ''}
 
       ${pathRules "the Claude Code terminal path on ${label}" harnesses.claude-code
         [ "$d/claude" ]
         [ "system" "user" ]
       }
-      ${pathRules "the Antigravity terminal path on ${label}" harnesses.antigravity
-        [ "$d/antigravity" ]
-        [ "system" "user" ]
-      }
-      ${pathRules "the Codex terminal path on ${label}" harnesses.codex
-        [ "$d/codex-agents" "$d/codex-dev" ]
+      ${pathRules "the standalone OpenCode path on ${label}" harnesses.opencode
+        [ "$d/opencode" ]
         [ "system" "user" ]
       }
       ${on ''
@@ -775,65 +762,12 @@ let
           "$d/claude"
           "$d/claude-t3"
         ] partNames}
-        ${pathRules "the Codex T3 Code path on ${label}" harnesses.codex [
-          "$d/codex-agents"
-          "$d/codex-launch"
-        ] partNames}
       ''}
 
       rm -rf "$d"
     '';
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
-
-  # No delivery path carries the Antigravity T3 Code part yet, so no host
-  # renders it. Rendered here, so the template's Antigravity branches in that
-  # part keep producing the part minus the rules about Antigravity peers.
-  antigravityT3 = (import ../home/h82/agents/instructions/render.nix { inherit pkgs lib; }).render {
-    harness = "antigravity";
-    parts = [ "t3code" ];
-  };
-  # The broad-scout rule and the Antigravity-peer bullet, the two places the
-  # template leaves out for Antigravity. The OpenCode-peer bullet shares its
-  # openings but stays, so its sentences are kept out of this list.
-  antigravityT3Omitted = [
-    "A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table."
-  ]
-  ++ lib.filter (
-    sentence:
-    !(lib.hasInfix "OpenCode" sentence || lib.hasInfix "`opencode`" sentence)
-    && lib.any (prefix: lib.hasPrefix prefix sentence) [
-      "When a skill's cross-model pass runs through T3 Code, also delegate"
-      "The Antigravity peer belongs"
-      "It mirrors every job"
-      "It obeys the skill's recipient restrictions"
-      "When a gate or restriction excludes it"
-    ]
-  ) delegationSentences;
-  antigravityT3Rules =
-    assert lib.assertMsg (lib.length antigravityT3Omitted == 6)
-      "tests/agent-instructions.nix: antigravityT3Omitted no longer names the six sentences the Antigravity branches leave out";
-    ''
-      file=${antigravityT3}
-      ${countSentences "the Antigravity T3 Code part does not carry this sentence exactly once" 1 (
-        lib.subtractLists antigravityT3Omitted (
-          t3IntroSentences ++ delegationSentences ++ t3PullRequestSentences
-        )
-      )}
-      ${countSentences "the Antigravity T3 Code part carries a rule about Antigravity peers" 0
-        antigravityT3Omitted
-      }
-      for tool in ${lib.escapeShellArgs harnesses.antigravity.absent}; do
-        if grep -qF -- "$tool" "$file"; then
-          echo "the Antigravity T3 Code part names another harness's tool $tool" >&2
-          failed=1
-        fi
-      done
-      if grep -qE '\{\{|\}\}|<no value>' "$file"; then
-        echo 'the Antigravity T3 Code part carries an unrendered template action' >&2
-        failed=1
-      fi
-    '';
 
   forceT3Off = {
     my.t3.cli.enable = lib.mkForce false;
@@ -894,18 +828,24 @@ let
     ) forcedOff)
   ];
 in
-pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-  ${configurations.userGuard}
-  ${sidesGuard}
-  failed=0
-  seen=$(mktemp)
+pkgs.runCommand "agent-instructions-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.jq
+      pkgs.python3
+    ];
+  }
+  ''
+    ${configurations.userGuard}
+    ${sidesGuard}
+    failed=0
+    seen=$(mktemp)
 
-  ${lib.concatMapStringsSep "\n" assertEntry users}
-  ${antigravityT3Rules}
+    ${lib.concatMapStringsSep "\n" assertEntry users}
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
 
-  touch $out
-''
+    touch $out
+  ''

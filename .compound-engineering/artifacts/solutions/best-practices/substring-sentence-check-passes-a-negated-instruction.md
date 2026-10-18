@@ -104,7 +104,7 @@ When a rule has a safety stop, guard the stop as its own sentence. The review-fi
 
 ## Why This Matters
 
-A guard on agent instructions exists to catch an edit that changes what agents do. Negating an imperative is the smallest such edit, and a substring check accepts it. The failure is silent: the build stays green, and the rendered `~/.claude/CLAUDE.md`, `~/.gemini/config/AGENTS.md`, and `~/.codex/AGENTS.md` all carry the inverted rule.
+A guard on agent instructions exists to catch an edit that changes what agents do. Negating an imperative is the smallest such edit, and a substring check accepts it. The failure is silent: the build stays green, and every rendered instruction file, such as `~/.claude/CLAUDE.md`, carries the inverted rule.
 
 ## When to Apply
 
