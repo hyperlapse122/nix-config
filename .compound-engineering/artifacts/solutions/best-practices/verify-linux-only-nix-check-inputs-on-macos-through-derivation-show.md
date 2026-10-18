@@ -10,7 +10,7 @@ applies_when:
   - "Changing a check that exists only under checks.x86_64-linux while working on the macOS host, which has no Linux builder"
   - "The check compares files built with pkgs.writeText or another text-file builder, such as an expected declaration against a rendered one"
   - "Mutation-testing such a check locally before CI builds it"
-  - "The check greps or runs a fetched upstream artifact, such as the pinned T3 Code CLI bundle in t3code-instruction-channels"
+  - "The check greps or runs a fetched upstream artifact, such as the pinned T3 Code CLI bundle in t3code-antigravity-layout"
 tags: ["mutation-testing", "fetched-artifact", "t3code", "prefetch-file", "flake-checks", "macos", "aarch64-darwin", "linux-builder", "derivation-show", "structured-attrs", "write-text", "verification"]
 related_components:
   - tooling
@@ -67,14 +67,14 @@ It does not apply to a check whose inputs are built outputs rather than text der
 
 ## A check that reads a fetched upstream artifact
 
-`t3code-instruction-channels` in `flake.nix` greps the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depends on. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. The Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
+`t3code-antigravity-layout` in `flake.nix` greps the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depends on. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. The Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
 
 ```sh
 dir=$(mktemp -d)
 url=https://github.com/pingdotgg/t3code/releases/download/<tag>/t3-<version>-linux-x64.tar.gz
 tar -xzf "$(nix store prefetch-file --json "$url" | jq -r .storePath)" -C "$dir"
 bundle="$dir/t3-<version>-linux-x64/t3"
-LC_ALL=C grep -aoF -- 'description: "Additional CLI arguments passed on session start.",' "$bundle"
+LC_ALL=C grep -aoF -- 'crypto.digest("SHA-256", new TextEncoder().encode(instanceId))' "$bundle"
 ```
 
 Compare the hash `nix store prefetch-file` prints with the pinned one before trusting the result. `LC_ALL=C` matters on macOS: BSD `grep` and `sed` stop with "illegal byte sequence" on the bundle under a UTF-8 locale.
