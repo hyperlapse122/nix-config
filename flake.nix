@@ -587,40 +587,6 @@
             done
             touch $out
           '';
-          # home/h82/t3code.nix delivers the T3 Code instructions through these:
-          # the instance envelope's environment list, Claude launch arguments
-          # parsed into the SDK's extraArgs, and Claude Code loading CLAUDE.md
-          # from an --add-dir directory when the variable is set. The Claude
-          # adapter must also pass the instance environment, not only the
-          # host's, to the SDK. A pin bump that drops one fails here instead of
-          # silently leaving T3 Code sessions without the part.
-          t3code-instruction-channels = pkgs.runCommand "t3code-instruction-channels" { } ''
-            # One grep pass per artifact: list the fragments it holds, then
-            # name each pinned fragment missing from that list.
-            check() {
-              found=$(grep -rhaoF -f "$2" "$3" | sort -u || true)
-              while IFS= read -r fragment; do
-                if ! grep -qxF -- "$fragment" <<<"$found"; then
-                  echo "the pinned $1 no longer contains: $fragment" >&2
-                  exit 1
-                fi
-              done < "$2"
-            }
-            check "T3 Code" ${pkgs.writeText "t3code-instruction-fragments" ''
-              environment: optionalKey(ProviderInstanceEnvironment),
-              description: "Additional CLI arguments passed on session start.",
-              ...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;
-              ...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }
-              const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
-              const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
-              environment: claudeEnvironment,
-            ''} ${self.packages.${system}.t3code-cli}/libexec/t3code/t3
-            check "Claude Code" ${pkgs.writeText "claude-code-instruction-fragments" ''
-              CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
-              --add-dir <directories...>
-            ''} ${self.packages.${system}.claude-code}/bin
-            touch $out
-          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
