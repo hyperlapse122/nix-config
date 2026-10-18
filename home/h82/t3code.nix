@@ -75,9 +75,13 @@ let
         config.launchArgs = "--add-dir ${config.home.homeDirectory}/${claudeInstructionsDir}";
       };
       # T3 Code enables its built-in Codex instance unless one is declared.
+      # The merge can retire only top-level keys, so the launch arguments an
+      # earlier generation wrote, which carried the old instructions, are
+      # overwritten with nothing.
       codex = {
         driver = "codex";
         enabled = false;
+        config.launchArgs = "";
       };
       # The opencode on PATH is the wrapper that carries the API key, so no
       # binaryPath is needed and the key never reaches this file.

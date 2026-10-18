@@ -217,6 +217,15 @@ let
         path = [
           "providerInstances"
           "codex"
+          "config"
+          "launchArgs"
+        ];
+        value = "";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
           "driver"
         ];
         value = "codex";
