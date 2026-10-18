@@ -13,7 +13,7 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
-The declared document is a JSON object with up to six fields:
+The declared document is a JSON object with up to seven fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
@@ -23,6 +23,11 @@ The declared document is a JSON object with up to six fields:
                                     one entry in the list at path: replaces the
                                     entry whose `key` field equals value[key],
                                     else appends value; other entries stay
+  prefixEntries [{path: [key, ...], prefix: string, value: string | null}]
+                                    one string entry in the list at path:
+                                    drops every string entry starting with
+                                    prefix, then appends value unless it is
+                                    null; other entries stay
   own       {name: any JSON}        top-level keys whose whole value is
                                     declared here
   migrateInstances {from: name, to: name, kinds: [name]}
@@ -76,7 +81,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths', 'upsertPaths', 'own', 'migrateInstances'}
+FIELDS = {'set', 'remove', 'setPaths', 'upsertPaths', 'prefixEntries', 'own', 'migrateInstances'}
 
 
 def describe(path):
@@ -86,7 +91,7 @@ def describe(path):
 
 
 def declaration(declared):
-    """Parse the rendered declaration into (assign, retire, paths, owned, upserts, migration).
+    """Parse the rendered declaration into (assign, retire, paths, owned, upserts, prefixes, migration).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -128,8 +133,9 @@ def declaration(declared):
     if through:
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
     upserts = upsert_entries(document.get('upsertPaths', []), assign, retire, owned, paths, declared)
+    prefixes = prefix_entries(document.get('prefixEntries', []), assign, retire, owned, paths, upserts, declared)
     migration = instance_migration(document.get('migrateInstances'), assign, retire, owned, declared)
-    return assign, retire, paths, owned, upserts, migration
+    return assign, retire, paths, owned, upserts, prefixes, migration
 
 
 def check_path(path, declared):
@@ -195,6 +201,32 @@ def upsert_entries(entries, assign, retire, owned, paths, declared):
     return upserts
 
 
+def prefix_entries(entries, assign, retire, owned, paths, upserts, declared):
+    if not isinstance(entries, list):
+        raise ValueError('declared "prefixEntries" is not a list: {}'.format(declared))
+    prefixes = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'path', 'prefix', 'value'}:
+            raise ValueError('declared "prefixEntries" entry is not {{path, prefix, value}}: {}'.format(declared))
+        path, prefix, value = entry['path'], entry['prefix'], entry['value']
+        check_path(path, declared)
+        if not isinstance(prefix, str) or not prefix:
+            raise ValueError('declared prefix must be a non-empty string: {}'.format(describe(path)))
+        # A value outside its own prefix would survive the next run's filter
+        # and be appended again beside itself.
+        if value is not None and (not isinstance(value, str) or not value.startswith(prefix)):
+            raise ValueError('declared prefix entry must be null or a string under its prefix: {}'.format(describe(path)))
+        if path[0] in assign or path[0] in retire or path[0] in owned:
+            raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
+        # Another declaration on the same list would drop or reorder this
+        # entry, with the outcome depending on order.
+        check_disjoint(path, [other for other, _ in paths]
+                       + [other for other, _, _ in upserts]
+                       + [other for other, _, _ in prefixes])
+        prefixes.append((path, prefix, value))
+    return prefixes
+
+
 def instance_migration(entry, assign, retire, owned, declared):
     if entry is None:
         return None
@@ -251,7 +283,7 @@ def migrate(merged, migration):
         del merged[source]
 
 
-def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None):
+def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None, prefixes=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     The whole document is deep-copied and the copy edited in place.  The
@@ -286,6 +318,20 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
                 del entries[index]
         else:
             entries.append(copy.deepcopy(value))
+    for path, prefix, value in prefixes or []:
+        node = parent_of(merged, path)
+        if path[-1] not in node:
+            if value is None:
+                continue
+            node[path[-1]] = []
+        entries = node[path[-1]]
+        if not isinstance(entries, list):
+            raise ValueError('{} is not a list, so entries under {} cannot be replaced'.format(
+                describe(path), json.dumps(prefix, ensure_ascii=False)))
+        entries[:] = [entry for entry in entries
+                      if not (isinstance(entry, str) and entry.startswith(prefix))]
+        if value is not None:
+            entries.append(value)
     return merged
 
 
@@ -376,7 +422,7 @@ def swap(settings, text, before):
 
 
 def merge(settings, declared):
-    assign, retire, paths, owned, upserts, migration = declaration(declared)
+    assign, retire, paths, owned, upserts, prefixes, migration = declaration(declared)
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -384,12 +430,12 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read_settings(settings), assign, retire, paths, owned, upserts, migration)
+    apply(read_settings(settings), assign, retire, paths, owned, upserts, migration, prefixes)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
-        merged = apply(current, assign, retire, paths, owned, upserts, migration)
+        merged = apply(current, assign, retire, paths, owned, upserts, migration, prefixes)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)

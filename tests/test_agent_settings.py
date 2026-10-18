@@ -662,7 +662,7 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, owned, upserts, _ = merger.declaration(self.declared)
+        assign, retire, paths, owned, upserts, _, _ = merger.declaration(self.declared)
         merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
@@ -992,6 +992,152 @@ class MigrateInstanceTests(unittest.TestCase):
         self.declared.write_text(json.dumps({'migrateInstances': MIGRATE, 'remove': ['providers']}))
         with self.assertRaises(ValueError):
             merger.declaration(self.declared)
+
+
+PREFIX = '/home/h82/.local/share/agent-plugins/compound-engineering/'
+PREFIX_VALUE = PREFIX + 'v3.31.0'
+USER_PLUGIN = 'some-plugin@git+https://example.com/some-plugin.git'
+
+
+class PrefixEntryTests(unittest.TestCase):
+    """OpenCode's plugins list holds the user's specifiers beside the declared path."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.config/opencode/opencode.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare(PREFIX_VALUE)
+
+    def declare(self, value, path=('plugins',), prefix=PREFIX, **fields):
+        document = {'prefixEntries': [{'path': list(path), 'prefix': prefix, 'value': value}]}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def test_replaces_an_older_entry_and_keeps_the_user_entry(self):
+        self.seed({'model': 'x', 'plugins': [USER_PLUGIN, PREFIX + 'v3.30.0']})
+        self.merge()
+        self.assertEqual(self.read(), {'model': 'x', 'plugins': [USER_PLUGIN, PREFIX_VALUE]})
+
+    def test_second_run_adds_no_duplicate_and_does_not_rewrite(self):
+        self.seed({'plugins': [USER_PLUGIN]})
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_collapses_repeated_entries_under_the_prefix(self):
+        # OpenCode loads a plugin listed twice twice.
+        self.seed({'plugins': [PREFIX_VALUE, USER_PLUGIN, PREFIX_VALUE]})
+        self.merge()
+        self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])
+
+    def test_creates_the_list_when_absent(self):
+        self.merge()
+        self.assertEqual(self.read(), {'plugins': [PREFIX_VALUE]})
+
+    def test_null_value_retires_every_entry_under_the_prefix(self):
+        self.seed({'plugins': [PREFIX + 'v3.30.0', USER_PLUGIN, PREFIX_VALUE]})
+        self.declare(None)
+        self.merge()
+        self.assertEqual(self.read()['plugins'], [USER_PLUGIN])
+
+    def test_retiring_from_an_absent_list_adds_nothing(self):
+        self.seed({'model': 'x'})
+        self.declare(None)
+        self.merge()
+        self.assertEqual(self.read(), {'model': 'x'})
+
+    def test_non_string_entries_stay(self):
+        entry = ['tuple-plugin', {'option': True}]
+        self.seed({'plugins': [entry, PREFIX + 'v3.30.0']})
+        self.merge()
+        self.assertEqual(self.read()['plugins'], [entry, PREFIX_VALUE])
+
+    def test_a_sibling_directory_sharing_the_name_stem_stays(self):
+        # The prefix ends in a separator, so another plugin's base survives.
+        sibling = PREFIX.rstrip('/') + '-extra/v1'
+        self.seed({'plugins': [sibling]})
+        self.merge()
+        self.assertEqual(self.read()['plugins'], [sibling, PREFIX_VALUE])
+
+    def test_nested_path(self):
+        self.seed({'outer': {'keep': 1}})
+        self.declare(PREFIX_VALUE, path=('outer', 'plugins'))
+        self.merge()
+        self.assertEqual(self.read(), {'outer': {'keep': 1, 'plugins': [PREFIX_VALUE]}})
+
+    def test_does_not_mutate_the_read_document(self):
+        current = {'plugins': [PREFIX + 'v3.30.0']}
+        merger.apply(current, {}, [], [], prefixes=[(['plugins'], PREFIX, PREFIX_VALUE)])
+        self.assertEqual(current, {'plugins': [PREFIX + 'v3.30.0']})
+
+    def assert_refused(self, document, seeded=None):
+        self.seed(seeded if seeded is not None else {'plugins': [USER_PLUGIN]})
+        self.declared.write_text(json.dumps(document))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_refuses_a_non_list_at_the_path(self):
+        for value in ({'a': 1}, 'one-plugin', 3):
+            with self.subTest(value=value):
+                self.assert_refused(
+                    {'prefixEntries': [{'path': ['plugins'], 'prefix': PREFIX, 'value': PREFIX_VALUE}]},
+                    seeded={'plugins': value})
+
+    def test_refuses_malformed_declarations(self):
+        entry = {'path': ['plugins'], 'prefix': PREFIX, 'value': PREFIX_VALUE}
+        for document in (
+            {'prefixEntries': entry},
+            {'prefixEntries': [{'path': ['plugins'], 'prefix': PREFIX}]},
+            {'prefixEntries': [dict(entry, extra=1)]},
+            {'prefixEntries': [dict(entry, path=[])]},
+            {'prefixEntries': [dict(entry, prefix='')]},
+            {'prefixEntries': [dict(entry, prefix=1)]},
+            {'prefixEntries': [dict(entry, value=1)]},
+            {'prefixEntries': [dict(entry, value=[PREFIX_VALUE])]},
+            # A value outside its own prefix would never be replaced.
+            {'prefixEntries': [dict(entry, value='/elsewhere/v3.31.0')]},
+        ):
+            with self.subTest(document=document):
+                self.assert_refused(document)
+
+    def test_refuses_a_path_another_declaration_touches(self):
+        entry = {'path': ['plugins'], 'prefix': PREFIX, 'value': PREFIX_VALUE}
+        for field in ({'set': {'plugins': 1}},
+                      {'remove': ['plugins']},
+                      {'own': {'plugins': []}},
+                      {'setPaths': [{'path': ['plugins', 'x'], 'value': 1}]},
+                      {'upsertPaths': [{'path': ['plugins'], 'key': 'name', 'value': {'name': 'a'}}]},
+                      {'prefixEntries': [dict(entry, prefix=PREFIX + 'v')]}):
+            with self.subTest(field=field):
+                document = dict(field)
+                document['prefixEntries'] = [entry] + document.get('prefixEntries', [])
+                self.assert_refused(document)
+
+    def test_process_merges_prefix_entries(self):
+        self.seed({'plugins': [USER_PLUGIN]})
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--settings', str(self.settings),
+             '--declared', str(self.declared), '--label', 'OpenCode'],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])
 
 
 if __name__ == '__main__':
