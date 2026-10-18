@@ -30,9 +30,12 @@ let
   # it. update replaces autoupdate in OpenCode v2, so the merge deletes the
   # legacy key; the wrapper's OPENCODE_DISABLE_AUTOUPDATE stays as the
   # backstop under every config T3 Code supplies. share = "disabled" keeps a
-  # session from being published by link. The model is in OpenCode's built-in
-  # synthetic catalog. A syn: alias is not, and would need a setPaths entry
-  # declaring provider.synthetic.models.<alias>.name.
+  # session from being published by link. enabled_providers allowlists the
+  # synthetic provider, so no other provider loads even when its credentials
+  # are present. The model is in OpenCode's built-in synthetic catalog; a
+  # syn: alias is not, and would need a setPaths entry declaring
+  # provider.synthetic.models.<alias>.name -- which is also how the retired
+  # syn:large:text alias got in, so removePaths takes it back out.
   declared = pkgs.writeText "opencode-declared-settings.json" (
     builtins.toJSON {
       set = {
@@ -42,6 +45,17 @@ let
         share = "disabled";
       };
       remove = [ "autoupdate" ];
+      # enabled_providers is an array, which set refuses; nothing else writes
+      # the key, so owning it whole is the right tier.
+      own.enabled_providers = [ "synthetic" ];
+      removePaths = [
+        # The retired cross-reviewer alias: the merge that once wrote it can
+        # only assign, so activation takes it back out.
+        {
+          path = [ "provider" "synthetic" "models" ];
+          key = "syn:large:text";
+        }
+      ];
     }
   );
 
