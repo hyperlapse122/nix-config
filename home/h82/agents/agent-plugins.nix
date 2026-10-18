@@ -6,9 +6,8 @@
   ...
 }:
 let
-  syncTool = "${
-    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentPluginSync
-  }/bin/agent-plugin-sync";
+  agentTools = import ../../../packages/agent-tools.nix { inherit pkgs; };
+  syncTool = "${agentTools.agentPluginSync}/bin/agent-plugin-sync";
 
   # Single source of truth with home/h82/default.nix's package list, so each
   # command's --cli flag can never drift onto a different agent build.
@@ -41,13 +40,21 @@ let
       exclude = {
         claude = [ ];
         antigravity = [ ];
+        opencode = [ ];
       };
     };
   };
 
   # Harness membership is declared separately from the source, so adding a
   # plugin to another agent is a row rather than a second source entry.
+  # OpenCode's row runs before Claude's: OpenCode reads the shared link on
+  # every start, and Claude's row prunes superseded links, so a failed
+  # OpenCode merge must stop activation before that prune.
   membership = [
+    {
+      name = "compound-engineering";
+      harness = "opencode";
+    }
     {
       name = "compound-engineering";
       harness = "claude";
@@ -61,7 +68,9 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; agy's update overrides travel inside its wrapper instead.
+  # it; agy's update overrides travel inside its wrapper instead. OpenCode
+  # has no plugin command that takes a path, so its "CLI" is the merger that
+  # writes the link into ~/.config/opencode/opencode.json.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
@@ -69,6 +78,10 @@ let
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";
+      env = "";
+    };
+    opencode = {
+      cli = "${agentTools.agentSettings}/bin/agent-settings";
       env = "";
     };
   };
