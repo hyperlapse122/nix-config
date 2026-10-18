@@ -4,10 +4,12 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one. --harness picks the
-agent (claude or antigravity); each has its own adapter for commands,
-listings and manifest paths. antigravity has no marketplace: its adapter
-validates and installs the plugin directory, and reads the installed version
-back from disk.
+agent (claude, antigravity or opencode); each has its own adapter for
+commands, listings and manifest paths. antigravity has no marketplace: its
+adapter validates and installs the plugin directory, and reads the installed
+version back from disk. opencode has no plugin command that takes a path: its
+--cli is the agent-settings merger, which writes the link path into the
+`plugins` list of ~/.config/opencode/opencode.json.
 
 With --retire it does the reverse for a plugin the repository no longer
 declares: unregister it and delete its version-keyed base directory.
@@ -299,20 +301,73 @@ class Antigravity(Harness):
             # agy reports success for a plugin that is not installed.
             require([self.cli, 'plugin', 'uninstall', args.plugin], args.dry_run,
                     'plugin uninstall')
-            if args.dry_run:
-                print('would remove {}'.format(args.base))
-                return 0
-            try:
-                remove_entry(args.base)
-            except FileNotFoundError:
-                pass
+            remove_base(args.base, args.dry_run)
             return 0
         except (Failure, OSError) as exc:
             print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
             return 1
 
 
-HARNESSES = {'claude': Claude, 'antigravity': Antigravity}
+class OpenCode(Harness):
+    """OpenCode loads a local plugin from a path listed in opencode.json.
+
+    The list is shared with `opencode plugin add` and the user, so the merger
+    replaces only entries under this plugin's base directory. OpenCode reads
+    the link on every start, so this adapter prunes nothing: the marketplace
+    rows, which run after it, remove superseded versions once they have
+    confirmed their own source.
+    """
+
+    def settings(self):
+        return Path.home() / '.config' / 'opencode' / 'opencode.json'
+
+    def write_entry(self, base, value, dry_run):
+        if value is None and not dry_run and not self.settings().exists():
+            return
+        document = {'prefixEntries': [
+            {'path': ['plugins'], 'prefix': '{}/'.format(base), 'value': value},
+        ]}
+        with tempfile.TemporaryDirectory(prefix='agent-plugin-sync-') as scratch:
+            declared = Path(scratch) / 'declared.json'
+            declared.write_text(json.dumps(document))
+            require([self.cli, '--label', 'OpenCode plugins', '--settings', str(self.settings()),
+                     '--declared', str(declared)], dry_run, 'plugins merge')
+
+    def listed(self):
+        try:
+            plugins = json.loads(self.settings().read_text()).get('plugins')
+        except (OSError, ValueError, AttributeError):
+            return []
+        return plugins if isinstance(plugins, list) else []
+
+    def sync(self, args):
+        try:
+            # OpenCode skips a plugin directory without a root index.js
+            # without saying so, which would look like a converged run.
+            entry = args.source / 'index.js'
+            if not entry.is_file():
+                raise Failure('pinned source is missing {}'.format(entry))
+            destination = link_version(args.base, args.segment, args.source, args.dry_run)
+            self.write_entry(args.base, str(destination), args.dry_run)
+            if not args.dry_run and str(destination) not in self.listed():
+                raise Failure('{} does not list {} after the merge'.format(
+                    self.settings(), destination))
+            return 0
+        except (Failure, OSError) as exc:
+            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
+            return 1
+
+    def retire(self, args):
+        try:
+            self.write_entry(args.base, None, args.dry_run)
+            remove_base(args.base, args.dry_run)
+            return 0
+        except (Failure, OSError) as exc:
+            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
+            return 1
+
+
+HARNESSES = {'claude': Claude, 'antigravity': Antigravity, 'opencode': OpenCode}
 
 
 def find(entries, value, key='name'):
@@ -342,6 +397,17 @@ def remove_entry(path):
         shutil.rmtree(path)
     else:
         path.unlink()
+
+
+def remove_base(base, dry_run):
+    """Delete a retired plugin's base directory, which may already be gone."""
+    if dry_run:
+        print('would remove {}'.format(base))
+        return
+    try:
+        remove_entry(base)
+    except FileNotFoundError:
+        pass
 
 
 def prune(base, segment, dry_run):
@@ -377,10 +443,7 @@ def marketplace_retire(args, harness):
             harness.remove_plugin(plugin_id, False)
         if find(registrations(harness, False), args.marketplace) is not None:
             harness.remove_marketplace(args.marketplace, False)
-        try:
-            remove_entry(args.base)
-        except FileNotFoundError:
-            pass
+        remove_base(args.base, False)
         return 0
     except (Failure, OSError) as exc:
         print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)

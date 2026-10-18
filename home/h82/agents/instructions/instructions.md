@@ -24,6 +24,8 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 
 Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks. Leave a finding unapplied only when you verified it is wrong or its fix would weaken a safety check, and say why. When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made. When the user asked only for a review, report the findings and ask once whether to apply them all. Report what you applied in the pull request body and the final report.
 
+Compound Engineering skills use `opencode` as the cross-model peer. When the peer fails, skip the pass and say why in one line; do not retry it or run another peer in its place.
+
 # T3 Code
 
 - When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool.

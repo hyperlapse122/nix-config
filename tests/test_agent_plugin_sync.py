@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/agent-plugin-sync'
+MERGER = Path(__file__).resolve().parents[1] / 'scripts/agent-settings'
 loader = importlib.machinery.SourceFileLoader('agent_plugin_sync', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 sync = importlib.util.module_from_spec(spec)
@@ -719,6 +720,149 @@ class AntigravityRetireTestCase(AntigravityCase):
         self.assertIn('would run:', result.stdout)
         self.assertEqual(self.read_state()['calls'], [])
         self.assertTrue(self.installed.exists())
+
+
+# OpenCode's adapter drives the real merger. The wrapper runs it under this
+# interpreter, so no /usr/bin/env is needed inside a build sandbox.
+MERGER_CLI = '''import runpy, sys
+sys.argv[0] = {merger!r}
+runpy.run_path({merger!r}, run_name='__main__')
+'''
+
+USER_PLUGIN = 'opencode-user-plugin@1.2.0'
+
+
+class OpenCodeCase(FakeCliCase):
+    harness = 'opencode'
+    fake = MERGER_CLI.format(merger=str(MERGER))
+
+    def setUp(self):
+        super().setUp()
+        self.home = self.root / 'home'
+        self.home.mkdir()
+        self.settings = self.home / '.config/opencode/opencode.json'
+
+    def make_source(self, version, entry=True):
+        src = self.root / '{}-source'.format(hashlib.sha256(version.encode()).hexdigest()[:32])
+        src.mkdir()
+        if entry:
+            (src / 'index.js').write_text('export default {}\n')
+        return src
+
+    def invoke(self, args, env=None):
+        merged = {'HOME': str(self.home)}
+        merged.update(env or {})
+        return super().invoke(args, merged)
+
+    def seed(self, document):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(document))
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def run_retire(self, extra=None):
+        return self.invoke([
+            '--retire', '--harness', 'opencode', '--cli', str(self.cli),
+            '--base', str(self.base),
+            '--plugin', 'compound-engineering',
+            '--marketplace', 'compound-engineering-plugin',
+        ] + (extra or []))
+
+
+class OpenCodeSyncTestCase(OpenCodeCase):
+    def test_fresh_home_creates_the_list_with_the_link(self):
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        link = self.base / 'v3.28.0'
+        self.assertEqual(self.read(), {'plugins': [str(link)]})
+        self.assertEqual(os.readlink(link), str(self.source))
+
+    def test_bump_replaces_the_entry_and_keeps_the_old_link(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        document = self.read()
+        document['plugins'].insert(0, USER_PLUGIN)
+        document['theme'] = 'tokyonight'
+        self.seed(document)
+        newer = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=newer)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read(), {
+            'plugins': [USER_PLUGIN, str(self.base / 'v3.29.0')],
+            'theme': 'tokyonight',
+        })
+        # The Claude row prunes it once its own registration has moved.
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_rerun_leaves_one_entry_and_the_file_untouched(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        before = self.settings.stat().st_mtime_ns
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.assertEqual(self.read(), {'plugins': [str(self.base / 'v3.28.0')]})
+        self.assertEqual(self.settings.stat().st_mtime_ns, before)
+
+    def test_a_source_without_index_js_fails_before_linking(self):
+        bare = self.make_source('v3.29.0', entry=False)
+        result = self.run_sync(segment='v3.29.0', source=bare)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('index.js', result.stderr)
+        self.assertFalse(self.base.exists())
+        self.assertFalse(self.settings.exists())
+
+    def test_a_refused_merge_fails_and_keeps_the_previous_state(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.seed({'plugins': {'not': 'a list'}})
+        newer = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=newer)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('plugins merge failed', result.stderr)
+        self.assertEqual(self.read(), {'plugins': {'not': 'a list'}})
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_a_merge_that_writes_nothing_fails_the_readback(self):
+        self.cli.write_text('#!{}\nimport sys\nsys.exit(0)\n'.format(sys.executable))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('does not list', result.stderr)
+
+    def test_dry_run_writes_nothing(self):
+        result = self.run_sync(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('would run:', result.stdout)
+        self.assertFalse(self.base.exists())
+        self.assertFalse(self.settings.exists())
+
+
+class OpenCodeRetireTestCase(OpenCodeCase):
+    def test_retire_removes_the_entry_and_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        document = self.read()
+        document['plugins'].insert(0, USER_PLUGIN)
+        self.seed(document)
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read(), {'plugins': [USER_PLUGIN]})
+        self.assertFalse(self.base.exists())
+
+    def test_retire_on_a_home_without_the_file_creates_none(self):
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.settings.exists())
+
+    def test_a_refused_retire_keeps_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.seed({'plugins': 'not a list'})
+        result = self.run_retire()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.base.exists())
+
+    def test_retire_dry_run_touches_nothing(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        before = self.settings.read_text()
+        result = self.run_retire(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.settings.read_text(), before)
+        self.assertTrue(self.base.exists())
 
 
 if __name__ == '__main__':

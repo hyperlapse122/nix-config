@@ -448,6 +448,7 @@
                 export PYTHONDONTWRITEBYTECODE=1
                 mkdir -p scripts tests
                 cp ${./scripts/agent-plugin-sync} scripts/agent-plugin-sync
+                cp ${./scripts/agent-settings} scripts/agent-settings
                 cp ${./tests/test_agent_plugin_sync.py} tests/test_agent_plugin_sync.py
                 python tests/test_agent_plugin_sync.py
                 touch $out

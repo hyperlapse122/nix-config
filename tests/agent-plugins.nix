@@ -24,6 +24,12 @@
     is ordered so a refusal cannot strand installPackages, hands the helper the
     pinned source rather than some other path, and names the version segment
     the lock actually resolved.
+  - The OpenCode row needs no agent CLI, so this check runs it: the packaged
+    helper, with the flags the activation script hands it, against a scratch
+    home seeded with a string and a non-string user plugin entry. Only --base is moved into the scratch
+    directory, because the rendered one sits under /home/h82. The row must
+    share Claude's base and run before Claude's, whose prune would otherwise
+    delete a link OpenCode still names.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
   which Nix writes, and the registry in home/h82/agents/agent-plugins.nix, which a
@@ -96,6 +102,10 @@ let
           expectedCli = packagePath "antigravity-cli" "agy";
         }
       ];
+
+      # OpenCode's row is driven through the merger OpenCode's own settings
+      # merge runs, read from that activation script.
+      opencodeSettingsScript = userConfig.home.activation.opencodeSettings.data or "";
 
       activation = userConfig.home.activation.agentPlugins or null;
       script = if activation == null then "" else (activation.data or "");
@@ -235,6 +245,71 @@ let
           fi
         '') harnessChecks}
 
+        opencodeBlock=$(blockForHarness ${esc script} ${esc pluginName} opencode)
+        claudeBlock=$(blockForHarness ${esc script} ${esc pluginName} claude)
+        if [ -z "$opencodeBlock" ]; then
+          echo "the agentPlugins activation script never syncs ${pluginName} for opencode on ${hostName}" >&2
+          failed=1
+        else
+          sourceArg=$(argValue "$opencodeBlock" source)
+          if [ "$sourceArg" != ${esc pinnedSource} ]; then
+            echo "the opencode helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
+            failed=1
+          fi
+          segmentArg=$(argValue "$opencodeBlock" segment)
+          if [ "$segmentArg" != ${
+            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
+          } ]; then
+            echo "the opencode helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
+            failed=1
+          fi
+          cliArg=$(argValue "$opencodeBlock" cli)
+          merger=$(tr '\n' ' ' <<< ${esc opencodeSettingsScript} \
+            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+          if [ -z "$merger" ]; then
+            echo 'home.activation.opencodeSettings invokes no packaged merger on ${hostName}' >&2
+            failed=1
+          elif [ "$cliArg" != "$merger" ]; then
+            echo "the opencode helper must be handed the merger OpenCode's settings merge runs on ${hostName}, got: '$cliArg'" >&2
+            failed=1
+          fi
+          baseArg=$(argValue "$opencodeBlock" base)
+          if [ "$baseArg" != "$(argValue "$claudeBlock" base)" ]; then
+            echo "the opencode and claude rows must share one base on ${hostName}, got: '$baseArg'" >&2
+            failed=1
+          fi
+          flat=$(tr '\n' ' ' <<< ${esc script})
+          beforeOpencode=''${flat%%--harness opencode*}
+          beforeClaude=''${flat%%--harness claude*}
+          if [ "''${#beforeOpencode}" -ge "''${#beforeClaude}" ]; then
+            echo 'the opencode row must run before the claude row on ${hostName}' >&2
+            failed=1
+          fi
+
+          helper=$(grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-plugin-sync' <<< "$flat" | head -1 || true)
+          scratch=$(mktemp -d)
+          mkdir -p "$scratch/home/.config/opencode"
+          printf '%s\n' '{"plugins": ["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}]]}' \
+            > "$scratch/home/.config/opencode/opencode.json"
+          if ! HOME="$scratch/home" "$helper" --harness opencode --cli "$cliArg" \
+            --source "$sourceArg" --base "$scratch/base" --segment "$segmentArg" \
+            --plugin "$(argValue "$opencodeBlock" plugin | tr -d "'")" \
+            --marketplace "$(argValue "$opencodeBlock" marketplace | tr -d "'")"; then
+            echo "the rendered opencode invocation failed on ${hostName}" >&2
+            failed=1
+          fi
+          listed=$(jq -c '.plugins' "$scratch/home/.config/opencode/opencode.json" 2>/dev/null || true)
+          want=$(jq -cn --arg link "$scratch/base/$segmentArg" '["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}], $link]')
+          if [ "$listed" != "$want" ]; then
+            echo "opencode.json must list the user plugins and the pinned link on ${hostName}, got: '$listed'" >&2
+            failed=1
+          elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
+            echo "the link opencode.json names must point at the pinned source on ${hostName}" >&2
+            failed=1
+          fi
+          rm -rf "$scratch"
+        fi
+
         # The activation unit carries no session variables, so Claude Code's
         # declared environment tier has to be exported around its CLI.
         if ! grep -qF 'DISABLE_AUTOUPDATER=' <<< "$(blockForHarness ${esc script} ${esc pluginName} claude)"; then
@@ -257,52 +332,59 @@ let
       ${activationAbsent}${activationPresent}${symlinkPresent}${agyLinkPresent}
     '';
 in
-pkgs.runCommand "agent-plugins-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-  set -x
-  ${configurations.guard}
-  failed=0
-
-  # Reads one flag's value out of a rendered activation script. The `|| true`
-  # keeps a non-matching grep from aborting the builder under pipefail, so an
-  # absent flag reaches its own assertion as an empty string.
-  argValue() {
-    printf '%s' "$1" | tr '\n' ' ' \
-      | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | head -1 | awk '{print $2}' || true
+pkgs.runCommand "agent-plugins-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.gnugrep
+      pkgs.jq
+    ];
   }
+  ''
+    set -x
+    ${configurations.guard}
+    failed=0
 
-  # The activation script runs the helper once per plugin, so each plugin's
-  # flags are read from the one invocation whose --plugin names it. An absent
-  # invocation yields an empty block, which every flag assertion then reports.
-  blocksFor() {
-    printf '%s' "$1" | tr '\n' ' ' | sed 's|/bin/agent-plugin-sync|\n&|g' \
-      | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" || true
-  }
-  blockForHarness() {
-    blocksFor "$1" "$2" | grep -E -- "--harness[[:space:]]+'?$3'?([[:space:]]|$)" | head -1 || true
-  }
+    # Reads one flag's value out of a rendered activation script. The `|| true`
+    # keeps a non-matching grep from aborting the builder under pipefail, so an
+    # absent flag reaches its own assertion as an empty string.
+    argValue() {
+      printf '%s' "$1" | tr '\n' ' ' \
+        | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | head -1 | awk '{print $2}' || true
+    }
 
-  if [ -z ${esc lockedRev} ]; then
-    echo 'flake.lock records no revision for the compound-engineering-plugin input' >&2
-    failed=1
-  fi
+    # The activation script runs the helper once per plugin, so each plugin's
+    # flags are read from the one invocation whose --plugin names it. An absent
+    # invocation yields an empty block, which every flag assertion then reports.
+    blocksFor() {
+      printf '%s' "$1" | tr '\n' ' ' | sed 's|/bin/agent-plugin-sync|\n&|g' \
+        | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" || true
+    }
+    blockForHarness() {
+      blocksFor "$1" "$2" | grep -E -- "--harness[[:space:]]+'?$3'?([[:space:]]|$)" | head -1 || true
+    }
 
-  if [ -z ${esc originalRef} ]; then
-    echo 'flake.lock records no tag for the compound-engineering-plugin input; the pin must name a release tag, not a branch' >&2
-    failed=1
-  fi
+    if [ -z ${esc lockedRev} ]; then
+      echo 'flake.lock records no revision for the compound-engineering-plugin input' >&2
+      failed=1
+    fi
 
-  # This work installs the plugin for the user; the project-scope dotagents
-  # declaration is a separate layer and stays exactly as it was.
-  if ! grep -qF 'EveryInc/compound-engineering-plugin' <<< ${esc agentsToml}; then
-    echo 'agents.toml no longer declares the plugin for the project scope' >&2
-    failed=1
-  fi
+    if [ -z ${esc originalRef} ]; then
+      echo 'flake.lock records no tag for the compound-engineering-plugin input; the pin must name a release tag, not a branch' >&2
+      failed=1
+    fi
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+    # This work installs the plugin for the user; the project-scope dotagents
+    # declaration is a separate layer and stays exactly as it was.
+    if ! grep -qF 'EveryInc/compound-engineering-plugin' <<< ${esc agentsToml}; then
+      echo 'agents.toml no longer declares the plugin for the project scope' >&2
+      failed=1
+    fi
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
 
-  touch $out
-''
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
+
+    touch $out
+  ''

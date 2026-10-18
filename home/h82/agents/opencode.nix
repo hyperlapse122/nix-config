@@ -24,18 +24,15 @@ let
   );
 
   model = import ./opencode-model.nix;
-  alias = lib.removePrefix "synthetic/" model;
 
   # `opencode mcp add` and `opencode plugin add` rewrite this file, so
   # activation assigns these keys and leaves everything else as OpenCode wrote
   # it. update replaces autoupdate in OpenCode v2, so the merge deletes the
   # legacy key; the wrapper's OPENCODE_DISABLE_AUTOUPDATE stays as the
   # backstop under every config T3 Code supplies. share = "disabled" keeps a
-  # session from being published by link. OpenCode's synthetic catalog lists
-  # only hf: model ids, so the syn: alias is declared as a model of that
-  # provider. It is declared by its scalar name leaf: the merge refuses an
-  # object value, and the leaf leaves the user's other providers and models
-  # alone.
+  # session from being published by link. The model is in OpenCode's built-in
+  # synthetic catalog. A syn: alias is not, and would need a setPaths entry
+  # declaring provider.synthetic.models.<alias>.name.
   declared = pkgs.writeText "opencode-declared-settings.json" (
     builtins.toJSON {
       set = {
@@ -44,18 +41,6 @@ let
         update = "disable";
         share = "disabled";
       };
-      setPaths = [
-        {
-          path = [
-            "provider"
-            "synthetic"
-            "models"
-            alias
-            "name"
-          ];
-          value = alias;
-        }
-      ];
       remove = [ "autoupdate" ];
     }
   );
