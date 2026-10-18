@@ -47,9 +47,6 @@ let
 
   # Harness membership is declared separately from the source, so adding a
   # plugin to another agent is a row rather than a second source entry.
-  # OpenCode's row runs before Claude's: OpenCode reads the shared link on
-  # every start, and Claude's row prunes superseded links, so a failed
-  # OpenCode merge must stop activation before that prune.
   membership = [
     {
       name = "compound-engineering";
@@ -197,14 +194,26 @@ let
     fi
   '';
 
+  # Every harness row of a source shares one base, and each retire deletes the
+  # whole base after the membership rows ran, so retiring one harness while
+  # another keeps the source would delete that harness's live link on every
+  # activation. Retire every row of a source together, or split the base.
+  stillMember = lib.filter (row: lib.any (member: member.name == row.name) checkedMembership) retired;
+
   syncScript =
-    lib.throwIf (divergentExclusions != [ ])
-      "agent-plugins: harnesses of ${lib.concatStringsSep ", " divergentExclusions} exclude different paths but share one link"
+    lib.throwIf (stillMember != [ ])
+      "agent-plugins: retired row(s) still named in membership, which share its link: ${
+        lib.concatMapStringsSep ", " (row: "${row.name} (${row.harness})") stillMember
+      }"
       (
-        lib.concatStringsSep "\n" (
-          map (row: withDryRun (syncInvocation row)) checkedMembership
-          ++ map (row: withDryRun (retireInvocation row)) retired
-        )
+        lib.throwIf (divergentExclusions != [ ])
+          "agent-plugins: harnesses of ${lib.concatStringsSep ", " divergentExclusions} exclude different paths but share one link"
+          (
+            lib.concatStringsSep "\n" (
+              map (row: withDryRun (syncInvocation row)) checkedMembership
+              ++ map (row: withDryRun (retireInvocation row)) retired
+            )
+          )
       );
 in
 {

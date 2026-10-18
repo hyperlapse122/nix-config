@@ -26,7 +26,7 @@
     the lock actually resolved.
   - The OpenCode row needs no agent CLI, so this check runs it: the packaged
     helper, with the flags the activation script hands it, against a scratch
-    home seeded with a user plugin. Only --base is moved into the scratch
+    home seeded with a string and a non-string user plugin entry. Only --base is moved into the scratch
     directory, because the rendered one sits under /home/h82. The row must
     share Claude's base and run before Claude's, whose prune would otherwise
     delete a link OpenCode still names.
@@ -289,7 +289,7 @@ let
           helper=$(grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-plugin-sync' <<< "$flat" | head -1 || true)
           scratch=$(mktemp -d)
           mkdir -p "$scratch/home/.config/opencode"
-          printf '%s\n' '{"plugins": ["opencode-user-plugin@1.2.0"]}' \
+          printf '%s\n' '{"plugins": ["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}]]}' \
             > "$scratch/home/.config/opencode/opencode.json"
           if ! HOME="$scratch/home" "$helper" --harness opencode --cli "$cliArg" \
             --source "$sourceArg" --base "$scratch/base" --segment "$segmentArg" \
@@ -299,9 +299,9 @@ let
             failed=1
           fi
           listed=$(jq -c '.plugins' "$scratch/home/.config/opencode/opencode.json" 2>/dev/null || true)
-          want=$(jq -cn --arg link "$scratch/base/$segmentArg" '["opencode-user-plugin@1.2.0", $link]')
+          want=$(jq -cn --arg link "$scratch/base/$segmentArg" '["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}], $link]')
           if [ "$listed" != "$want" ]; then
-            echo "opencode.json must list the user plugin and the pinned link on ${hostName}, got: '$listed'" >&2
+            echo "opencode.json must list the user plugins and the pinned link on ${hostName}, got: '$listed'" >&2
             failed=1
           elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
             echo "the link opencode.json names must point at the pinned source on ${hostName}" >&2
