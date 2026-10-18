@@ -55,7 +55,7 @@ Paths under `packages/` cite the upstream OpenCode repository (anomalyco/opencod
 
 ## Why This Works
 
-With `disabled: true`, every client command starts its own server from its own process environment and stops it on exit. The wrapper's exported key and switches therefore apply to every run, and a pin bump takes effect on the next command. `opencode service stop` removes the one server started before the change. Because v2 now reads two names for the project-config switch, a wrapper that sets only the legacy name has a gap that the v1-era tests could not see.
+With `disabled: true`, every client command starts its own server from its own process environment and stops it on exit. The wrapper's exported key and switches therefore apply to every run, and so does its per-run choice to load the shared instructions only when no `OPENCODE_CONFIG_CONTENT` is set, and a pin bump takes effect on the next command. `opencode service stop` removes the one server started before the change. Because v2 now reads two names for the project-config switch, a wrapper that sets only the legacy name has a gap that the v1-era tests could not see.
 
 ## Prevention
 

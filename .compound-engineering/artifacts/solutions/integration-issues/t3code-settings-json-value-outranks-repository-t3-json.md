@@ -35,7 +35,7 @@ retire_when: "T3 Code changes its project-file-backed tier order so t3.json outr
 
 ## Solution
 
-Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,codex,gemini}.nix` use:
+Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,gemini}.nix` use:
 
 ```nix
 # home/h82/t3code.nix

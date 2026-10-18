@@ -67,19 +67,19 @@ It does not apply to a check whose inputs are built outputs rather than text der
 
 ## A check that reads a fetched upstream artifact
 
-`t3code-instruction-channels` in `flake.nix` greps the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depends on, and `tests/t3code-codex-launch.py` copies `tokenizeCliArgs` out of that bundle and runs it under node. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. The Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
+`t3code-instruction-channels` in `flake.nix` greps the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depends on. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. The Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
 
 ```sh
 dir=$(mktemp -d)
 url=https://github.com/pingdotgg/t3code/releases/download/<tag>/t3-<version>-linux-x64.tar.gz
 tar -xzf "$(nix store prefetch-file --json "$url" | jq -r .storePath)" -C "$dir"
 bundle="$dir/t3-<version>-linux-x64/t3"
-LC_ALL=C grep -aoF -- 'codexLaunchArgv = (launchArgs) => tokenizeCliArgs(launchArgs);' "$bundle"
+LC_ALL=C grep -aoF -- 'description: "Additional CLI arguments passed on session start.",' "$bundle"
 ```
 
 Compare the hash `nix store prefetch-file` prints with the pinned one before trusting the result. `LC_ALL=C` matters on macOS: BSD `grep` and `sed` stop with "illegal byte sequence" on the bundle under a UTF-8 locale.
 
-Write each pinned fragment by copying it out of that file, not from memory or from reading the source. While fixing issues #221 and #223, a fragment written as `const codexLaunchArgv = ...` matched neither the Linux asset nor the darwin package's bundle, which both declare the binding without `const`; the check would have failed on every CI build. Running the corrected fragments and `tests/t3code-codex-launch.py` against the extracted Linux bundle passed, and three mutations of the declared launch argument turned the script red.
+Write each pinned fragment by copying it out of that file, not from memory or from reading the source. While fixing issues #221 and #223, a fragment written as `const codexLaunchArgv = ...` matched neither the Linux asset nor the darwin package's bundle, which both declare the binding without `const`; the check would have failed on every CI build. Running the corrected fragments and `tests/t3code-codex-launch.py` against the extracted Linux bundle passed, and three mutations of the declared launch argument turned the script red. That script and the Codex fragments were later removed with Codex; the technique applies unchanged to the fragments the check pins today.
 
 Like the text comparison above, this runs the check's logic by hand, so CI's `check-shards` build stays the evidence for the check as a whole.
 
