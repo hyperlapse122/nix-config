@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Link the Antigravity CLI's plugin skills and instructions into T3 Code's homes.
+"""Link the Antigravity CLI's plugin skills into T3 Code's homes.
 
 T3 Code runs each Antigravity instance with GEMINI_HOME set to
 <base>/userdata/providers/antigravity/<hex SHA-256 of the instance id>
@@ -20,10 +20,9 @@ reported when it holds a plugin skill's name. A plugin that `agy plugin
 disable` turned off in ~/.gemini/config/config.json keeps its tree but gets no
 links. Two plugins with a skill of the same name fail the run once the rest are
 linked, since one name holds one link and the other skill would be missing. The
-config/plugins link an earlier version made in each home is removed. Each home
-also gets config/AGENTS.md linked to the CLI's global rules. Runtime 1.3.0 and
-1.4.0 do not read that file, as scripts/antigravity-acp-probe shows; the link
-stays so it takes effect once a runtime does.
+config/plugins and config/AGENTS.md links an earlier version made in each home
+are removed; this repository no longer writes the CLI's global rules, so the
+second would dangle. A real file at either path is left and reported.
 
 A declared instance gets its home created before T3 Code first starts it. Every
 home under providers/antigravity is linked, declared or not. A link with the
@@ -39,7 +38,8 @@ import os
 import sys
 from pathlib import Path
 
-LINKS = ("AGENTS.md",)
+# The links an earlier version made in each home's config directory, by name.
+RETIRED_LINKS = ("plugins", "AGENTS.md")
 
 
 def ensure_link(link, target):
@@ -73,12 +73,16 @@ def points_into(link, directory):
         return False
 
 
-def remove_old_plugins_link(home, gemini_config):
-    """Remove the config/plugins link an earlier version made; the runtime never read it."""
-    link = home / "config" / "plugins"
-    if link.is_symlink() and link.readlink() == gemini_config / "plugins":
-        link.unlink()
-        print(f"removed {link}")
+def remove_old_links(home, gemini_config):
+    """Remove the links an earlier version made into the CLI's config; leave and report anything else."""
+    for name in RETIRED_LINKS:
+        link = home / "config" / name
+        if link.is_symlink():
+            if link.readlink() == gemini_config / name:
+                link.unlink()
+                print(f"removed {link}")
+        elif link.exists():
+            print(f"t3code-antigravity-link: {link} is not a link; left as is", file=sys.stderr)
 
 
 def disabled_plugins(gemini_config):
@@ -177,11 +181,7 @@ def main(argv=None):
             if not home.is_dir():
                 continue
             (home / "config").mkdir(exist_ok=True)
-            remove_old_plugins_link(home, args.gemini_config)
-            for name in LINKS:
-                link = home / "config" / name
-                if ensure_link(link, args.gemini_config / name):
-                    print(f"linked {link}")
+            remove_old_links(home, args.gemini_config)
         except OSError as error:
             print(f"t3code-antigravity-link: {error}", file=sys.stderr)
             if home.name in declared:

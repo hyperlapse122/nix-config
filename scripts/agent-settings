@@ -13,12 +13,6 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
---format toml merges into a TOML file instead, such as Codex's config.toml,
-with the same semantics.  The declaration stays JSON.  The file is edited in
-place through tomlkit, so the user's comments and the tables the declaration
-does not name keep their bytes.  TOML has no null, so a declared null is
-refused before anything is touched.
-
 The declared document is a JSON object with up to six fields:
 
   set       {name: scalar}          top-level keys to assign
@@ -54,17 +48,11 @@ from pathlib import Path
 import sys
 import tempfile
 
-import tomlkit
-
 # The settings file has another writer, so the merge is a compare-and-swap
 # rather than a plain read-modify-write.  A couple of retries is enough: each
 # one costs a read, and a file changing faster than that is a problem the user
 # needs told about rather than one worth spinning on.
 ATTEMPTS = 3
-
-# Syntaxes the settings file may be in. The declaration is always JSON.
-FORMATS = ('json', 'toml')
-
 
 def check_directory(path):
     """Refuse a symlinked parent without touching anything.
@@ -96,15 +84,7 @@ def describe(path):
     return json.dumps(path, ensure_ascii=False)
 
 
-def holds_null(value):
-    if isinstance(value, dict):
-        return any(holds_null(item) for item in value.values())
-    if isinstance(value, list):
-        return any(holds_null(item) for item in value)
-    return value is None
-
-
-def declaration(declared, fmt='json'):
+def declaration(declared):
     """Parse the rendered declaration into (assign, retire, paths, owned, upserts, migration).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
@@ -148,12 +128,6 @@ def declaration(declared, fmt='json'):
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
     upserts = upsert_entries(document.get('upsertPaths', []), assign, retire, owned, paths, declared)
     migration = instance_migration(document.get('migrateInstances'), assign, retire, owned, declared)
-    if fmt == 'toml':
-        nulls = sorted({describe([name]) for name, value in {**assign, **owned}.items() if holds_null(value)}
-                       | {describe(path) for path, value in paths if value is None}
-                       | {describe(path) for path, _, value in upserts if holds_null(value)})
-        if nulls:
-            raise ValueError('TOML cannot hold a declared null: {}'.format(', '.join(nulls)))
     return assign, retire, paths, owned, upserts, migration
 
 
@@ -281,10 +255,7 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
 
     The whole document is deep-copied and the copy edited in place.  The
     caller skips the write when the result equals what it read, and editing
-    the read objects would make that comparison true every time.  Editing in
-    place, rather than rebuilding each table as a plain dict, keeps a tomlkit
-    document's comments and layout; a plain dict assigned into it becomes a
-    table.
+    the read objects would make that comparison true every time.
     """
     merged = copy.deepcopy(current)
     migrate(merged, migration)
@@ -374,20 +345,7 @@ def read_settings(settings):
     return current
 
 
-def read_toml_settings(settings):
-    # A TOML document is always a table, so there is no "not an object" case.
-    text = read_text(settings)
-    if text is None:
-        return tomlkit.document()
-    try:
-        return tomlkit.parse(text)
-    except tomlkit.exceptions.ParseError:
-        raise ValueError('settings file is not valid TOML: {}'.format(settings))
-
-
-def serialize(merged, fmt):
-    if fmt == 'toml':
-        return tomlkit.dumps(merged)
+def serialize(merged):
     # ensure_ascii=False keeps the agent's non-ASCII text as the bytes it wrote
     # instead of rewriting it to \uXXXX escapes on every activation.
     return json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
@@ -416,11 +374,11 @@ def swap(settings, text, before):
             Path(temporary).unlink(missing_ok=True)
 
 
-def merge(settings, declared, fmt='json'):
-    assign, retire, paths, owned, upserts, migration = declaration(declared, fmt)
+def merge(settings, declared):
+    assign, retire, paths, owned, upserts, migration = declaration(declared)
     # Looked up per call rather than bound at import, so a test that patches
-    # either reader reaches this merge.
-    read = read_toml_settings if fmt == 'toml' else read_settings
+    # the reader reaches this merge.
+    read = read_settings
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -442,7 +400,7 @@ def merge(settings, declared, fmt='json'):
                 # Removed between the snapshot and here; fall through and let
                 # the next attempt recreate it rather than failing activation.
                 continue
-        if swap(settings, serialize(merged, fmt), before):
+        if swap(settings, serialize(merged), before):
             return
     raise ValueError('settings file kept changing while merging: {}'.format(settings))
 
@@ -452,13 +410,11 @@ def main(argv=None):
     parser.add_argument('--settings', required=True, type=Path)
     parser.add_argument('--declared', required=True, type=Path)
     parser.add_argument('--label', default='Agent', help='agent name used in failure messages')
-    parser.add_argument('--format', default='json', choices=FORMATS, dest='fmt',
-                        help='syntax of the settings file; the declaration is always JSON')
     args = parser.parse_args(argv)
     if os.geteuid() == 0:
         parser.error('must run as the destination user, not root')
     try:
-        merge(args.settings, args.declared, args.fmt)
+        merge(args.settings, args.declared)
     except (OSError, ValueError) as error:
         print('{} settings merge failed: {}'.format(args.label, error), file=sys.stderr)
         return 1

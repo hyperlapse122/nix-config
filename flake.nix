@@ -147,8 +147,6 @@
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
-        codex-release = agentTools.codexRelease;
-        codex = import ./packages/codex.nix { inherit pkgs; };
         opencode-release = agentTools.opencodeRelease;
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
@@ -306,7 +304,6 @@
               '';
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
-          codex-settings = import ./tests/codex.nix { inherit pkgs self; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
           antigravity-acp-probe =
@@ -322,10 +319,9 @@
           agent-settings =
             let
               tools = import ./packages/agent-tools.nix { inherit pkgs; };
-              inherit (tools) agentSettingsPython;
               packaged = tools.agentSettings;
             in
-            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ agentSettingsPython ]; } ''
+            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${./scripts/agent-settings} scripts/agent-settings
@@ -406,35 +402,6 @@
               assert merged['foreign-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'foreign-hook', 'timeout': 10}]}, merged
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
-
-              # TOML mode through the packaged binary, which proves the built
-              # interpreter carries tomlkit: a comment and a table the merge does
-              # not own must survive, and the declared leaves start divergent.
-              mkdir -p home/.codex
-              printf '# keep me\ncheck_for_update_on_startup = true\n\n[features]\nmemories = true\n\n[plugins."x"]\nenabled = true\n' \
-                > home/.codex/config.toml
-              printf '{"setPaths":[{"path":["check_for_update_on_startup"],"value":false},{"path":["features","memories"],"value":false},{"path":["features","daemon_auto_start"],"value":false}]}\n' \
-                > codex.json
-              env -i ${packaged}/bin/agent-settings --format toml --label Codex \
-                --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"
-              grep -qxF '# keep me' home/.codex/config.toml
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import tomllib
-              merged = tomllib.load(open('home/.codex/config.toml', 'rb'))
-              assert merged == {'check_for_update_on_startup': False, 'features': {'memories': False, 'daemon_auto_start': False}, 'plugins': {'x': {'enabled': True}}}, merged
-              PY
-
-              # Malformed TOML must fail the process and leave the file alone.
-              printf 'model = "unterminated\n' > home/.codex/config.toml
-              if env -i ${packaged}/bin/agent-settings --format toml --label Codex \
-                  --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"; then
-                echo "packaged merger accepted malformed TOML" >&2
-                exit 1
-              fi
-              if [ "$(cat home/.codex/config.toml)" != 'model = "unterminated' ]; then
-                echo "refused TOML merge still rewrote the settings file" >&2
-                exit 1
-              fi
 
               touch $out
             '';
@@ -533,14 +500,6 @@
             python tests/test_mise_release.py
             touch $out
           '';
-          codex-release = pkgs.runCommand "codex-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            export PYTHONDONTWRITEBYTECODE=1
-            mkdir -p scripts tests
-            cp ${./scripts/codex-release} scripts/codex-release
-            cp ${./tests/test_codex_release.py} tests/test_codex_release.py
-            python tests/test_codex_release.py
-            touch $out
-          '';
           opencode-release =
             pkgs.runCommand "opencode-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -630,82 +589,38 @@
           '';
           # home/h82/t3code.nix delivers the T3 Code instructions through these:
           # the instance envelope's environment list, Claude launch arguments
-          # parsed into the SDK's extraArgs, Codex launch arguments tokenized
-          # after app-server, and Claude Code loading CLAUDE.md from an --add-dir
-          # directory when the variable is set. The Claude adapter must also pass
-          # the instance environment, not only the host's, to the SDK. A pin bump
-          # that drops one fails here instead of silently leaving T3 Code
-          # sessions without the part. The Codex launch argument is then split
-          # with the pinned tokenizer itself, which the other checks only
-          # imitate with shlex.
-          t3code-instruction-channels =
-            let
-              instructions = import ./home/h82/agents/instructions/render.nix {
-                inherit pkgs;
-                inherit (pkgs) lib;
-              };
-              codexLaunch = instructions.render {
-                harness = "codex";
-                parts = [
-                  "system"
-                  "t3code"
-                ];
-              };
-              codexLaunchDeclared = instructions.declare {
-                name = "t3code-codex-launch.json";
-                base = { };
-                leaves = [
-                  {
-                    path = [
-                      "providerInstances"
-                      "codex"
-                      "config"
-                      "launchArgs"
-                    ];
-                    encoding = "codex-launch";
-                    source = codexLaunch;
-                  }
-                ];
-              };
-            in
-            pkgs.runCommand "t3code-instruction-channels"
-              {
-                nativeBuildInputs = [
-                  pkgs.nodejs
-                  pkgs.python3
-                ];
-              }
-              ''
-                # One grep pass per artifact: list the fragments it holds, then
-                # name each pinned fragment missing from that list.
-                check() {
-                  found=$(grep -rhaoF -f "$2" "$3" | sort -u || true)
-                  while IFS= read -r fragment; do
-                    if ! grep -qxF -- "$fragment" <<<"$found"; then
-                      echo "the pinned $1 no longer contains: $fragment" >&2
-                      exit 1
-                    fi
-                  done < "$2"
-                }
-                check "T3 Code" ${pkgs.writeText "t3code-instruction-fragments" ''
-                  environment: optionalKey(ProviderInstanceEnvironment),
-                  description: "Additional CLI arguments passed on session start.",
-                  ...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;
-                  ...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }
-                  codexLaunchArgv = (launchArgs) => tokenizeCliArgs(launchArgs);
-                  codexAppServerArgs = (launchArgs) => ["app-server", ...codexLaunchArgv(launchArgs)];
-                  const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
-                  const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
-                  environment: claudeEnvironment,
-                ''} ${self.packages.${system}.t3code-cli}/libexec/t3code/t3
-                check "Claude Code" ${pkgs.writeText "claude-code-instruction-fragments" ''
-                  CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
-                  --add-dir <directories...>
-                ''} ${self.packages.${system}.claude-code}/bin
-                python3 ${./tests/t3code-codex-launch.py} \
-                  ${self.packages.${system}.t3code-cli}/libexec/t3code/t3 ${codexLaunchDeclared} ${codexLaunch}
-                touch $out
-              '';
+          # parsed into the SDK's extraArgs, and Claude Code loading CLAUDE.md
+          # from an --add-dir directory when the variable is set. The Claude
+          # adapter must also pass the instance environment, not only the
+          # host's, to the SDK. A pin bump that drops one fails here instead of
+          # silently leaving T3 Code sessions without the part.
+          t3code-instruction-channels = pkgs.runCommand "t3code-instruction-channels" { } ''
+            # One grep pass per artifact: list the fragments it holds, then
+            # name each pinned fragment missing from that list.
+            check() {
+              found=$(grep -rhaoF -f "$2" "$3" | sort -u || true)
+              while IFS= read -r fragment; do
+                if ! grep -qxF -- "$fragment" <<<"$found"; then
+                  echo "the pinned $1 no longer contains: $fragment" >&2
+                  exit 1
+                fi
+              done < "$2"
+            }
+            check "T3 Code" ${pkgs.writeText "t3code-instruction-fragments" ''
+              environment: optionalKey(ProviderInstanceEnvironment),
+              description: "Additional CLI arguments passed on session start.",
+              ...extraArgs } = input.settings === void 0 ? {} : parseCliArgs(input.settings.launchArgs).flags;
+              ...Object.keys(extraArgs).length === 0 ? {} : { extraArgs }
+              const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
+              const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
+              environment: claudeEnvironment,
+            ''} ${self.packages.${system}.t3code-cli}/libexec/t3code/t3
+            check "Claude Code" ${pkgs.writeText "claude-code-instruction-fragments" ''
+              CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD
+              --add-dir <directories...>
+            ''} ${self.packages.${system}.claude-code}/bin
+            touch $out
+          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
@@ -1095,66 +1010,30 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
-          codex =
+          # Codex was removed; no user environment may install it or write its
+          # home again.
+          codex-absent =
             let
-              # The version attribute is compared with the pin for the reason
-              # given on the claude-code check: versionCheckHook already proves
-              # the binary reports that attribute. The wrapper flags are read
-              # from the installed bin/codex itself, because they are what keep
-              # Codex from updating itself under any other CODEX_HOME, such as
-              # T3 Code's per-provider homes, which never receive the declared
-              # config.toml keys.
-              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
-              wrapperFlags = [
-                "-c check_for_update_on_startup=false"
-                "--disable in_app_updates"
-                "--disable daemon_auto_start"
-              ];
-              assertConfiguration =
+              assertUser =
                 entry:
                 let
-                  codexPkg = userPackageOf "codex" entry;
-                  versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
-                    echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
-                    fail=1
-                  '';
-                  flagsMissing = pkgs.lib.optionalString (codexPkg != null) ''
-                    for flag in ${pkgs.lib.escapeShellArgs wrapperFlags}; do
-                      if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
-                        echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
-                        fail=1
-                      fi
-                    done
-                  '';
-                  # Codex looks for codex-code-mode-host beside the binary the
-                  # wrapper execs, never on PATH, so the host is found from that
-                  # exec target. It is run, not just inspected, because a binary
-                  # that exists and is executable can still fail to start.
-                  codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
-                    target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
-                    if [ -z "$target" ]; then
-                      echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
-                      fail=1
-                    elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
-                      echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
-                      fail=1
-                    fi
-                  '';
+                  codexFiles = builtins.filter (name: pkgs.lib.hasPrefix ".codex/" name) (
+                    builtins.attrNames (entry.user.home.file or { })
+                  );
                 in
                 ''
-                  ${assertUserPackage {
-                    pname = "codex";
-                    executables = [ "codex" ];
-                    desktopEntries = [ ];
-                  } entry}
-                  ${versionMismatch}
-                  ${flagsMissing}
-                  ${codeModeHostMissing}
+                  ${pkgs.lib.optionalString (userPackageOf "codex" entry != null) ''
+                    echo 'codex is still in the user packages on ${entry.name}' >&2
+                    fail=1
+                  ''}
+                  ${pkgs.lib.optionalString (codexFiles != [ ]) ''
+                    echo 'home files under ~/.codex remain on ${entry.name}: ${toString codexFiles}' >&2
+                    fail=1
+                  ''}
                 '';
             in
-            pkgs.runCommand "codex-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
+            pkgs.runCommand "codex-absent" { } ''
+              ${forEveryUser assertUser}
               touch $out
             '';
           opencode =
@@ -1454,13 +1333,13 @@
             '';
           opencode-wrapper =
             let
-              tokenFile = "/var/empty/opencode-test/opencode_api_key";
+              tokenFile = "/var/empty/opencode-test/synthetic_api_key";
               packaged = import ./packages/opencode.nix { inherit pkgs tokenFile; };
               # The token path lands inside single quotes in the wrapper.
               guardCases = [
                 {
                   label = "a relative token path";
-                  tokenFile = "run/secrets/cli-auth/opencode_api_key";
+                  tokenFile = "run/secrets/cli-auth/synthetic_api_key";
                   accept = false;
                 }
                 {
@@ -1475,7 +1354,7 @@
                 }
                 {
                   label = "a plain absolute token path";
-                  tokenFile = "/home/test-user/.local/state/nix-config/secrets/opencode_api_key";
+                  tokenFile = "/home/test-user/.local/state/nix-config/secrets/synthetic_api_key";
                   accept = true;
                 }
               ];
@@ -1495,59 +1374,89 @@
                 ''
               ) guardCases;
             in
-            pkgs.runCommand "opencode-wrapper-tests" { nativeBuildInputs = [ pkgs.procps ]; } ''
-              export HOME=$TMPDIR
-              ${guardChecks}
-              mkdir -p scripts tests
-              cp ${./scripts/opencode} scripts/opencode
-              cp ${./tests/opencode.sh} tests/opencode.sh
-              chmod +x scripts/opencode
-              patchShebangs scripts/opencode
-              bash tests/opencode.sh scripts/opencode
-              bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
+            pkgs.runCommand "opencode-wrapper-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.procps
+                  pkgs.jq
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                ${guardChecks}
+                mkdir -p scripts tests
+                cp ${./scripts/opencode} scripts/opencode
+                cp ${./tests/opencode.sh} tests/opencode.sh
+                chmod +x scripts/opencode
+                patchShebangs scripts/opencode
+                bash tests/opencode.sh scripts/opencode
+                bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile} ${packaged.instructionsConfig}
 
-              # The pinned binary, not only the wrapper's export, must keep a
-              # checkout's opencode.json out of the process holding the key.
-              # The bare binary loading the canary proves the probe can see it.
-              # debug config asks a server; with the service disabled each
-              # probe starts its own and stops it on exit, instead of leaving
-              # the detached background server running in the sandbox.
-              export XDG_CONFIG_HOME=$TMPDIR/config XDG_STATE_HOME=$TMPDIR/state XDG_DATA_HOME=$TMPDIR/data
-              mkdir -p "$XDG_CONFIG_HOME/opencode"
-              printf '{"disabled": true}\n' > "$XDG_CONFIG_HOME/opencode/service.json"
-              mkdir -p project
-              printf '{"username": "canary-project-config"}\n' > project/opencode.json
-              (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
-              (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
-              # v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first, so a caller's
-              # value for it must not turn project config back on either.
-              (cd project && OPENCODE_CONFIG_PROJECT_DISABLE=0 ${packaged}/bin/opencode debug config) > wrapped-override.json
-              if ! grep -qF canary-project-config bare.json; then
-                echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
-                exit 1
-              fi
-              if grep -qF canary-project-config wrapped.json; then
-                echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
-                exit 1
-              fi
-              if grep -qF canary-project-config wrapped-override.json; then
-                echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
-                exit 1
-              fi
-              # A missing pgrep would read as "no server", so its absence fails.
-              # A per-run server may take a moment to exit after its client; the
-              # detached shared server never does.
-              command -v pgrep >/dev/null || { echo "pgrep is missing; the leftover-server probe is blind" >&2; exit 1; }
-              for _ in $(seq 50); do
-                pgrep -f ${packaged}/libexec/opencode/opencode >/dev/null || break
-                sleep 0.1
-              done
-              if pgrep -f ${packaged}/libexec/opencode/opencode; then
-                echo "opencode debug config left a server running despite the disabled service" >&2
-                exit 1
-              fi
-              touch $out
-            '';
+                # The added config names exactly the rendered OpenCode
+                # instructions, and that file exists.
+                listed=$(jq -r '.instructions | if length == 1 then .[0] else error("want one instructions file, got \(length)") end' ${packaged.instructionsConfig})
+                if [ "$listed" != ${packaged.instructions} ]; then
+                  echo "the instructions config names '$listed', want ${packaged.instructions}" >&2
+                  exit 1
+                fi
+                if [ ! -s "$listed" ]; then
+                  echo "the instructions config names a missing or empty file: $listed" >&2
+                  exit 1
+                fi
+
+                # The pinned binary, not only the wrapper's export, must keep a
+                # checkout's opencode.json out of the process holding the key.
+                # The bare binary loading the canary proves the probe can see it.
+                # debug config asks a server; with the service disabled each
+                # probe starts its own and stops it on exit, instead of leaving
+                # the detached background server running in the sandbox.
+                export XDG_CONFIG_HOME=$TMPDIR/config XDG_STATE_HOME=$TMPDIR/state XDG_DATA_HOME=$TMPDIR/data
+                mkdir -p "$XDG_CONFIG_HOME/opencode"
+                printf '{"disabled": true}\n' > "$XDG_CONFIG_HOME/opencode/service.json"
+                mkdir -p project
+                printf '{"username": "canary-project-config"}\n' > project/opencode.json
+                (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
+                (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
+                # v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first, so a caller's
+                # value for it must not turn project config back on either.
+                (cd project && OPENCODE_CONFIG_PROJECT_DISABLE=0 ${packaged}/bin/opencode debug config) > wrapped-override.json
+                if ! grep -qF canary-project-config bare.json; then
+                  echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
+                  exit 1
+                fi
+                if grep -qF canary-project-config wrapped.json; then
+                  echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
+                  exit 1
+                fi
+                if grep -qF canary-project-config wrapped-override.json; then
+                  echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
+                  exit 1
+                fi
+                # The pinned binary loads the instructions from a shell run and
+                # not from a run T3 Code or a review peer launch drives.
+                if ! grep -qF ${packaged.instructions} wrapped.json; then
+                  echo "a shell run of the wrapper does not load the OpenCode instructions" >&2
+                  exit 1
+                fi
+                (cd project && OPENCODE_CONFIG_CONTENT='{}' ${packaged}/bin/opencode debug config) > driven.json
+                if grep -qF ${packaged.instructions} driven.json; then
+                  echo "a run with OPENCODE_CONFIG_CONTENT loads the OpenCode instructions" >&2
+                  exit 1
+                fi
+                # A missing pgrep would read as "no server", so its absence fails.
+                # A per-run server may take a moment to exit after its client; the
+                # detached shared server never does.
+                command -v pgrep >/dev/null || { echo "pgrep is missing; the leftover-server probe is blind" >&2; exit 1; }
+                for _ in $(seq 50); do
+                  pgrep -f ${packaged}/libexec/opencode/opencode >/dev/null || break
+                  sleep 0.1
+                done
+                if pgrep -f ${packaged}/libexec/opencode/opencode; then
+                  echo "opencode debug config left a server running despite the disabled service" >&2
+                  exit 1
+                fi
+                touch $out
+              '';
           lint-staged-markdown =
             let
               miseToml = builtins.fromTOML (builtins.readFile ./mise.toml);

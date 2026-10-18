@@ -2,22 +2,24 @@
 # Drives the opencode wrapper against a stub OpenCode that records its argv
 # and the environment it was given.
 #
-#   opencode.sh SCRIPT                      the source, placeholders rendered here
-#   opencode.sh --packaged BIN TOKEN_FILE   a built copy, checked for its constants
+#   opencode.sh SCRIPT          the source, placeholders rendered here
+#   opencode.sh --packaged BIN TOKEN_FILE INSTRUCTIONS_CONFIG
+#                               a built copy, checked for its constants
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s SCRIPT | --packaged BIN TOKEN_FILE\n' "${0##*/}" >&2
+  printf 'usage: %s SCRIPT | --packaged BIN TOKEN_FILE INSTRUCTIONS_CONFIG\n' "${0##*/}" >&2
   exit 2
 }
 
 mode=source
 if [[ ${1:-} == --packaged ]]; then
-  [[ $# -eq 3 ]] || usage
+  [[ $# -eq 4 ]] || usage
   mode=packaged
   target=$2
   want_token_file=$3
-  [[ -n $want_token_file ]] || usage
+  want_instructions_config=$4
+  [[ -n $want_token_file && -n $want_instructions_config ]] || usage
 else
   [[ $# -eq 1 ]] || usage
   target=$1
@@ -42,11 +44,13 @@ if [[ $mode == packaged ]]; then
   [[ $shebang == "#!$store/"*/bin/bash ]] || fail "shebang is not a store bash: $shebang"
   grep -qxF "TOKEN_FILE='$want_token_file'" "$target" ||
     fail "TOKEN_FILE is $(grep -m1 '^TOKEN_FILE=' "$target"), want '$want_token_file'"
+  grep -qxF "INSTRUCTIONS_CONFIG='$want_instructions_config'" "$target" ||
+    fail "INSTRUCTIONS_CONFIG is $(grep -m1 '^INSTRUCTIONS_CONFIG=' "$target"), want '$want_instructions_config'"
   opencode=$(sed -nE "s/^OPENCODE='(.*)'$/\1/p" "$target")
   [[ $opencode == "$store/"* && -x $opencode ]] || fail "OPENCODE '$opencode' is not an executable store path"
   rg_bin=$(sed -nE "s/^RIPGREP_BIN='(.*)'$/\1/p" "$target")
   [[ -x $rg_bin/rg ]] || fail "RIPGREP_BIN '$rg_bin' holds no rg"
-  pass 'the constants are substituted and point at the token file, OpenCode, and ripgrep'
+  pass 'the constants are substituted and point at the token file, the instructions config, OpenCode, and ripgrep'
   printf 'opencode: all checks passed (%s)\n' "$mode"
   exit 0
 fi
@@ -57,6 +61,7 @@ trap 'chmod -R u+rwx "$scratch" 2>/dev/null; rm -rf -- "$scratch"' EXIT
 bash_bin=$(command -v bash) || fail 'bash is required'
 token_file=$scratch/token
 file_token=fake-opencode-key-123
+instructions_config=$scratch/instructions-config.json
 
 rec=$scratch/rec
 rg_dir=$scratch/rg-bin
@@ -65,7 +70,7 @@ stub=$scratch/opencode-stub
 mkdir -p "$rg_dir" "$home"
 
 wrapper=$scratch/opencode
-sed -e "s|@TOKEN_FILE@|$token_file|" -e "s|@OPENCODE@|$stub|" -e "s|@RIPGREP_BIN@|$rg_dir|" \
+sed -e "s|@TOKEN_FILE@|$token_file|" -e "s|@INSTRUCTIONS_CONFIG@|$instructions_config|" -e "s|@OPENCODE@|$stub|" -e "s|@RIPGREP_BIN@|$rg_dir|" \
   -e "1s|.*|#!$bash_bin|" "$target" >"$wrapper"
 chmod +x "$wrapper"
 
@@ -74,8 +79,8 @@ cat >"$stub" <<STUB
 # Builtins only: the wrapper may run with a PATH that holds nothing useful.
 printf '%s\0' "\$@" >"$rec/argv"
 printf '%s' "\$#" >"$rec/argc"
-[[ -n \${OPENCODE_API_KEY+x} ]] && printf '%s' "\$OPENCODE_API_KEY" >"$rec/key"
-for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_CONFIG_PROJECT_DISABLE OPENCODE_DISABLE_CLAUDE_CODE PATH; do
+[[ -n \${SYNTHETIC_API_KEY+x} ]] && printf '%s' "\$SYNTHETIC_API_KEY" >"$rec/key"
+for var in OPENCODE_DISABLE_AUTOUPDATE OPENCODE_DISABLE_PROJECT_CONFIG OPENCODE_CONFIG_PROJECT_DISABLE OPENCODE_DISABLE_CLAUDE_CODE OPENCODE_API_KEY OPENCODE_CONFIG OPENCODE_CONFIG_CONTENT PATH; do
   [[ -n \${!var+x} ]] && printf '%s' "\${!var}" >"$rec/\$var"
 done
 printf 'stub-opencode ran\n'
@@ -170,19 +175,48 @@ pass 'ripgrep is prepended to the caller PATH'
 # --- key -------------------------------------------------------------------
 
 run serve
-[[ -f $rec/key ]] || fail 'the key file did not reach OPENCODE_API_KEY'
-[[ $(recorded key) == "$file_token" ]] || fail 'OPENCODE_API_KEY is not the file key'
+[[ -f $rec/key ]] || fail 'the key file did not reach SYNTHETIC_API_KEY'
+[[ $(recorded key) == "$file_token" ]] || fail 'SYNTHETIC_API_KEY is not the file key'
 assert_key_hidden "$file_token"
-pass 'the key file reaches OPENCODE_API_KEY and nowhere else'
+pass 'the key file reaches SYNTHETIC_API_KEY and nowhere else'
 
-run OPENCODE_API_KEY=caller-key serve
+run SYNTHETIC_API_KEY=caller-key serve
 [[ $(recorded key) == caller-key ]] || fail 'the file key replaced the caller key'
 assert_key_hidden "$file_token"
-pass 'a caller-exported OPENCODE_API_KEY wins over the key file'
+pass 'a caller-exported SYNTHETIC_API_KEY wins over the key file'
 
-run OPENCODE_API_KEY= serve
+run SYNTHETIC_API_KEY= serve
 [[ $(recorded key) == "$file_token" ]] || fail 'an empty caller key blocked the file key'
-pass 'an empty caller OPENCODE_API_KEY falls back to the key file'
+pass 'an empty caller SYNTHETIC_API_KEY falls back to the key file'
+
+run serve
+[[ ! -f $rec/OPENCODE_API_KEY ]] || fail "the file key also reached OPENCODE_API_KEY"
+run OPENCODE_API_KEY=caller-zen-key serve
+[[ $(recorded OPENCODE_API_KEY) == caller-zen-key ]] || fail 'a caller OPENCODE_API_KEY was not passed through unchanged'
+pass 'the wrapper never sets OPENCODE_API_KEY'
+
+# --- instructions --------------------------------------------------------------
+
+run
+[[ $(recorded OPENCODE_CONFIG) == "$instructions_config" ]] ||
+  fail "a shell run's OPENCODE_CONFIG is '$(recorded OPENCODE_CONFIG)', want the instructions config"
+run OPENCODE_CONFIG_CONTENT=
+[[ $(recorded OPENCODE_CONFIG) == "$instructions_config" ]] ||
+  fail "an empty OPENCODE_CONFIG_CONTENT did not get the instructions config"
+pass 'a run from a shell loads the instructions config'
+
+run 'OPENCODE_CONFIG_CONTENT={}'
+[[ ! -f $rec/OPENCODE_CONFIG ]] || fail "a driver run got OPENCODE_CONFIG '$(recorded OPENCODE_CONFIG)'"
+[[ $(recorded OPENCODE_CONFIG_CONTENT) == '{}' ]] || fail 'OPENCODE_CONFIG_CONTENT was not passed through'
+run 'OPENCODE_CONFIG_CONTENT={"permission":{"edit":"deny"}}'
+[[ ! -f $rec/OPENCODE_CONFIG ]] || fail "a reviewer run got OPENCODE_CONFIG '$(recorded OPENCODE_CONFIG)'"
+pass 'a run with OPENCODE_CONFIG_CONTENT, as T3 Code and a review peer launch it, gets no instructions'
+
+run OPENCODE_CONFIG=/caller/opencode.json
+[[ $(recorded OPENCODE_CONFIG) == /caller/opencode.json ]] || fail 'a shell run replaced the caller OPENCODE_CONFIG'
+run OPENCODE_CONFIG=/caller/opencode.json 'OPENCODE_CONFIG_CONTENT={}'
+[[ $(recorded OPENCODE_CONFIG) == /caller/opencode.json ]] || fail 'a driver run dropped the caller OPENCODE_CONFIG'
+pass 'a caller OPENCODE_CONFIG passes through unchanged'
 
 echo 4 >"$scratch/status"
 check_no_key() {
@@ -193,13 +227,13 @@ check_no_key() {
   mapfile -d '' argv <"$rec/argv"
   [[ ${argv[*]} == 'serve --port 1' ]] || fail "$label: argv is '${argv[*]}'"
   if [[ -f $rec/key ]]; then
-    fail "$label: OPENCODE_API_KEY was set to '$(recorded key)'"
+    fail "$label: SYNTHETIC_API_KEY was set to '$(recorded key)'"
   fi
   if [[ -n $(<"$scratch/stderr") ]]; then
     fail "$label: the wrapper printed to stderr: $(cat "$scratch/stderr")"
   fi
   assert_switches "$label"
-  run OPENCODE_API_KEY= serve
+  run SYNTHETIC_API_KEY= serve
   if [[ -f $rec/key ]]; then fail "$label: an empty caller key was passed on"; fi
 }
 

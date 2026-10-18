@@ -189,8 +189,8 @@ let
             fail "${entry.name}: no opencode wrapper in home.packages"
           else
             ''
-              if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/opencode_api_key'"} ${opencode}/bin/opencode; then
-                ${fail "${entry.name}: the opencode wrapper does not read ${state}/opencode_api_key"}
+              if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/synthetic_api_key'"} ${opencode}/bin/opencode; then
+                ${fail "${entry.name}: the opencode wrapper does not read ${state}/synthetic_api_key"}
               fi
             ''
         )

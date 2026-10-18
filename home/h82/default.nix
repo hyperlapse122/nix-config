@@ -63,7 +63,6 @@ in
     ]
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
-      (import ../../packages/codex.nix { inherit pkgs; })
       (import ../../packages/antigravity-cli.nix { inherit pkgs; })
       (
         let

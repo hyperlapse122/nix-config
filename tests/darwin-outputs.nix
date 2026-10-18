@@ -205,8 +205,8 @@ let
       opencode=$(readlink -f "$gen/home-path/bin/opencode" || true)
       if [ -z "$opencode" ] || [ ! -f "$opencode" ]; then
         bad "no opencode on PATH"
-      elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/opencode_api_key'"} "$opencode"; then
-        bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/opencode_api_key"
+      elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
+        bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
       fi
 
       # The OpenCode config merge runs after writeBoundary and targets the

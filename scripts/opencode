@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
-# Runs the pinned OpenCode with its API key and the switches that keep it from
-# updating itself or loading anything a checkout or Claude Code supplies. The
-# Nix package replaces the @...@ constants. Builtins only, so the wrapper needs
-# nothing on PATH.
+# Runs the pinned OpenCode with its Synthetic API key and the switches that
+# keep it from updating itself or loading anything a checkout or Claude Code
+# supplies. The Nix package replaces the @...@ constants. Builtins only, so the
+# wrapper needs nothing on PATH.
 set -euo pipefail
 
 TOKEN_FILE='@TOKEN_FILE@'
+INSTRUCTIONS_CONFIG='@INSTRUCTIONS_CONFIG@'
 OPENCODE='@OPENCODE@'
 RIPGREP_BIN='@RIPGREP_BIN@'
 
 # A key the caller already exported wins, so another account can be tested
 # without touching secrets. Anything wrong with the file means no key, and
-# OpenCode runs on the free tier's anonymous limits: the file is absent on
-# bootstrap generations, and saying nothing about it keeps every run quiet.
-if [[ -z ${OPENCODE_API_KEY:-} ]]; then
-  unset OPENCODE_API_KEY
+# Synthetic then refuses every request, so a review skips its peer: the file
+# is absent on bootstrap generations, and saying nothing about it keeps every
+# run quiet.
+if [[ -z ${SYNTHETIC_API_KEY:-} ]]; then
+  unset SYNTHETIC_API_KEY
   # A missing, unreadable, or directory path fails the read, which leaves
   # token empty.
   token=
   { IFS= read -r -d '' -N 16384 token <"$TOKEN_FILE"; } 2>/dev/null || true
   token=${token%"${token##*[![:space:]]}"}
   if [[ -n $token && ${#token} -le 8192 && $token != *[[:space:][:cntrl:]]* ]]; then
-    export OPENCODE_API_KEY=$token
+    export SYNTHETIC_API_KEY=$token
   fi
   unset token
 fi
@@ -38,6 +40,14 @@ export OPENCODE_DISABLE_AUTOUPDATE=true
 export OPENCODE_DISABLE_PROJECT_CONFIG=true
 export OPENCODE_CONFIG_PROJECT_DISABLE=true
 export OPENCODE_DISABLE_CLAUDE_CODE=true
+
+# The agent instructions reach only a session started from a shell. T3 Code's
+# driver always sets OPENCODE_CONFIG_CONTENT, and a cross-model review peer's
+# launch sets it too, so a run that has it gets none of them: a reviewer runs
+# on its brief alone. A caller's own OPENCODE_CONFIG stays as it is.
+if [[ -z ${OPENCODE_CONFIG_CONTENT:-} && -z ${OPENCODE_CONFIG:-} ]]; then
+  export OPENCODE_CONFIG=$INSTRUCTIONS_CONFIG
+fi
 
 # OpenCode downloads ripgrep into its data directory when none is on PATH.
 export PATH="$RIPGREP_BIN${PATH:+:$PATH}"

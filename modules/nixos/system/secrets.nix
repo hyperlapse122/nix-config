@@ -79,10 +79,10 @@ in
       default = false;
       description = "Decrypt tokscale_token from secrets/tokens.yaml for the tokscale wrapper, which reads it at run time.";
     };
-    enableOpencodeApiKey = lib.mkOption {
+    enableSyntheticApiKey = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Decrypt opencode_api_key from secrets/tokens.yaml for the opencode wrapper, which reads it at run time.";
+      description = "Decrypt synthetic_api_key from secrets/tokens.yaml for the opencode wrapper, which reads it at run time.";
     };
   };
   config = lib.mkMerge [
@@ -138,7 +138,7 @@ in
                   ]
                   ++ lib.optional cfg.enableDockerToken "docker_token"
                   ++ lib.optional cfg.enableTokscaleToken "tokscale_token"
-                  ++ lib.optional cfg.enableOpencodeApiKey "opencode_api_key"
+                  ++ lib.optional cfg.enableSyntheticApiKey "synthetic_api_key"
                 ))
                 (name: {
                   key = lib.removePrefix "cli-auth/" name;

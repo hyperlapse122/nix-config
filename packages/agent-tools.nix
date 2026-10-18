@@ -36,11 +36,7 @@ let
       meta.mainProgram = name;
     };
 
-  # tomlkit is what lets the TOML mode rewrite a file such as Codex's
-  # config.toml without dropping the comments and tables it does not own. The
-  # flake check runs the source copy of the tests under this same interpreter.
-  agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
-  agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
+  agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
 
   # Runs from home activation, where PATH carries neither home.packages nor
   # the login shell's session variables, so the module hands it the agent CLI
@@ -70,11 +66,6 @@ let
   # latest GitHub release. Its network call goes through an overridable
   # command so the sandboxed repository check can drive it with fixtures.
   miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
-
-  # Resolves the latest Codex release and its musl asset digest from the
-  # GitHub releases API. Its network call goes through an overridable command
-  # so the sandboxed repository check can drive it with fixtures.
-  codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
 
   # Resolves the latest OpenCode release, its per-platform tarball URLs, and
   # their sha512 integrity from the npm registry's @opencode/cli packages. Its
@@ -111,14 +102,12 @@ in
 {
   inherit
     agentSettings
-    agentSettingsPython
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
     wifimanDesktopRelease
     claudeCodeRelease
     miseRelease
-    codexRelease
     opencodeRelease
     antigravityCliRelease
     t3codeRelease

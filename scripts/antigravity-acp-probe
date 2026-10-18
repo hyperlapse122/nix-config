@@ -3,8 +3,10 @@
 
 T3 Code starts agy_acp_server.par with GEMINI_HOME set to an instance home under
 ~/.t3/userdata/providers/antigravity, and t3code-antigravity-link links the
-plugin skills and config/AGENTS.md into it. The repository's checks prove the
-links exist, not that the runtime reads them, and the agy CLI ignores
+plugin skills into it. The repository no longer writes the CLI's global rules,
+so the instructions verdict needs a config/AGENTS.md placed in the home by
+hand. The repository's checks prove the links exist, not that the runtime
+reads them, and the agy CLI ignores
 GEMINI_HOME, so it cannot answer the question either. This probe starts the
 runtime itself, the way T3 Code does, against that home, asks the session what
 it holds, and reports five verdicts: plugin skills, global instructions,

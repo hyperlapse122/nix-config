@@ -1,8 +1,8 @@
 {{- /*
   One template, three parts. The `part` context picks which part renders:
   - system: rules that must hold every turn in every workspace (tool use,
-    GPG and encryption, model routing). A harness that takes an added system
-    prompt gets this part there.
+    GPG and encryption, the cross-model peer). A harness that takes an added
+    system prompt gets this part there.
   - user: workflow preferences (review findings, learning refresh, branch
     names, commit hooks, pull and merge requests, issue media). Every harness
     gets this part in its user-level instruction file.
@@ -13,14 +13,12 @@
 {{- if eq .part.id "system" -}}
 # Tool use
 
-Use the tools {{ .harness.name }} provides natively before reaching for a shell equivalent. A native tool call is shown to the user as a reviewable action, goes through the harness's permission rules, and returns output the harness can track. A shell command doing the same job hides all of that.
+Use the tools {{ .harness.name }} provides natively before reaching for a shell equivalent. A native tool call is shown to the user as a reviewable action, goes through the harness's permission rules, and returns output the harness can track; a shell command doing the same job hides all of that.
 
-- Read, create, and edit files with the file tools. Do not use `cat`, `head`, `tail`, `sed -n`, `sed -i`, `awk`, `perl -i`, `echo >`, or heredocs for this.
-- Read web pages and documentation, and search the web, with the web tools rather than `curl` or `wget`.
-- When the user's answer changes what you do next, ask with the question tool rather than ending your turn on an open question.
-- Hand independent work that can run in parallel to the subagent tool, with its model chosen by Model routing below.
+- Ask with the question tool when the user's answer changes what you do next, rather than ending your turn on an open question.
+- Hand independent work that can run in parallel to the subagent tool, on the model tier the invoked skill names for it.
 - Keep the shell for work no native tool covers: builds, tests, formatters, `git`, package managers, and searches of the tree.
-- When a native tool fails or cannot express an operation, say so and use the shell for that one operation only. Go back to the native tool for the next one.
+- When a native tool fails or cannot express an operation, say so and use the shell for that one operation only, then go back to the native tool.
 
 ## {{ .harness.name }} tools
 
@@ -40,32 +38,18 @@ Use the tools {{ .harness.name }} provides natively before reaching for a shell 
 - Search the tree with `Grep` and `Glob` when this session offers them; otherwise use `grep` and `find` through `Bash`.
 - Start long-running commands with `Bash`'s `run_in_background` option, not a trailing `&`, and do not poll them with `sleep`.
 - Read a file with `Read` before changing it with `Edit` or `Write`.
-{{- else if eq .harness.id "antigravity" }}
-| Read a file | `view_file` | `cat`, `head`, `tail`, `sed -n` |
-| Change part of an existing file | `replace_file_content` | `sed -i`, `awk`, `perl -i` |
-| Create or fully rewrite a file | `write_to_file` | heredocs, `echo >`, `tee` |
-| Read a web page | `read_url_content` | `curl`, `wget` |
-| Search the web | `search_web` | `curl` against a search engine |
-| Ask the user to choose | `ask_question` | an open question at the end of a turn |
-| Delegate parallel or broad work | `invoke_subagent` | nested `agy -p` invocations |
-| Inspect or stop background work | `manage_task` | `ps`, `kill` |
-| Wait for a later point in time | `schedule` | `sleep` loops |
-| Run builds, tests, `git`, and searches | `run_command` | — |
+{{- else if eq .harness.id "opencode" }}
+| Read a file, image, or directory | `read` | `cat`, `head`, `tail`, `sed -n`, `ls` |
+| Change part of an existing file | `edit` | `sed -i`, `awk`, `perl -i` |
+| Create or fully rewrite a file | `write` | heredocs, `echo >`, `tee` |
+| Search the tree | `grep` and `glob` | `grep` and `find` through `shell` |
+| Read a web page | `webfetch` | `curl`, `wget` |
+| Search the web | `websearch` | `curl` against a search engine |
+| Ask the user to choose | `question` | an open question at the end of a turn |
+| Delegate parallel or broad work | `subagent` | nested `opencode run` invocations |
+| Run builds, tests, and `git` | `shell` | — |
 
-- There is no dedicated search tool, so search the tree with `grep` and `find` through `run_command`.
-- Read a file with `view_file` before changing it with `replace_file_content` or `write_to_file`.
-{{- else if eq .harness.id "codex" }}
-| Change part of an existing file | `apply_patch` | `sed -i`, `awk`, `perl -i` |
-| Create or fully rewrite a file | `apply_patch` | heredocs, `echo >`, `tee` |
-| Look at an image | `view_image` | opening it in another program |
-| Search the web, or read a web page by its URL | `web_search` | `curl`, `wget` |
-| Ask the user to choose | `request_user_input` | an open question at the end of a turn |
-| Delegate parallel or broad work | `spawn_agent` | nested `codex exec` invocations |
-| Track a multi-step task | `update_plan` | a checklist in a reply |
-| Run builds, tests, `git`, searches, and file reads | `exec_command` | — |
-
-- Codex has no file-reading tool, so read files through `exec_command` with `sed -n` or `rg`. That is the one exception to the rule against reading with shell commands.
-- Read a file before changing it with `apply_patch`.
+- Read a file with `read` before changing it with `edit` or `write`.
 {{- else }}
 {{- fail (printf "agent-instructions: unknown harness %q" .harness.id) }}
 {{- end }}
@@ -79,69 +63,50 @@ The user's GPG key is on an OpenPGP card, a YubiKey that stays connected, and it
 - Stop and report only when the PIN is rejected, the prompt times out, or the card is missing.
 - Never print decrypted values, pass them as command arguments, or read decrypted files with the file tools; send decrypted output straight into the command that consumes it.
 - Leave card administration and key management to the user: card-edit admin commands, PIN changes, key generation, secret-key export, and trust changes.
-- When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key.
-- When a machine or service must decrypt that file without the card, also add the machine's own recipient.
+- When a new SOPS setup or new secret file has no existing encryption method, use the user's card key, fingerprint `621512777E6933FEB4458FDC4945855D4F283F05`, as the user's recipient instead of creating an age key, and also add a machine's own recipient when that machine or service must decrypt the file without the card.
 - Keep the existing method in a project that already encrypts with age or another method.
+{{- if ne .harness.id "opencode" }}
 
-# Model routing
+# Cross-model review
 
-These are the user's default models for each role in Compound Engineering (CE) work, such as a skill's scouts, workers, and reviewers. They are a starting point, not a rule.
-
-- Each routing choice follows this order: the user's conversation, then the project's instructions and its CE config (`.compound-engineering/config.local.yaml`, then `.compound-engineering/config.yaml`) in the order the invoked skill defines, then the table below, then the skill's own default mapping.
-- Start from the table's default; when you choose a different model, tell the user in one line which model you chose and why.
-- The table picks a model for a role; it does not decide which work you do yourself and which you hand off.
-- A skill's cheapest capable (extraction) tier maps to the short scout row; its mid-tier and the native `ce-work` worker map to the worker row.
-- A short scout is one whose result you need before your next step. A broad scout can run in the background while you continue.
-- Never choose Gemini 3.1 Pro (`gemini-pro-agent`, `gemini-3.1-pro-low`), any Codex Terra model, or any Claude Fable model yourself; use one only when the user, the project, or its CE config names it.
-- Run a delegated or subagent task at the chosen model's default effort unless the table, the skill, its config, the project, or the user names one. An Antigravity model carries its effort in its id, such as the `low` in `gemini-3.8-flash-low`.
-- Apply the same-provider cells in every session; a subagent you start yourself runs on your own provider.
-- When your native subagent tool cannot select the table's class, let the subagent inherit your session model and say so in one line.
-
-Columns name the harness running the orchestrating session. Cells name a model class, and the latest runnable version of that class serves it.
-
-| Role | Claude Code session | Codex session | Antigravity session |
-| --- | --- | --- | --- |
-| Short scout | Haiku | Luna | Flash low |
-| Broad scout | Haiku | Luna | Flash low |
-| Worker | Sonnet | Luna | Flash medium |
+Compound Engineering (CE) skills use `opencode` as the cross-model peer. When the peer fails, skip the pass and say why in one line; do not retry it or run another peer in its place.
+{{- end }}
 {{- else if eq .part.id "user" -}}
 # Review findings
 
 Apply every finding that `ce-code-review` (its cross-model pass included), `ce-simplify-code`, and `ce-doc-review` report, whatever its severity (P2 and P3 included), its confidence, or the list it sits in. This rule overrides the apply bars, deferral steps, and review prompts of those skills and of the skills that call them, such as `lfg` and `ce-work`. A low-severity finding is still a defect in the change, and fixing it now costs less than tracking it.
 
 - A finding is any item these skills report: `findings`, `actionable_findings`, `testing_gaps`, `residual_risks`, `deferred_questions`, advisory items, items owned by `human` or `release`, `ce-doc-review` FYI observations, and items `ce-simplify-code` would skip as low-value or uncertain.
-- Fix a testing gap by adding the missing test, and a residual risk or advisory item with the code or document change that removes it. Report an item without an edit only when it has nothing to change, such as a rollout note or a learning.
-- Verify a finding that a skill left `unresolved` or validation-degraded yourself. Apply it when it holds, and report it with the reason when it does not.
+- Fix a testing gap by adding the missing test, and a residual risk or advisory item with the change that removes it. Report an item without an edit only when it has nothing to change, such as a rollout note or a learning.
+- Verify a finding that a skill left `unresolved` or validation-degraded yourself; apply it when it holds, and report it with the reason when it does not.
 - These skill rules give way to this one: `lfg`'s apply bar and residual handoff; `ce-work`'s deferral criteria and Residual Work Gate; `ce-code-review`'s `testing_gaps` and `residual_risks` buckets, its never-apply marks, its report-only default, and its no-blocking-prompts rule for the one apply-all question asked after it returns; `ce-simplify-code`'s low-value skip; and `ce-doc-review`'s grouped confirmation, routing question, per-finding Apply/Defer/Skip walk-through, FYI routing, and hold on findings that only a cross-model peer raised.
 - Do not park a finding in a residual list, a follow-up ticket, a pull request section of unapplied findings such as `## Unapplied review findings`, a document's `## Deferred / Open Questions` section, or a report-only or FYI listing.
+- Leave a finding unapplied only when you verified that it is wrong, or when applying it would edit outside `ce-simplify-code`'s mutation boundary or weaken a safety check, and report each such finding and why.
 - Report what you applied, and each decision you made on the user's behalf, in the pull request body when there is one, and in the final report.
-- Leave a finding unapplied only when you verified that it is wrong, or when applying it would edit outside `ce-simplify-code`'s mutation boundary or weaken a safety check. Report each such finding and why.
-- When a fix needs a user decision, such as a change to product behavior or outside the agreed scope, ask with the question tool in an interactive run. In an autonomous run, such as `lfg`, apply the recommended fix and list the decision in the final report.
-- In an autonomous run, stop and ask with the question tool when a fix would reverse a decision the user made, such as a `session-settled` entry in the plan.
-- When the user asked only for a review, run the skill report-only, so it edits nothing, `ce-doc-review`'s own applied fixes included. Report the findings once the skill returns, then ask once whether to apply every finding, and edit nothing until the user says yes. Do not offer a menu of which findings to apply.
-- A review that runs inside `ce-brainstorm`, `ce-plan`, `ce-work`, `lfg`, or `ce-commit-push-pr` applies its findings without that question. A finding there that needs a user decision follows the user-decision rules above.
+- When a fix needs a user decision, such as a change to product behavior or outside the agreed scope, ask with the question tool in an interactive run. In an autonomous run, such as `lfg`, apply the recommended fix and list the decision in the final report, but stop and ask with the question tool when the fix would reverse a decision the user made, such as a `session-settled` entry in the plan.
+- When the user asked only for a review, run the skill report-only, so it edits nothing, `ce-doc-review`'s own applied fixes included. Once it returns, report the findings, ask once whether to apply every finding, and edit nothing until the user says yes; do not offer a menu of which findings to apply.
+- A review that runs inside `ce-brainstorm`, `ce-plan`, `ce-work`, `lfg`, or `ce-commit-push-pr` applies its findings without that question; a finding there that needs a user decision follows the rules above.
 
 # Learning refresh
 
 Before each push, check whether the commits it would send break a learning, and refresh that learning on the branch before you push. A learning is a document under `solutions/` in the project's Compound Engineering artifact root, which is `docs` unless `docs_root` in `.compound-engineering/config.yaml` names another directory.
 
-- Check the commits the remote branch does not have yet, or, before the first push, the commits since the branch left the default branch. Commits an earlier push sent were checked then.
-- Collect each file path, host name, package name, option name, or other identifier those commits delete, move, or rename, and search the learnings as they stand at the tip of the branch for any that cite one.
+- Check the commits the remote branch does not have yet, or, before the first push, the commits since the branch left the default branch.
+- Collect each file path, host name, package name, option name, or other identifier those commits delete, move, or rename, and search the learnings at the tip of the branch for any that cite one.
 - Skip the check when the project has no learnings, when those commits change only learnings, or when no learning cites a collected item.
-- Leave a learning alone when it already carries `status: stale`, so a learning a refresh marked stale is not refreshed again.
-- Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint.
-- In an interactive session, run it in interactive mode so it asks the user its judgment calls. In an autonomous run, such as `lfg`, pass `mode:non-interactive`, which marks an ambiguous learning stale instead of asking.
-- Commit the refresh as its own commit on the current branch, separate from the change that caused it, and push it with that change. This overrides `ce-compound-refresh`'s commit step and its Discoverability Check follow-up: do not ask where to commit, do not move the refresh to a new branch or pull request, and fold any instruction-file or `CONCEPTS.md` edit they make into the refresh commit.
-- Let `ce-compound-refresh` push nothing; push once, after every refresh run has finished, so the push carries every refresh commit.
+- Leave a learning that already carries `status: stale` alone, so a learning a refresh marked stale is not refreshed again.
+- Run `ce-compound-refresh` once for each learning that cites a collected item, with that learning's filename as the scope hint: in interactive mode in an interactive session, and with `mode:non-interactive`, which marks an ambiguous learning stale instead of asking, in an autonomous run such as `lfg`.
+- Commit each refresh as its own commit on the current branch, separate from the change that caused it. This overrides `ce-compound-refresh`'s commit step and its Discoverability Check follow-up: do not ask where to commit, do not move the refresh to a new branch or pull request, and fold any instruction-file or `CONCEPTS.md` edit they make into the refresh commit.
+- Let `ce-compound-refresh` push nothing; push once, after every refresh run has finished, so the push carries the change and every refresh commit.
 
 # Branch names
 
-Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not. A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change. A descriptive name that keeps an owner prefix a tool added, such as `hyperlapse122/add-git-lfs-package`, is renamed as well when the project documents no rule that uses that prefix. Any other name that already describes the change stays.
+Before the first push of a branch, check whether its name describes the change, and rename it locally with `git branch -m` when it does not. A tool-generated placeholder, such as a worktree codename like `hyperlapse122/mooneye` or `worktree-memoized-juggling-hartmanis`, or a random-hex branch like `t3code/1a2b3c4d`, does not describe a change. A descriptive name that keeps an owner prefix a tool added, such as `hyperlapse122/add-git-lfs-package`, is renamed too unless the project documents a rule that uses that prefix. Any other name that already describes the change stays.
 
-- Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it. A pushed branch keeps its name, even a placeholder. An upstream that points at another branch, such as `origin/main` set when the worktree was created, does not make a branch pushed. Push the renamed branch with `git push -u origin <new-name>` so the new name becomes its upstream.
-- Never rename a branch onto, or push the renamed branch onto, a branch that already exists. Before renaming, check that the new name is free locally and on the remote with `git ls-remote --heads origin <new-name>`. When it is taken, or the push is rejected for a conflicting ref, pick another descriptive name instead of forcing it with `git branch -M`.
+- Rename only a branch that has never been pushed: no remote branch of the same name exists and no pull request uses it. An upstream that points at another branch, such as `origin/main` set when the worktree was created, does not make a branch pushed. Push the renamed branch with `git push -u origin <new-name>` so the new name becomes its upstream.
+- Never rename a branch onto, or push it onto, a branch that already exists. Before renaming, check that the new name is free locally and on the remote with `git ls-remote --heads origin <new-name>`. When it is taken, or the push is rejected for a conflicting ref, pick another descriptive name instead of forcing it with `git branch -M`.
 - Follow the project's documented branch-naming rule, from `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`, the project docs, or a CI check or hook that validates branch names. A pattern seen only in existing branch names is not a rule.
-- When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change. This follows GitHub Flow's short, descriptive names, for example `feat/add-branch-naming-rule`. Drop an owner prefix a tool added, such as `hyperlapse122/`, and check the name with `git check-ref-format --branch`, which checks syntax only.
+- When the project documents no rule, name the branch `type/short-kebab-slug`: a Conventional Commits type such as `feat`, `fix`, `docs`, `refactor`, or `chore`, then a few lowercase hyphenated words that describe the change, for example `feat/add-branch-naming-rule`. Drop an owner prefix a tool added, such as `hyperlapse122/`, and check the name with `git check-ref-format --branch`, which checks syntax only.
 
 # Commit hooks
 
@@ -176,7 +141,7 @@ GitHub and GitLab are both normal forges. Treat a GitLab project as the same cas
 
 # Issue and pull request media
 
-When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change. This covers media the user supplied and media you capture yourself.
+When you create or edit a GitHub or GitLab issue, pull request, merge request, or a comment on one of them, attach the images and videos a reader needs to see the problem or the change, whether the user supplied them or you capture them.
 
 - Attach every image or video from the conversation that relates to the item you are writing.
 - When showing the screen or behavior would help a reader and no media in the conversation already shows it, reproduce it with the tools this session offers, such as browser automation, an app preview, or a device simulator, and capture a screenshot, or a recording when the point is motion or a sequence of steps.
@@ -204,48 +169,32 @@ Upload only through the CLI or API, never through the web UI in a browser.
 {{- else if eq .part.id "t3code" -}}
 # T3 Code
 
-This session runs inside T3 Code. These rules add to the Tool use, Model routing, and Pull and merge requests sections of your other instructions, and where they differ, these rules take precedence.
+This session runs inside T3 Code. These rules add to the Tool use, Cross-model review, and Pull and merge requests sections of your other instructions, and where they differ, these rules take precedence.
 
-- Route to another provider only through T3 Code, as Cross-model delegation describes.
-{{- if ne .harness.id "antigravity" }}
-- A broad scout runs on Flash low through T3 Code; when Antigravity is not runnable through T3 Code, it keeps the short scout's class from the table.
-{{- end }}
-- When the T3 Code MCP tools are available, delegate every subagent job through T3 Code as Cross-model delegation describes instead of using your native subagent tool, whatever provider or model the job needs.
-- This covers short and broad scouts, workers, and the reviewers or other parallel agents a skill dispatches in-process, such as `ce-code-review`'s reviewers. It overrides Tool use's instruction to hand parallel work to the subagent tool and T3 Code's own guidance to prefer native subagent tools for same-provider work.
-- Use your native subagent tool only when the T3 Code MCP tools are not available in this session, or when no T3 Code provider succeeds for a job, as Cross-model delegation describes.
+- When the T3 Code MCP tools are available, delegate every subagent job through T3 Code as Delegation describes, instead of using your native subagent tool. This covers scouts, workers, and the reviewers or other parallel agents a skill dispatches in-process, such as `ce-code-review`'s reviewers, and overrides Tool use's instruction to hand parallel work to the subagent tool and T3 Code's own guidance to prefer native subagent tools for same-provider work.
+- Use your native subagent tool only when the T3 Code MCP tools are not available in this session, or when a delegated job falls back to it as Delegation describes.
 
-# Cross-model delegation
+# Delegation
 
 Delegate subagent work through the T3 Code MCP server, which knows which providers and models can run right now and tracks the child task for you.
 
-- This section applies to every subagent job whenever the T3 Code MCP tools are available in this session, whether the job runs on your own provider or another.
-- Tools the session lists by name count as available even when the harness must load their schemas before the first call.
-- The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`. A harness may expose them under a prefix such as `mcp__t3-code__`.
-- When a skill has decided to run cross-model work and tells you to discover, attest, or launch another harness, delegate that run through T3 Code instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, decide first whether the run happens.
-- Carry out the rest of the skill's procedure with the delegated result, and adapt where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
-- Before delegating, list the runnable providers and models with `orchestrator_capabilities`, and choose the provider and model that suit the task, following Model routing: your own provider for a same-provider cell of the table, another provider for cross-model work. A job that would inherit your session model under your native subagent tool, such as a skill's reviewer with no tier of its own, runs on your session model, and a retry on another provider gives it that provider's class at the Opus tier: Opus for Claude, Sol for Codex, or Argon at medium effort for Gemini.
-- Once you know which model class suits the task (Sol, Luna, or Astra for Codex; Opus, Sonnet, or Haiku for Claude; Argon, at the Opus tier, or Flash, between Sonnet and Haiku, for Gemini), choose the latest version of that class that `orchestrator_capabilities` lists as runnable.
-- Compare versions only within that class: a newer model of another class does not outrank the class the task needs.
-- Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model.
-- When a skill's cross-model pass runs through T3 Code, take its model and effort from `cross_model_model` and `cross_model_effort` when they are set, otherwise from the skill's own mapping; the latest-version rule does not replace a model the skill names.
-{{- if ne .harness.id "antigravity" }}
-- When a skill's cross-model pass runs through T3 Code, also delegate that pass to Antigravity on the latest runnable Argon at medium effort (today `gemini-4-argon-medium` on provider instance `antigravity`), even though the skill's mapping has no Gemini entry. The Antigravity peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs. It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `antigravity` as the provider name. It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content. When a gate or restriction excludes it, or Antigravity is not runnable, skip it and say why in one line.
-{{- end }}
-- When a skill's cross-model pass runs through T3 Code, also delegate that pass to OpenCode on `{{ .opencode.model }}` on provider instance `opencode`, even though the skill's mapping has no OpenCode entry. The OpenCode peer belongs to the pass the skill already runs, not a pass of its own, so it runs only when the skill's own peer runs. It mirrors every job the skill's peer runs, with the same brief, scope, and output shape, and its findings fold in beside that peer's with `opencode` as the provider name. It obeys the skill's recipient restrictions, such as `CROSS_MODEL_PEERS` or a user's refusal of a provider, and is announced before dispatch as a further recipient that receives the reviewed content, adding that the content goes to OpenCode Zen's free tier under the data terms at `https://opencode.ai/docs/zen/#privacy`. When a gate or restriction excludes it, or OpenCode is not runnable, skip it and say why in one line.
+- The tools are `orchestrator_capabilities`, `delegate_task`, `task_status`, and `task_cancel`, possibly under a prefix such as `mcp__t3-code__`. They count as available when the session lists them by name, even when the harness must load their schemas before the first call.
+- Before delegating, list the runnable providers and models with `orchestrator_capabilities`. Run each job on your own provider at the model its skill's tier names: Haiku for the cheapest capable tier, Sonnet for the mid-tier, and your session model when the skill names no tier.
+- Choose the latest version of that model that `orchestrator_capabilities` lists as runnable; a newer model of another class does not outrank it. Choose an older version only when the latest is unavailable, has failed in this session, or the user or project asked for that version, and say why when you name the model.
+- When a skill runs its cross-model pass, delegate that pass as one task to provider instance `opencode` on `{{ .opencode.model }}` instead of the skill's own launch route; the skill's gates, such as `cross_model_review_mode`, still decide whether the pass runs, and you never add a pass the skill would not run.
+- Delegate the cross-model pass asynchronously in the same step that dispatches the skill's in-process reviewers, merge its result when it returns, and carry out the rest of the skill's procedure with it, adapting where the skill assumes its own route, such as a receipt that marks a peer as independently verified.
 - Tell the user which provider and model you delegated to.
 - Run every delegated task in full-access runtime mode.
-- Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation.
-- When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so explicitly in the task prompt.
+- Write a self-contained task prompt with all the context, prior findings, and constraints the child needs, because the child receives none of your conversation. When the delegated work must not change files, such as a review or a job your native subagent tool would run as a read-only agent type, say so in the task prompt.
 - `delegate_task` does not block in its default `async` mode: it returns a `taskId` at once, and when the child finishes, T3 Code sends this thread a notification, steered into your current turn where the harness supports that or queued to start your next turn otherwise.
 - The notification only reports that the task finished; read the task's result with one `task_status` call, which returns at once and never waits.
 - Launch with `mode: "wait"` only when your next step needs the child's result and no other work could run meanwhile; it blocks until the child finishes or `timeoutMs` passes, and on a `waitTimedOut` result the child keeps running and still sends its notification, so end your turn and wait for it.
 - After an `async` launch, do the work that does not need the result; when a step needs results whose notifications have not all arrived, end your turn, and resume that step once every task it waits on has notified.
 - Never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself for a delegated task.
-- Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the retry rule in this section.
+- Read a task's `task_status` once after its notification arrives, and otherwise at most once per task in a turn that started without any delegation notification, so a task that failed or shows no progress reaches the failure rule in this section.
 - Only the agent that owns the T3 Code thread ends its turn to wait; a subagent that delegates through T3 Code returns its task IDs to its caller, at once after an `async` launch or when a `mode: "wait"` launch returns `waitTimedOut`.
 - Ending your turn to wait for a delegated task's notification is allowed even where a skill says not to end the turn yet, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the notification arrives, continue the same run from the step that waited.
-- When a skill's review procedure turns on its cross-model pass, delegate that pass asynchronously in the same step that dispatches the skill's in-process reviewers, and merge its result when it returns; never add a cross-model pass the skill would not run.
-- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel` and retry the same task on another runnable T3 Code provider. A retried cross-model pass uses the skill's mapping for that provider when the skill has one, and the latest Argon at medium effort on Antigravity, which the skills do not map. A retried job that is not a cross-model pass goes only to a provider with a column in the Model routing table, never to OpenCode, and takes its role's class from that column, or the Opus-tier class when it has no role there. Never retry a cross-model pass on a provider that already runs a peer of the same pass, so a failed Antigravity or OpenCode peer is not retried elsewhere and a failed skill peer does not land beside a running Argon or OpenCode peer. Fall back to the skill's own cross-model method only when no T3 Code provider succeeds, and tell the user that you did. When no T3 Code provider succeeds for a job that is not a cross-model pass, run it with your native subagent tool and tell the user in one line that you did.
+- When a delegated task fails, reports a provider error, or shows no progress, cancel it with `task_cancel`. Skip a failed cross-model pass and say why in one line, with no retry and no other reviewer in its place. Run any other failed job with your native subagent tool and tell the user in one line that you did.
 - Verify a delegated result against the repository or other primary evidence before you rely on it or report it as fact.
 
 # Pull and merge requests in T3 Code

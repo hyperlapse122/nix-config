@@ -21,7 +21,6 @@ import tempfile
 import unittest
 from unittest import mock
 
-import tomlkit
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/agent-settings'
 loader = importlib.machinery.SourceFileLoader('agent_settings', str(SCRIPT))
@@ -699,186 +698,20 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual(self.read()['foreign-status'], OWNED_EXISTING['foreign-status'])
 
 
-# Codex keeps config.toml, which it and `codex plugin add` both rewrite, and
-# the user edits by hand.  Every declared key starts at the opposite value, and
-# the comments and tables the declaration does not name are the bytes a
-# re-serializing merger would lose.
-TOML_EXISTING = '''\
-# Written by hand; keep this comment.
-model = "gpt-5.1-codex" # the user's model
-check_for_update_on_startup = true # turned back on by hand
-
-[features]
-in_app_updates = true
-memories = true
-web_search = true # unowned sibling
-
-# Installed by codex plugin add.
-[plugins."x"]
-enabled = true
-
-[marketplaces.y]
-source = "https://example.invalid/y.git"
-
-[projects."/home/h82/src"]
-trust_level = "trusted"
-'''
-
-TOML_DECLARED = {
-    'set': {'check_for_update_on_startup': False},
-    'setPaths': [
-        {'path': ['features', 'in_app_updates'], 'value': False},
-        {'path': ['features', 'daemon_auto_start'], 'value': False},
-        {'path': ['features', 'memories'], 'value': False},
-    ],
-}
-
-TOML_MERGED = {
-    'check_for_update_on_startup': False,
-    'features': {'in_app_updates': False, 'daemon_auto_start': False, 'memories': False},
-}
-
-
-class TomlTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.settings = Path(self.tmp.name) / 'home/.codex/config.toml'
-        self.declared = Path(self.tmp.name) / 'declared.json'
-        self.declare(TOML_DECLARED)
-
-    def declare(self, document):
-        self.declared.write_text(json.dumps(document))
-
-    def seed(self, text=TOML_EXISTING):
-        self.settings.parent.mkdir(parents=True, exist_ok=True)
-        self.settings.write_text(text)
-        self.settings.chmod(0o600)
-
-    def merge(self):
-        merger.merge(self.settings, self.declared, fmt='toml')
-
-    def read(self):
-        return tomlkit.parse(self.settings.read_text()).unwrap()
-
-    def run_script(self):
-        return subprocess.run(
-            [sys.executable, str(SCRIPT), '--format', 'toml', '--label', 'Codex',
-             '--settings', str(self.settings), '--declared', str(self.declared)],
-            capture_output=True, text=True)
-
-    def test_declared_keys_reassert_and_user_text_survives(self):
-        self.seed()
-        self.merge()
-        result = self.read()
-        self.assertFalse(result['check_for_update_on_startup'])
-        self.assertEqual(result['features'], {
-            'in_app_updates': False, 'memories': False, 'daemon_auto_start': False, 'web_search': True})
-        self.assertEqual(result['model'], 'gpt-5.1-codex')
-        text = self.settings.read_text()
-        # tomlkit files a comment above a table header under the table before
-        # it, so a leaf added to [features] lands after that comment.  Its
-        # bytes survive; only its neighbour changes, and only on the run that
-        # adds the leaf.
-        for unowned in [
-            '# Written by hand; keep this comment.\n',
-            'model = "gpt-5.1-codex" # the user\'s model\n',
-            'check_for_update_on_startup = false # turned back on by hand\n',
-            'web_search = true # unowned sibling\n',
-            '# Installed by codex plugin add.\n',
-            '[plugins."x"]\nenabled = true\n',
-            '[marketplaces.y]\nsource = "https://example.invalid/y.git"\n',
-            '[projects."/home/h82/src"]\ntrust_level = "trusted"\n',
-        ]:
-            self.assertIn(unowned, text)
-
-    def test_creates_the_file_with_only_the_declared_keys(self):
-        self.merge()
-        self.assertEqual(self.read(), TOML_MERGED)
-        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
-
-    def test_process_refuses_malformed_toml_and_names_the_file(self):
-        self.seed('model = "unterminated\n')
-        result = self.run_script()
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('Codex settings merge failed', result.stderr)
-        self.assertIn(str(self.settings), result.stderr)
-        self.assertNotIn('Traceback', result.stderr)
-        self.assertEqual(self.settings.read_text(), 'model = "unterminated\n')
-
-    def test_refuses_null_before_touching_the_file(self):
-        # TOML has no null, so a declared null cannot be written; refusing it
-        # during validation keeps the refusal from leaving a half-made file.
-        self.seed()
-        self.settings.parent.chmod(0o755)
-        for document in (
-            {'set': {'check_for_update_on_startup': None}},
-            {'setPaths': [{'path': ['features', 'memories'], 'value': None}]},
-            {'own': {'mcp_servers': {'x': {'command': None}}}},
-        ):
-            with self.subTest(document=document):
-                self.declare(document)
-                with self.assertRaises(ValueError) as raised:
-                    self.merge()
-                self.assertIn('null', str(raised.exception))
-                self.assertEqual(self.settings.read_text(), TOML_EXISTING)
-                self.assertEqual(self.settings.parent.stat().st_mode & 0o777, 0o755)
-
-    def test_null_stays_allowed_in_json(self):
-        self.declare({'set': {'model': None}})
-        merger.merge(self.settings.with_suffix('.json'), self.declared)
-        self.assertEqual(json.loads(self.settings.with_suffix('.json').read_text()), {'model': None})
-
-    def test_remove_drops_a_top_level_key_and_keeps_sibling_tables(self):
-        self.seed()
-        self.declare(dict(TOML_DECLARED, remove=['model']))
-        self.merge()
-        result = self.read()
-        self.assertNotIn('model', result)
-        self.assertEqual(result['plugins'], {'x': {'enabled': True}})
-        self.assertEqual(result['marketplaces'], {'y': {'source': 'https://example.invalid/y.git'}})
-        self.assertEqual(result['projects'], {'/home/h82/src': {'trust_level': 'trusted'}})
-
-    def test_second_run_does_not_rewrite_the_file(self):
-        self.seed()
-        self.merge()
-        before = self.settings.stat()
-        self.merge()
-        after = self.settings.stat()
-        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
-
-    def test_does_not_mutate_the_read_document(self):
-        current = tomlkit.parse(TOML_EXISTING)
-        assign, retire, paths, owned, upserts, _ = merger.declaration(self.declared, fmt='toml')
-        merger.apply(current, assign, retire, paths, owned, upserts)
-        self.assertEqual(tomlkit.dumps(current), TOML_EXISTING)
-
-    def test_process_merges_toml(self):
-        self.seed()
-        result = self.run_script()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.read()['features']['daemon_auto_start'], False)
-        self.assertIn('# Written by hand; keep this comment.\n', self.settings.read_text())
-
-    def test_multi_line_string_reads_back_byte_identical(self):
-        # developer_instructions is prose with newlines and every quote style.
-        text = 'First line.\nIt\'s said "quoted" and C:\\path\\n stays literal.\n\nLast line.\n'
-        self.seed()
-        self.declare({'set': {'developer_instructions': text}})
-        self.merge()
-        result = self.read()
-        self.assertEqual(result['developer_instructions'], text)
-        self.assertEqual(result['model'], 'gpt-5.1-codex')
-        self.assertEqual(result['features']['web_search'], True)
-        self.assertIn('model = "gpt-5.1-codex" # the user\'s model\n', self.settings.read_text())
-
-    def test_upsert_appends_to_an_inline_list_of_tables(self):
-        self.seed('env = [{ name = "FOO", value = "1" }]\n')
-        self.declare({'upsertPaths': [
-            {'path': ['env'], 'key': 'name', 'value': {'name': 'BAR', 'value': '1'}}]})
-        self.merge()
-        self.assertEqual(self.read()['env'], [
-            {'name': 'FOO', 'value': '1'}, {'name': 'BAR', 'value': '1'}])
+class FormatTests(unittest.TestCase):
+    def test_process_rejects_the_retired_toml_format(self):
+        # The TOML mode served only Codex's config.toml and left with it.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp) / 'settings.toml'
+            declared = Path(tmp) / 'declared.json'
+            declared.write_text('{}')
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), '--format', 'toml', '--label', 'Agent',
+                 '--settings', str(settings), '--declared', str(declared)],
+                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn('--format', result.stderr)
+        self.assertFalse(settings.exists())
 
 
 UPSERT_ENV = ['providerInstances', 'claudeAgent', 'environment']
@@ -1062,11 +895,6 @@ class UpsertPathTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.merge()
                 self.assertEqual(self.settings.read_bytes(), before)
-
-    def test_toml_refuses_a_null_inside_an_upsert_value(self):
-        self.declare(dict(UPSERT_ENTRY, value=None))
-        with self.assertRaises(ValueError):
-            merger.declaration(self.declared, fmt='toml')
 
 
 MIGRATE = {'from': 'providers', 'to': 'providerInstances',

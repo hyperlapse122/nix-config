@@ -36,7 +36,7 @@
   must fail evaluation, and the shapes host names take must still build. Those
   fixtures use role names, never a real host's name.
 
-  The wrapper's run-time behaviour (token precedence, Codex and Antigravity
+  The wrapper's run-time behaviour (token precedence, Antigravity
   directories, exit status) is covered by the tokscale-wrapper check. This
   check never runs bun or Tokscale.
 

@@ -14,7 +14,7 @@
 
   Verifies, on every configuration:
   - home-path/bin/opencode is the packaged wrapper, reading the key from
-    /run/secrets/cli-auth/opencode_api_key.
+    /run/secrets/cli-auth/synthetic_api_key.
   - home.activation.opencodeSettings and home.activation.opencodeService each
     run after installPackages, invoke the packaged merger without swallowing
     its exit status (the script, run with a failing merger in its place, fails
@@ -29,15 +29,16 @@
     the retired autoupdate key; service.json disables OpenCode's shared
     background server.
   - no Home Manager file targets .config/opencode/opencode.json or
-    .config/opencode/service.json.
+    .config/opencode/service.json, and the generation's home-files hold no
+    .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
     the installed wrapper's `opencode service stop`, so a server started
     before the service was disabled does not keep running.
   - a production configuration's sops manifest carries
-    cli-auth/opencode_api_key owned by h82 with mode 0400, its gh/glab
+    cli-auth/synthetic_api_key owned by h82 with mode 0400, its gh/glab
     publisher does not read that key, and a bootstrap configuration's
     manifests carry no OpenCode secret at all. Neither does one production
-    configuration re-evaluated with my.cliAuth.enableOpencodeApiKey forced
+    configuration re-evaluated with my.cliAuth.enableSyntheticApiKey forced
     off.
 
   The wrapper's run-time behaviour is covered by the opencode-wrapper check,
@@ -66,10 +67,13 @@ let
     {
       "set": {
         "$schema": "https://opencode.ai/config.json",
-        "model": "opencode/glm-5.3-flash-free",
+        "model": "synthetic/syn:large:text",
         "update": "disable",
         "share": "disabled"
       },
+      "setPaths": [
+        {"path": ["provider", "synthetic", "models", "syn:large:text", "name"], "value": "syn:large:text"}
+      ],
       "remove": ["autoupdate"]
     }
   '';
@@ -83,6 +87,13 @@ let
       "plugin": ["opencode-example-plugin"],
       "mcp": {
         "example": {"type": "local", "command": ["example-mcp"], "enabled": true}
+      },
+      "provider": {
+        "anthropic": {"options": {"timeout": 600000}},
+        "synthetic": {
+          "options": {"timeout": 300000},
+          "models": {"hf:zai-org/GLM-4.7": {"name": "GLM 4.7"}}
+        }
       }
     }
   '';
@@ -90,13 +101,23 @@ let
   mergedExpected = pkgs.writeText "opencode-merged-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/glm-5.3-flash-free",
+      "model": "synthetic/syn:large:text",
       "update": "disable",
       "share": "disabled",
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
       "mcp": {
         "example": {"type": "local", "command": ["example-mcp"], "enabled": true}
+      },
+      "provider": {
+        "anthropic": {"options": {"timeout": 600000}},
+        "synthetic": {
+          "options": {"timeout": 300000},
+          "models": {
+            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
+            "syn:large:text": {"name": "syn:large:text"}
+          }
+        }
       }
     }
   '';
@@ -104,9 +125,12 @@ let
   createdExpected = pkgs.writeText "opencode-created-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "opencode/glm-5.3-flash-free",
+      "model": "synthetic/syn:large:text",
       "update": "disable",
-      "share": "disabled"
+      "share": "disabled",
+      "provider": {
+        "synthetic": {"models": {"syn:large:text": {"name": "syn:large:text"}}}
+      }
     }
   '';
 
@@ -278,6 +302,11 @@ let
         ]
       ) (lib.attrValues (hm.home.file or { }));
 
+      # OpenCode v2 always loads this file, reviewer runs included, so the
+      # instructions must reach it through the wrapper's added config instead.
+      homeFiles = hm.home-files or null;
+      globalAgents = if homeFiles == null then "" else "${homeFiles}/.config/opencode/AGENTS.md";
+
       serviceStop = hm.home.activation.opencodeServiceStop or null;
       serviceStopScript = if serviceStop == null then "" else (serviceStop.data or "");
       serviceStopAfterMerge = lib.elem "opencodeService" (
@@ -314,8 +343,8 @@ let
                 /nix/store/*-opencode-*/bin/opencode) ;;
                 *) fail ${host'}": bin/opencode is not the packaged wrapper: $resolved" ;;
               esac
-              if ! grep -Fxq -- "TOKEN_FILE='/run/secrets/cli-auth/opencode_api_key'" "$resolved"; then
-                fail ${host'}": the wrapper does not read /run/secrets/cli-auth/opencode_api_key"
+              if ! grep -Fxq -- "TOKEN_FILE='/run/secrets/cli-auth/synthetic_api_key'" "$resolved"; then
+                fail ${host'}": the wrapper does not read /run/secrets/cli-auth/synthetic_api_key"
               fi
             fi
           ''
@@ -324,6 +353,12 @@ let
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
         fail ${host'}": Home Manager must not target .config/opencode/opencode.json or service.json; OpenCode rewrites them"
+      fi
+
+      if [ -z ${esc globalAgents} ]; then
+        fail ${host'}": no home-files"
+      elif [ -e ${esc globalAgents} ] || [ -L ${esc globalAgents} ]; then
+        fail ${host'}": Home Manager installs .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too"
       fi
 
       ${lib.optionalString (serviceStop == null) ''
@@ -357,8 +392,8 @@ let
       ${
         if decryptsKey then
           ''
-            if [ "$opencodeSecrets" != "cli-auth/opencode_api_key opencode_api_key h82 0400" ]; then
-              fail ${host'}": expected cli-auth/opencode_api_key owned by h82 with mode 0400, got: '$opencodeSecrets'"
+            if [ "$opencodeSecrets" != "cli-auth/synthetic_api_key synthetic_api_key h82 0400" ]; then
+              fail ${host'}": expected cli-auth/synthetic_api_key owned by h82 with mode 0400, got: '$opencodeSecrets'"
             fi
             publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
             if [ -z "$publisher" ]; then
@@ -370,7 +405,7 @@ let
         else
           ''
             if [ -n "$opencodeSecrets" ]; then
-              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableOpencodeApiKey off, must not decrypt an OpenCode secret, got: '$opencodeSecrets'"
+              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableSyntheticApiKey off, must not decrypt an OpenCode secret, got: '$opencodeSecrets'"
             fi
           ''
       }
@@ -381,7 +416,7 @@ let
   # secret.
   keyForcedOff = map (
     entry:
-    configurations.withTraitForcedOff "my.cliAuth.enableOpencodeApiKey" entry
+    configurations.withTraitForcedOff "my.cliAuth.enableSyntheticApiKey" entry
     // {
       keyForcedOff = true;
     }
@@ -397,7 +432,7 @@ in
 pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   ${configurations.guard}
   ${lib.optionalString (keyForcedOff == [ ]) ''
-    echo "no production configuration to re-evaluate with my.cliAuth.enableOpencodeApiKey off" >&2
+    echo "no production configuration to re-evaluate with my.cliAuth.enableSyntheticApiKey off" >&2
     exit 1
   ''}
   failed=0

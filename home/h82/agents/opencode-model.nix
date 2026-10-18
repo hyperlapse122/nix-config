@@ -1,4 +1,4 @@
-# The OpenCode model that runs as a cross-model review peer. OpenCode's own
-# config and the agent instructions both read it from here, so replacing a
-# withdrawn free model is this one line.
-"opencode/glm-5.3-flash-free"
+# The OpenCode model that runs as the cross-model review peer: Synthetic's
+# alias for its current large text model. OpenCode's own config and the agent
+# instructions both read it from here.
+"synthetic/syn:large:text"
