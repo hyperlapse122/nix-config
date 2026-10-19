@@ -35,6 +35,8 @@ let
   # with fixtures; a sandboxed check has no network.
   agentPluginRelease = pythonHelper "agent-plugin-release" ../scripts/agent-plugin-release;
 
+  serveHtml = pythonHelper "serve-html" ../scripts/serve-html;
+
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
@@ -115,5 +117,6 @@ in
     t3codeAntigravityInstall
     t3codeAntigravityLink
     androidSdkRelease
+    serveHtml
     ;
 }

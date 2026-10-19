@@ -33,6 +33,7 @@
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins and sets no SSL_CERT_FILE, and
     localharness_external beside it resolves into the same runtime;
+  - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -93,6 +94,9 @@ let
       masExe = lib.getExe entry.host.pkgs.mas;
       peers = lib.concatStringsSep "," (expectedPeers user.my.kind user.home.packages);
       grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
+      serveHtmlPackage =
+        (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
+      serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
       antigravityRuntime = "${
         import ../packages/antigravity-acp.nix {
           inherit (entry.host) pkgs;
@@ -259,6 +263,12 @@ let
       fi
       [ "$(readlink -f "$gen/home-path/bin/localharness_external" || true)" = ${lib.escapeShellArg "${antigravityRuntime}/localharness_external"} ] \
         || bad "localharness_external on PATH is not the pinned runtime's"
+
+      if [ -z ${lib.escapeShellArg serveHtml} ]; then
+        bad "packages/agent-tools.nix exports no serveHtml"
+      elif [ "$(readlink -f "$gen/home-path/bin/serve-html" || true)" != ${lib.escapeShellArg serveHtml} ]; then
+        bad "serve-html on PATH is not the packaged helper"
+      fi
 
       # The OpenCode config merge runs after writeBoundary and targets the
       # user's ~/.config/opencode/opencode.json.
