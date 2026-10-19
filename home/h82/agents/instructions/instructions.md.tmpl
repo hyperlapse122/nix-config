@@ -24,6 +24,16 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 
 Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks. A skill's own apply bar, confidence threshold, or list, including `lfg`'s, does not narrow this rule. "By design", "no current instance", "low impact", and "the fix has a trade-off" are not reasons to leave a finding. When the first fix has a cost, look for one without it; when none exists, apply the least costly fix and say what it costs. Leave a finding unapplied only when you verified it is wrong, quoting the evidence, or every fix for it would weaken a safety check, and report it with that reason. List only those findings under an `Unapplied review findings` heading in the pull request body, and omit that section when there are none. When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made. When the user asked only for a review, report the findings and ask once whether to apply them all. Report what you applied in the pull request body and the final report.
 
+# Compound Engineering
+
+- For a cross-model review, prefer OpenCode as the peer.
+- In `ce-work`, prefer delegating implementation to another harness unless the repository's Compound Engineering config sets `work_engine_mode: off`.
+- When the session lists T3 Code's delegation tools, delegate that unit through `delegate_task` with the provider and model the guide below names, instead of Compound Engineering's own delegation route.
+- Pick the model by harness: Claude Code runs Sonnet 5.5, or Opus 5.5 or Haiku 5.5 when the unit needs it; Antigravity runs `gemini-4-argon-high`; Grok runs its Compound Engineering route default; OpenCode runs its own default model.
+- When the Antigravity route runs, request `gemini-4-argon-high`, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`.
+- On a Linux host with no person present to sign in to Google, do not choose the Antigravity route.
+- Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises.
+
 # T3 Code
 
 - When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool.

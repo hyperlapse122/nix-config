@@ -26,6 +26,9 @@
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
+  - the `# Review findings` and `# Compound Engineering` sections hold only
+    their pinned sentences, each once and in order, so a separate sentence
+    that reverses a pinned rule fails.
   - the recipient sentence names the entry's own `my.user.gpgKey`, and Git
     signs with that same key. The fixture host whose key is the fake value
     below must carry neither the card fingerprint in its instructions nor the
@@ -91,6 +94,34 @@ let
     "Report what you applied in the pull request body and the final report."
   ];
 
+  compoundEngineeringHeading = "# Compound Engineering";
+
+  # In section order, like `reviewFindingsSentences`.
+  compoundEngineeringSentences = [
+    "For a cross-model review, prefer OpenCode as the peer."
+    "In `ce-work`, prefer delegating implementation to another harness unless the repository's Compound Engineering config sets `work_engine_mode: off`."
+    "When the session lists T3 Code's delegation tools, delegate that unit through `delegate_task` with the provider and model the guide below names, instead of Compound Engineering's own delegation route."
+    "Pick the model by harness: Claude Code runs Sonnet 5.5, or Opus 5.5 or Haiku 5.5 when the unit needs it; Antigravity runs `gemini-4-argon-high`; Grok runs its Compound Engineering route default; OpenCode runs its own default model."
+    "When the Antigravity route runs, request `gemini-4-argon-high`, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
+    "On a Linux host with no person present to sign in to Google, do not choose the Antigravity route."
+    "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
+  ];
+
+  # Sections whose rules a separate contradicting sentence could defeat, so
+  # each gets the allowlist, membership, and order checks.
+  checkedSections = [
+    {
+      name = "review-findings";
+      heading = reviewFindingsHeading;
+      sentences = reviewFindingsSentences;
+    }
+    {
+      name = "Compound Engineering";
+      heading = compoundEngineeringHeading;
+      sentences = compoundEngineeringSentences;
+    }
+  ];
+
   pinnedSentences = [
     "# GPG and encryption"
     "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
@@ -108,6 +139,8 @@ let
     reviewFindingsHeading
   ]
   ++ reviewFindingsSentences
+  ++ [ compoundEngineeringHeading ]
+  ++ compoundEngineeringSentences
   ++ [
     "# T3 Code"
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
@@ -118,16 +151,11 @@ let
     "# Tool use"
     "# Cross-model review"
     "# Delegation"
-    "cross-model peer"
     "type/short-kebab-slug"
     "Conventional Commits type"
-    "Gemini"
-    "gemini-"
-    "Argon"
     "Flash"
     "Codex"
     "Zen"
-    "glm-"
     "Model routing"
     "receives the reviewed content"
     "data terms"
@@ -225,18 +253,17 @@ let
       ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
         pinnedSentences ++ [ (recipientSentence key) ]
       )}
-      ${onlyPinnedSentences "${label} carries an unpinned review-findings sentence:"
-        reviewFindingsHeading
-        reviewFindingsSentences
-      }
-      ${sentencesInSection "${label} moves a review-findings sentence out of its section:"
-        reviewFindingsHeading
-        reviewFindingsSentences
-      }
-      ${sentencesInOrder "${label} reorders or duplicates a review-findings sentence:"
-        reviewFindingsHeading
-        reviewFindingsSentences
-      }
+      ${lib.concatMapStrings (section: ''
+        ${onlyPinnedSentences "${label} carries an unpinned ${section.name} sentence:" section.heading
+          section.sentences
+        }
+        ${sentencesInSection "${label} moves a ${section.name} sentence out of its section:" section.heading
+          section.sentences
+        }
+        ${sentencesInOrder "${label} reorders or duplicates a ${section.name} sentence:" section.heading
+          section.sentences
+        }
+      '') checkedSections}
       for term in ${lib.escapeShellArgs removedTerms}; do
         if grep -qiF -- "$term" "$file"; then
           echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
