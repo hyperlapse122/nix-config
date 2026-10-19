@@ -3,32 +3,40 @@
 
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
-  Asserts that the shared agent instructions, one plain file, reach both
-  delivery paths for user `h82` on every host this flake declares:
+  Asserts that the shared agent instructions, one plain file rendered with the
+  user's card key, reach every installed harness for user `h82` on every host
+  this flake declares:
 
-    Claude Code   ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read too
-    OpenCode      the file the wrapper's instructions config names, which only
-                  a standalone run loads
+    Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
+    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads
+    Antigravity CLI   ~/.gemini/config/AGENTS.md
 
-  The OpenCode file is read from the installed wrapper itself: its
-  INSTRUCTIONS_CONFIG constant, then the one file that config lists. The user
-  list is `userEntries` from `tests/lib/configurations.nix`.
+  The user list is `userEntries` from `tests/lib/configurations.nix`.
 
   Verifies, per Home Manager user:
-  - exactly one enabled Home Manager file resolves to ~/.claude/CLAUDE.md, and
+  - exactly one enabled Home Manager file resolves to each delivery path, and
     none to the retired ~/.t3/instructions/claude-code/CLAUDE.md, Codex's
-    ~/.codex/AGENTS.md, Antigravity's ~/.gemini/config/AGENTS.md, Gemini's
-    ~/.gemini/GEMINI.md, or OpenCode's always-loaded
-    ~/.config/opencode/AGENTS.md. The lookup compares each entry's resolved
-    `target` rather than its attribute name, and reads `enable`, because
-    either can move the file without changing its text. See
+    ~/.codex/AGENTS.md, or Gemini's ~/.gemini/GEMINI.md, none of which is
+    installed. The lookup compares each entry's resolved `target` rather than
+    its attribute name, and reads `enable`, because either can move the file
+    without changing its text.
+  - each delivery path exists in the materialized `home-files`, and the three
+    files there are byte-identical. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
-  - the Claude Code file and the OpenCode file are byte-identical.
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
-  - the file names no removed section, harness, model, or rule, and carries
-    no template action (`{{`, `}}`) or `<no value>`.
+  - the recipient sentence names the entry's own `my.user.gpgKey`, and Git
+    signs with that same key. The fixture host whose key is the fake value
+    below must carry neither the card fingerprint in its instructions nor the
+    card key in its Git config, so a literal fingerprint left in the
+    instructions or in Git turns this red. The fake entry is selected by its
+    evaluated key, never by its name, and the builder fails when no entry
+    carries it on x86_64-linux, where that fixture builds. See
+    .compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md
+  - the file names no removed section, harness, model, or rule, matched
+    without regard to case, and carries no template action (`{{`, `}}`,
+    `<no value>`) or unrendered `@name@` placeholder.
 
   The expected sentences are literals here, not read from the module, so a
   mutation of the instruction file turns this red.
@@ -51,13 +59,22 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  cardKey = "621512777E6933FEB4458FDC4945855D4F283F05";
+  # The key one fixture host declares, so a fingerprint written as a literal
+  # instead of rendered from my.user.gpgKey shows up there.
+  fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
+
+  recipientSentence =
+    key:
+    "For a new SOPS setup or secret file, use the card key `${key}` as the user's recipient, plus a machine's own recipient when it must decrypt without the card.";
+
   pinnedSentences = [
     "# GPG and encryption"
     "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
     "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it."
     "Leave card administration and key management to the user."
-    "For a new SOPS setup or secret file, use the card key `621512777E6933FEB4458FDC4945855D4F283F05` as the user's recipient, plus a machine's own recipient when it must decrypt without the card."
     "# Git"
+    "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
     "Never rename onto or push over an existing branch."
     "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
     "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
@@ -69,24 +86,24 @@ let
     "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks."
     "Leave a finding unapplied only when you verified it is wrong or its fix would weaken a safety check, and say why."
     "When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made."
-    "Compound Engineering skills use `opencode` as the cross-model peer."
-    "When the peer fails, skip the pass and say why in one line; do not retry it or run another peer in its place."
     "# T3 Code"
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
   ];
 
+  # Matched without regard to case.
   removedTerms = [
     "# Tool use"
     "# Cross-model review"
     "# Delegation"
-    "Antigravity"
+    "cross-model peer"
+    "type/short-kebab-slug"
+    "Conventional Commits type"
     "Gemini"
     "gemini-"
     "Argon"
     "Flash"
     "Codex"
-    "codex"
     "Zen"
     "glm-"
     "Model routing"
@@ -119,39 +136,44 @@ let
     done
   '';
 
-  fileRules = label: ''
+  # Rules for the rendered file at `$file`, whose recipient sentence must name
+  # `key` and which must not name any key in `absentKeys`.
+  fileRules = label: key: absentKeys: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
       failed=1
     else
-      key=$(sha256sum < "$file" | cut -d' ' -f1)
-      if ! grep -qxF -- "$key" "$seen"; then
-        echo "$key" >> "$seen"
-        ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" pinnedSentences}
-        for term in ${lib.escapeShellArgs removedTerms}; do
-          if grep -qF -- "$term" "$file"; then
-            echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
-            failed=1
-          fi
-        done
-        if grep -qE '\{\{|\}\}|<no value>' "$file"; then
-          echo ${esc "${label} carries an unrendered template action"} >&2
+      ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
+        pinnedSentences ++ [ (recipientSentence key) ]
+      )}
+      for term in ${lib.escapeShellArgs removedTerms}; do
+        if grep -qiF -- "$term" "$file"; then
+          echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
           failed=1
         fi
+      done
+      for key in ${lib.escapeShellArgs absentKeys}; do
+        if grep -qF -- "$key" "$file"; then
+          echo ${esc "${label} names a key other than the host's my.user.gpgKey:"} "$key" >&2
+          failed=1
+        fi
+      done
+      if grep -qE '\{\{|\}\}|<no value>|@[A-Za-z_]+@' "$file"; then
+        echo ${esc "${label} carries an unrendered template action or placeholder"} >&2
+        failed=1
       fi
     fi
   '';
 
-  # Copies the one enabled Home Manager file at `target` to `dest`, failing
-  # unless exactly `want` (0 or 1) such files exist.
+  # Fails unless exactly `want` (0 or 1) Home Manager files resolve to
+  # `target`, and unless a wanted one is enabled.
   homeFile =
-    label: userConfig: target: want: dest:
+    label: userConfig: target: want:
     let
       entries = lib.filter (file: (file.target or "") == target) (
         lib.attrValues (userConfig.home.file or { })
       );
       entry = if lib.length entries == 1 then lib.head entries else null;
-      source = if entry == null then null else (entry.source or null);
     in
     lib.optionalString (lib.length entries != want) ''
       echo ${esc "expected ${toString want} home.file for ~/${target} on ${label}, found ${toString (lib.length entries)}"} >&2
@@ -162,84 +184,95 @@ let
         echo ${esc "home.file for ~/${target} on ${label} is not enabled"} >&2
         failed=1
       fi
-    ''
-    + lib.optionalString (entry != null && source == null) ''
-      echo ${esc "home.file for ~/${target} on ${label} has no source"} >&2
-      failed=1
-    ''
-    + lib.optionalString (source != null) ''
-      cp ${source} ${dest}
     '';
 
-  # Copies the instruction file the installed opencode wrapper hands a
-  # standalone run to `dest`: the wrapper's INSTRUCTIONS_CONFIG constant
-  # names a config whose `instructions` must list exactly one file.
-  opencodeFile =
-    label: userConfig: dest:
-    let
-      package = lib.findFirst (p: (p.pname or "") == "opencode") null (userConfig.home.packages or [ ]);
-    in
-    lib.optionalString (package == null) ''
-      echo ${esc "missing opencode in user packages on ${label}"} >&2
-      failed=1
-    ''
-    + lib.optionalString (package != null) ''
-      config=$(sed -nE "s/^INSTRUCTIONS_CONFIG='(.*)'$/\1/p" ${package}/bin/opencode)
-      listed=$(jq -r '.instructions | if type == "array" and length == 1 then .[0] else empty end' "$config" 2>/dev/null || true)
-      if [ -n "$listed" ] && [ -f "$listed" ]; then
-        cp "$listed" ${dest}
-      else
-        echo ${esc "the opencode wrapper on ${label} hands a standalone run no single instructions file"} >&2
-        failed=1
-      fi
-    '';
+  deliveryPaths = [
+    ".claude/CLAUDE.md"
+    ".config/opencode/AGENTS.md"
+    ".gemini/config/AGENTS.md"
+  ];
+
+  retiredPaths = [
+    ".t3/instructions/claude-code/CLAUDE.md"
+    ".codex/AGENTS.md"
+    ".gemini/GEMINI.md"
+  ];
 
   assertEntry =
     entry:
     let
       label = entry.name;
       user = entry.user;
+      key = user.my.user.gpgKey or null;
+      fake = key == fakeKey;
+      homeFiles = user.home-files or null;
     in
     ''
-      d=$(mktemp -d)
+      ${lib.concatMapStrings (target: homeFile label user target 1) deliveryPaths}
+      ${lib.concatMapStrings (target: homeFile label user target 0) retiredPaths}
+    ''
+    + lib.optionalString (key == null) ''
+      echo ${esc "my.user.gpgKey is unset on ${label}"} >&2
+      failed=1
+    ''
+    + lib.optionalString (homeFiles == null) ''
+      echo ${esc "no materialized home-files on ${label}"} >&2
+      failed=1
+    ''
+    + lib.optionalString (key != null && homeFiles != null) ''
+      ${lib.optionalString fake "fakeEntries=$((fakeEntries + 1))"}
+      first=
+      for target in ${lib.escapeShellArgs deliveryPaths}; do
+        file=${homeFiles}/$target
+        label=${esc "~/"}$target${esc " on ${label}"}
+        if [ ! -s "$file" ]; then
+          echo "$label is missing or empty in home-files" >&2
+          failed=1
+          continue
+        fi
+        if [ -z "$first" ]; then
+          first=$target
+        elif ! cmp -s "$file" ${homeFiles}/"$first"; then
+          echo "$label differs from ~/$first" >&2
+          failed=1
+        fi
+      done
 
-      ${homeFile label user ".claude/CLAUDE.md" 1 "$d/claude"}
-      ${homeFile label user ".t3/instructions/claude-code/CLAUDE.md" 0 "$d/claude-t3"}
-      ${homeFile label user ".codex/AGENTS.md" 0 "$d/codex"}
-      ${homeFile label user ".gemini/config/AGENTS.md" 0 "$d/antigravity"}
-      ${homeFile label user ".gemini/GEMINI.md" 0 "$d/gemini"}
-      ${homeFile label user ".config/opencode/AGENTS.md" 0 "$d/opencode-global"}
-      ${opencodeFile label user "$d/opencode"}
+      file=${homeFiles}/.claude/CLAUDE.md
+      ${fileRules "the shared instructions on ${label}" key (lib.optional fake cardKey)}
 
-      file=$d/claude
-      ${fileRules "~/.claude/CLAUDE.md on ${label}"}
-      file=$d/opencode
-      ${fileRules "the standalone OpenCode instructions on ${label}"}
-
-      if [ -f "$d/claude" ] && [ -f "$d/opencode" ] && ! cmp -s "$d/claude" "$d/opencode"; then
-        echo ${esc "~/.claude/CLAUDE.md and the standalone OpenCode instructions differ on ${label}"} >&2
+      gitConfig=${homeFiles}/.config/git/config
+      if ! grep -qxF -- ${esc "\tsigningKey = \"${key}\""} "$gitConfig" 2>/dev/null; then
+        echo ${esc "Git on ${label} does not sign with my.user.gpgKey"} >&2
         failed=1
       fi
-
-      rm -rf "$d"
+      ${lib.optionalString fake ''
+        if grep -qF -- ${esc cardKey} "$gitConfig" 2>/dev/null; then
+          echo ${esc "Git on ${label} names the card key instead of my.user.gpgKey"} >&2
+          failed=1
+        fi
+      ''}
     '';
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 in
-pkgs.runCommand "agent-instructions-tests"
-  {
-    nativeBuildInputs = [ pkgs.jq ];
-  }
-  ''
-    ${configurations.userGuard}
-    failed=0
-    seen=$(mktemp)
+pkgs.runCommand "agent-instructions-tests" { } ''
+  ${configurations.userGuard}
+  failed=0
+  fakeEntries=0
 
-    ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
-    if [ "$failed" != "0" ]; then
-      exit 1
+  ${lib.optionalString (pkgs.stdenv.hostPlatform.system == "x86_64-linux") ''
+    if [ "$fakeEntries" = "0" ]; then
+      echo ${esc "no user entry carries the fake my.user.gpgKey, so a literal fingerprint would pass"} >&2
+      failed=1
     fi
+  ''}
 
-    touch $out
-  ''
+  if [ "$failed" != "0" ]; then
+    exit 1
+  fi
+
+  touch $out
+''

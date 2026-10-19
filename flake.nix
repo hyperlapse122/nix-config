@@ -1341,10 +1341,7 @@
             in
             pkgs.runCommand "opencode-wrapper-tests"
               {
-                nativeBuildInputs = [
-                  pkgs.procps
-                  pkgs.jq
-                ];
+                nativeBuildInputs = [ pkgs.procps ];
               }
               ''
                 export HOME=$TMPDIR
@@ -1355,19 +1352,7 @@
                 chmod +x scripts/opencode
                 patchShebangs scripts/opencode
                 bash tests/opencode.sh scripts/opencode
-                bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile} ${packaged.instructionsConfig}
-
-                # The added config names exactly the rendered OpenCode
-                # instructions, and that file exists.
-                listed=$(jq -r '.instructions | if length == 1 then .[0] else error("want one instructions file, got \(length)") end' ${packaged.instructionsConfig})
-                if [ "$listed" != ${packaged.instructions} ]; then
-                  echo "the instructions config names '$listed', want ${packaged.instructions}" >&2
-                  exit 1
-                fi
-                if [ ! -s "$listed" ]; then
-                  echo "the instructions config names a missing or empty file: $listed" >&2
-                  exit 1
-                fi
+                bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
 
                 # The pinned binary, not only the wrapper's export, must keep a
                 # checkout's opencode.json out of the process holding the key.
@@ -1395,17 +1380,6 @@
                 fi
                 if grep -qF canary-project-config wrapped-override.json; then
                   echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
-                  exit 1
-                fi
-                # The pinned binary loads the instructions from a shell run and
-                # not from a run T3 Code or a review peer launch drives.
-                if ! grep -qF ${packaged.instructions} wrapped.json; then
-                  echo "a shell run of the wrapper does not load the OpenCode instructions" >&2
-                  exit 1
-                fi
-                (cd project && OPENCODE_CONFIG_CONTENT='{}' ${packaged}/bin/opencode debug config) > driven.json
-                if grep -qF ${packaged.instructions} driven.json; then
-                  echo "a run with OPENCODE_CONFIG_CONTENT loads the OpenCode instructions" >&2
                   exit 1
                 fi
                 # A missing pgrep would read as "no server", so its absence fails.
