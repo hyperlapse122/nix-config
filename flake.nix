@@ -419,7 +419,10 @@
           ghq = import ./tests/ghq.nix { inherit pkgs self; };
           git-lfs = import ./tests/git-lfs.nix { inherit pkgs self; };
           git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
-          antigravity-acp-path = import ./tests/antigravity-acp-path.nix { inherit pkgs; };
+          antigravity-acp-path = import ./tests/antigravity-acp-path.nix {
+            inherit pkgs;
+            pluginSource = inputs.compound-engineering-plugin;
+          };
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
           mise-settings = import ./tests/mise-settings.nix {
             inherit pkgs self;
