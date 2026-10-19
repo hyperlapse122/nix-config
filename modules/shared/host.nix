@@ -43,6 +43,11 @@
         default = "/home/h82";
         description = "The home directory of that account.";
       };
+      gpgKey = lib.mkOption {
+        type = lib.types.strMatching "[0-9A-F]{40}";
+        default = "621512777E6933FEB4458FDC4945855D4F283F05";
+        description = "Fingerprint of the user's OpenPGP card key, which Git signs with and the shared agent instructions name as the user's SOPS recipient.";
+      };
     };
 
     nuphyGem80.enable = lib.mkEnableOption "device access for the NuPhy Gem80 configurator and firmware flashing";

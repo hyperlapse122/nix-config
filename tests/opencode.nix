@@ -23,15 +23,16 @@
     equal to the one stated here.
   - running that exact merger with that exact declared document reasserts the
     declared values and leaves every other key as it was, against a seeded
-    divergent file (an MCP server, a 1.x plugin key, a user plugins entry, and
-    a stale syn: model entry in opencode.json, a password and a port in
+    divergent file (an MCP server, a 1.x plugin key, a user plugins entry, a
+    user-added provider entry, and the stale syn: model alias that the
+    declaration removes in opencode.json, a password and a port in
     service.json), and creates a missing file holding only the
     declared keys. The result is mode 0600 in every case. opencode.json drops
-    the retired autoupdate key; service.json disables OpenCode's shared
+    the retired autoupdate key and the stale syn: alias, and allowlists the
+    synthetic provider; service.json disables OpenCode's shared
     background server.
   - no Home Manager file targets .config/opencode/opencode.json or
-    .config/opencode/service.json, and the generation's home-files hold no
-    .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too.
+    .config/opencode/service.json.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
     the installed wrapper's `opencode service stop`, so a server started
     before the service was disabled does not keep running.
@@ -72,7 +73,13 @@ let
         "update": "disable",
         "share": "disabled"
       },
-      "remove": ["autoupdate"]
+      "remove": ["autoupdate"],
+      "own": {
+        "enabled_providers": ["synthetic"]
+      },
+      "removePaths": [
+        {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
+      ]
     }
   '';
 
@@ -106,6 +113,7 @@ let
       "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
       "share": "disabled",
+      "enabled_providers": ["synthetic"],
       "theme": "tokyonight",
       "plugin": ["opencode-example-plugin"],
       "plugins": ["opencode-user-plugin@1.2.0"],
@@ -117,8 +125,7 @@ let
         "synthetic": {
           "options": {"timeout": 300000},
           "models": {
-            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "syn:large:text": {"name": "syn:large:text"}
+            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"}
           }
         }
       }
@@ -130,7 +137,8 @@ let
       "$schema": "https://opencode.ai/config.json",
       "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
       "update": "disable",
-      "share": "disabled"
+      "share": "disabled",
+      "enabled_providers": ["synthetic"]
     }
   '';
 
@@ -302,11 +310,6 @@ let
         ]
       ) (lib.attrValues (hm.home.file or { }));
 
-      # OpenCode v2 always loads this file, reviewer runs included, so the
-      # instructions must reach it through the wrapper's added config instead.
-      homeFiles = hm.home-files or null;
-      globalAgents = if homeFiles == null then "" else "${homeFiles}/.config/opencode/AGENTS.md";
-
       serviceStop = hm.home.activation.opencodeServiceStop or null;
       serviceStopScript = if serviceStop == null then "" else (serviceStop.data or "");
       serviceStopAfterMerge = lib.elem "opencodeService" (
@@ -353,12 +356,6 @@ let
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
         fail ${host'}": Home Manager must not target .config/opencode/opencode.json or service.json; OpenCode rewrites them"
-      fi
-
-      if [ -z ${esc globalAgents} ]; then
-        fail ${host'}": no home-files"
-      elif [ -e ${esc globalAgents} ] || [ -L ${esc globalAgents} ]; then
-        fail ${host'}": Home Manager installs .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too"
       fi
 
       ${lib.optionalString (serviceStop == null) ''

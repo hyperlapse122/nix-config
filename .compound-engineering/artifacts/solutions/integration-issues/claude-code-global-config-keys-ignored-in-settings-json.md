@@ -12,7 +12,7 @@ symptoms:
 root_cause: wrong_api
 resolution_type: code_fix
 tags: ["claude-code", "settings-json", "claude-json", "global-config", "home-manager", "activation", "agent-settings", "t3code", "claude-config-dir", "context", "model-settings", "autocompact"]
-last_updated: "2026-10-12"
+last_updated: "2026-10-19"
 retire_when: "Claude Code reads the key from settings.json; check a newer binary's strings for the key in the settings schema (`<key>:()=>`) or in the short settings-first key list that holds inputNeededNotifEnabled and agentPushNotifEnabled (`iCe` in 2.1.285, `nbe` in 2.1.296; minified names change per release)"
 ---
 
@@ -82,7 +82,7 @@ cd /tmp && CLAUDE_CONFIG_DIR="$T" claude -p /context --model claude-opus-5-5 \
 rm -rf "$T"
 ```
 
-The copy keeps the login, and the real `~/.claude/settings.json` is never touched. On Claude Code 2.1.296 this printed `**Tokens:** 16.2k / 400k (4%)` and `| Autocompact buffer | 33k | 8.3% |`; without the key, `16.2k / 1m`. Precedence tests the same way: adding `modelSettings: {"claude-opus-5-5": {"autoCompactWindow": 300000}}` beside the top-level key printed `16.2k / 300k`, so the per-model value that `/autocompact` writes outranks the top-level key. The `agent-settings` merger assigns only declared keys and leaves `modelSettings` alone, so declaring the top-level key keeps an `/autocompact` choice across rebuilds.
+The copy keeps the login, and the real `~/.claude/settings.json` is never touched. On Claude Code 2.1.296 this printed `**Tokens:** 16.2k / 400k (4%)` and `| Autocompact buffer | 33k | 8.3% |`; without the key, `16.2k / 1m`. Precedence tests the same way: adding `modelSettings: {"claude-opus-5-5": {"autoCompactWindow": 300000}}` beside the top-level key printed `16.2k / 300k`, so the per-model value that `/autocompact` writes outranks the top-level key. The `agent-settings` merger assigns only declared keys and leaves `modelSettings` alone, so an `/autocompact` choice survives rebuilds. The repository declared the top-level key as `400000` from 2026-10-12 and has since retired it (`retiredKeys` in `home/h82/agents/claude.nix`), so sessions now use the model's full window.
 
 ### T3 Code sessions read the user settings file
 

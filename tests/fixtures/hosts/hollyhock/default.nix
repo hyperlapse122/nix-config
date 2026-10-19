@@ -4,5 +4,6 @@
 {
   my.user.name = "tester";
   my.user.home = "/home/tester";
+  my.user.gpgKey = "0123456789ABCDEF0123456789ABCDEF01234567";
   my.wifiman.enable = true;
 }

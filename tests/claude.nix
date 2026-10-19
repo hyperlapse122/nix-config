@@ -77,10 +77,12 @@ let
     inputNeededNotifEnabled = false;
     cleanupPeriodDays = 30;
     disableClaudeAiConnectors = true;
-    autoCompactWindow = 400000;
   };
 
-  retiredKeys = [ "advisorModel" ];
+  retiredKeys = [
+    "advisorModel"
+    "autoCompactWindow"
+  ];
 
   settingsPaths = [
     {

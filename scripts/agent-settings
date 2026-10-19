@@ -13,12 +13,17 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
-The declared document is a JSON object with up to seven fields:
+The declared document is a JSON object with up to eight fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
   setPaths  [{path: [key, ...], value: scalar}]
                                     leaves to assign inside nested objects
+  removePaths [{path: [key, ...], key: name}]
+                                    the named key in the object at path:
+                                    removes it when present; a missing path,
+                                    a non-object segment, or an absent key is
+                                    a no-op
   upsertPaths [{path: [key, ...], key: name, value: object}]
                                     one entry in the list at path: replaces the
                                     entry whose `key` field equals value[key],
@@ -81,7 +86,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths', 'upsertPaths', 'prefixEntries', 'own', 'migrateInstances'}
+FIELDS = {'set', 'remove', 'setPaths', 'removePaths', 'upsertPaths', 'prefixEntries', 'own', 'migrateInstances'}
 
 
 def describe(path):
@@ -91,7 +96,7 @@ def describe(path):
 
 
 def declaration(declared):
-    """Parse the rendered declaration into (assign, retire, paths, owned, upserts, prefixes, migration).
+    """Parse the rendered declaration into (assign, retire, paths, removals, owned, upserts, prefixes, migration).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -134,8 +139,9 @@ def declaration(declared):
         raise ValueError('declared path starts at an owned key: {}'.format(', '.join(through)))
     upserts = upsert_entries(document.get('upsertPaths', []), assign, retire, owned, paths, declared)
     prefixes = prefix_entries(document.get('prefixEntries', []), assign, retire, owned, paths, upserts, declared)
+    removals = removal_paths(document.get('removePaths', []), assign, retire, owned, paths, upserts, prefixes, declared)
     migration = instance_migration(document.get('migrateInstances'), assign, retire, owned, declared)
-    return assign, retire, paths, owned, upserts, prefixes, migration
+    return assign, retire, paths, removals, owned, upserts, prefixes, migration
 
 
 def check_path(path, declared):
@@ -180,6 +186,13 @@ def check_top_level(path, assign, retire, owned):
         raise ValueError('declared path starts at a key that set, remove, or own also declares: {}'.format(describe(path)))
 
 
+def assigned_paths(paths, upserts, prefixes):
+    """Every leaf path another declaration assigns or manages."""
+    return ([other for other, _ in paths]
+            + [other for other, _, _ in upserts]
+            + [other for other, _, _ in prefixes])
+
+
 def upsert_entries(entries, assign, retire, owned, paths, declared):
     if not isinstance(entries, list):
         raise ValueError('declared "upsertPaths" is not a list: {}'.format(declared))
@@ -219,11 +232,36 @@ def prefix_entries(entries, assign, retire, owned, paths, upserts, declared):
         if value is not None and (not isinstance(value, str) or not value.startswith(prefix)):
             raise ValueError('declared prefix entry must be null or a string under its prefix: {}'.format(describe(path)))
         check_top_level(path, assign, retire, owned)
-        check_disjoint(path, [other for other, _ in paths]
-                       + [other for other, _, _ in upserts]
-                       + [other for other, _, _ in prefixes])
+        check_disjoint(path, assigned_paths(paths, upserts, prefixes))
         prefixes.append((path, prefix, value))
     return prefixes
+
+
+def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, declared):
+    if not isinstance(entries, list):
+        raise ValueError('declared "removePaths" is not a list: {}'.format(declared))
+    removals = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {'path', 'key'}:
+            raise ValueError('declared "removePaths" entry is not {{path, key}}: {}'.format(declared))
+        path, key = entry['path'], entry['key']
+        check_path(path, declared)
+        if not isinstance(key, str):
+            raise ValueError('declared removePaths key must be a name: {}'.format(describe(path)))
+        # Same reasoning as setPaths: another declaration on the top-level key
+        # would fight this one, with the outcome depending on order.
+        check_top_level(path, assign, retire, owned)
+        # The removal's leaf is the node it pops.  A declaration that sets or
+        # manages that node, or an ancestor of it, would fight the removal
+        # with an outcome that depends on the order they run in.  Two removals
+        # under one object name different leaves, so they do not conflict.
+        leaf = path + [key]
+        check_disjoint(leaf, assigned_paths(paths, upserts, prefixes))
+        removals.append((path, key))
+    for index, (path, key) in enumerate(removals):
+        check_disjoint(path + [key], [other + [other_key]
+                                      for other, other_key in removals[index + 1:]])
+    return removals
 
 
 def instance_migration(entry, assign, retire, owned, declared):
@@ -282,7 +320,8 @@ def migrate(merged, migration):
         del merged[source]
 
 
-def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None, prefixes=None):
+def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None, prefixes=None,
+          removals=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     The whole document is deep-copied and the copy edited in place.  The
@@ -331,6 +370,18 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
                       if not (isinstance(entry, str) and entry.startswith(prefix))]
         if value is not None:
             entries.append(value)
+    for path, key in removals or []:
+        # A walk that stops early is the no-op case: a missing path, a
+        # non-object segment, or an absent key has nothing to remove, the way
+        # top-level remove treats an absent key.  No parent is created.
+        node = merged
+        for segment in path:
+            if not isinstance(node, dict) or segment not in node:
+                break
+            node = node[segment]
+        else:
+            if isinstance(node, dict):
+                node.pop(key, None)
     return merged
 
 
@@ -421,7 +472,7 @@ def swap(settings, text, before):
 
 
 def merge(settings, declared):
-    assign, retire, paths, owned, upserts, prefixes, migration = declaration(declared)
+    assign, retire, paths, removals, owned, upserts, prefixes, migration = declaration(declared)
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -429,12 +480,14 @@ def merge(settings, declared):
     # deliberately discarded: each attempt below pairs its own read with its
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
-    apply(read_settings(settings), assign, retire, paths, owned, upserts, migration, prefixes)
+    apply(read_settings(settings), assign=assign, retire=retire, paths=paths, owned=owned,
+          upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
-        merged = apply(current, assign, retire, paths, owned, upserts, migration, prefixes)
+        merged = apply(current, assign=assign, retire=retire, paths=paths, owned=owned,
+                       upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)
