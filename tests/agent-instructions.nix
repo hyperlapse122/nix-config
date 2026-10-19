@@ -210,6 +210,17 @@ let
     "Upload through `gh --attach` or the GitLab uploads API, never a browser."
   ];
 
+  markdownHeading = "# Markdown";
+
+  # Each `\\~` is one literal backslash and tilde: Nix drops the backslash of
+  # an unknown escape in a double-quoted string.
+  markdownSentences = [
+    "When you write a range in text that renders as Markdown, in any language, use a dash, as in `1-3` or `10:00-12:00`, or escape the tilde, as in `1\\~3`, so a pair of tildes never renders as strikethrough."
+    "Treat a tilde that marks an approximation, such as `~5 min`, the same way: write \"about 5 min\" or `\\~5 min`."
+    "This covers chat replies, pull request and issue bodies and comments, and Markdown documents; put any other tilde, such as a path like `~/.config` or a Git revision like `HEAD~1`, in a code span, and leave a tilde inside a code span or code block as it is."
+    "In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word and never with `\\~`."
+  ];
+
   reviewFindingsHeading = "# Review findings";
 
   # In section order: `sentencesInOrder` compares the section to this list.
@@ -311,6 +322,11 @@ let
       sentences = pullRequestsSentences;
     }
     {
+      name = "Markdown";
+      heading = markdownHeading;
+      sentences = markdownSentences;
+    }
+    {
       name = "review-findings";
       heading = reviewFindingsHeading;
       sentences = reviewFindingsSentences;
@@ -337,6 +353,8 @@ let
     ++ gitSentences
     ++ [ pullRequestsHeading ]
     ++ pullRequestsSentences
+    ++ [ markdownHeading ]
+    ++ markdownSentences
     ++ [ reviewFindingsHeading ]
     ++ reviewFindingsSentences
     ++ [ compoundEngineeringHeading ]
@@ -350,6 +368,7 @@ let
     "# GPG and encryption"
     "# Git"
     "# Pull and merge requests"
+    "# Markdown"
     "# Review findings"
     "# Compound Engineering"
     "# T3 Code"
@@ -394,10 +413,13 @@ let
   # once and that occurrence starts where a sentence starts: at the start of
   # a line, after a list marker, or after the previous sentence's full stop.
   # A substring match would accept the sentence inside its own negation
-  # ("Do not Apply every...").
+  # ("Do not Apply every..."). The sentence reaches awk through the
+  # environment, because `awk -v` processes escape sequences and turns a
+  # pinned `\~` into `~`.
   requireSentences = message: sentences: ''
     for sentence in ${lib.escapeShellArgs sentences}; do
-      if ! awk -v s="$sentence" '
+      if ! s="$sentence" awk '
+        BEGIN { s = ENVIRON["s"] }
         {
           line = $0
           while ((i = index(line, s)) > 0) {
