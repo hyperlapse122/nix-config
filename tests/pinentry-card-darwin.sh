@@ -149,13 +149,14 @@ grep -qF "$scratch/bin/security" "$scratch/filter" || fail 'the test could not r
 
 run_filter() {
   # run_filter <stdin-text> <out-file> <err-file> [env NAME=value ...]
+  # The filter writes to a pipe, as to gpg-agent: see D11.
   local input=$1 out=$2 err=$3 rc=0
   shift 3
   : >"$delegate_log"
   : >"$fallback_log"
   : >"$security_log"
   printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY "$@" \
-    PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter" >"$out" 2>"$err" || rc=$?
+    PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter" 2>"$err" | cat >"$out" || rc=$?
   if (( rc != 0 )); then
     printf 'pinentry-card-darwin: filter exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
   fi
@@ -344,8 +345,8 @@ pass 'D10: SIGTERM stops the filter and its child promptly'
 #       slow to pass the replies on, as on a loaded builder: this copy of the
 #       filter stalls it 0.5 seconds per line, about 3.5 seconds in all, and
 #       every reply must still reach the agent.  The filter writes to a pipe,
-#       as to gpg-agent: it gives up on a write blocked for 2 seconds as one
-#       the agent stopped reading, and a write to a file blocks that long
+#       as to gpg-agent: it gives up on a write blocked for DIALOG_GRACE as
+#       one the agent stopped reading, and a write to a file blocks that long
 #       when the builder's disk stalls.
 sed '/^            line = child_stdout.readline()$/a\            time.sleep(0.5)' \
   "$scratch/filter" >"$scratch/filter-slow-relay"
