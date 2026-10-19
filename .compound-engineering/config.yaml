@@ -175,6 +175,14 @@ docs_root: .compound-engineering/artifacts
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
 
+feedback_sources:
+  - { type: github-issues, id: gh-issues, target: hyperlapse122/nix-config, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
+
+sweep_state_path: .compound-engineering/artifacts/feedback-sweep/state.yml
+sweep_ack_cap: 25
+sweep_lease_ttl_minutes: 60
+sweep_shared_branch: false
+
 # --- Compound Packs ---
 
 # Prescriptive domain knowledge folders that planning reads and cites.
