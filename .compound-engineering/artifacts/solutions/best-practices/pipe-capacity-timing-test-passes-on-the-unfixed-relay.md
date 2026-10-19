@@ -1,6 +1,7 @@
 ---
 title: "A timing regression test built on pipe capacity can pass on the unfixed relay"
 date: "2026-10-08"
+last_updated: "2026-10-19"
 category: best-practices
 module: pinentry-card wrapper and its checks
 problem_type: best_practice
@@ -52,9 +53,9 @@ sed '/^        chunk = delegate_stdout.readline()$/a\        time.sleep(0.5)' \
 grep -qFx '        time.sleep(0.5)' "$scratch/functional-slow-relay.py" || fail '35 slow-relay: the test could not slow the relay down'
 ```
 
-Darwin test D11 (`tests/pinentry-card-darwin.sh:347`) does the same to the front stage's `line = child_stdout.readline()`.
+Darwin test D11 (`tests/pinentry-card-darwin.sh:351`) does the same to the front stage's `line = child_stdout.readline()`.
 
-The sleep sits after the read and outside `output_lock`. That matches the CI failure: the replies are already in the pipe and nothing holds the lock, so the old shutdown's lock wait returns at once and only the 2-second join stands between the relay and `os._exit`. The test needs no pipe sizes, no slow reader, and no extra time budget. Eight lines take about 4 seconds, well inside `run_wrapper`'s 10-second bound and the 10-second `EXIT_GRACE`.
+The sleep sits after the read and outside `output_lock`. That matches the CI failure: the replies are already in the pipe and nothing holds the lock, so the old shutdown's lock wait returns at once and only the 2-second join stands between the relay and `os._exit`. The test needs no pipe sizes, no slow reader, and no extra time budget. Eight lines take about 4 seconds, well inside `run_wrapper`'s 10-second bound and the 10-second `EXIT_GRACE`. It does need its stdout on a pipe rather than a file, or a disk stall trips the relay's 2-second write limit instead: see [a test that sends the relay's output to a file lets a disk stall trip its write timeout](regular-file-stdout-lets-disk-stall-trip-relay-write-timeout.md).
 
 Then confirm the test fails on the old code before trusting it. In this session, test 35 saw 3 of 7 `OK` replies on the base scripts, and D11's output was empty. Both pass on the fix.
 
