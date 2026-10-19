@@ -102,9 +102,6 @@ let
     provider = "xAI";
   };
 
-  # Harness to the paths that carry its rendering. OpenCode reads the Claude
-  # Code rendering. Peers are the other two harnesses, in the fixed order
-  # Claude Code, Antigravity, Grok.
   harnessPaths = {
     claude-code = [
       ".claude/CLAUDE.md"
@@ -127,26 +124,21 @@ let
       second = peerAntigravity;
     };
   };
-  harnessNames = [
-    "claude-code"
-    "antigravity"
-    "grok"
-  ];
+  harnessNames = lib.attrNames harnessPaths;
 
-  knownActions = [
-    "{{ .user.gpgKey }}"
-    "{{ .peers.first.name }}"
-    "{{ .peers.first.instance }}"
-    "{{ .peers.first.model }}"
-    "{{ .peers.first.provider }}"
-    "{{ .peers.second.name }}"
-    "{{ .peers.second.instance }}"
-    "{{ .peers.second.model }}"
-    "{{ .peers.second.provider }}"
-  ];
+  actionValues = key: peers: {
+    "{{ .user.gpgKey }}" = key;
+    "{{ .peers.first.name }}" = peers.first.name;
+    "{{ .peers.first.instance }}" = peers.first.instance;
+    "{{ .peers.first.model }}" = peers.first.model;
+    "{{ .peers.first.provider }}" = peers.first.provider;
+    "{{ .peers.second.name }}" = peers.second.name;
+    "{{ .peers.second.instance }}" = peers.second.instance;
+    "{{ .peers.second.model }}" = peers.second.model;
+    "{{ .peers.second.provider }}" = peers.second.provider;
+  };
+  knownActions = lib.attrNames (actionValues fakeKey harnessPeers.claude-code);
 
-  # Each `{{` opens one action, closed by the next `}}`. An unclosed `{{` is
-  # not a known action. The builder reports it; evaluation still succeeds.
   extractActions =
     text:
     map (
@@ -166,21 +158,10 @@ let
   expectedFile =
     harness: key:
     let
-      peers = harnessPeers.${harness};
-      values = {
-        "{{ .user.gpgKey }}" = key;
-        "{{ .peers.first.name }}" = peers.first.name;
-        "{{ .peers.first.instance }}" = peers.first.instance;
-        "{{ .peers.first.model }}" = peers.first.model;
-        "{{ .peers.first.provider }}" = peers.first.provider;
-        "{{ .peers.second.name }}" = peers.second.name;
-        "{{ .peers.second.instance }}" = peers.second.instance;
-        "{{ .peers.second.model }}" = peers.second.model;
-        "{{ .peers.second.provider }}" = peers.second.provider;
-      };
+      values = actionValues key harnessPeers.${harness};
     in
     pkgs.writeText "expected-instructions-${harness}.md" (
-      lib.replaceStrings knownActions (map (action: values.${action}) knownActions) template
+      lib.replaceStrings (lib.attrNames values) (lib.attrValues values) template
     );
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
 
@@ -205,8 +186,7 @@ let
 
   compoundEngineeringHeading = "# Compound Engineering";
 
-  # In section order, like `reviewFindingsSentences`. The three peer sentences
-  # are this harness's literals; the rest of the section is shared.
+  # In section order, like `reviewFindingsSentences`.
   compoundEngineeringSentences = peers: [
     "When a skill's cross-model step activates, run it once with ${peers.first.name} and once with ${peers.second.name} as peers, and never with OpenCode."
     "This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs."
@@ -217,7 +197,7 @@ let
     "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing."
     "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task."
     "Before launching, name each peer you will launch and the provider that gets the content, ${peers.first.provider} for ${peers.first.name} and ${peers.second.provider} for ${peers.second.name}; that notice authorizes the send."
-    "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family differs from yours."
+    "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family is known and differs from yours."
     "Read each peer's result from its `task_status` and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
     "Run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
@@ -407,13 +387,24 @@ let
     fi
   '';
 
-  fileRules = label: key: absentKeys: compoundSentences: ''
+  # The pinned sentences and checked sections of one harness's rendering.
+  rulesFor =
+    peers:
+    let
+      compoundSentences = compoundEngineeringSentences peers;
+    in
+    {
+      pinned = pinnedSentences compoundSentences;
+      sections = checkedSections compoundSentences;
+    };
+
+  fileRules = label: key: absentKeys: rules: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
       failed=1
     else
       ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
-        (pinnedSentences compoundSentences) ++ [ (recipientSentence key) ]
+        rules.pinned ++ [ (recipientSentence key) ]
       )}
       ${lib.concatMapStrings (section: ''
         ${onlyPinnedSentences "${label} carries an unpinned ${section.name} sentence:" section.heading
@@ -425,7 +416,7 @@ let
         ${sentencesInOrder "${label} reorders or duplicates a ${section.name} sentence:" section.heading
           section.sentences
         }
-      '') (checkedSections compoundSentences)}
+      '') rules.sections}
       expected=$(mktemp)
       actual=$(mktemp)
       printf '%s\n' ${lib.escapeShellArgs topLevelHeadings} > "$expected"
@@ -508,7 +499,10 @@ let
         harness:
         let
           expected = expectedFile harness key;
-          sentences = compoundEngineeringSentences harnessPeers.${harness};
+          rules = rulesFor harnessPeers.${harness};
+          # Every path of a harness must equal one expected file, so the
+          # sentence rules need to read only its first path.
+          firstTarget = lib.head harnessPaths.${harness};
         in
         lib.concatMapStrings (target: ''
           file=${homeFiles}/${target}
@@ -521,10 +515,10 @@ let
               diff ${expected} "$file" >&2 || true
               failed=1
             fi
-            ${fileRules "the ${harness} instructions at ~/${target} on ${label}" key
-              (lib.optional fake cardKey)
-              sentences
-            }
+            ${lib.optionalString (target == firstTarget) (
+              fileRules "the ${harness} instructions at ~/${target} on ${label}" key (lib.optional fake cardKey)
+                rules
+            )}
           fi
         '') harnessPaths.${harness}
       ) harnessNames}

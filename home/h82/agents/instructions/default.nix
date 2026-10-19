@@ -8,8 +8,6 @@ let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
 
-  # Fixed order is Claude Code, Antigravity, Grok. A harness's peers are the
-  # other two, so each rendering names only the pair that session runs.
   peerClaudeCode = {
     name = "Claude Code";
     instance = "claudeAgent";
@@ -29,13 +27,13 @@ let
     provider = "xAI";
   };
 
-  # `model` is the exact phrase the route sentence prints, backticks included.
-  # The template prints it bare, so a missing field fails every rendering.
+  facts = hostFacts.of config.my;
+
   render =
     name: peers:
     let
       context = pkgs.writeText "agent-instructions-${name}.json" (
-        builtins.toJSON (hostFacts.of config.my // { peers = peers; })
+        builtins.toJSON (facts // { inherit peers; })
       );
     in
     pkgs.runCommand "agent-instructions-${name}.md" { nativeBuildInputs = [ renderer ]; } ''

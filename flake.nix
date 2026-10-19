@@ -1052,8 +1052,6 @@
                 entry:
                 let
                   grokPkg = userPackageOf "grok-build" entry;
-                  # Allow exactly .grok/rules/instructions.md. Any other target
-                  # under ~/.grok, including config.toml, still fails below.
                   grokFiles = builtins.filter (
                     target:
                     (target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) && target != ".grok/rules/instructions.md"
@@ -1062,6 +1060,34 @@
                     echo "grok-build on ${entry.name} is built from version '${grokPkg.version}', expected pin ${pinnedVersion}" >&2
                     fail=1
                   '';
+                  # Runs the built wrapper offline in a throwaway HOME, so a grok
+                  # release that stops treating `false` as off fails here, not
+                  # only in the live inspect item. Skipped for a package this
+                  # builder cannot execute.
+                  inspect =
+                    pkgs.lib.optionalString
+                      (grokPkg != null && (grokPkg.system or null) == pkgs.stdenv.hostPlatform.system)
+                      ''
+                        home=$(mktemp -d)
+                        mkdir -p "$home/.claude" "$home/.grok/rules" "$home/project"
+                        echo probe > "$home/.claude/CLAUDE.md"
+                        echo probe > "$home/.grok/rules/instructions.md"
+                        if ! report=$(cd "$home/project" && HOME="$home" ${grokPkg}/bin/grok inspect --json); then
+                          echo "grok inspect fails on ${entry.name}" >&2
+                          fail=1
+                        else
+                          claude=$(jq -r --arg p "$home/.claude/CLAUDE.md" '.projectInstructions[] | select(.path == $p) | .compatibilityStatus' <<<"$report")
+                          rules=$(jq -r --arg p "$home/.grok/rules/instructions.md" '.projectInstructions[] | select(.path == $p) | .scope' <<<"$report")
+                          if [ "$claude" != disabled ]; then
+                            echo "grok on ${entry.name} still reads ~/.claude/CLAUDE.md (compatibilityStatus: '$claude')" >&2
+                            fail=1
+                          fi
+                          if [ "$rules" != global ]; then
+                            echo "grok on ${entry.name} does not load ~/.grok/rules/instructions.md as a global rule (scope: '$rules')" >&2
+                            fail=1
+                          fi
+                        fi
+                      '';
                   wrapper = pkgs.lib.optionalString (grokPkg != null) ''
                     if ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" ${grokPkg}/bin/grok; then
                       echo "grok on ${entry.name} does not turn its self-updater off" >&2
@@ -1085,13 +1111,14 @@
                   } entry}
                   ${versionMismatch}
                   ${wrapper}
+                  ${inspect}
                   ${pkgs.lib.optionalString (grokFiles != [ ]) ''
                     echo 'Home Manager manages files under ~/.grok on ${entry.name}, which Grok owns: ${toString grokFiles}' >&2
                     fail=1
                   ''}
                 '';
             in
-            pkgs.runCommand "grok-build-tests" { } ''
+            pkgs.runCommand "grok-build-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
               set -x
               ${forEveryUser assertUser}
               touch $out
