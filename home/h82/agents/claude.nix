@@ -43,13 +43,6 @@ let
     # any settings source, so a project-level file cannot turn it back on, and
     # it does not depend on how the session's environment was built.
     disableClaudeAiConnectors = true;
-    # The window, not the trigger: compaction starts once the context reaches
-    # the window minus Claude Code's 33K autocompact buffer, about 367K.  The
-    # status line's used_percentage still measures against the full 1M window.
-    # A settings key rather than CLAUDE_CODE_AUTO_COMPACT_WINDOW, which would
-    # override /autocompact; a window /autocompact saves under modelSettings
-    # outranks this key, and the merge leaves it alone.
-    autoCompactWindow = 400000;
   };
 
   # Leaves assigned inside nested objects of settings.json. A plugin is enabled
@@ -79,7 +72,10 @@ let
   # assigns, so dropping a key from settingsTier alone would leave its last
   # written value on every machine forever. Move it here instead, and delete
   # the entry once every host has rebuilt past it.
-  retiredKeys = [ "advisorModel" ];
+  retiredKeys = [
+    "advisorModel"
+    "autoCompactWindow"
+  ];
 
   renderDeclared =
     name: set: remove: setPaths:
