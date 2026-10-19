@@ -17,6 +17,9 @@
     profile's `podman`, the machine watchdog's agent abandons its process
     group at interactive priority, a login agent exports the socket to GUI
     apps, and the minikube login agent exists in production only;
+  - the session and a login agent at load set CROSS_MODEL_PEERS to the
+    peers the installed packages call for (tests/lib/cross-model-peers.nix)
+    and CROSS_MODEL_MAX_PEERS to 2;
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -67,6 +70,7 @@ let
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
   androidPin = import ./lib/android-pin.nix { inherit lib; };
+  expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -87,6 +91,7 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
+      peers = lib.concatStringsSep "," (expectedPeers user.my.kind user.home.packages);
       grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       antigravityRuntime = "${
         import ../packages/antigravity-acp.nix {
@@ -157,6 +162,14 @@ let
       case $guienv in
         *'launchctlsetenvTESTCONTAINERS_DOCKER_SOCKET_OVERRIDE/var/run/docker.sock'*) ;;
         *) bad "no login agent exports the VM's Docker socket to GUI apps" ;;
+      esac
+      grep -Fxq 'export CROSS_MODEL_PEERS="${peers}"' "$vars" \
+        || bad "the session does not set CROSS_MODEL_PEERS to ${peers}"
+      grep -Fxq 'export CROSS_MODEL_MAX_PEERS="2"' "$vars" || bad "the session does not set CROSS_MODEL_MAX_PEERS to 2"
+      peeragent=$(agent cross-model-peers)
+      case $peeragent in
+        *'launchctlsetenvCROSS_MODEL_PEERS${peers}/bin/launchctlsetenvCROSS_MODEL_MAX_PEERS2'*'<key>RunAtLoad</key><true/>'*) ;;
+        *) bad "no login agent sets CROSS_MODEL_PEERS to ${peers} and CROSS_MODEL_MAX_PEERS to 2 for GUI apps" ;;
       esac
       minikube=$(agent minikube)
       if [ "$production" = 1 ]; then

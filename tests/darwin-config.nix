@@ -35,6 +35,12 @@
     auth.json, and link `docker` to Podman; production adds the minikube
     login agent and bootstrap has none. No OrbStack cask, credHelpers merge,
     or Docker Hub index alias remains.
+  - Compound Engineering peers: a login agent enabled at load runs
+    `/bin/sh -c` with exactly two `/bin/launchctl setenv` lines, which set
+    CROSS_MODEL_PEERS, joined with `,` alone, to the set of peers the
+    installed packages call for (tests/lib/cross-model-peers.nix, Antigravity
+    included on darwin) and CROSS_MODEL_MAX_PEERS to 2; the session variables
+    carry the same two values.
   - The system layer turns off store auto-optimisation, installs the shared
     font list, switches appearance automatically with AppleInterfaceStyle
     unset, and records the host and variant in /etc/nix-config-host.
@@ -88,6 +94,7 @@ let
   namesOf = packages: lib.unique (map (p: p.pname or (lib.getName p)) packages);
 
   androidPin = import ./lib/android-pin.nix { inherit lib; };
+  expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
 
   hosts = import ../lib/hosts.nix { inherit lib; } ./fixtures/hosts;
   kindOf = fixture: (import (./fixtures/hosts + "/${fixture}/host.nix")).kind or null;
@@ -207,6 +214,32 @@ let
       guiEnvironment = plain (
         lib.concatStringsSep " " ((agentConfig "container-environment").ProgramArguments or [ ])
       );
+      peers = expectedPeers user.my.kind user.home.packages;
+      peerAgent = agents.cross-model-peers or { };
+      peerArgs = map plain (peerAgent.config.ProgramArguments or [ ]);
+      # Each setenv line as its words, split on single spaces, so a list
+      # joined with ", " gains a word and fails the length test.
+      peerSetenvs = map (lib.splitString " ") (
+        lib.filter (line: line != "") (
+          map lib.trim (lib.splitString "\n" (if lib.length peerArgs == 3 then lib.elemAt peerArgs 2 else ""))
+        )
+      );
+      peerSetenvValue =
+        name:
+        let
+          matches = lib.filter (
+            words:
+            lib.length words == 4
+            &&
+              lib.take 3 words == [
+                "/bin/launchctl"
+                "setenv"
+                name
+              ]
+          ) peerSetenvs;
+        in
+        if lib.length matches == 1 then lib.last (lib.head matches) else null;
+      peerSet = value: if value == null then null else sort (lib.splitString "," value);
       machinesData = plain (activation.podmanMachines.data or "");
       machineInits = lib.length (lib.filter lib.isList (builtins.split "machine init " machinesData));
       resourcesStep = activation.podmanMachineResources or { };
@@ -384,6 +417,31 @@ let
         && lib.hasInfix "launchctl setenv TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE" guiEnvironment
         && ((agentConfig "container-environment").RunAtLoad or null) == true
       ) "${entry.name}: a login agent must export the machine's socket to GUI apps")
+      (check (
+        peers != [ ]
+      ) "${entry.name}: no installed package calls for a CE peer, so the peer check would cover none")
+      (check
+        (
+          (peerAgent.enable or false)
+          && (peerAgent.config.RunAtLoad or null) == true
+          &&
+            lib.take 2 peerArgs == [
+              "/bin/sh"
+              "-c"
+            ]
+          && lib.length peerSetenvs == 2
+          && peerSet (peerSetenvValue "CROSS_MODEL_PEERS") == peers
+          && peerSetenvValue "CROSS_MODEL_MAX_PEERS" == "2"
+        )
+        "${entry.name}: a login agent must set CROSS_MODEL_PEERS to ${lib.concatStringsSep "," peers} and CROSS_MODEL_MAX_PEERS to 2 for GUI apps"
+      )
+      (check
+        (
+          peerSet (sessionVariables.CROSS_MODEL_PEERS or null) == peers
+          && (sessionVariables.CROSS_MODEL_MAX_PEERS or null) == "2"
+        )
+        "${entry.name}: the session must set CROSS_MODEL_PEERS to ${lib.concatStringsSep "," peers} and CROSS_MODEL_MAX_PEERS to 2"
+      )
       (check (lib.elem "docker-podman-compat" pnames) "${entry.name}: docker must be the Podman link")
       (check (
         activation ? containersAuth

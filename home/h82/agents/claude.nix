@@ -85,6 +85,8 @@ let
   declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];
 in
 {
+  my.agents.crossModelPeers = [ "claude" ];
+
   home.sessionVariables = environmentTier;
 
   # Unguarded on purpose, unlike the KDE activation blocks. Those test their

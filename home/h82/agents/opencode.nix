@@ -88,6 +88,8 @@ let
     '';
 in
 {
+  my.agents.crossModelPeers = [ "opencode" ];
+
   home.packages = [ wrapper ];
 
   # Unguarded and after installPackages for the reasons given on
