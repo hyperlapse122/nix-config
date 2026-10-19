@@ -1,6 +1,7 @@
 ---
 title: OpenCode plugin loading is verifiable only by a live run, never by debug config or a sandboxed check
 date: "2026-10-19"
+last_updated: "2026-10-19"
 category: integration-issues
 module: OpenCode Compound Engineering plugin (scripts/agent-plugin-sync, home/h82/agents/opencode.nix)
 problem_type: integration_issue
@@ -41,7 +42,7 @@ Verify from the Mac, before deploying, with a scratch `OPENCODE_CONFIG` overlay.
 
 ```sh
 overlay=$scratch/overlay.json
-printf '{"plugins": ["%s"], "model": "synthetic/hf:zai-org/GLM-5.3-Flash"}\n' \
+printf '{"plugins": ["%s"], "model": "synthetic/hf:zai-org/GLM-5.3", "provider": {"synthetic": {"models": {"hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}}}}}\n' \
   "$HOME/.local/share/agent-plugins/compound-engineering/v3.31.0" > "$overlay"
 cd "$scratch/work"
 OPENCODE_CONFIG=$overlay opencode run --print-logs --log-level debug \
@@ -51,7 +52,7 @@ grep 'loading plugin' run.log     # msg="loading plugin" id=<link> entrypoint=fi
 grep -iE 'install|npm|bun add|download' run.log   # empty: nothing fetched for the plugin
 ```
 
-On 2026-10-18 this run took 9 s, listed all 34 `ce-` skills, and ran on `hf:zai-org/GLM-5.3-Flash`. Arrays concatenate across layers, so a path the global file already lists loads twice under such an overlay. Name it in only one layer.
+The overlay carries the deployed default: `hf:zai-org/GLM-5.3` with `reasoningEffort` pinned to `max` per model, because OpenCode 2.0.32 drops a `#variant` written in a config file. On 2026-10-18 this run, then pointed at `hf:zai-org/GLM-5.3-Flash` at default effort, took 9 s and listed all 34 `ce-` skills. Arrays concatenate across layers, so a path the global file already lists loads twice under such an overlay. Name it in only one layer.
 
 The same overlay covers a Compound Engineering review peer. Put `OPENCODE_CONFIG=<overlay>` in the environment of `peer-job-runner.py start`, both before the runner and in its `env` prefix; the peer then runs the undeployed model and plugin. Read the timing afterwards from `~/.local/share/opencode/opencode.db`, taking only structure and numbers, never content:
 
@@ -66,7 +67,7 @@ for seq, data in db.execute(
           d["tokens"]["reasoning"], d["tokens"]["output"], d["finish"])
 ```
 
-That peer, on a 1,935-line diff, finished in 953 s over 8 turns, with 0 reasoning tokens per turn and a final `stop`. Issue #240 recorded `syn:large:text` at 18 turns and about 72K reasoning tokens, cut off at 1200 s.
+That peer, on a 1,935-line diff and on `hf:zai-org/GLM-5.3-Flash` at default effort, finished in 953 s over 8 turns, with 0 reasoning tokens per turn and a final `stop`. Issue #240 recorded `syn:large:text` at 18 turns and about 72K reasoning tokens, cut off at 1200 s.
 
 ## Why This Works
 
