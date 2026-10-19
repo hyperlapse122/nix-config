@@ -153,6 +153,7 @@
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         grok-build-release = agentTools.grokBuildRelease;
         grok-build = import ./packages/grok-build.nix { inherit pkgs; };
+        grok-bot = import ./packages/grok-bot.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
