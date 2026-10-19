@@ -147,6 +147,8 @@ sed \
 grep -qF "$scratch/proxy" "$scratch/filter" || fail 'the test could not retarget PROXY_PATH'
 grep -qF "$scratch/bin/security" "$scratch/filter" || fail 'the test could not retarget SECURITY_PATH'
 
+pipe_into() { cat >"$1"; }
+
 run_filter() {
   # run_filter <stdin-text> <out-file> <err-file> [env NAME=value ...]
   local input=$1 out=$2 err=$3 rc=0
@@ -155,7 +157,7 @@ run_filter() {
   : >"$fallback_log"
   : >"$security_log"
   printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY "$@" \
-    PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter" >"$out" 2>"$err" || rc=$?
+    PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter" 2>"$err" | pipe_into "$out" || rc=$?
   if (( rc != 0 )); then
     printf 'pinentry-card-darwin: filter exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
   fi
@@ -350,9 +352,27 @@ grep -qFx '            time.sleep(0.5)' "$scratch/filter-slow-relay" || fail 'D1
 input=$(printf 'OPTION ttyname=/dev/ttys001\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
 : >"$delegate_log"
 printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY \
-  PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter-slow-relay" >"$scratch/out11" 2>"$scratch/err11" ||
+  PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter-slow-relay" 2>"$scratch/err11" |
+  pipe_into "$scratch/out11" ||
   fail "D11 slow-relay: the filter failed: $(<"$scratch/err11")"
 assert_one_reply_per_command "$input" "$scratch/out11" 'D11 slow-relay'
 pass 'D11: replies both stages wrote before exiting reach the agent even when the filter relay is seconds behind'
+
+# D12.  The slow filter relay also goes unscheduled for 2.5 seconds inside one
+#       write, past DIALOG_GRACE, while the agent is still reading: the filter
+#       must keep waiting rather than take the write for an agent that stopped.
+sed -e '/^                client_out.write(line)$/{n' \
+  -e 'a\                pump.writes = getattr(pump, "writes", 0) + 1' \
+  -e 'a\                time.sleep(2.5 if pump.writes == 3 else 0)' -e '}' \
+  "$scratch/filter-slow-relay" >"$scratch/filter-stalled-write"
+[[ $(grep -cFx '                time.sleep(2.5 if pump.writes == 3 else 0)' "$scratch/filter-stalled-write") -eq 1 ]] ||
+  fail 'D12 stalled-write: the test could not stall the relay inside a write'
+: >"$delegate_log"
+printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY \
+  PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter-stalled-write" 2>"$scratch/err12" |
+  pipe_into "$scratch/out12" ||
+  fail "D12 stalled-write: the filter failed: $(<"$scratch/err12")"
+assert_one_reply_per_command "$input" "$scratch/out12" 'D12 stalled-write'
+pass 'D12: a write the filter relay is slow to finish is not taken for an agent that stopped reading'
 
 pass 'all darwin pinentry-card scenarios passed'
