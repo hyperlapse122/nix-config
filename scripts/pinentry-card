@@ -12,6 +12,7 @@ The Nix package replaces the three @...@ constants with absolute store paths.
 import base64
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -235,20 +236,32 @@ def pump(delegate_stdout, client_out, output_lock, exchange):
         exchange.relayed = exchange.replies
 
 
-def drain_relay(relay, exchange, patient):
+def has_room(stream):
+    """True when a write to stream would not block: a pipe the client still
+    drains, or a file."""
+    try:
+        return bool(select.select([], [stream], [], 0)[1])
+    except (OSError, ValueError):
+        return False
+
+
+def drain_relay(relay, exchange, patient, client_out):
     """Wait for the relay to pass on what the client is still owed.  A reply
     the child wrote before it exited is already in the pipe, so while one is
     owed and patient() holds, the relay gets up to EXIT_GRACE: on a loaded
     machine that can take seconds.  Otherwise it gets DIALOG_GRACE, since a
     grandchild may hold the pipe open forever, and so does a relay stuck in
-    one write to a client that stopped reading.  exchange needs owes_reply()
-    and writing_since; the darwin front stage passes its own."""
+    one write to a client that stopped reading.  A write counts as stuck only
+    once client_out has no room: one that is merely slow, because the relay
+    went unscheduled or the disk stalled, gets the same grace as any other.
+    exchange needs owes_reply() and writing_since; the darwin front stage
+    passes its own."""
     start = time.monotonic()
     while relay.is_alive():
         relay.join(timeout=0.1)
         now = time.monotonic()
         writing_since = exchange.writing_since
-        if writing_since is not None and now - writing_since >= DIALOG_GRACE:
+        if writing_since is not None and now - writing_since >= DIALOG_GRACE and not has_room(client_out):
             return
         owed = exchange.owes_reply() and patient()
         if now - start >= (EXIT_GRACE if owed else DIALOG_GRACE):
@@ -318,7 +331,7 @@ def main():
     def shutdown():
         stopped.set()
         status = reap(close_delegate_stdin, exited_unprompted)
-        drain_relay(relay, exchange, patient)
+        drain_relay(relay, exchange, patient, client_out)
         # Holding the lock means the relay is not mid-write, so no reply is
         # cut short.  The wait is bounded: a relay blocked on a stdout nobody
         # reads gives up the final flush, never the exit.

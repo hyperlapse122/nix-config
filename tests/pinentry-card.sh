@@ -228,6 +228,8 @@ sed \
   -e 's/KEYRING_LOOKUP_TIMEOUT = 5/KEYRING_LOOKUP_TIMEOUT = 1/' \
   "$rendered_gnome" >"$scratch/functional-fallback.py"
 
+pipe_into() { cat >"$1"; }
+
 run_wrapper() {
   # run_wrapper <functional.py> <stdin-text> <out-file> <err-file> [env NAME=value ...]
   # <stdin-text> is command-substitution output, which already lost its
@@ -237,10 +239,6 @@ run_wrapper() {
   # A non-zero exit prints the wrapper's stderr, so a failure that only shows
   # up on a loaded builder still names its cause; cases that expect a
   # non-zero exit print it too.
-  # The wrapper writes to a pipe, as to gpg-agent: it gives up on a write
-  # blocked for DIALOG_GRACE as one the client stopped reading, and a write to
-  # a file blocks that long when the builder's disk stalls.  A FIFO <out-file>
-  # is the client itself, so the wrapper writes to it directly.
   local functional=$1 input=$2 out=$3 err=$4 rc=0
   shift 4
   if [[ -p $out ]]; then
@@ -248,7 +246,7 @@ run_wrapper() {
       "$python3_bin" "$functional" >"$out" 2>"$err" || rc=$?
   else
     printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" "$@" PATH="$scratch/bin:/usr/bin:/bin" \
-      "$python3_bin" "$functional" 2>"$err" | cat >"$out" || rc=$?
+      "$python3_bin" "$functional" 2>"$err" | pipe_into "$out" || rc=$?
   fi
   if (( rc != 0 )); then
     printf 'pinentry-card: wrapper exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
@@ -823,5 +821,20 @@ run_wrapper "$scratch/functional-slow-relay.py" "$input" "$out" "$err" DISPLAY=:
 ok_count=$(grep -c '^OK$' "$out" || true)
 [[ $ok_count -eq 7 ]] || fail "35 slow-relay: expected 7 relayed OK replies, saw $ok_count"
 pass '35: replies the delegate wrote before exiting are relayed even when the relay is seconds behind'
+
+# 36. The slow relay also goes unscheduled for 2.5 seconds inside one write,
+#     past DIALOG_GRACE, while the client is still reading: the wrapper must
+#     keep waiting rather than take the write for a client that stopped.
+sed -e '/^            client_out.flush()$/a\            pump.writes = getattr(pump, "writes", 0) + 1' \
+  -e '/^            client_out.flush()$/a\            time.sleep(2.5 if pump.writes == 3 else 0)' \
+  "$scratch/functional-slow-relay.py" >"$scratch/functional-stalled-write.py"
+[[ $(grep -cFx '            time.sleep(2.5 if pump.writes == 3 else 0)' "$scratch/functional-stalled-write.py") -eq 1 ]] ||
+  fail '36 stalled-write: the test could not stall the relay inside a write'
+out="$scratch/out36" err="$scratch/err36"
+rm -f "$gnome_log"
+run_wrapper "$scratch/functional-stalled-write.py" "$input" "$out" "$err" DISPLAY=:0
+ok_count=$(grep -c '^OK$' "$out" || true)
+[[ $ok_count -eq 7 ]] || fail "36 stalled-write: expected 7 relayed OK replies, saw $ok_count"
+pass '36: a write the relay is slow to finish is not taken for a client that stopped reading'
 
 pass 'all U5 test scenarios passed'

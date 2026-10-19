@@ -168,7 +168,7 @@ def main():
             pass
         status = reap()
         # A killed child answers nothing more.
-        proxy.drain_relay(relay, replies, lambda: child.returncode >= 0)
+        proxy.drain_relay(relay, replies, lambda: child.returncode >= 0, client_out)
         if output_lock.acquire(timeout=2):
             try:
                 client_out.flush()
