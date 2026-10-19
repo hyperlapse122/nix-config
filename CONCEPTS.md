@@ -50,6 +50,8 @@ Jobs that a finished run skips by design, such as the Nix jobs on a docs-only ch
 
 A trait need not be set by the host: the shared profile may default it from other traits or from whether the host is a bootstrap host, and a host may still override that default. A check guarding such a trait therefore confirms each input of the default separately, since sorting hosts by the trait's own value cannot reveal a default that turns it on too widely.
 
+**Host facts** — the values of the shared host options (the host's kind, name, and bootstrap flag, its user account, its desktop SSH public key, and its traits) as one record the user environment reads on every host kind, and the only data the shared agent instructions are rendered from. Only an option every host kind declares is in it, so a fact that one host kind alone declares has to move into the shared options before the user layer or the instructions can read it. A template that reads a fact the record lacks fails the build, on any host where that read is evaluated, instead of rendering it as empty. A fact the record holds as null can still gate a section, because only printing a null fails.
+
 **Non-NixOS host** — a host whose Linux distribution is not NixOS, found and declared like any other host but assembled as a standalone user environment plus a separately applied system layer instead of a NixOS system. It shares the user profile and traits with the NixOS hosts and never receives desktop configuration. The distribution keeps ownership of everything the system layer does not declare, including vendor stacks such as a JetPack NVIDIA driver.
 
 ## Generations
