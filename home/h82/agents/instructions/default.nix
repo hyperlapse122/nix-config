@@ -17,7 +17,7 @@ let
   peerAntigravity = {
     name = "Antigravity";
     instance = "antigravity";
-    model = "`gemini-4-argon-high`";
+    model = "`gemini-4-argon-medium`";
     provider = "Google";
   };
   peerGrok = {
