@@ -31,7 +31,8 @@
   - grok on PATH resolves to the grok-build wrapper, which turns its
     self-updater off, and the profile has no `agent` executable;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
-    packages/antigravity-acp-release.json pins and sets no SSL_CERT_FILE, and
+    packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
+    defines and invokes seed_acp_token so the sign-in seeding is present;
     localharness_external beside it resolves into the same runtime;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
@@ -92,7 +93,7 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
-      peers = lib.concatStringsSep "," (expectedPeers user.my.kind user.home.packages);
+      peers = lib.concatStringsSep "," (expectedPeers user.home.packages);
       grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
@@ -252,13 +253,17 @@ let
 
       # Compound Engineering's Antigravity route takes the helper from the
       # directory agy_acp_server.par is found in. The macOS .par finds its CA
-      # bundle itself, so its wrapper only execs the pinned runtime.
+      # bundle itself, so the wrapper sets no SSL_CERT_FILE. It seeds
+      # acp_token.json from the ~/.gemini sign-in, then execs the pinned runtime.
       agyPar=$(readlink -f "$gen/home-path/bin/agy_acp_server.par" || true)
       if [ -z "$agyPar" ] || [ ! -x "$agyPar" ]; then
         bad "no agy_acp_server.par on PATH"
       else
         grep -qxF ${lib.escapeShellArg "exec ${antigravityRuntime}/agy_acp_server.par \"$@\""} "$agyPar" \
           || bad "agy_acp_server.par does not exec the pinned runtime's .par"
+        grep -qE '^ *token_target=\$acp_dir/acp_token\.json$' "$agyPar" \
+          && grep -qxF 'seed_acp_token' "$agyPar" \
+          || bad "agy_acp_server.par does not seed acp_token.json"
         if grep -qF SSL_CERT_FILE "$agyPar"; then
           bad "the macOS agy_acp_server.par wrapper sets SSL_CERT_FILE"
         fi

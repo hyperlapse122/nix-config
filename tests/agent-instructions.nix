@@ -34,7 +34,8 @@
     added. The Compound Engineering list is a function of that harness's peer
     literals.
   - the file's top-level `# ` headings are exactly the expected list, in
-    order, so a rule under a new heading cannot escape the section checks.
+    order, and no text precedes the first, so a rule under a new heading or
+    above every heading cannot escape the section checks.
   - every delivery path's recipient sentence names the entry's own
     `my.user.gpgKey`, and Git signs with that same key. The fixture host whose
     key is the fake value below must carry neither the card fingerprint in any
@@ -55,8 +56,9 @@
     sentence is pinned, so a rule elsewhere cannot restore the blocking wait
     for a run with a person present.
   - the file names no removed section, harness, model, or rule, matched
-    without regard to case, and carries no template action (`{{`, `}}`,
-    `<no value>`) or unrendered `@name@` placeholder.
+    without regard to case, carries no unescaped tilde outside a code span,
+    and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
+    `@name@` placeholder.
 
   The expected sentences and the peer literals are written here, not read from
   the module, so a mutation of the instruction file turns this red.
@@ -210,6 +212,17 @@ let
     "Upload through `gh --attach` or the GitLab uploads API, never a browser."
   ];
 
+  markdownHeading = "# Markdown";
+
+  # Each `\\~` is one literal backslash and tilde: Nix drops the backslash of
+  # an unknown escape in a double-quoted string.
+  markdownSentences = [
+    "When you write a range in text that renders as Markdown, in any language, write it in prose, not in a code span, with a dash, as in `1-3` or `10:00-12:00`, or an escaped tilde, as in `1\\~3`, and never with a bare `~` or `~~`, so tildes never render as strikethrough."
+    "Treat a tilde that marks an approximation, such as `~5 min`, the same way: write \"about 5 min\" or `\\~5 min` in prose, not in a code span."
+    "This covers chat replies, pull request and issue bodies and comments, and Markdown documents; put any other tilde, such as a path like `~/.config` or a Git revision like `HEAD~1`, in a code span, and leave a tilde inside a code span or code block as it is."
+    "In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word, and an approximation with a word, and never with `\\~`."
+  ];
+
   reviewFindingsHeading = "# Review findings";
 
   # In section order: `sentencesInOrder` compares the section to this list.
@@ -255,17 +268,23 @@ let
     "Inside T3 Code, alternate the units of each two-worker tier between its Claude and Gemini worker in plan order across the whole plan, counting per tier and starting with Claude."
     "Inside T3 Code, when a worker is unavailable or its launch fails, give the unit to the other worker of its tier, and give a lighter unit to the default tier in its alternation order; the receiving worker uses its own effort rule."
     "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target`, and, for a Claude worker, its `effort` in `target.options`, instead of Compound Engineering's own delegation route."
-    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the default tier as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash-high`, at that route's default effort, `high`, and leave out `antigravity` where the Linux rule below keeps it off the route."
+    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the default tier as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash-high`, at that route's default effort, `high`."
     "When the Antigravity route runs, request `gemini-4-argon-medium` for a cross-model peer and the worker's own model id for an implementation unit, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
-    "Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route for a peer or for the `ce-work` Gemini worker."
-    "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
+    "Remove the model request for the Antigravity route once Compound Engineering requests model ids the runtime advertises."
   ];
 
   t3CodeHeading = "# T3 Code";
 
   t3CodeSentences = [
-    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
+    "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
+    "When the session lists no T3 Code delegation tools, use your harness's own subagent tool."
     "The delegation rules that follow apply only when the session lists those tools."
+    "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it, and when `orchestrator_capabilities` marks a default `effort` for that model, set `effort` in `target.options` to it, even for your own model."
+    "In a Grok or OpenCode session, a subagent that edits files follows the implementation-unit rules of the Compound Engineering section."
+    "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
+    "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
+    "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a tier's other worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer and for an implementation unit in a Grok or OpenCode session."
+    "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
     "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another."
@@ -283,6 +302,7 @@ let
     "For such a skill, a completion notification and one `task_status` read are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed."
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId`, then read each result with one `task_status` call."
     "When that wait returns `timedOut: true`, read the task's `task_status` once, answer a pending question with `t3_pending_request_respond` from the task and your instructions, and wait again with the same `runId`."
+    "When a skill bounds a delegated task by time, pass the time left before that bound as `timeoutMs` on each `t3_thread_wait` for it, and when the bound passes while it still runs, cancel it with `task_cancel` and count it as failed."
     "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId`; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so read the other results, end your turn, and resume on that task's notification."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
@@ -311,6 +331,11 @@ let
       sentences = pullRequestsSentences;
     }
     {
+      name = "Markdown";
+      heading = markdownHeading;
+      sentences = markdownSentences;
+    }
+    {
       name = "review-findings";
       heading = reviewFindingsHeading;
       sentences = reviewFindingsSentences;
@@ -337,6 +362,8 @@ let
     ++ gitSentences
     ++ [ pullRequestsHeading ]
     ++ pullRequestsSentences
+    ++ [ markdownHeading ]
+    ++ markdownSentences
     ++ [ reviewFindingsHeading ]
     ++ reviewFindingsSentences
     ++ [ compoundEngineeringHeading ]
@@ -350,6 +377,7 @@ let
     "# GPG and encryption"
     "# Git"
     "# Pull and merge requests"
+    "# Markdown"
     "# Review findings"
     "# Compound Engineering"
     "# T3 Code"
@@ -389,16 +417,21 @@ let
     "Model routing"
     "receives the reviewed content"
     "data terms"
+    "leaves out Antigravity"
+    "for that pass only"
   ];
 
   # Fails the build, naming each sentence, unless `$file` holds it exactly
   # once and that occurrence starts where a sentence starts: at the start of
   # a line, after a list marker, or after the previous sentence's full stop.
   # A substring match would accept the sentence inside its own negation
-  # ("Do not Apply every...").
+  # ("Do not Apply every..."). The sentence reaches awk through the
+  # environment, because `awk -v` processes escape sequences and turns a
+  # pinned `\~` into `~`.
   requireSentences = message: sentences: ''
     for sentence in ${lib.escapeShellArgs sentences}; do
-      if ! awk -v s="$sentence" '
+      if ! s="$sentence" awk '
+        BEGIN { s = ENVIRON["s"] }
         {
           line = $0
           while ((i = index(line, s)) > 0) {
@@ -420,7 +453,8 @@ let
   # dropped, splitting after each full stop. A pinned sentence must not hold
   # a full stop followed by a space, such as "e.g. ".
   sectionSentences = heading: ''
-    awk -v h=${esc heading} '
+    h=${esc heading} awk '
+      BEGIN { h = ENVIRON["h"] }
       $0 == h { inside = 1; next }
       /^# / { inside = 0 }
       inside { sub(/^ *- /, ""); gsub(/\. /, ".\n"); print }
@@ -514,6 +548,11 @@ let
         diff "$expected" "$actual" >&2 || true
         failed=1
       fi
+      # No section check sees text above the first heading.
+      if awk '/^# / { exit } NF { found = 1 } END { exit !found }' "$file"; then
+        echo ${esc "${label} carries text before its first top-level heading"} >&2
+        failed=1
+      fi
       for term in ${lib.escapeShellArgs removedTerms}; do
         if grep -qiF -- "$term" "$file"; then
           echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
@@ -521,7 +560,8 @@ let
         fi
       done
       outside=$(mktemp)
-      awk -v t=${esc t3CodeHeading} -v c=${esc compoundEngineeringHeading} '
+      t=${esc t3CodeHeading} c=${esc compoundEngineeringHeading} awk '
+        BEGIN { t = ENVIRON["t"]; c = ENVIRON["c"] }
         /^# / { inside = ($0 == t || $0 == c) }
         !inside { print }
       ' "$file" > "$outside"
@@ -537,6 +577,20 @@ let
           failed=1
         fi
       done
+      if awk '
+        {
+          line = $0
+          gsub(/`[^`]*`/, "", line)
+          if (line ~ /(^|[^\\])~/) {
+            print $0
+            found = 1
+          }
+        }
+        END { exit !found }
+      ' "$file" >&2; then
+        echo ${esc "${label} carries an unescaped tilde outside a code span"} >&2
+        failed=1
+      fi
       if grep -qE '\{\{|\}\}|<no value>|@[A-Za-z_]+@' "$file"; then
         echo ${esc "${label} carries an unrendered template action or placeholder"} >&2
         failed=1

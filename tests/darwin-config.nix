@@ -38,9 +38,9 @@
   - Compound Engineering peers: a login agent enabled at load runs
     `/bin/sh -c` with exactly two `/bin/launchctl setenv` lines, which set
     CROSS_MODEL_PEERS, joined with `,` alone, to the set of peers the
-    installed packages call for (tests/lib/cross-model-peers.nix, Antigravity
-    included on darwin) and CROSS_MODEL_MAX_PEERS to 2; the session variables
-    carry the same two values.
+    installed packages call for (tests/lib/cross-model-peers.nix) and
+    CROSS_MODEL_MAX_PEERS to 2; the session variables carry the same two
+    values.
   - The system layer turns off store auto-optimisation, installs the shared
     font list, switches appearance automatically with AppleInterfaceStyle
     unset, and records the host and variant in /etc/nix-config-host.
@@ -214,7 +214,7 @@ let
       guiEnvironment = plain (
         lib.concatStringsSep " " ((agentConfig "container-environment").ProgramArguments or [ ])
       );
-      peers = expectedPeers user.my.kind user.home.packages;
+      peers = expectedPeers user.home.packages;
       peerAgent = agents.cross-model-peers or { };
       peerArgs = map plain (peerAgent.config.ProgramArguments or [ ]);
       # Each setenv line as its words, split on single spaces, so a list

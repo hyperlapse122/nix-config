@@ -34,10 +34,8 @@ let
   );
 in
 {
-  # The token is antigravity, not this file's name. On Linux each CE run gives
-  # the runtime a fresh home that keeps no sign-in, so an unattended review
-  # would wait out a Google sign-in; the allowlist leaves the route out there.
-  my.agents.crossModelPeers = lib.optional (config.my.kind == "darwin") "antigravity";
+  # The token is antigravity, not this file's name.
+  my.agents.crossModelPeers = [ "antigravity" ];
 
   # Disable cross-session, implicit memory for the Gemini and Antigravity CLIs
   # to preserve declarative environment determinism.
