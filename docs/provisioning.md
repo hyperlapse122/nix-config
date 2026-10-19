@@ -261,6 +261,8 @@ Grok reads skills from `~/.claude/skills/`, the MCP servers in `~/.claude.json`,
 
 T3 Code's Grok provider is declared on every host with a T3 Code trait (see [T3 Code](#t3-code)). It starts `grok agent stdio` and, with no `XAI_API_KEY` in its environment, uses the token in `~/.grok/auth.json`. A host where nobody has run `grok login` still has `grok` on `PATH`, so a cross-model pass that uses the Grok route there is skipped as "Not signed in"; signing in is the remedy.
 
+Grok Bot, xAI's desktop app, is installed on every Linux host, NixOS and non-NixOS, from `packages/grok-bot.nix`. The package is built from xAI's `.deb`, pinned per architecture (`x86_64-linux` and `aarch64-linux`) with its hash in `packages/grok-bot-release.json`. The dependency workflow bumps that pin through `grok-bot-release` and keeps the current pin when the lookup fails. The app's in-app updater cannot replace the pinned build, because the package lives in the read-only Nix store, so the pin moves only through the flake. macOS hosts get the `grok-bot` Homebrew cask instead, which Homebrew upgrades on each apply.
+
 ### T3 Code
 
 T3 Code tracks the upstream nightly channel. `packages/t3code-release.json` pins one nightly release for both artifacts, and the dependency workflow bumps it with `t3code-release`, which takes the newest GitHub prerelease tagged `v<semver>-nightly.<date>.<build>` and skips stable and preview builds. A host opts in with two traits (see [Adding a host](adding-a-host.md)):

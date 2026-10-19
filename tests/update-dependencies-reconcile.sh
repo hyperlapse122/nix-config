@@ -31,6 +31,8 @@
 #   step commits on its own as `chore(packages): bump opencode to <version>`.
 # - The same holds for grok-build-release and the Grok Build pin, committed
 #   as `chore(packages): bump grok-build to <version>`.
+# - The same holds for grok-bot-release and the Grok Bot pin, committed as
+#   `chore(packages): bump grok-bot to <version>`.
 # - The same holds for antigravity-acp-release and the Antigravity ACP
 #   runtime pin, committed as `chore(packages): bump antigravity-acp to
 #   <version>`.
@@ -110,10 +112,11 @@ setup_clone() {
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
   printf '{"version": "2.0.31", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
   printf '{"version": "1.0.62", "platforms": {}}\n' >"$clone/packages/grok-build-release.json"
+  printf '{"version": "0.9.0", "platforms": {}}\n' >"$clone/packages/grok-bot-release.json"
   printf '{"version": "1.4.1", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json \
-    packages/grok-build-release.json packages/antigravity-acp-release.json
+    packages/grok-build-release.json packages/grok-bot-release.json packages/antigravity-acp-release.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -504,6 +507,79 @@ if grep -q '^::warning' "$scratch/grok-succeeds-step.log"; then
   fail 'a succeeding grok-build-release still emitted a warning'
 fi
 pass 'a succeeding grok-build-release updates the pin without a warning'
+
+# --- Grok Bot bump commit ---------------------------------------------------
+
+read -r origin clone <<<"$(setup_clone grokbot)"
+bot_version=0.9.1
+printf '{"version": "%s", "platforms": {}}\n' "$bot_version" >"$clone/packages/grok-bot-release.json"
+# A second changed file, so a commit that sweeps in more than the pin shows.
+printf 'changed\n' >>"$clone/tracked.txt"
+base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/grokbot-step.log" 2>&1 ||
+  fail "the push step failed on a Grok Bot pin change: $(tail -n 5 "$scratch/grokbot-step.log")"
+bump_shas=$("$git_bin" --git-dir "$origin" log --format=%H \
+  --grep "^chore(packages): bump grok-bot to $bot_version\$" "$base_sha..main")
+[[ -n $bump_shas && $(wc -l <<<"$bump_shas") -eq 1 ]] ||
+  fail "a Grok Bot pin change did not land as exactly one bump commit: ${bump_shas:-none}"
+files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$bump_shas")
+[[ $files == packages/grok-bot-release.json ]] ||
+  fail "the grok-bot bump commit carries more than the pin: $files"
+pass 'a Grok Bot pin change lands as its own chore(packages): bump grok-bot commit'
+
+# --- Grok Bot update --------------------------------------------------------
+
+grep -Eq '^[^#]*nix run \.#grok-bot-release -- --output packages/grok-bot-release\.json' <<<"$update_script" ||
+  fail 'the update step no longer runs grok-bot-release against packages/grok-bot-release.json'
+pass 'the update step runs grok-bot-release against packages/grok-bot-release.json'
+
+# The Grok Bot part of the update step, cut the way the Grok Build part is.
+# The feed can move before both architectures are published, so
+# grok-bot-release failing must leave the pin alone and let the step go on.
+bot_script=$(awk '/^# [0-9]+\. Update Grok Bot/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $bot_script ]] || fail "could not find the Grok Bot part of the update step in $workflow"
+
+# run_grok_bot_step <name> <fails>: as run_grok_step, for the Grok Bot part.
+run_grok_bot_step() {
+  local name=$1 fails=$2 origin clone
+  read -r origin clone <<<"$(setup_clone "$name")"
+  mkdir -p "$scratch/$name-bin"
+  cat >"$scratch/$name-bin/nix" <<EOF
+#!$BASH
+if [[ $fails == 1 ]]; then
+  printf '{"version": "partial' >packages/grok-bot-release.json
+  echo 'grok-bot 0.9.1 is not published for aarch64-linux; refusing to write an incomplete pin' >&2
+  exit 1
+fi
+printf '{"version": "0.9.1", "platforms": {}}\n' >packages/grok-bot-release.json
+EOF
+  chmod +x "$scratch/$name-bin/nix"
+  (
+    cd "$clone"
+    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
+$bot_script
+echo after-grok-bot"
+  ) >"$scratch/$name-step.log" 2>&1 ||
+    fail "the Grok Bot update aborted the update step ($name): $(tail -n 5 "$scratch/$name-step.log")"
+  grep -qx after-grok-bot "$scratch/$name-step.log" ||
+    fail "the update step stopped after the Grok Bot update ($name)"
+  printf '%s\n' "$clone"
+}
+
+clone=$(run_grok_bot_step grokbot-fails 1)
+grep -q '^::warning' "$scratch/grokbot-fails-step.log" ||
+  fail "a failing grok-bot-release emitted no ::warning:: annotation: $(cat "$scratch/grokbot-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/grok-bot-release.json) ]] ||
+  fail 'a failing grok-bot-release left packages/grok-bot-release.json changed'
+pass 'a failing grok-bot-release warns, keeps the pin, and lets the update step go on'
+
+clone=$(run_grok_bot_step grokbot-succeeds 0)
+grep -q '"0.9.1"' "$clone/packages/grok-bot-release.json" ||
+  fail 'a succeeding grok-bot-release did not update the pin'
+if grep -q '^::warning' "$scratch/grokbot-succeeds-step.log"; then
+  fail 'a succeeding grok-bot-release still emitted a warning'
+fi
+pass 'a succeeding grok-bot-release updates the pin without a warning'
 
 # --- Antigravity ACP runtime bump commit ------------------------------------
 
