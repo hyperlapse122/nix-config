@@ -301,7 +301,10 @@ let
   noContext = builtins.unsafeDiscardStringContext;
   releasePin = builtins.fromJSON (builtins.readFile ../packages/t3code-release.json);
   runtimeExpected = noContext "${
-    import ../packages/antigravity-acp.nix { inherit pkgs; }
+    import ../packages/antigravity-acp.nix {
+      inherit pkgs;
+      pins = releasePin.antigravity;
+    }
   }/libexec/antigravity-acp";
   pinExpected = noContext "${pkgs.writeText "antigravity-acp-pin.json" (
     builtins.toJSON (releasePin.antigravity.${pkgs.stdenv.hostPlatform.system} or { })

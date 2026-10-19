@@ -1,21 +1,20 @@
 /*
-  The Antigravity ACP runtime the pinned T3 Code requires on this system, as
-  T3 Code's own installer would unpack it. home/h82/t3code.nix links the two
-  binaries into T3 Code's managed runtime directory, so the provider is
-  installed without a download.
+  An Antigravity ACP runtime on this system, as T3 Code's own installer would
+  unpack it. home/h82/t3code.nix links the two binaries into T3 Code's managed
+  runtime directory, so the provider is installed without a download.
 
-  The pin comes from packages/t3code-release.json, which scripts/t3code-release
-  reads from the T3 Code source at the pinned tag. The archive hash is the
-  sha256 T3 Code verifies and names the version directory after.
+  `pins` is required and has no default, so a caller that forgets it fails
+  evaluation instead of building another runtime. It maps each system to its
+  release; T3 Code's callers pass the antigravity entry of
+  packages/t3code-release.json, which scripts/t3code-release reads from the
+  T3 Code source at the pinned tag. The archive hash is the sha256 T3 Code
+  verifies and names the version directory after.
 */
-{ pkgs }:
+{ pkgs, pins }:
 
 let
-  source = builtins.fromJSON (builtins.readFile ./t3code-release.json);
   system = pkgs.stdenv.hostPlatform.system;
-  pin =
-    source.antigravity.${system}
-      or (throw "packages/t3code-release.json pins no Antigravity runtime for ${system}");
+  pin = pins.${system} or (throw "the Antigravity ACP pins name no runtime for ${system}");
 in
 pkgs.stdenvNoCC.mkDerivation {
   pname = "antigravity-acp";
@@ -51,7 +50,7 @@ pkgs.stdenvNoCC.mkDerivation {
     description = "Google Antigravity ACP server for T3 Code";
     homepage = "https://antigravity.google";
     license = pkgs.lib.licenses.unfree;
-    platforms = builtins.attrNames source.antigravity;
+    platforms = builtins.attrNames pins;
     sourceProvenance = [ pkgs.lib.sourceTypes.binaryNativeCode ];
   };
 }

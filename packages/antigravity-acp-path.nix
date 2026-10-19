@@ -15,7 +15,10 @@
 */
 {
   pkgs,
-  runtime ? import ./antigravity-acp.nix { inherit pkgs; },
+  runtime ? import ./antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ./t3code-release.json)).antigravity;
+  },
   caBundles ? [
     "/etc/ssl/certs/ca-certificates.crt"
     "/etc/pki/tls/certs/ca-bundle.crt"

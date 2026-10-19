@@ -37,7 +37,10 @@ let
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
-  antigravity = import ../../packages/antigravity-acp.nix { inherit pkgs; };
+  antigravity = import ../../packages/antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
+  };
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
 
   # The settings that differ from the pinned T3 Code's schema defaults; a

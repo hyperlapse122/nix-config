@@ -86,7 +86,10 @@ let
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
       antigravityRuntime = "${
-        import ../packages/antigravity-acp.nix { inherit (entry.host) pkgs; }
+        import ../packages/antigravity-acp.nix {
+          inherit (entry.host) pkgs;
+          pins = (builtins.fromJSON (builtins.readFile ../packages/t3code-release.json)).antigravity;
+        }
       }/libexec/antigravity-acp";
     in
     ''

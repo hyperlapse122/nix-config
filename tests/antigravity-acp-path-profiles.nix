@@ -28,7 +28,12 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
-  runtimeDir = "${import ../packages/antigravity-acp.nix { inherit pkgs; }}/libexec/antigravity-acp";
+  runtimeDir = "${
+    import ../packages/antigravity-acp.nix {
+      inherit pkgs;
+      pins = (builtins.fromJSON (builtins.readFile ../packages/t3code-release.json)).antigravity;
+    }
+  }/libexec/antigravity-acp";
 
   esc = value: lib.escapeShellArg (toString value);
 
