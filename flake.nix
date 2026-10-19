@@ -211,6 +211,16 @@
           userPackageOf =
             pname: entry: pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
 
+          # Fetches every platform a release pin names, not only this system's,
+          # so a wrong URL or hash for a platform no Linux job builds fails on
+          # the x86_64 updater before the pin reaches main.
+          pinnedSources =
+            name: pinFile:
+            pkgs.linkFarm name (
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; })
+                (builtins.fromJSON (builtins.readFile pinFile)).platforms
+            );
+
           # Home Manager file targets of one user environment.
           homeFileTargets =
             entry: map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }));
@@ -434,34 +444,9 @@
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
-          # Fetches every pinned platform's tarball, not only this system's, so
-          # a wrong URL or hash for a platform no Linux job builds, such as
-          # aarch64-darwin, fails before the pin reaches main.
-          antigravity-cli-sources =
-            let
-              release = builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json);
-            in
-            pkgs.linkFarm "antigravity-cli-sources" (
-              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
-            );
-          # Fetches every platform's pinned OpenCode tarball, so a bumped pin
-          # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
-          # instead of after it lands.
-          opencode-sources =
-            let
-              release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
-            in
-            pkgs.linkFarm "opencode-sources" (
-              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
-            );
-          # Fetches every platform's pinned Grok Bot deb so a wrong hash fails before landing.
-          grok-bot-sources =
-            let
-              release = builtins.fromJSON (builtins.readFile ./packages/grok-bot-release.json);
-            in
-            pkgs.linkFarm "grok-bot-sources" (
-              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
-            );
+          antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
+          opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
+          grok-bot-sources = pinnedSources "grok-bot-sources" ./packages/grok-bot-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;

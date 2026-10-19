@@ -61,7 +61,6 @@ in
     ++ lib.optionals (nixos && config.my.wifiman.enable) [
       (import ../../packages/wifiman-desktop.nix { inherit pkgs; })
     ]
-    # Every Linux host gets Grok Bot, with or without a desktop; macOS gets the cask.
     ++ lib.optionals (hostKind != "darwin") [
       (import ../../packages/grok-bot.nix { inherit pkgs; })
     ]

@@ -73,10 +73,6 @@ let
   # can drive it with fixtures.
   grokBuildRelease = pythonHelper "grok-build-release" ../scripts/grok-build-release;
 
-  # Resolves the newest stable Grok Bot desktop release for Linux and hashes
-  # its per-architecture .deb packages, which xAI publishes no checksum for.
-  # Its network calls go through overridable commands so the sandboxed
-  # repository check can drive it with fixtures.
   grokBotRelease = pythonHelper "grok-bot-release" ../scripts/grok-bot-release;
 
   # Resolves the newest complete Antigravity ACP runtime release by probing
