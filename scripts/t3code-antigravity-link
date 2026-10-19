@@ -21,8 +21,8 @@ disable` turned off in ~/.gemini/config/config.json keeps its tree but gets no
 links. Two plugins with a skill of the same name fail the run once the rest are
 linked, since one name holds one link and the other skill would be missing. The
 config/plugins and config/AGENTS.md links an earlier version made in each home
-are removed; this repository no longer writes the CLI's global rules, so the
-second would dangle. A real file at either path is left and reported.
+are removed: the runtime loads neither, so a link there would only look like a
+delivery. A real file at either path is left and reported.
 
 A declared instance gets its home created before T3 Code first starts it. Every
 home under providers/antigravity is linked, declared or not. A link with the
