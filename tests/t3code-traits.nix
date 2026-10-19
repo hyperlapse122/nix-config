@@ -74,11 +74,13 @@
 
   packages/t3code-release.json and packages/antigravity-acp-release.json may
   pin the same runtime release, and then the runtime path cannot tell which
-  file the module reads. So the module's own source is also evaluated with
-  both pin files replaced by synthetic pins of different versions, as
-  tests/antigravity-acp-path-profiles.nix does for the PATH package, and its
-  t3codeAntigravity activation must name the runtime and pin record of the
-  synthetic t3code-release.json.
+  file the module reads. So the module's source must also read the runtime
+  pins from packages/t3code-release.json's antigravity entry and never name
+  packages/antigravity-acp-release.json, as
+  tests/antigravity-acp-path-profiles.nix checks for the PATH package. The
+  source text is read rather than a rewritten copy imported, because
+  `nix flake check --no-build` evaluates read-only and never writes a
+  builtins.toFile copy to the store.
 
   Every failure is collected in one build and names the configuration.
 */
@@ -530,66 +532,18 @@ let
 
   moduleOn = moduleWith ../home/h82/t3code.nix;
 
-  # Records of a version no release has, so only the version is read and
-  # nothing is fetched.
-  syntheticPins =
-    version:
-    lib.genAttrs [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (_: {
-      inherit version;
-      url = "https://example.invalid/agy-acp-server-${version}.zip";
-      hash = lib.fakeHash;
-      executable.name = "agy_acp_server.par";
-      harness.name = "localharness_external";
-    });
-  syntheticT3Version = "0.0.1";
-  syntheticPathVersion = "0.0.2";
-  # The module's source with both pin files pointed at the synthetic pins and
-  # every other package at the checkout's, by absolute path so the copy needs
-  # no siblings. A pin file the replacement misses fails evaluation.
-  syntheticModule = builtins.toFile "t3code.nix" (
-    builtins.replaceStrings
-      [
-        "../../packages/t3code-release.json"
-        "../../packages/antigravity-acp-release.json"
-        "../../packages/"
-      ]
-      [
-        (builtins.toFile "t3code-release.json" (
-          builtins.toJSON { antigravity = syntheticPins syntheticT3Version; }
-        ))
-        (builtins.toFile "antigravity-acp-release.json" (
-          builtins.toJSON {
-            version = syntheticPathVersion;
-            platforms = syntheticPins syntheticPathVersion;
-          }
-        ))
-        "${toString ../packages}/"
-      ]
-      (builtins.readFile ../home/h82/t3code.nix)
-  );
-  syntheticRuntime = noContext "${
-    import ../packages/antigravity-acp.nix {
-      inherit pkgs;
-      pins = syntheticPins syntheticT3Version;
-    }
-  }/libexec/antigravity-acp";
-  syntheticPin = noContext "${pkgs.writeText "antigravity-acp-pin.json" (
-    builtins.toJSON ((syntheticPins syntheticT3Version).${pkgs.stdenv.hostPlatform.system} or { })
-  )}";
-
-  assertPinSource =
-    let
-      data = noContext (
-        (moduleWith syntheticModule "nixos").config.home.activation.t3codeAntigravity.data or ""
-      );
-    in
-    lib.optionalString
+  moduleSource = builtins.readFile ../home/h82/t3code.nix;
+  assertPinSource = lib.concatStrings [
+    (lib.optionalString
+      (!lib.hasInfix "builtins.readFile ../../packages/t3code-release.json)).antigravity" moduleSource)
       (
-        !(lib.hasInfix "--runtime ${syntheticRuntime} " data && lib.hasInfix "--pin ${syntheticPin}\n" data)
+        fail "home/h82/t3code.nix does not read its Antigravity runtime pins from packages/t3code-release.json's antigravity entry"
       )
-      (
-        fail "home/h82/t3code.nix under synthetic pins does not install runtime ${syntheticT3Version} from packages/t3code-release.json's antigravity entry, so it reads another pin file such as packages/antigravity-acp-release.json"
-      );
+    )
+    (lib.optionalString (lib.hasInfix "antigravity-acp-release.json" moduleSource) (
+      fail "home/h82/t3code.nix names packages/antigravity-acp-release.json, the PATH runtime's pin, which T3 Code's managed layout must not read"
+    ))
+  ];
 
   assertModule =
     let

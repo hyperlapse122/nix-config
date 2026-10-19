@@ -14,9 +14,11 @@
   profile holds it.
 
   The two pins may name the same release, and then the profiles cannot tell
-  which one the PATH package reads. So the package's source is also evaluated
-  against two synthetic pins of different versions, and its default runtime
-  must take the version of the synthetic antigravity-acp-release.json.
+  which one the PATH package reads. So the package's source must also read
+  its runtime from antigravity-acp-release.json and never name
+  t3code-release.json. The check reads the source text rather than importing
+  a rewritten copy: `nix flake check --no-build` evaluates read-only, where a
+  builtins.toFile copy is never written to the store and cannot be imported.
 
   macOS users are covered by tests/darwin-outputs.nix, which only a macOS
   builder can build.
@@ -41,39 +43,9 @@ let
     }
   }/libexec/antigravity-acp";
 
-  # Records of a version no release has, so only the version is read and
-  # nothing is fetched.
-  syntheticPins =
-    version:
-    lib.genAttrs [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (_: {
-      inherit version;
-      url = "https://example.invalid/agy-acp-server-${version}.zip";
-      hash = lib.fakeHash;
-      executable.name = "agy_acp_server.par";
-      harness.name = "localharness_external";
-    });
-  syntheticT3Version = "0.0.1";
-  syntheticPathVersion = "0.0.2";
-  # The package's own source with its sibling files pointed at the synthetic
-  # pins. A sibling the replacement misses fails evaluation, since the copy
-  # has no siblings.
-  syntheticPathPackage = import (builtins.toFile "antigravity-acp-path.nix" (
-    builtins.replaceStrings
-      [ "./antigravity-acp.nix" "./antigravity-acp-release.json" "./t3code-release.json" ]
-      [
-        "${../packages/antigravity-acp.nix}"
-        (builtins.toFile "antigravity-acp-release.json" (
-          builtins.toJSON {
-            version = syntheticPathVersion;
-            platforms = syntheticPins syntheticPathVersion;
-          }
-        ))
-        (builtins.toFile "t3code-release.json" (
-          builtins.toJSON { antigravity = syntheticPins syntheticT3Version; }
-        ))
-      ]
-      (builtins.readFile ../packages/antigravity-acp-path.nix)
-  )) { inherit pkgs; };
+  pathPackageSource = builtins.readFile ../packages/antigravity-acp-path.nix;
+  readsPathPin = lib.hasInfix "builtins.readFile ./antigravity-acp-release.json" pathPackageSource;
+  namesT3Pin = lib.hasInfix "t3code-release.json" pathPackageSource;
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -86,11 +58,12 @@ pkgs.runCommand "antigravity-acp-path-profiles-tests" { } ''
   failures=$PWD/failures
   : > "$failures"
 
-  if [ ${esc (syntheticPathPackage.version or "")} != ${esc syntheticPathVersion} ]; then
-    echo "packages/antigravity-acp-path.nix defaults to runtime ${
-      syntheticPathPackage.version or "(none)"
-    } under synthetic pins, not ${syntheticPathVersion} from antigravity-acp-release.json" >> "$failures"
-  fi
+  ${lib.optionalString (!readsPathPin) ''
+    echo "packages/antigravity-acp-path.nix does not read its default runtime from antigravity-acp-release.json" >> "$failures"
+  ''}
+  ${lib.optionalString namesT3Pin ''
+    echo "packages/antigravity-acp-path.nix names t3code-release.json, T3 Code's pin, which the PATH runtime must not read" >> "$failures"
+  ''}
 
   checkUser() (
     user=$1 homePath=$2
