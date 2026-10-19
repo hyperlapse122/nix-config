@@ -34,6 +34,10 @@
     evaluated key, never by its name, and the builder fails when no entry
     carries it on x86_64-linux, where that fixture builds. See
     .compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md
+  - the file is the template with its one action, `{{ .user.gpgKey }}`,
+    replaced by the entry's key, byte for byte, so the renderer cannot add,
+    drop, or reflow text. A prose edit to the template keeps this green; a
+    second action turns it red until this expectation renders that action.
   - the file names no removed section, harness, model, or rule, matched
     without regard to case, and carries no template action (`{{`, `}}`,
     `<no value>`) or unrendered `@name@` placeholder.
@@ -60,6 +64,12 @@ let
   esc = value: lib.escapeShellArg (toString value);
 
   cardKey = "621512777E6933FEB4458FDC4945855D4F283F05";
+
+  template = builtins.readFile ../home/h82/agents/instructions/instructions.md.tmpl;
+  keyAction = "{{ .user.gpgKey }}";
+  templateActions = lib.length (lib.splitString "{{" template) - 1;
+  expectedFile =
+    key: pkgs.writeText "expected-instructions.md" (lib.replaceStrings [ keyAction ] [ key ] template);
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
 
   recipientSentence =
@@ -232,6 +242,11 @@ let
       done
 
       file=${homeFiles}/.claude/CLAUDE.md
+      if [ -s "$file" ] && ! cmp -s "$file" ${expectedFile key}; then
+        echo ${esc "the shared instructions on ${label} are not the template with ${keyAction} replaced by my.user.gpgKey:"} >&2
+        diff ${expectedFile key} "$file" >&2 || true
+        failed=1
+      fi
       ${fileRules "the shared instructions on ${label}" key (lib.optional fake cardKey)}
 
       gitConfig=${homeFiles}/.config/git/config
@@ -253,6 +268,11 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   ${configurations.userGuard}
   failed=0
   fakeEntries=0
+
+  ${lib.optionalString (templateActions != 1 || !(lib.hasInfix keyAction template)) ''
+    echo ${esc "instructions.md.tmpl no longer has exactly one action, ${keyAction}; extend expectedFile to render the new actions"} >&2
+    failed=1
+  ''}
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 

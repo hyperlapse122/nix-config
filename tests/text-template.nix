@@ -7,15 +7,20 @@
   instructions, against the fixtures in tests/text-template/ and asserts:
 
   - a template reading a string by field and through `index`, two trait
-    conditions, and a condition on a `null` renders exactly render.md, with
+    conditions, a condition on a `null`, integer and fraction numbers, and
+    literal `<no value>` and `<nil>` prose renders exactly render.md, with
     shell-style `${...}` text passed through unchanged. The `null` condition
-    takes its false branch: only a printed `null` fails.
+    takes its false branch, a zero is false, and an integer prints without an
+    exponent.
   - a missing key fails whether the template prints it or only reads it in an
     `if`, through a field or through `index`, and each case names a missing-key
     error. The `if` cases are what separate `missingkey=error` and the strict
-    `index` from the output scan, since Go's defaults render them as empty.
-  - a `null` value fails when printed directly (`<no value>`) and when printed
-    through `printf` (`<nil>`).
+    `index` from the output check, since Go's defaults render them as empty.
+  - a `null` fails when printed directly or inside a printed map, and when
+    passed to printf, print, println, html, js, or urlquery. Each of those
+    reaches printf "%x", which hex-encodes a string, so only the renderer's own
+    argument check, not the output check, can catch it. A range over a `null`
+    fails.
   - a function the renderer does not define, such as gomplate's `env`, fails.
   - a wrong argument count fails.
 
@@ -76,8 +81,16 @@ pkgs.runCommand "text-template-tests" { } ''
   ${failureCase "a printed missing key" "missing-printed.tmpl" "map has no entry for key"}
   ${failureCase "a missing key read in an if" "missing-read.tmpl" "map has no entry for key"}
   ${failureCase "a missing key indexed in an if" "missing-index.tmpl" "map has no entry for key"}
-  ${failureCase "a printed null" "null-printed.tmpl" "<no value>"}
-  ${failureCase "a null printed through printf" "null-printf.tmpl" "<nil>"}
+  ${failureCase "a printed null" "null-printed.tmpl" "prints a null value"}
+  ${failureCase "a null inside a printed map" "null-nested.tmpl" "prints a null value"}
+  ${failureCase "a null printed through printf" "null-printf.tmpl" "printf: argument 1 is null"}
+  ${failureCase "a null hex-encoded by printf" "null-printf-hex.tmpl" "printf: argument 1 is null"}
+  ${failureCase "a null passed to print" "null-print.tmpl" "print: argument 1 is null"}
+  ${failureCase "a null passed to println" "null-println.tmpl" "println: argument 1 is null"}
+  ${failureCase "a null passed to html" "null-html.tmpl" "html: argument 1 is null"}
+  ${failureCase "a null passed to js" "null-js.tmpl" "js: argument 1 is null"}
+  ${failureCase "a null passed to urlquery" "null-urlquery.tmpl" "urlquery: argument 1 is null"}
+  ${failureCase "a range over a null" "null-range.tmpl" "range can't iterate over"}
   ${failureCase "an undefined function" "undefined-function.tmpl" ''function "env" not defined''}
   ${expectFailure {
     name = "a missing data argument";
