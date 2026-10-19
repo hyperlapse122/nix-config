@@ -26,9 +26,9 @@
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
-  - the `# Review findings` and `# Compound Engineering` sections hold only
-    their pinned sentences, each once and in order, so a separate sentence
-    that reverses a pinned rule fails.
+  - the `# Review findings`, `# Compound Engineering`, and `# T3 Code`
+    sections hold only their pinned sentences, each once and in order, so a
+    separate sentence that reverses a pinned rule fails.
   - the file's top-level `# ` headings are exactly the expected list, in
     order, so a rule under a new heading cannot contradict a pinned one
     outside every checked section.
@@ -110,6 +110,19 @@ let
     "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
   ];
 
+  t3CodeHeading = "# T3 Code";
+
+  # In section order, like `reviewFindingsSentences`.
+  t3CodeSentences = [
+    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
+    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
+    "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a tab with `preview_open`, then call `preview_navigate` with the line `serve-html` printed as `target`."
+    "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
+    "When the user asks to see a page again, or says its tab no longer loads, run `serve-html` again instead of reusing an earlier target, and navigate the same tab to the new target."
+    "A run with no person present, such as a headless or pipeline run, still opens nothing."
+    "When the session lists no T3 Code preview tools, or `serve-html` fails, keep the skill's own way of opening the file and print the file's absolute path."
+  ];
+
   # Sections whose rules a separate contradicting sentence could defeat, so
   # each gets the allowlist, membership, and order checks.
   checkedSections = [
@@ -122,6 +135,11 @@ let
       name = "Compound Engineering";
       heading = compoundEngineeringHeading;
       sentences = compoundEngineeringSentences;
+    }
+    {
+      name = "T3 Code";
+      heading = t3CodeHeading;
+      sentences = t3CodeSentences;
     }
   ];
 
@@ -144,11 +162,8 @@ let
   ++ reviewFindingsSentences
   ++ [ compoundEngineeringHeading ]
   ++ compoundEngineeringSentences
-  ++ [
-    "# T3 Code"
-    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
-    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
-  ];
+  ++ [ t3CodeHeading ]
+  ++ t3CodeSentences;
 
   # In file order. A heading outside this list would end the section above it,
   # so a contradicting rule under it would escape every section check.
