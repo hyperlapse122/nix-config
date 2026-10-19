@@ -803,14 +803,19 @@ pass '34: SIGTERM during the post-EOF wait for a slow delegate still exits promp
 #     slow to pass the replies on: on a loaded builder it can go unscheduled
 #     for seconds.  This copy of the wrapper stalls the relay 0.5 seconds per
 #     line, about 4 seconds for the greeting and seven replies, and every
-#     reply must still reach the client.
+#     reply must still reach the client.  The wrapper writes to a pipe, as to
+#     gpg-agent: it gives up on a write blocked for 2 seconds as one the
+#     client stopped reading, and a write to a file blocks that long when the
+#     builder's disk stalls.
 sed '/^        chunk = delegate_stdout.readline()$/a\        time.sleep(0.5)' \
   "$scratch/functional-gnome.py" >"$scratch/functional-slow-relay.py"
 grep -qFx '        time.sleep(0.5)' "$scratch/functional-slow-relay.py" || fail '35 slow-relay: the test could not slow the relay down'
 out="$scratch/out35" err="$scratch/err35"
 rm -f "$gnome_log"
 input=$(printf 'OPTION ttyname=/dev/pts/1\nSETKEYINFO --clear\nSETTITLE\nSETOK\nSETCANCEL\nGETINFO pid\nSETQUALITYBAR\n')
-run_wrapper "$scratch/functional-slow-relay.py" "$input" "$out" "$err" DISPLAY=:0
+printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" DISPLAY=:0 PATH="$scratch/bin:/usr/bin:/bin" \
+  "$python3_bin" "$scratch/functional-slow-relay.py" 2>"$err" | cat >"$out" ||
+  fail "35 slow-relay: the wrapper failed: $(<"$err")"
 ok_count=$(grep -c '^OK$' "$out" || true)
 [[ $ok_count -eq 7 ]] || fail "35 slow-relay: expected 7 relayed OK replies, saw $ok_count"
 pass '35: replies the delegate wrote before exiting are relayed even when the relay is seconds behind'
