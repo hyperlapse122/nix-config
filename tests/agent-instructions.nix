@@ -95,7 +95,7 @@ let
   peerAntigravity = {
     name = "Antigravity";
     instance = "antigravity";
-    model = "`gemini-4-argon-high`";
+    model = "`gemini-4-argon-medium`";
     provider = "Google";
   };
   peerGrok = {
@@ -256,7 +256,7 @@ let
     "Inside T3 Code, when a worker is unavailable or its launch fails, give the unit to the other worker of its tier, and give a lighter unit to the default tier in its alternation order; the receiving worker uses its own effort rule."
     "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target`, and, for a Claude worker, its `effort` in `target.options`, instead of Compound Engineering's own delegation route."
     "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the default tier as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash-high`, at that route's default effort, `high`, and leave out `antigravity` where the Linux rule below keeps it off the route."
-    "When the Antigravity route runs, request `gemini-4-argon-high` for a cross-model peer and the worker's own model id for an implementation unit, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
+    "When the Antigravity route runs, request `gemini-4-argon-medium` for a cross-model peer and the worker's own model id for an implementation unit, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
     "Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route for a peer or for the `ce-work` Gemini worker."
     "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
   ];
@@ -381,6 +381,7 @@ let
     "flash-medium"
     "flash-lite"
     "flash-free"
+    "gemini-4-argon-high"
     "Pick the model by harness"
     "another harness"
     "Codex"
