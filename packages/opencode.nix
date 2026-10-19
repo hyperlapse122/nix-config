@@ -12,14 +12,6 @@ let
       or (throw "packages/opencode-release.json pins no opencode asset for ${system}");
   # The path lands inside single quotes in the wrapper.
   safeTokenFile = builtins.match "/[A-Za-z0-9._/+-]+" tokenFile != null;
-
-  # OpenCode v2 always loads ~/.config/opencode/AGENTS.md, so the instructions
-  # go in this added config instead, where the wrapper can leave them out of a
-  # reviewer run.
-  instructions = ../home/h82/agents/instructions/instructions.md;
-  instructionsConfig = pkgs.writeText "opencode-instructions-config.json" (
-    builtins.toJSON { instructions = [ "${instructions}" ]; }
-  );
 in
 assert lib.assertMsg safeTokenFile
   "opencode: tokenFile '${tokenFile}' is not a plain absolute path";
@@ -53,7 +45,6 @@ stdenv.mkDerivation {
     install -Dm755 ${../scripts/opencode} $out/bin/opencode
     substituteInPlace $out/bin/opencode \
       --replace-fail '@TOKEN_FILE@' '${tokenFile}' \
-      --replace-fail '@INSTRUCTIONS_CONFIG@' '${instructionsConfig}' \
       --replace-fail '@OPENCODE@' "$out/libexec/opencode/opencode" \
       --replace-fail '@RIPGREP_BIN@' '${lib.getBin pkgs.ripgrep}/bin'
     patchShebangs $out/bin/opencode
@@ -64,8 +55,6 @@ stdenv.mkDerivation {
   doInstallCheck = true;
   nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
   versionCheckKeepEnvironment = [ "HOME" ];
-
-  passthru = { inherit instructions instructionsConfig; };
 
   meta = {
     description = "AI coding agent built for the terminal";

@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   home.packages = [ pkgs.git-trim ];
 
@@ -6,7 +6,7 @@
     enable = true;
     lfs.enable = true;
     signing = {
-      key = "621512777E6933FEB4458FDC4945855D4F283F05";
+      key = config.my.user.gpgKey;
       signByDefault = true;
     };
     settings = {

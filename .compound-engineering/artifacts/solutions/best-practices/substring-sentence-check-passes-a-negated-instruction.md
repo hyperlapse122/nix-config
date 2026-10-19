@@ -1,7 +1,7 @@
 ---
 title: "A substring check for a required instruction sentence passes when the sentence is negated"
 date: 2026-10-12
-last_updated: 2026-10-15
+last_updated: 2026-10-19
 category: best-practices
 module: "Agent instructions render check (tests/agent-instructions.nix)"
 problem_type: best_practice
@@ -40,19 +40,22 @@ A deletion round proves only that the check notices the text is gone. Prose inst
 
 Match a required sentence only where a sentence begins, and add a negation round to the mutation list.
 
-The helper now accepts a sentence only when the text before its first occurrence on a line is empty, a list marker (a hyphen and a space), or ends with the full stop and space of the previous sentence (`tests/agent-instructions.nix:350-365`):
+The helper now accepts a sentence only when it occurs exactly once in the file and the text before that occurrence is empty, a list marker (a hyphen and a space, optionally indented), or ends with the full stop and space of the previous sentence (`tests/agent-instructions.nix:116-134`):
 
 ```nix
 requireSentences = message: sentences: ''
   for sentence in ${lib.escapeShellArgs sentences}; do
     if ! awk -v s="$sentence" '
       {
-        i = index($0, s)
-        if (i == 0) next
-        pre = substr($0, 1, i - 1)
-        if (pre == "" || pre == "- " || pre ~ /\. $/) found = 1
+        line = $0
+        while ((i = index(line, s)) > 0) {
+          pre = substr(line, 1, i - 1)
+          n++
+          if (pre == "" || pre ~ /^ *- $/ || pre ~ /\. $/) anchored++
+          line = substr(line, i + length(s))
+        }
       }
-      END { exit !found }
+      END { exit !(n == 1 && anchored == 1) }
     ' "$file"; then
       echo ${esc message} "$sentence" >&2
       failed=1
@@ -61,11 +64,13 @@ requireSentences = message: sentences: ''
 '';
 ```
 
+Counting every occurrence also makes a doubled sentence fail, which the first version, which stopped at the first match on a line, could not see.
+
 `index` is a fixed-string search, so backticks, `#`, `/`, and other punctuation in the sentences need no escaping. `awk -v` does interpret backslash escapes, so a guarded sentence must not contain a backslash. None does today.
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
-Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (`tests/agent-instructions.nix:367-382`). The pinned subset is derived from the required list, so there is one list to maintain:
+Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (the helper lived in `tests/agent-instructions.nix` until 83002d4). The pinned subset is derived from the required list, so there is one list to maintain:
 
 ```nix
 peerPattern = "Antigravity|Argon|OpenCode|opencode";
@@ -76,9 +81,9 @@ extraPeerSentences = lib.filter (
 
 `onlyPinnedSentences` takes the lines under `# Cross-model delegation` up to the next top-level heading, strips the list marker, splits sentences on a full stop followed by a space, keeps those matching `peerPattern` (`Antigravity|Argon|OpenCode|opencode`, widened when the OpenCode peer joined for issue #229), and fails on any that is not in the pinned list. The split assumes no guarded sentence contains a full stop followed by a space, such as "e.g. "; a sentence that did would be reported as unpinned, which fails red.
 
-Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` (`tests/agent-instructions.nix:387-396`) checks that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
+Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` checked that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
 
-For a section pinned whole, compare the section's sentence stream to the pinned list in order (`tests/agent-instructions.nix:402-412`):
+For a section pinned whole, compare the section's sentence stream to the pinned list in order, as `sentencesInOrder` did:
 
 ```nix
 sentencesInOrder = message: heading: sentences: ''
@@ -99,6 +104,8 @@ sentencesInOrder = message: heading: sentences: ''
 ```
 
 The pinned list must then be written in section order, which also makes it read as the section does. `grep -E -- .` drops the blank lines the awk split leaves. The diff names the lines out of place.
+
+83002d4 slimmed the instructions into one file without a cross-model delegation section, and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder` with it. The current check guards a reversal written as a separate sentence only through `removedTerms` (`tests/agent-instructions.nix:92`), matched without regard to case (`grep -qiF`), which catches a reversal only when it names a banned term such as `type/short-kebab-slug`. Bring the allowlist or the ordered comparison back when a section again holds rules that must not be contradicted or reordered.
 
 When a rule has a safety stop, guard the stop as its own sentence. The review-findings rule tells autonomous runs to apply the recommended fix. Without a guarded sentence for the stop that protects user decisions, deleting the stop leaves the permissive half guarded and green.
 
@@ -126,7 +133,7 @@ The mutation runner used for this change applied each edit in a scratch copy bui
 
 Twelve lines means three harnesses times four host generations: the NixOS host and its bootstrap twin, and the x86_64 fixture host and its twin.
 
-The helper checks only the first occurrence of a sentence on each line. A line that holds a negated copy before a real one is reported as missing. That error fails red, which is the safe direction, so it was left as is.
+The first version of the helper checked only the first occurrence of a sentence on each line, so a line holding a negated copy before a real one was reported as missing. That error failed red, the safe direction. The current helper counts every occurrence and fails the same line because the sentence appears twice.
 
 For the Antigravity peer, the same runner showed:
 

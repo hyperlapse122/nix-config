@@ -32,8 +32,7 @@
     synthetic provider; service.json disables OpenCode's shared
     background server.
   - no Home Manager file targets .config/opencode/opencode.json or
-    .config/opencode/service.json, and the generation's home-files hold no
-    .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too.
+    .config/opencode/service.json.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
     the installed wrapper's `opencode service stop`, so a server started
     before the service was disabled does not keep running.
@@ -311,11 +310,6 @@ let
         ]
       ) (lib.attrValues (hm.home.file or { }));
 
-      # OpenCode v2 always loads this file, reviewer runs included, so the
-      # instructions must reach it through the wrapper's added config instead.
-      homeFiles = hm.home-files or null;
-      globalAgents = if homeFiles == null then "" else "${homeFiles}/.config/opencode/AGENTS.md";
-
       serviceStop = hm.home.activation.opencodeServiceStop or null;
       serviceStopScript = if serviceStop == null then "" else (serviceStop.data or "");
       serviceStopAfterMerge = lib.elem "opencodeService" (
@@ -362,12 +356,6 @@ let
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
         fail ${host'}": Home Manager must not target .config/opencode/opencode.json or service.json; OpenCode rewrites them"
-      fi
-
-      if [ -z ${esc globalAgents} ]; then
-        fail ${host'}": no home-files"
-      elif [ -e ${esc globalAgents} ] || [ -L ${esc globalAgents} ]; then
-        fail ${host'}": Home Manager installs .config/opencode/AGENTS.md, which OpenCode loads in reviewer runs too"
       fi
 
       ${lib.optionalString (serviceStop == null) ''
