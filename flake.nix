@@ -325,6 +325,7 @@
           antigravity-acp-probe =
             pythonScriptCheck "antigravity-acp-probe" ./scripts/antigravity-acp-probe
               ./tests/test_antigravity_acp_probe.py;
+          serve-html = pythonScriptCheck "serve-html" ./scripts/serve-html ./tests/test_serve_html.py;
           agent-settings =
             let
               tools = import ./packages/agent-tools.nix { inherit pkgs; };
@@ -607,6 +608,10 @@
             fixtures = linuxFixtures;
           };
           antigravity-acp-path-profiles = import ./tests/antigravity-acp-path-profiles.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          serve-html-profiles = import ./tests/serve-html-profiles.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };

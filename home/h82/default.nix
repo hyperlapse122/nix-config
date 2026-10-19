@@ -66,6 +66,9 @@ in
       (import ../../packages/antigravity-cli.nix { inherit pkgs; })
       # Compound Engineering's Antigravity route finds the runtime on PATH.
       (import ../../packages/antigravity-acp-path.nix { inherit pkgs; })
+      # The shared instructions tell agents under T3 Code to open local HTML
+      # through it.
+      (import ../../packages/agent-tools.nix { inherit pkgs; }).serveHtml
       (
         let
           nixTools = import ../../packages/nix-tools.nix { inherit pkgs; };
