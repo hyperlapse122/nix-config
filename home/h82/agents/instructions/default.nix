@@ -8,30 +8,74 @@ let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
 
-  context = pkgs.writeText "agent-instructions-context.json" (
-    builtins.toJSON (hostFacts.of config.my)
-  );
-  instructions = pkgs.runCommand "instructions.md" { nativeBuildInputs = [ renderer ]; } ''
-    text-template ${./instructions.md.tmpl} ${context} > $out
-  '';
+  # Fixed order is Claude Code, Antigravity, Grok. A harness's peers are the
+  # other two, so each rendering names only the pair that session runs.
+  peerClaudeCode = {
+    name = "Claude Code";
+    instance = "claudeAgent";
+    model = "`claude-opus-5-5`";
+    provider = "Anthropic";
+  };
+  peerAntigravity = {
+    name = "Antigravity";
+    instance = "antigravity";
+    model = "`gemini-4-argon-high`";
+    provider = "Google";
+  };
+  peerGrok = {
+    name = "Grok";
+    instance = "grok";
+    model = "its default model";
+    provider = "xAI";
+  };
+
+  # `model` is the exact phrase the route sentence prints, backticks included.
+  # The template prints it bare, so a missing field fails every rendering.
+  render =
+    name: peers:
+    let
+      context = pkgs.writeText "agent-instructions-${name}.json" (
+        builtins.toJSON (hostFacts.of config.my // { peers = peers; })
+      );
+    in
+    pkgs.runCommand "agent-instructions-${name}.md" { nativeBuildInputs = [ renderer ]; } ''
+      text-template ${./instructions.md.tmpl} ${context} > $out
+    '';
+
+  claudeCode = render "claude-code" {
+    first = peerAntigravity;
+    second = peerGrok;
+  };
+  antigravity = render "antigravity" {
+    first = peerClaudeCode;
+    second = peerGrok;
+  };
+  grok = render "grok" {
+    first = peerClaudeCode;
+    second = peerAntigravity;
+  };
 in
 {
-  # Plain store links: no harness rewrites these files. OpenCode always loads
-  # its global AGENTS.md, and the Antigravity CLI reads ~/.gemini/config.
-  # Grok has no link of its own: it reads ~/.claude/CLAUDE.md through its
-  # Claude Code compatibility. So every installed harness gets the same file.
+  # One rendering per harness, as a plain store link no harness rewrites.
+  # OpenCode loads the Claude Code rendering from its global AGENTS.md. The
+  # Antigravity CLI reads ~/.gemini/config. Grok Build reads
+  # ~/.grok/rules/instructions.md.
   home.file = {
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
-      source = instructions;
+      source = claudeCode;
     };
     agent-instructions-opencode = {
       target = ".config/opencode/AGENTS.md";
-      source = instructions;
+      source = claudeCode;
     };
     agent-instructions-antigravity = {
       target = ".gemini/config/AGENTS.md";
-      source = instructions;
+      source = antigravity;
+    };
+    agent-instructions-grok = {
+      target = ".grok/rules/instructions.md";
+      source = grok;
     };
   };
 }

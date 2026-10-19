@@ -3,13 +3,15 @@
 
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
-  Asserts that the shared agent instructions, one file rendered from a Go
-  template over the host facts, reach every installed harness for user `h82`
-  on every host this flake declares:
+  Asserts that the shared agent instructions, one Go template rendered once
+  per harness over the host facts and that harness's peers, reach every
+  installed harness for user `h82` on every host this flake declares:
 
     Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
-    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads
+    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads;
+                      the Claude Code rendering
     Antigravity CLI   ~/.gemini/config/AGENTS.md
+    Grok Build        ~/.grok/rules/instructions.md
 
   The user list is `userEntries` from `tests/lib/configurations.nix`.
 
@@ -20,36 +22,41 @@
     installed. The lookup compares each entry's resolved `target` rather than
     its attribute name, and reads `enable`, because either can move the file
     without changing its text.
-  - each delivery path exists in the materialized `home-files`, and the three
-    files there are byte-identical. See
+  - each delivery path exists in the materialized `home-files` and equals its
+    harness's expected file byte for byte. Paths of one harness share one
+    expected file, so OpenCode matches the Claude Code rendering. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
   - the `# Review findings`, `# Compound Engineering`, and `# T3 Code`
     sections hold only their pinned sentences, each once and in order, so a
-    separate sentence that reverses a pinned rule fails.
+    separate sentence that reverses a pinned rule fails. The Compound
+    Engineering list is a function of that harness's peer literals.
   - the file's top-level `# ` headings are exactly the expected list, in
     order, so a rule under a new heading cannot contradict a pinned one
     outside every checked section.
-  - the recipient sentence names the entry's own `my.user.gpgKey`, and Git
-    signs with that same key. The fixture host whose key is the fake value
-    below must carry neither the card fingerprint in its instructions nor the
-    card key in its Git config, so a literal fingerprint left in the
-    instructions or in Git turns this red. The fake entry is selected by its
-    evaluated key, never by its name, and the builder fails when no entry
-    carries it on x86_64-linux, where that fixture builds. See
+  - every delivery path's recipient sentence names the entry's own
+    `my.user.gpgKey`, and Git signs with that same key. The fixture host whose
+    key is the fake value below must carry neither the card fingerprint in any
+    of its instruction files nor the card key in its Git config, so a literal
+    fingerprint left in the instructions or in Git turns this red. The fake
+    entry is selected by its evaluated key, never by its name, and the builder
+    fails when no entry carries it on x86_64-linux, where that fixture builds.
+    See
     .compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md
-  - the file is the template with its one action, `{{ .user.gpgKey }}`,
-    replaced by the entry's key, byte for byte, so the renderer cannot add,
-    drop, or reflow text. A prose edit to the template keeps this green; a
-    second action turns it red until this expectation renders that action.
+  - each expected file is the template with the known actions replaced by
+    literals written in this check, not read from the module: `{{ .user.gpgKey }}`
+    by the entry's key, and each `{{ .peers.<first|second>.<field> }}` by that
+    harness's peer. Any other action in the template turns the check red. The
+    byte comparison stays green across a prose edit of the template; the
+    pinned sentences do not.
   - the file names no removed section, harness, model, or rule, matched
     without regard to case, and carries no template action (`{{`, `}}`,
     `<no value>`) or unrendered `@name@` placeholder.
 
-  The expected sentences are literals here, not read from the module, so a
-  mutation of the instruction file turns this red.
+  The expected sentences and the peer literals are written here, not read from
+  the module, so a mutation of the instruction file turns this red.
 
   Every lookup carries an `or` fallback and each store path is interpolated
   only inside its present branch, so a removed declaration fails inside the
@@ -72,10 +79,109 @@ let
   cardKey = "621512777E6933FEB4458FDC4945855D4F283F05";
 
   template = builtins.readFile ../home/h82/agents/instructions/instructions.md.tmpl;
-  keyAction = "{{ .user.gpgKey }}";
-  templateActions = lib.length (lib.splitString "{{" template) - 1;
+
+  # Peer literals live here on purpose. Importing them from
+  # home/h82/agents/instructions/default.nix would let that module and this
+  # check drift together and stay green.
+  peerClaudeCode = {
+    name = "Claude Code";
+    instance = "claudeAgent";
+    model = "`claude-opus-5-5`";
+    provider = "Anthropic";
+  };
+  peerAntigravity = {
+    name = "Antigravity";
+    instance = "antigravity";
+    model = "`gemini-4-argon-high`";
+    provider = "Google";
+  };
+  peerGrok = {
+    name = "Grok";
+    instance = "grok";
+    model = "its default model";
+    provider = "xAI";
+  };
+
+  # Harness to the paths that carry its rendering. OpenCode reads the Claude
+  # Code rendering. Peers are the other two harnesses, in the fixed order
+  # Claude Code, Antigravity, Grok.
+  harnessPaths = {
+    claude-code = [
+      ".claude/CLAUDE.md"
+      ".config/opencode/AGENTS.md"
+    ];
+    antigravity = [ ".gemini/config/AGENTS.md" ];
+    grok = [ ".grok/rules/instructions.md" ];
+  };
+  harnessPeers = {
+    claude-code = {
+      first = peerAntigravity;
+      second = peerGrok;
+    };
+    antigravity = {
+      first = peerClaudeCode;
+      second = peerGrok;
+    };
+    grok = {
+      first = peerClaudeCode;
+      second = peerAntigravity;
+    };
+  };
+  harnessNames = [
+    "claude-code"
+    "antigravity"
+    "grok"
+  ];
+
+  knownActions = [
+    "{{ .user.gpgKey }}"
+    "{{ .peers.first.name }}"
+    "{{ .peers.first.instance }}"
+    "{{ .peers.first.model }}"
+    "{{ .peers.first.provider }}"
+    "{{ .peers.second.name }}"
+    "{{ .peers.second.instance }}"
+    "{{ .peers.second.model }}"
+    "{{ .peers.second.provider }}"
+  ];
+
+  # Each `{{` opens one action, closed by the next `}}`. An unclosed `{{` is
+  # not a known action. The builder reports it; evaluation still succeeds.
+  extractActions =
+    text:
+    map (
+      piece:
+      let
+        closed = lib.splitString "}}" piece;
+      in
+      if lib.length closed < 2 then null else "{{${lib.head closed}}}"
+    ) (lib.tail (lib.splitString "{{" text));
+
+  templateActions = extractActions template;
+  unknownActions = lib.filter (
+    action: action != null && !(lib.elem action knownActions)
+  ) templateActions;
+  malformedAction = lib.any (action: action == null) templateActions;
+
   expectedFile =
-    key: pkgs.writeText "expected-instructions.md" (lib.replaceStrings [ keyAction ] [ key ] template);
+    harness: key:
+    let
+      peers = harnessPeers.${harness};
+      values = {
+        "{{ .user.gpgKey }}" = key;
+        "{{ .peers.first.name }}" = peers.first.name;
+        "{{ .peers.first.instance }}" = peers.first.instance;
+        "{{ .peers.first.model }}" = peers.first.model;
+        "{{ .peers.first.provider }}" = peers.first.provider;
+        "{{ .peers.second.name }}" = peers.second.name;
+        "{{ .peers.second.instance }}" = peers.second.instance;
+        "{{ .peers.second.model }}" = peers.second.model;
+        "{{ .peers.second.provider }}" = peers.second.provider;
+      };
+    in
+    pkgs.writeText "expected-instructions-${harness}.md" (
+      lib.replaceStrings knownActions (map (action: values.${action}) knownActions) template
+    );
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
 
   recipientSentence =
@@ -99,18 +205,19 @@ let
 
   compoundEngineeringHeading = "# Compound Engineering";
 
-  # In section order, like `reviewFindingsSentences`.
-  compoundEngineeringSentences = [
-    "When a skill's cross-model step activates, run it once with Antigravity and once with Grok as peers, and never with OpenCode."
+  # In section order, like `reviewFindingsSentences`. The three peer sentences
+  # are this harness's literals; the rest of the section is shared.
+  compoundEngineeringSentences = peers: [
+    "When a skill's cross-model step activates, run it once with ${peers.first.name} and once with ${peers.second.name} as peers, and never with OpenCode."
     "This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs."
-    "Skip a peer from your own model family, because it is not independent, and skip the automatic step, saying why, when your own family is unknown."
+    "Your model family and each peer's are their harness's vendor (Claude Code `claude`, Antigravity `gemini`, Grok `grok`), used as the attested host family when a skill asks for it."
     "Peers the user names for that run replace the pair and follow every other rule here; refuse a request for OpenCode, say it is excluded, and run the pair."
     "When one peer is unavailable or fails, finish with the other and report which peer is missing and why; do not substitute another provider."
-    "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `antigravity` instance with `gemini-4-argon-high` and on the `grok` instance with its default model, instead of the skill's own peer route."
+    "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `${peers.first.instance}` instance with ${peers.first.model} and on the `${peers.second.instance}` instance with ${peers.second.model}, instead of the skill's own peer route."
     "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing."
     "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task."
-    "Before launching, name each peer you will launch and the provider that gets the content, Google for Antigravity and xAI for Grok; that notice authorizes the send."
-    "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when your family and the peer's are both known and differ."
+    "Before launching, name each peer you will launch and the provider that gets the content, ${peers.first.provider} for ${peers.first.name} and ${peers.second.provider} for ${peers.second.name}; that notice authorizes the send."
+    "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family differs from yours."
     "Read each peer's result from its `task_status` and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
     "Run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
@@ -149,7 +256,7 @@ let
 
   # Sections whose rules a separate contradicting sentence could defeat, so
   # each gets the allowlist, membership, and order checks.
-  checkedSections = [
+  checkedSections = compoundSentences: [
     {
       name = "review-findings";
       heading = reviewFindingsHeading;
@@ -158,7 +265,7 @@ let
     {
       name = "Compound Engineering";
       heading = compoundEngineeringHeading;
-      sentences = compoundEngineeringSentences;
+      sentences = compoundSentences;
     }
     {
       name = "T3 Code";
@@ -167,27 +274,29 @@ let
     }
   ];
 
-  pinnedSentences = [
-    "# GPG and encryption"
-    "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
-    "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it."
-    "Leave card administration and key management to the user."
-    "# Git"
-    "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
-    "Never rename onto or push over an existing branch."
-    "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
-    "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
-    "# Pull and merge requests"
-    "Treat GitLab like GitHub: when a Compound Engineering skill speaks only GitHub, do the same steps with `glab`, and skip only a step with no GitLab counterpart, naming it in your report."
-    "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
-    "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
-    reviewFindingsHeading
-  ]
-  ++ reviewFindingsSentences
-  ++ [ compoundEngineeringHeading ]
-  ++ compoundEngineeringSentences
-  ++ [ t3CodeHeading ]
-  ++ t3CodeSentences;
+  pinnedSentences =
+    compoundSentences:
+    [
+      "# GPG and encryption"
+      "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
+      "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it."
+      "Leave card administration and key management to the user."
+      "# Git"
+      "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
+      "Never rename onto or push over an existing branch."
+      "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
+      "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
+      "# Pull and merge requests"
+      "Treat GitLab like GitHub: when a Compound Engineering skill speaks only GitHub, do the same steps with `glab`, and skip only a step with no GitLab counterpart, naming it in your report."
+      "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
+      "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
+      reviewFindingsHeading
+    ]
+    ++ reviewFindingsSentences
+    ++ [ compoundEngineeringHeading ]
+    ++ compoundSentences
+    ++ [ t3CodeHeading ]
+    ++ t3CodeSentences;
 
   # In file order. A heading outside this list would end the section above it,
   # so a contradicting rule under it would escape every section check.
@@ -298,13 +407,13 @@ let
     fi
   '';
 
-  fileRules = label: key: absentKeys: ''
+  fileRules = label: key: absentKeys: compoundSentences: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
       failed=1
     else
       ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
-        pinnedSentences ++ [ (recipientSentence key) ]
+        (pinnedSentences compoundSentences) ++ [ (recipientSentence key) ]
       )}
       ${lib.concatMapStrings (section: ''
         ${onlyPinnedSentences "${label} carries an unpinned ${section.name} sentence:" section.heading
@@ -316,7 +425,7 @@ let
         ${sentencesInOrder "${label} reorders or duplicates a ${section.name} sentence:" section.heading
           section.sentences
         }
-      '') checkedSections}
+      '') (checkedSections compoundSentences)}
       expected=$(mktemp)
       actual=$(mktemp)
       printf '%s\n' ${lib.escapeShellArgs topLevelHeadings} > "$expected"
@@ -364,12 +473,6 @@ let
       fi
     '';
 
-  deliveryPaths = [
-    ".claude/CLAUDE.md"
-    ".config/opencode/AGENTS.md"
-    ".gemini/config/AGENTS.md"
-  ];
-
   retiredPaths = [
     ".t3/instructions/claude-code/CLAUDE.md"
     ".codex/AGENTS.md"
@@ -386,7 +489,9 @@ let
       homeFiles = user.home-files or null;
     in
     ''
-      ${lib.concatMapStrings (target: homeFile label user target 1) deliveryPaths}
+      ${lib.concatMapStrings (
+        harness: lib.concatMapStrings (target: homeFile label user target 1) harnessPaths.${harness}
+      ) harnessNames}
       ${lib.concatMapStrings (target: homeFile label user target 0) retiredPaths}
     ''
     + lib.optionalString (key == null) ''
@@ -399,30 +504,30 @@ let
     ''
     + lib.optionalString (key != null && homeFiles != null) ''
       ${lib.optionalString fake "fakeEntries=$((fakeEntries + 1))"}
-      first=
-      for target in ${lib.escapeShellArgs deliveryPaths}; do
-        file=${homeFiles}/$target
-        label=${esc "~/"}$target${esc " on ${label}"}
-        if [ ! -s "$file" ]; then
-          echo "$label is missing or empty in home-files" >&2
-          failed=1
-          continue
-        fi
-        if [ -z "$first" ]; then
-          first=$target
-        elif ! cmp -s "$file" ${homeFiles}/"$first"; then
-          echo "$label differs from ~/$first" >&2
-          failed=1
-        fi
-      done
-
-      file=${homeFiles}/.claude/CLAUDE.md
-      if [ -s "$file" ] && ! cmp -s "$file" ${expectedFile key}; then
-        echo ${esc "the shared instructions on ${label} are not the template with ${keyAction} replaced by my.user.gpgKey:"} >&2
-        diff ${expectedFile key} "$file" >&2 || true
-        failed=1
-      fi
-      ${fileRules "the shared instructions on ${label}" key (lib.optional fake cardKey)}
+      ${lib.concatMapStrings (
+        harness:
+        let
+          expected = expectedFile harness key;
+          sentences = compoundEngineeringSentences harnessPeers.${harness};
+        in
+        lib.concatMapStrings (target: ''
+          file=${homeFiles}/${target}
+          if [ ! -s "$file" ]; then
+            echo ${esc "~/${target} on ${label} is missing or empty in home-files"} >&2
+            failed=1
+          else
+            if ! cmp -s "$file" ${expected}; then
+              echo ${esc "the ${harness} instructions at ~/${target} on ${label} are not the template with the known actions replaced by this check's literals:"} >&2
+              diff ${expected} "$file" >&2 || true
+              failed=1
+            fi
+            ${fileRules "the ${harness} instructions at ~/${target} on ${label}" key
+              (lib.optional fake cardKey)
+              sentences
+            }
+          fi
+        '') harnessPaths.${harness}
+      ) harnessNames}
 
       gitConfig=${homeFiles}/.config/git/config
       if ! grep -qxF -- ${esc "\tsigningKey = \"${key}\""} "$gitConfig" 2>/dev/null; then
@@ -444,8 +549,18 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   failed=0
   fakeEntries=0
 
-  ${lib.optionalString (templateActions != 1 || !(lib.hasInfix keyAction template)) ''
-    echo ${esc "instructions.md.tmpl no longer has exactly one action, ${keyAction}; extend expectedFile to render the new actions"} >&2
+  ${lib.optionalString (unknownActions != [ ] || malformedAction) ''
+    echo ${
+      esc (
+        "instructions.md.tmpl holds an action this check does not know: "
+        + (
+          if unknownActions != [ ] then
+            lib.concatStringsSep ", " unknownActions
+          else
+            "a {{ that is not a complete action"
+        )
+      )
+    } >&2
     failed=1
   ''}
 
