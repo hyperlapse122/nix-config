@@ -51,12 +51,12 @@ The current guide says which model each harness runs, not which harness gets a u
 - R2. The instructions state each worker's instance, model id, and effort, and every Claude launch sets its effort explicitly, so no worker runs at an effort the guide does not name.
 - R3. A harder unit goes to `claude-opus-5-5` on the `claudeAgent` instance at the effort `orchestrator_capabilities` marks as its default, or to `gemini-4-argon-medium` on the `antigravity` instance.
 - R4. A lighter unit goes to `claude-haiku-5-5` on the `claudeAgent` instance at `effort` `xhigh`, or `max` when the unit spans more than one file.
-- R5. No implementation unit is delegated to Grok or OpenCode, inside or outside T3 Code.
+- R5. No implementation unit is delegated to Grok or OpenCode, inside or outside T3 Code, and a Grok or OpenCode session delegates every unit instead of writing it.
 
 **Choosing a tier and a worker**
 
-- R6. A unit is harder when it carries the plan's hardest design call or a security or data-loss risk, even when the edit is mechanical, or when it changes many modules in a way that is not a mechanical edit. A unit is lighter when it is a mechanical edit, such as a rename, a pinned-text update, or a one-file docs change, even across files. Every other unit is a default unit.
-- R7. Inside T3 Code, within one dependency layer, the units of each two-worker tier alternate between that tier's Claude and Gemini worker in plan order, counted per tier.
+- R6. A unit is harder when its own design is hard, such as a new interface, data format, or concurrency rule, or when it carries a security or data-loss risk, even when the edit is mechanical, or when it changes many modules in a way that is not a mechanical edit. A unit is lighter when it is a mechanical edit, such as a rename, a pinned-text update, or a one-file docs change, even across files. Every other unit is a default unit.
+- R7. Inside T3 Code, the units of each two-worker tier alternate between that tier's Claude and Gemini worker in plan order across the whole plan, counted per tier.
 - R8. Inside T3 Code, when a worker is unavailable or its launch fails, the unit goes to the other worker of its tier; a lighter unit goes to the default tier and takes whichever of its workers is available.
 
 **Routes and pins**
@@ -95,7 +95,7 @@ The current guide says which model each harness runs, not which harness gets a u
 - KTD1. Name each worker by T3 Code instance and exact model id, not by "latest" class. T3 Code's `delegate_task` takes an exact id, the Antigravity runtime advertises only effort-suffixed ids, and a literal id lets the check pin it. Moving to a newer model is a one-line template edit plus its pinned literal. Governs R1–R4.
 - KTD2. Express "default effort" as an explicit effort equal to the value `orchestrator_capabilities` marks as the model's default, `high` for Sonnet 5.5 and `medium` for Opus 5.5 on 2026-10-19. Omitting the option does not give the model's default: `delegate_task` inherits the parent's model options, and `home/h82/agents/claude.nix` sets a top-level `effortLevel` of `medium` for every Claude model. Reading the default from the catalog at launch still follows it if it moves. Instantiates R1, R2, R3 (session-settled: user-directed — chosen over a fixed `effort: high` pin for Sonnet: the user chose the default effort).
 - KTD3. Narrow the check's banned term `Flash` to the retired text it guarded. `removedTerms` bans `Flash` case-insensitively since commit `1b075b5` dropped the old model-routing table, so `gemini-3.8-flash-high` would fail the check. Replace it with `Flash low`, `Flash medium`, and `flash-free`, which still catch every Flash row that table had (`Flash low` twice, `Flash medium` once) and the retired `glm-5.3-flash-free` id, and keep `Model routing`. Governs R11.
-- KTD4. Alternate the two workers of a tier within one dependency layer, counted per tier. Units of one layer can run in parallel inside T3 Code, so alternating spreads them across two providers and their rate limits; each layer restarts with Claude. The issue left the rule open; kind-of-work splits (code versus docs) have no evidence that either model is better at one kind. Governs R7.
+- KTD4. Alternate the two workers of a tier across the whole plan, counted per tier. Alternating spreads units across two providers and their rate limits, and counting across layers keeps a plan of single-unit layers from sending every unit to Claude. The issue left the rule open; kind-of-work splits (code versus docs) have no evidence that either model is better at one kind. Governs R7.
 - KTD5. Keep the Antigravity-route workaround sentences and change only what they request and cover, per R10. Compound Engineering 3.31.0 still requests unsuffixed ids on that route, so an implementation unit outside T3 Code would otherwise stall the same way a review peer did.
 - KTD6. Outside T3 Code, hand Compound Engineering's route only the default tier. Its preflight makes the first qualified candidate the run's one fixed recipient and records one effort at `init` for every unit, so it cannot carry tiers or alternation. Its Claude and Antigravity adapters default to `high`, which matches Sonnet 5.5's catalog default and `gemini-3.8-flash-high`'s suffix, so no `work_engine_effort` is needed. Governs R9.
 
@@ -105,11 +105,11 @@ How one unit reaches a worker inside T3 Code:
 
 | Unit (R6) | Claude worker | Gemini worker | Fallback (R8) |
 | --- | --- | --- | --- |
-| Harder: hardest design call or a security or data-loss risk, or a non-mechanical change across many modules | `claude-opus-5-5`, catalog default effort | `gemini-4-argon-medium` | the other worker of the tier |
+| Harder: a hard design of its own (new interface, data format, or concurrency rule), a security or data-loss risk, or a non-mechanical change across many modules | `claude-opus-5-5`, catalog default effort | `gemini-4-argon-medium` | the other worker of the tier |
 | Default: every other unit | `claude-sonnet-5-5`, catalog default effort | `gemini-3.8-flash-high` | the other worker of the tier |
 | Lighter: mechanical edit such as a rename, a pinned-text update, or a one-file docs change | `claude-haiku-5-5`, `effort` `xhigh`, or `max` across files | none | the default tier's available worker |
 
-Within one dependency layer, each two-worker tier's units alternate Claude, Gemini, Claude, in plan order (KTD4).
+Each two-worker tier's units alternate Claude, Gemini, Claude, in plan order across the whole plan (KTD4); a fallback launch uses the receiving worker's own effort rule.
 Outside T3 Code, every unit takes the default tier through Compound Engineering's route, with the Gemini worker left out on an unattended Linux host (KTD6, R10).
 
 ### Assumptions
