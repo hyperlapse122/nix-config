@@ -16,7 +16,7 @@ symptoms:
   - "The failing run lasted about as long as passing runs; the 10-second EXIT_GRACE was nowhere near"
   - "Loaded serial runs and many parallel local runs never reproduce it"
 root_cause: async_timing
-resolution_type: test_fix
+resolution_type: code_fix
 related_components:
   - tooling
 tags:
@@ -33,7 +33,7 @@ tags:
 
 ## Context
 
-`scripts/pinentry-card` relays the delegate's replies to gpg-agent from a relay thread. On exit, `drain_relay` (`scripts/pinentry-card:238`) waits for the relay to pass on the replies still owed, but it gives up on a single write that has been in progress for `DIALOG_GRACE` (2 seconds, `scripts/pinentry-card:34`): `if writing_since is not None and now - writing_since >= DIALOG_GRACE:` (`scripts/pinentry-card:251`). In production stdout is a pipe to gpg-agent, so a write blocked that long means the agent stopped reading, and giving up is right. Shutdown then takes `output_lock` (`scripts/pinentry-card:325`; the darwin front stage at `scripts/pinentry-card-darwin:172`) and calls `os._exit`, which discards any reply the relay has not read yet.
+`scripts/pinentry-card` relays the delegate's replies to gpg-agent from a relay thread. On exit, `drain_relay` (`scripts/pinentry-card:248`) waits for the relay to pass on the replies still owed. Before PR #244 it gave up on any single write that had been in progress for `DIALOG_GRACE` (2 seconds, `scripts/pinentry-card:35`), on the assumption that a write blocked that long means the agent stopped reading. Shutdown then takes `output_lock` (`scripts/pinentry-card:338`; the darwin front stage at `scripts/pinentry-card-darwin:172`) and calls `os._exit`, which discards any reply the relay has not read yet.
 
 The tests sent that stdout straight to a regular file in the Nix sandbox (`>"$out"`). A write to a file can block on the disk. In the scheduled dependency-update run 39158468718, whose pre-push `nix flake check` failed and which opened PR #244 to reconcile it, darwin test D11 lost its last reply: `6 commands drew 6 replies (greeting included): OK Pleased to meet you|OK|OK|OK|OK|OK|`. The runner stalled on I/O for about 2.8 seconds. The relay's write to the output file blocked through the stall, `drain_relay` read it as an agent that stopped reading, and `os._exit` dropped the reply still in the pipe.
 
@@ -45,19 +45,34 @@ How the cause was found, and what misled:
 
 ## Guidance
 
-When the code under test treats a write blocked for a fixed time as a dead client, give it the kind of stdout it has in production. Here that is a pipe, so put `cat` between the code and the file:
+A write that is still in progress after a fixed time is not proof that the client stopped reading. The relay may have gone unscheduled inside the write, or the disk under a file may have stalled. A client that stopped reading leaves its pipe full, so ask the stream before giving up. `drain_relay` now counts a write as stuck only when stdout has no room (`scripts/pinentry-card:264`), through `has_room` (`scripts/pinentry-card:239`):
+
+```python
+def has_room(stream):
+    try:
+        return bool(select.select([], [stream], [], 0)[1])
+    except (OSError, ValueError):
+        return False
+
+if writing_since is not None and now - writing_since >= DIALOG_GRACE and not has_room(client_out):
+    return
+```
+
+A slow write then waits within the same `EXIT_GRACE` or `DIALOG_GRACE` bound as any other drain, so the exit stays bounded. Test 31, whose client stops reading and fills the pipe, still fails when the room check is forced to report room, so the guard against a stopped client keeps its coverage. Tests 36 and D12 stall the relay for 2.5 seconds inside one write and fail on the old guard.
+
+Tests also give the code under test the kind of stdout it has in production, a pipe, through a one-line `pipe_into` helper (`cat >"$1"`):
 
 ```bash
 # tests/pinentry-card-darwin.sh D11
 printf '%s\n' "$input" | "$timeout_bin" 20 "$env_bin" -u DISPLAY -u WAYLAND_DISPLAY \
   PATH="$scratch/bin:/usr/bin:/bin" "$python3_bin" "$scratch/filter-slow-relay" 2>"$scratch/err11" |
-  cat >"$scratch/out11" ||
+  pipe_into "$scratch/out11" ||
   fail "D11 slow-relay: the filter failed: $(<"$scratch/err11")"
 ```
 
-Now a disk stall blocks `cat`, not the relay. A few dozen bytes of replies always fit in a pipe, whatever its capacity on the host. `set -euo pipefail` keeps the exit status of `timeout` or Python visible through the pipeline, and stderr still goes to its own file.
+A disk stall then blocks `cat`, not the relay. A few dozen bytes of replies always fit in a pipe, whatever its capacity on the host. `set -euo pipefail` keeps the exit status of `timeout` or Python visible through the pipeline, and stderr still goes to its own file.
 
-Apply it in the helpers behind the reply-counting assertions: `run_filter` (`tests/pinentry-card-darwin.sh:159`) and `run_wrapper` (`tests/pinentry-card.sh:251`). The signal tests that start the code in the background (`start_wrapper` for tests 29 and 34, and D10) still write to a file; they assert the exit status and how fast the process exits, never the replies, so a stall that cuts the drain short cannot fail them. Keep one exception: test 28 passes a slow FIFO as `run_wrapper`'s output because that FIFO plays the client that stopped reading. So `run_wrapper` writes a FIFO directly and pipes everything else (`if [[ -p $out ]]; then`, `tests/pinentry-card.sh:246`).
+Apply it in the helpers behind the reply-counting assertions: `run_filter` (`tests/pinentry-card-darwin.sh:160`) and `run_wrapper` (`tests/pinentry-card.sh:249`). The signal tests that start the code in the background (`start_wrapper` for tests 29 and 34, and D10) still write to a file; they assert the exit status and how fast the process exits, never the replies, so a stall that cuts the drain short cannot fail them. Keep one exception: test 28 passes a slow FIFO as `run_wrapper`'s output because that FIFO plays the client that stopped reading. So `run_wrapper` writes a FIFO directly and pipes everything else (`if [[ -p $out ]]; then`, `tests/pinentry-card.sh:244`).
 
 Reproduce a one-off stall by delaying the exact write with strace, and filter by path so no other write slows down:
 
@@ -80,7 +95,7 @@ Run harnesses for `tests/pinentry-card.sh` inside a Nix `runCommand`. On the dev
 
 ## Why This Matters
 
-A write timeout cannot tell a client that stopped reading from a disk that stopped writing. A test that sends output to a file hands every disk stall on a busy builder to that timeout. The resulting failure looks like the scheduling flake the slow-relay tests already guard against, so the obvious diagnosis is to raise a time budget. That does not help: the dropped reply came from the 2-second write bound, not the 10-second drain budget. A delay injected on the wrong syscall also turns a fix check into a pass that proves nothing.
+A write timeout alone cannot tell a client that stopped reading from a relay that went unscheduled or a disk that stopped writing; only the stream's free room can. A test that sends output to a file hands every disk stall on a busy builder to such a timeout. The resulting failure looks like the scheduling flake the slow-relay tests already guard against, so the obvious diagnosis is to raise a time budget. That does not help: the dropped reply came from the 2-second write bound, not the 10-second drain budget. A delay injected on the wrong syscall also turns a fix check into a pass that proves nothing.
 
 ## When to Apply
 
@@ -106,7 +121,7 @@ if [[ -p $out ]]; then
     "$python3_bin" "$functional" >"$out" 2>"$err" || rc=$?
 else
   printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" "$@" PATH="$scratch/bin:/usr/bin:/bin" \
-    "$python3_bin" "$functional" 2>"$err" | cat >"$out" || rc=$?
+    "$python3_bin" "$functional" 2>"$err" | pipe_into "$out" || rc=$?
 fi
 ```
 
