@@ -243,6 +243,8 @@ let
         bad "grok on PATH is not the grok-build wrapper"
       elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
         bad "the grok wrapper does not turn its self-updater off"
+      elif ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" "$grok"; then
+        bad "the grok wrapper does not turn its Claude Code file scan off"
       fi
       if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
         bad "the profile puts an agent executable on PATH"

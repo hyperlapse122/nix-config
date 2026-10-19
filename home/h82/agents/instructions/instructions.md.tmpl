@@ -26,16 +26,16 @@ Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-revie
 
 # Compound Engineering
 
-- When a skill's cross-model step activates, run it once with Antigravity and once with Grok as peers, and never with OpenCode.
+- When a skill's cross-model step activates, run it once with {{ .peers.first.name }} and once with {{ .peers.second.name }} as peers, and never with OpenCode.
 - This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs.
-- Skip a peer from your own model family, because it is not independent, and skip the automatic step, saying why, when your own family is unknown.
+- Your model family and each peer's are their harness's vendor (Claude Code `claude`, Antigravity `gemini`, Grok `grok`), used as the attested host family when a skill asks for it.
 - Peers the user names for that run replace the pair and follow every other rule here; refuse a request for OpenCode, say it is excluded, and run the pair.
 - When one peer is unavailable or fails, finish with the other and report which peer is missing and why; do not substitute another provider.
-- When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `antigravity` instance with `gemini-4-argon-high` and on the `grok` instance with its default model, instead of the skill's own peer route.
+- When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `{{ .peers.first.instance }}` instance with {{ .peers.first.model }} and on the `{{ .peers.second.instance }}` instance with {{ .peers.second.model }}, instead of the skill's own peer route.
 - Launch each peer child with `isolation: "worktree"` and `mode: "async"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing.
 - Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task.
-- Before launching, name each peer you will launch and the provider that gets the content, Google for Antigravity and xAI for Grok; that notice authorizes the send.
-- Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when your family and the peer's are both known and differ.
+- Before launching, name each peer you will launch and the provider that gets the content, {{ .peers.first.provider }} for {{ .peers.first.name }} and {{ .peers.second.provider }} for {{ .peers.second.name }}; that notice authorizes the send.
+- Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family is known and differs from yours.
 - Read each peer's result from its `task_status` and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt.
 - When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer to the user.
 - In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed.
