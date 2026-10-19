@@ -31,23 +31,28 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from typing import NamedTuple
 
 BASE_URL = "https://dl.google.com/agy-extensions/releases"
 # HEAD requests, following redirects, with the headers on stdout. A 404 is a
 # missing candidate, not a failure, so curl must not fail on it.
 DEFAULT_PROBE = "curl -sSIL --max-time 60"
-# Appended with the destination path and the URL.
 DEFAULT_DOWNLOAD = "curl -sSfL --max-time 1800 -o"
 COMMAND_TIMEOUT = 1900
 
 EXECUTABLE = "agy_acp_server.par"
 HARNESS = "localharness_external"
 
-# Nix system -> (T3 Code platform, release directory, archive suffix).
+class Target(NamedTuple):
+    t3_platform: str
+    directory: str
+    suffix: str
+
+
 TARGET_PLATFORMS = {
-    "x86_64-linux": ("linux-x64", "linux", "linux-x86_64"),
-    "aarch64-linux": ("linux-arm64", "linux", "linux-arm64"),
-    "aarch64-darwin": ("darwin-arm64", "macos", "darwin-arm64"),
+    "x86_64-linux": Target("linux-x64", "linux", "linux-x86_64"),
+    "aarch64-linux": Target("linux-arm64", "linux", "linux-arm64"),
+    "aarch64-darwin": Target("darwin-arm64", "macos", "darwin-arm64"),
 }
 
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
@@ -105,8 +110,8 @@ def window(base):
 
 
 def archive_url(system, version):
-    _, directory, suffix = TARGET_PLATFORMS[system]
-    return f"{BASE_URL}/{directory}/agy-acp-server-{version}-{suffix}.zip"
+    target = TARGET_PLATFORMS[system]
+    return f"{BASE_URL}/{target.directory}/agy-acp-server-{version}-{target.suffix}.zip"
 
 
 def head_length(url):
@@ -175,7 +180,7 @@ def resolve_record(system, version, length, scratch):
     if sorted(members) != sorted([EXECUTABLE, HARNESS]):
         raise Failure(f"{url} holds {sorted(members)}, not exactly {EXECUTABLE} and {HARNESS}")
     return {
-        "platform": TARGET_PLATFORMS[system][0],
+        "platform": TARGET_PLATFORMS[system].t3_platform,
         "version": version,
         "url": url,
         "sha256": sha256,

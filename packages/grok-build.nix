@@ -12,7 +12,6 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "grok-build";
   inherit (source) version;
 
-  # A raw binary, not an archive.
   src = pkgs.fetchurl { inherit (platform) url hash; };
   dontUnpack = true;
   dontBuild = true;

@@ -28,10 +28,8 @@ DEFAULT_SOURCE_URL = "https://x.ai/cli"
 DEFAULT_FETCH = "curl -fsSL --max-time 60"
 DEFAULT_HEAD = "curl -fsSI --max-time 60"
 DEFAULT_PREFETCH = "nix store prefetch-file --json --hash-type sha256"
-# Bounds a stalled download; each binary is under 200 MB.
 COMMAND_TIMEOUT = 1800
 
-# Nix system -> the download host's platform suffix.
 TARGET_PLATFORMS = {
     "x86_64-linux": "linux-x86_64",
     "aarch64-linux": "linux-aarch64",
@@ -65,7 +63,7 @@ def run_command(env_name, default, url):
             timeout=COMMAND_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        raise Failure(f"{command[0]} for {url} timed out after {COMMAND_TIMEOUT}s")
+        raise Failure(f"{command[0]} for {url} timed out after {COMMAND_TIMEOUT}s") from None
     if proc.returncode != 0:
         raise Failure(f"{command[0]} for {url} failed with status {proc.returncode}")
     return proc.stdout
@@ -131,7 +129,7 @@ def resolve_pin(base_url, version):
             raise Failure(
                 f"grok {version} is not published for {system} ({exc}); "
                 "refusing to write an incomplete pin"
-            )
+            ) from None
         md5s[system] = published_md5(headers, url)
 
     platforms = {}
@@ -201,7 +199,6 @@ def main(argv=None):
         version = fetch_stable_version(base_url)
         write = not args.dry_run and bool(args.output)
 
-        # Skip every download when it cannot change the outcome.
         if write:
             current_version = pinned_version(args.output)
             if current_version is not None:

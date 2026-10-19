@@ -66,8 +66,14 @@ from typing import NamedTuple
 
 PROG = "antigravity-acp-probe"
 PACKAGES = Path(__file__).resolve().parent.parent / "packages"
-# Each pin file and the key of its per-system records: T3 Code's runtime, then the one on PATH.
-RELEASE_FILES = (("t3code-release.json", "antigravity"), ("antigravity-acp-release.json", "platforms"))
+class PinFile(NamedTuple):
+    name: str
+    records_key: str
+
+
+T3CODE_PIN = PinFile("t3code-release.json", "antigravity")
+PATH_PIN = PinFile("antigravity-acp-release.json", "platforms")
+RELEASE_FILES = (T3CODE_PIN, PATH_PIN)
 AUTH_PREFIX = "Open the following link to authenticate the ACP server: "
 EXECUTABLE = "agy_acp_server.par"
 HARNESS = "localharness_external"
