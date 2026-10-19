@@ -1,7 +1,5 @@
 { config, pkgs, ... }:
 let
-  # The one substitution is the card key; replaceVars fails the build if any
-  # @name@ placeholder is left unrendered.
   instructions = pkgs.replaceVars ./instructions.md {
     inherit (config.my.user) gpgKey;
   };

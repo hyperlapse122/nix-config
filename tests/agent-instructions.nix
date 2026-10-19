@@ -60,8 +60,6 @@ let
   esc = value: lib.escapeShellArg (toString value);
 
   cardKey = "621512777E6933FEB4458FDC4945855D4F283F05";
-  # The key one fixture host declares, so a fingerprint written as a literal
-  # instead of rendered from my.user.gpgKey shows up there.
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
 
   recipientSentence =
@@ -91,7 +89,6 @@ let
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
   ];
 
-  # Matched without regard to case.
   removedTerms = [
     "# Tool use"
     "# Cross-model review"
@@ -136,8 +133,6 @@ let
     done
   '';
 
-  # Rules for the rendered file at `$file`, whose recipient sentence must name
-  # `key` and which must not name any key in `absentKeys`.
   fileRules = label: key: absentKeys: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
@@ -165,8 +160,6 @@ let
     fi
   '';
 
-  # Fails unless exactly `want` (0 or 1) Home Manager files resolve to
-  # `target`, and unless a wanted one is enabled.
   homeFile =
     label: userConfig: target: want:
     let

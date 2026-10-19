@@ -191,10 +191,8 @@ run OPENCODE_API_KEY=caller-zen-key serve
 [[ $(recorded OPENCODE_API_KEY) == caller-zen-key ]] || fail 'a caller OPENCODE_API_KEY was not passed through unchanged'
 pass 'the wrapper never sets OPENCODE_API_KEY'
 
-# --- instructions --------------------------------------------------------------
+# --- OPENCODE_CONFIG -----------------------------------------------------------
 
-# The instructions come from ~/.config/opencode/AGENTS.md, which OpenCode loads
-# for every run, so the wrapper leaves OPENCODE_CONFIG to the caller.
 run
 [[ ! -f $rec/OPENCODE_CONFIG ]] || fail "a shell run got OPENCODE_CONFIG '$(recorded OPENCODE_CONFIG)'"
 run 'OPENCODE_CONFIG_CONTENT={"permission":{"edit":"deny"}}'
