@@ -275,8 +275,13 @@ let
   t3CodeHeading = "# T3 Code";
 
   t3CodeSentences = [
-    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
+    "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
+    "When the session lists no T3 Code delegation tools, use your harness's own subagent tool."
     "The delegation rules that follow apply only when the session lists those tools."
+    "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it; when that model is not your own, set its `effort` to the value `orchestrator_capabilities` marks as its default."
+    "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
+    "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
+    "When a `delegate_task` launch fails and one relaunch with the same `clientRequestId` fails too, do that work yourself instead of using your harness's own subagent tool, and edit no file a running task in this checkout is editing; cross-model peers and implementation units keep their own failure rules."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
     "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another."
