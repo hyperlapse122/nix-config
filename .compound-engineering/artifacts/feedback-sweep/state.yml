@@ -1,8 +1,4 @@
 schema_version: 1
-lease:
-  writer: "sweep-MS-7D91-t3bb0cbbc9-2026-10-19"
-  timestamp: "2026-10-19T04:18:44.579842+00:00"
-  ttl_minutes: 60
 sources:
   gh-issues:
     cursor: "2026-10-19T04:12:42Z"
@@ -102,3 +98,14 @@ items:
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/256"
     updatedAt: "2026-10-19T04:12:42Z"
+last_run:
+  timestamp: "2026-10-19T04:19:06Z"
+  outcome: "completed"
+  writer: "sweep-MS-7D91-t3bb0cbbc9-2026-10-19"
+  counts:
+    gh-issues:
+      ack_deferred: 0
+      acknowledged: 7
+      closed: 1
+      ingested: 7
+      media_analyzed: 0
