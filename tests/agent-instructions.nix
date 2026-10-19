@@ -3,9 +3,9 @@
 
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
-  Asserts that the shared agent instructions, one plain file rendered with the
-  user's card key, reach every installed harness for user `h82` on every host
-  this flake declares:
+  Asserts that the shared agent instructions, one file rendered from a Go
+  template over the host facts, reach every installed harness for user `h82`
+  on every host this flake declares:
 
     Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
     OpenCode          ~/.config/opencode/AGENTS.md, which every run loads

@@ -1,8 +1,21 @@
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  instructions = pkgs.replaceVars ./instructions.md {
-    inherit (config.my.user) gpgKey;
-  };
+  hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
+  renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
+
+  # The template reads the host facts and nothing else; a missing key or a
+  # printed null fails this build.
+  context = pkgs.writeText "agent-instructions-context.json" (
+    builtins.toJSON (hostFacts.of config.my)
+  );
+  instructions = pkgs.runCommand "instructions.md" { nativeBuildInputs = [ renderer ]; } ''
+    text-template ${./instructions.md.tmpl} ${context} > $out
+  '';
 in
 {
   # Plain store links: no harness rewrites these files. OpenCode always loads
