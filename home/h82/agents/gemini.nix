@@ -34,9 +34,7 @@ let
   );
 in
 {
-  # The token is antigravity, not this file's name. The PATH wrapper seeds
-  # CE's private home from the ~/.gemini sign-in, so the route works
-  # unattended on every host kind.
+  # The token is antigravity, not this file's name.
   my.agents.crossModelPeers = [ "antigravity" ];
 
   # Disable cross-session, implicit memory for the Gemini and Antigravity CLIs

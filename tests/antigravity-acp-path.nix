@@ -1,21 +1,29 @@
 /*
   Check interface:
 
-    import ./tests/antigravity-acp-path.nix { inherit pkgs; }
+    import ./tests/antigravity-acp-path.nix { inherit pkgs; pluginSource = inputs.compound-engineering-plugin; }
 
   Runs the Linux agy_acp_server.par wrapper from packages/antigravity-acp-path.nix,
   built against a stub runtime whose .par prints what it was started with. The
   real runtime needs network and a Google sign-in, so its behavior through the
   wrapper is verified by hand (docs/verification.md); this check proves what
-  the wrapper itself does. The build sandbox has no /etc/ssl, so the CA bundle
+  the wrapper itself does, and that the pinned Compound Engineering plugin
+  still creates its scratch Antigravity homes under the five template prefixes
+  the wrapper recognizes. The build sandbox has no /etc/ssl, so the CA bundle
   the runtime gets here is the nixpkgs fallback.
 
   Expected values come from the stub and test fixtures, never from the wrapper's
   own Nix expression, so a mutation of the wrapper cannot pass by changing both
   sides. Failures are collected and reported together.
 */
-{ pkgs }:
+{
+  pkgs,
+  pluginSource ? null,
+}:
 let
+  inherit (pkgs) lib;
+  pluginDir = if pluginSource == null then "" else toString pluginSource;
+
   # A binary, not a script: the kernel replaces a script's argv[0] with the
   # interpreter, so only a binary can report the argv[0] the wrapper passed.
   stubSource = pkgs.writeText "stub-agy-acp-server.c" ''
@@ -106,6 +114,33 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   : > "$failures"
   fail() { echo "$*" >> "$failures"; }
 
+  # Guard against drift in Compound Engineering's acpx_antigravity_home layout
+  # and mktemp -d scratch prefixes.
+  pluginDir=${lib.escapeShellArg pluginDir}
+  if [ -z "$pluginDir" ] || [ ! -d "$pluginDir/skills" ]; then
+    fail "compound-engineering-plugin source not passed to antigravity-acp-path check"
+  else
+    pluginPrefixes=$(
+      for script in "$pluginDir"/skills/*/scripts/*.sh; do
+        grep -qF 'acpx_antigravity_home' "$script" || continue
+        grep -qF 'local home="$1/gemini-home"' "$script" \
+          || fail "$script: acpx_antigravity_home no longer uses \$1/gemini-home"
+        grep -qF 'mkdir -p "$home/antigravity-acp"' "$script" \
+          || fail "$script: acpx_antigravity_home no longer creates \$home/antigravity-acp"
+        vars=$(sed -n 's/.*acpx_antigravity_home "\$\([A-Za-z0-9_]*\)".*/\1/p' "$script")
+        [ -n "$vars" ] || fail "$script: no acpx_antigravity_home \"\$VAR\" call matched"
+        for var in $vars; do
+          prefix=$(sed -n "s/.*''${var}=\"\$(mktemp -d \"[^\"]*\\/\\([a-z0-9-]*\\)-XXXXXX\")\".*/\\1/p" "$script")
+          [ -n "$prefix" ] || fail "$script: could not read mktemp -d prefix for \$$var"
+          printf '%s\n' "$prefix"
+        done
+      done | sort -u | tr '\n' ' '
+    )
+    expectedPrefixes='ce-work-adapter ce-work-model-check xmodel-cr-scratch xmodel-doc-scratch xmodel-pov-peer '
+    [ "$pluginPrefixes" = "$expectedPrefixes" ] \
+      || fail "compound-engineering scratch prefixes drifted: got '$pluginPrefixes', expected '$expectedPrefixes'"
+  fi
+
   wrapper=${pathPackage}/bin/agy_acp_server.par
   runtimePar=${stubRuntime}/libexec/antigravity-acp/agy_acp_server.par
 
@@ -183,13 +218,15 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
 
   check_invariants() {
     local label=$1
-    local srcContent srcMode unexpectedOut
+    local srcContent srcMode unexpectedOut strayTmp
     srcContent=$(cat "$sourceToken" 2>/dev/null || true)
     srcMode=$(stat -c %a "$sourceToken" 2>/dev/null || true)
     [ "$srcContent" = "$expectedToken" ] || fail "$label: source token contents changed to '$srcContent'"
     [ "$srcMode" = 600 ] || fail "$label: source token mode changed to '$srcMode'"
     unexpectedOut=$(grep -vE '^(outer|argv0|pid|cert|token|tokenmode|arg|stdin)=' out || true)
     [ -z "$unexpectedOut" ] || fail "$label: wrapper wrote to stdout: $unexpectedOut"
+    strayTmp=$(find "$tmpdir" -name '.acp_token.*' 2>/dev/null || true)
+    [ -z "$strayTmp" ] || fail "$label: temporary staging file left behind: $strayTmp"
   }
 
   run_seed() {
@@ -218,16 +255,22 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
     [ ! -s stderr ] || fail "$prefix: unexpected stderr: $(cat stderr)"
   done
 
-  # 3. TMPDIR ending in / so GEMINI_HOME has //: token seen.
+  # 3. Redundant slashes before gemini-home and trailing slashes on GEMINI_HOME: token seen.
   slashTmp=$PWD/tmp-slash
   mkdir -p "$slashTmp"
   chmod 700 "$slashTmp"
   ce3=$(make_ce_home "$slashTmp/xmodel-cr-scratch-abc123")
-  ce3Double="$slashTmp//xmodel-cr-scratch-abc123/gemini-home"
+  ce3Double="$slashTmp//xmodel-cr-scratch-abc123//gemini-home"
   run_seed "TMPDIR trailing slash" TMPDIR="$slashTmp/" HOME="$fakeHome" GEMINI_HOME="$ce3Double"
   [ "$(field token)" = "$expectedToken" ] || fail "TMPDIR trailing slash: runtime got token '$(field token)'"
   [ "$(field tokenmode)" = 600 ] || fail "TMPDIR trailing slash: token mode is '$(field tokenmode)', not 600"
   [ ! -s stderr ] || fail "TMPDIR trailing slash: unexpected stderr: $(cat stderr)"
+
+  ce3b=$(make_ce_home "$slashTmp/xmodel-cr-scratch-def456")
+  run_seed "GEMINI_HOME trailing slash" TMPDIR="$slashTmp" HOME="$fakeHome" GEMINI_HOME="$ce3b/"
+  [ "$(field token)" = "$expectedToken" ] || fail "GEMINI_HOME trailing slash: runtime got token '$(field token)'"
+  [ "$(field tokenmode)" = 600 ] || fail "GEMINI_HOME trailing slash: token mode is '$(field tokenmode)', not 600"
+  [ ! -s stderr ] || fail "GEMINI_HOME trailing slash: unexpected stderr: $(cat stderr)"
 
   # 4. ce-pov style: home under a nested scratch parent, not directly in TMPDIR: token seen.
   nestedParent=$(mktemp -d "$tmpdir/pov-outer-XXXXXX")
@@ -302,6 +345,16 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ ! -e "$realAcp8c/acp_token.json" ] || fail "symlink antigravity-acp: token at real dir"
   [ ! -s stderr ] || fail "symlink antigravity-acp: unexpected stderr: $(cat stderr)"
 
+  # 8d. scratch parent itself is a symlink to a real 0700 dir: no token at either end.
+  realParent8d=$(mktemp -d "$tmpdir/real-parent-XXXXXX")
+  mkdir -p "$realParent8d/gemini-home/antigravity-acp"
+  ln -s "$realParent8d" "$tmpdir/xmodel-cr-scratch-symlinkparent"
+  run_seed "symlink parent" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$tmpdir/xmodel-cr-scratch-symlinkparent/gemini-home"
+  [ "$(field token)" = "<none>" ] || fail "symlink parent: runtime got token '$(field token)'"
+  [ ! -e "$tmpdir/xmodel-cr-scratch-symlinkparent/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink parent: token at symlink path"
+  [ ! -e "$realParent8d/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink parent: token at real dir"
+  [ ! -s stderr ] || fail "symlink parent: unexpected stderr: $(cat stderr)"
+
   # 9. Dangling symlink planted at the target path: link left as is, nothing written through it, stderr line appears.
   ce9=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
   danglingTarget=$tmpdir/dangling-target-file
@@ -311,6 +364,37 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ -L "$ce9/antigravity-acp/acp_token.json" ] || fail "dangling symlink target: symlink was removed or replaced"
   [ ! -e "$danglingTarget" ] || fail "dangling symlink target: wrote through dangling symlink"
   [ "$(cat stderr)" = "$expectedStderr" ] || fail "dangling symlink target: stderr was '$(cat stderr)', expected '$expectedStderr'"
+
+  # 9b. Symlink to an existing regular file outside the home planted at the target path:
+  #     link and outside file left as is, stderr line appears.
+  ce9b=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  outsideTarget=$tmpdir/outside-target-file
+  printf 'keep-outside\n' > "$outsideTarget"
+  ln -s "$outsideTarget" "$ce9b/antigravity-acp/acp_token.json"
+  run_seed "symlink to existing file target" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce9b"
+  [ "$(field token)" = "<none>" ] || fail "symlink to existing file target: runtime got token '$(field token)'"
+  [ -L "$ce9b/antigravity-acp/acp_token.json" ] || fail "symlink to existing file target: symlink was removed or replaced"
+  [ "$(cat "$outsideTarget")" = "keep-outside" ] || fail "symlink to existing file target: outside file was overwritten"
+  [ "$(cat stderr)" = "$expectedStderr" ] || fail "symlink to existing file target: stderr was '$(cat stderr)', expected '$expectedStderr'"
+
+  # 9c. Symlink to /dev/null planted at the target path: link left as is, stderr line appears.
+  ce9c=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  ln -s /dev/null "$ce9c/antigravity-acp/acp_token.json"
+  run_seed "symlink to /dev/null target" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce9c"
+  [ "$(field token)" = "<none>" ] || fail "symlink to /dev/null target: runtime got token '$(field token)'"
+  [ -L "$ce9c/antigravity-acp/acp_token.json" ] || fail "symlink to /dev/null target: symlink was removed or replaced"
+  [ "$(cat stderr)" = "$expectedStderr" ] || fail "symlink to /dev/null target: stderr was '$(cat stderr)', expected '$expectedStderr'"
+
+  # 9d. FIFO planted at the target path: wrapper does not block opening the FIFO,
+  #     FIFO stays in place, stderr line appears.
+  ce9d=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  mkfifo -m 600 "$ce9d/antigravity-acp/acp_token.json"
+  printf 'one line\n' | ${pkgs.coreutils}/bin/timeout 5s env -i PATH=/no-such-dir TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce9d" "$wrapper" > out 2> stderr \
+    || fail "FIFO target: wrapper timed out or exited $?"
+  check_invariants "FIFO target"
+  [ "$(field token)" = "<none>" ] || fail "FIFO target: runtime got token '$(field token)'"
+  [ -p "$ce9d/antigravity-acp/acp_token.json" ] || fail "FIFO target: FIFO was removed or replaced"
+  [ "$(cat stderr)" = "$expectedStderr" ] || fail "FIFO target: stderr was '$(cat stderr)', expected '$expectedStderr'"
 
   # 10. Home without antigravity-acp dir: nothing created.
   parent10=$(mktemp -d "$tmpdir/xmodel-cr-scratch-XXXXXX")
@@ -344,6 +428,27 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "no source token: runtime got token '$(field token)'"
   [ ! -e "$ce12/antigravity-acp/acp_token.json" ] || fail "no source token: token file created"
   [ ! -s stderr ] || fail "no source token: unexpected stderr: $(cat stderr)"
+
+  # 12b. Symlinked source token: rejected silently without seeding.
+  symlinkSourceHome=$PWD/symlink-source-home
+  mkdir -p "$symlinkSourceHome/.gemini/antigravity-acp"
+  ln -s "$sourceToken" "$symlinkSourceHome/.gemini/antigravity-acp/acp_token.json"
+  ce12b=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  run_seed "symlink source token" TMPDIR="$tmpdir" HOME="$symlinkSourceHome" GEMINI_HOME="$ce12b"
+  [ "$(field token)" = "<none>" ] || fail "symlink source token: runtime got token '$(field token)'"
+  [ ! -e "$ce12b/antigravity-acp/acp_token.json" ] || fail "symlink source token: token file created"
+  [ ! -s stderr ] || fail "symlink source token: unexpected stderr: $(cat stderr)"
+
+  # 12c. Empty source token (0 bytes): rejected silently without seeding.
+  emptySourceHome=$PWD/empty-source-home
+  mkdir -p "$emptySourceHome/.gemini/antigravity-acp"
+  : > "$emptySourceHome/.gemini/antigravity-acp/acp_token.json"
+  chmod 600 "$emptySourceHome/.gemini/antigravity-acp/acp_token.json"
+  ce12c=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  run_seed "empty source token" TMPDIR="$tmpdir" HOME="$emptySourceHome" GEMINI_HOME="$ce12c"
+  [ "$(field token)" = "<none>" ] || fail "empty source token: runtime got token '$(field token)'"
+  [ ! -e "$ce12c/antigravity-acp/acp_token.json" ] || fail "empty source token: token file created"
+  [ ! -s stderr ] || fail "empty source token: unexpected stderr: $(cat stderr)"
 
   # 13. Unreadable source token (chmod 000) in a recognized home: runtime starts, no partial target,
   #     exactly the stderr line, no token content.

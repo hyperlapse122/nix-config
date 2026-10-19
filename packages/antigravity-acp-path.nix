@@ -39,6 +39,7 @@ let
   inherit (pkgs) lib;
   inherit (runtime.passthru.pin) executable harness;
   dir = "${runtime}/libexec/antigravity-acp";
+  coreutils = "${pkgs.coreutils}/bin";
 
   wrapper = pkgs.writeShellScript executable.name ''
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -51,47 +52,56 @@ let
         done
       fi
     ''}
-    gemini_home=''${GEMINI_HOME:-}
-    while [ "''${gemini_home%/}" != "$gemini_home" ]; do
-      gemini_home=''${gemini_home%/}
-    done
-    case $gemini_home in
-      */gemini-home)
-        parent=''${gemini_home%/gemini-home}
-        while [ "''${parent%/}" != "$parent" ]; do
-          parent=''${parent%/}
-        done
-        case ''${parent##*/} in
-          xmodel-cr-scratch-* | xmodel-doc-scratch-* | xmodel-pov-peer-* | ce-work-model-check-* | ce-work-adapter-*)
-            acp_dir="$gemini_home/antigravity-acp"
-            if [ -d "$parent" ] && [ ! -L "$parent" ] && [ -O "$parent" ] \
-              && [ -d "$gemini_home" ] && [ ! -L "$gemini_home" ] && [ -O "$gemini_home" ] \
-              && [ -d "$acp_dir" ] && [ ! -L "$acp_dir" ] && [ -O "$acp_dir" ] \
-              && [ "$(${pkgs.coreutils}/bin/stat -c %a "$parent" 2>/dev/null)" = 700 ]; then
-              source="''${HOME:-}/.gemini/antigravity-acp/acp_token.json"
-              target="$acp_dir/acp_token.json"
-              if [ -n "''${HOME:-}" ] && [ -f "$source" ] && [ ! -L "$source" ] \
-                && ! { [ -f "$target" ] && [ ! -L "$target" ]; }; then
-                had_target=0
-                if [ -e "$target" ] || [ -L "$target" ]; then
-                  had_target=1
-                fi
-                if ! (
-                  umask 077
-                  set -C
-                  ${pkgs.coreutils}/bin/cat "$source" > "$target"
-                ) 2>/dev/null; then
-                  if [ "$had_target" -eq 0 ] && [ -f "$target" ] && [ ! -L "$target" ]; then
-                    ${pkgs.coreutils}/bin/rm -f "$target"
-                  fi
-                  printf 'agy_acp_server.par: could not copy the ~/.gemini sign-in into GEMINI_HOME\n' >&2
-                fi
-              fi
-            fi
-            ;;
-        esac
-        ;;
-    esac
+    strip_slashes() {
+      local value=''${!1}
+      while [ "''${value%/}" != "$value" ]; do
+        value=''${value%/}
+      done
+      printf -v "$1" '%s' "$value"
+    }
+
+    private_dir() {
+      [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ]
+    }
+
+    seed_acp_token() {
+      local gemini_home=''${GEMINI_HOME:-} parent acp_dir token_source token_target tmp
+      strip_slashes gemini_home
+      case $gemini_home in
+        */gemini-home) ;;
+        *) return 0 ;;
+      esac
+      parent=''${gemini_home%/gemini-home}
+      strip_slashes parent
+      case ''${parent##*/} in
+        xmodel-cr-scratch-* | xmodel-doc-scratch-* | xmodel-pov-peer-* | ce-work-model-check-* | ce-work-adapter-*) ;;
+        *) return 0 ;;
+      esac
+      acp_dir=$gemini_home/antigravity-acp
+      private_dir "$parent" && private_dir "$gemini_home" && private_dir "$acp_dir" || return 0
+      [ "$(${coreutils}/stat -c %a "$parent" 2>/dev/null)" = 700 ] || return 0
+
+      [ -n "''${HOME:-}" ] || return 0
+      token_source=$HOME/.gemini/antigravity-acp/acp_token.json
+      token_target=$acp_dir/acp_token.json
+      [ -f "$token_source" ] && [ -s "$token_source" ] && [ ! -L "$token_source" ] || return 0
+      if [ -f "$token_target" ] && [ ! -L "$token_target" ]; then
+        return 0
+      fi
+      if ! (
+        umask 077
+        tmp=$(${coreutils}/mktemp "$acp_dir/.acp_token.XXXXXX") || exit 1
+        if ! ${coreutils}/cat "$token_source" > "$tmp" || [ ! -s "$tmp" ] || ! ${coreutils}/ln "$tmp" "$token_target"; then
+          ${coreutils}/rm -f "$tmp"
+          exit 1
+        fi
+        ${coreutils}/rm -f "$tmp"
+      ) 2>/dev/null; then
+        printf 'agy_acp_server.par: could not copy the ~/.gemini sign-in into GEMINI_HOME\n' >&2
+      fi
+    }
+
+    seed_acp_token
     exec ${dir}/${executable.name} "$@"
   '';
 in

@@ -32,7 +32,7 @@
     self-updater off, and the profile has no `agent` executable;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
-    references acp_token.json so the sign-in seeding is present;
+    defines and invokes seed_acp_token so the sign-in seeding is present;
     localharness_external beside it resolves into the same runtime;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
@@ -261,7 +261,8 @@ let
       else
         grep -qxF ${lib.escapeShellArg "exec ${antigravityRuntime}/agy_acp_server.par \"$@\""} "$agyPar" \
           || bad "agy_acp_server.par does not exec the pinned runtime's .par"
-        grep -qF 'acp_token.json' "$agyPar" \
+        grep -qE '^ *token_target=\$acp_dir/acp_token\.json$' "$agyPar" \
+          && grep -qxF 'seed_acp_token' "$agyPar" \
           || bad "agy_acp_server.par does not seed acp_token.json"
         if grep -qF SSL_CERT_FILE "$agyPar"; then
           bad "the macOS agy_acp_server.par wrapper sets SSL_CERT_FILE"
