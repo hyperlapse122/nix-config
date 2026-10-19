@@ -55,6 +55,8 @@ extraBwrapArgs = [
 
 Inside the sandbox, `/etc/ssl/certs/ca-certificates.crt` is the host's `/etc/static` symlink (observed through `/proc/<server-pid>/root` in this session), so the server reads the same bundle NixOS builds from `security.pki`. The `t3code` check in `flake.nix` asserts the wrapper sets it (its `expect_setenv SSL_CERT_FILE` assertion). The change takes effect after a rebuild and a T3 Code restart, because providers inherit the environment of the running app.
 
+The same runtime started outside T3 Code, as Compound Engineering's Antigravity route starts it from a terminal session, does not inherit that sandbox. Its `agy_acp_server.par` on `PATH` (`packages/antigravity-acp-path.nix`) is a wrapper that sets `SSL_CERT_FILE` on Linux when the caller left it unset, and the `antigravity-acp-path` check runs that wrapper against a stub runtime.
+
 ## Why This Works
 
 OpenSSL reads `SSL_CERT_FILE` before falling back to its compiled-in default, so the embedded Python's `ssl.create_default_context()` loads the system bundle instead of the missing `/opt/pyca/...` file. A standalone ACP client run against the same server binary with T3's `GEMINI_HOME` proved it: with `SSL_CERT_FILE` set, `session/prompt` streamed "Hello! How can I help you today?" within five seconds; without it, the same prompt produced nothing for 40 seconds. After the rebuild and restart, a delegated Antigravity task completed through T3.
