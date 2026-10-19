@@ -29,13 +29,12 @@
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
-  - the `# Review findings`, `# Compound Engineering`, and `# T3 Code`
-    sections hold only their pinned sentences, each once and in order, so a
-    separate sentence that reverses a pinned rule fails. The Compound
-    Engineering list is a function of that harness's peer literals.
+  - every section holds only its pinned sentences, each once and in order,
+    so a separate sentence that reverses a pinned rule fails wherever it is
+    added. The Compound Engineering list is a function of that harness's peer
+    literals.
   - the file's top-level `# ` headings are exactly the expected list, in
-    order, so a rule under a new heading cannot contradict a pinned one
-    outside every checked section.
+    order, so a rule under a new heading cannot escape the section checks.
   - every delivery path's recipient sentence names the entry's own
     `my.user.gpgKey`, and Git signs with that same key. The fixture host whose
     key is the fake value below must carry neither the card fingerprint in any
@@ -173,6 +172,44 @@ let
     key:
     "For a new SOPS setup or secret file, use the card key `${key}` as the user's recipient, plus a machine's own recipient when it must decrypt without the card.";
 
+  gpgHeading = "# GPG and encryption";
+
+  # In section order, like `reviewFindingsSentences`. The recipient sentence
+  # names each entry's own key, so the list is a function of that key.
+  gpgSentences = key: [
+    "The user's GPG key is on a YubiKey that stays connected, and its PIN is usually cached."
+    "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
+    "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing."
+    "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it."
+    "Leave card administration and key management to the user."
+    (recipientSentence key)
+    "Keep the existing method in a project that already has one."
+  ];
+
+  gitHeading = "# Git";
+
+  gitSentences = [
+    "Before the first push, rename a branch whose name does not describe the change, such as a worktree codename or random hex, with `git branch -m`."
+    "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
+    "Never rename onto or push over an existing branch."
+    "When a commit hook fails because mise does not trust a `mise.toml` in a temporary copy the hook made, retry that commit once with `MISE_TRUSTED_CONFIG_PATHS=\"$(cd \"\${TMPDIR:-/tmp}\" && pwd -P)\"`."
+    "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
+    "Before each push, find the learnings under the project's Compound Engineering `solutions/` directory that cite a path or name the pushed commits delete, move, or rename."
+    "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
+  ];
+
+  pullRequestsHeading = "# Pull and merge requests";
+
+  pullRequestsSentences = [
+    "Treat GitLab like GitHub: when a Compound Engineering skill speaks only GitHub, do the same steps with `glab`, and skip only a step with no GitLab counterpart, naming it in your report."
+    "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
+    "Babysit a draft only when asked."
+    "On GitLab, call it ready only when `head_pipeline` passed on the current `sha`, `detailed_merge_status` is `mergeable`, and no discussion is unresolved; never rebase."
+    "Attach the screenshots or recordings a reader needs to see the change."
+    "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
+    "Upload through `gh --attach` or the GitLab uploads API, never a browser."
+  ];
+
   reviewFindingsHeading = "# Review findings";
 
   # In section order: `sentencesInOrder` compares the section to this list.
@@ -206,11 +243,21 @@ let
     "When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer to the user."
     "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
-    "In `ce-work`, prefer delegating implementation to another harness unless the repository's Compound Engineering config sets `work_engine_mode: off`."
-    "When the session lists T3 Code's delegation tools, delegate that unit through `delegate_task` with the provider and model the guide below names, instead of Compound Engineering's own delegation route."
-    "Pick the model by harness: Claude Code runs Sonnet 5.5, or Opus 5.5 or Haiku 5.5 when the unit needs it; Antigravity runs `gemini-4-argon-high`; Grok runs its Compound Engineering route default; OpenCode runs its own default model."
-    "When the Antigravity route runs, request `gemini-4-argon-high`, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
-    "Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route."
+    "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`."
+    "Never delegate an implementation unit to Grok or OpenCode, inside or outside T3 Code."
+    "In a Grok or OpenCode session, delegate every implementation unit to a worker named below instead of writing it yourself."
+    "When the config sets `work_engine_mode: off`, a Grok or OpenCode session implements no unit itself: it stops and tells the user that delegation is off."
+    "A unit is harder when its own design is hard, such as a new interface, data format, or concurrency rule, when it carries a security or data-loss risk, even when its edit is mechanical, or when it changes many modules in a way that is not a mechanical edit."
+    "Otherwise a unit is lighter when it is a mechanical edit, such as a rename, a pinned-text update, or a one-file docs change, even across files; every other unit is a default unit."
+    "A default unit goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` set to the value `orchestrator_capabilities` marks as its default, or to `gemini-3.8-flash-high` on the `antigravity` instance."
+    "A harder unit goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` set to the value `orchestrator_capabilities` marks as that model's default, or to `gemini-4-argon-medium` on the `antigravity` instance."
+    "A lighter unit goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `xhigh`, or `max` when the unit spans more than one file, and has no Gemini worker."
+    "Inside T3 Code, alternate the units of each two-worker tier between its Claude and Gemini worker in plan order across the whole plan, counting per tier and starting with Claude."
+    "Inside T3 Code, when a worker is unavailable or its launch fails, give the unit to the other worker of its tier, and give a lighter unit to the default tier in its alternation order; the receiving worker uses its own effort rule."
+    "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target`, and, for a Claude worker, its `effort` in `target.options`, instead of Compound Engineering's own delegation route."
+    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the default tier as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash-high`, at that route's default effort, `high`, and leave out `antigravity` where the Linux rule below keeps it off the route."
+    "When the Antigravity route runs, request `gemini-4-argon-high` for a cross-model peer and the worker's own model id for an implementation unit, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`."
+    "Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route for a peer or for the `ce-work` Gemini worker."
     "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
   ];
 
@@ -245,9 +292,24 @@ let
     "When the session lists no T3 Code preview tools, or `serve-html`, `preview_open`, or `preview_navigate` fails, keep the skill's own way of opening the file and print the file's absolute path."
   ];
 
-  # Sections whose rules a separate contradicting sentence could defeat, so
-  # each gets the allowlist, membership, and order checks.
-  checkedSections = compoundSentences: [
+  # A separate contradicting sentence could defeat a pinned rule in any
+  # section, so every section gets the allowlist, membership, and order checks.
+  checkedSections = key: compoundSentences: [
+    {
+      name = "GPG and encryption";
+      heading = gpgHeading;
+      sentences = gpgSentences key;
+    }
+    {
+      name = "Git";
+      heading = gitHeading;
+      sentences = gitSentences;
+    }
+    {
+      name = "pull and merge requests";
+      heading = pullRequestsHeading;
+      sentences = pullRequestsSentences;
+    }
     {
       name = "review-findings";
       heading = reviewFindingsHeading;
@@ -268,21 +330,14 @@ let
   pinnedSentences =
     compoundSentences:
     [
-      "# GPG and encryption"
-      "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
-      "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it."
-      "Leave card administration and key management to the user."
-      "# Git"
-      "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
-      "Never rename onto or push over an existing branch."
-      "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
-      "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
-      "# Pull and merge requests"
-      "Treat GitLab like GitHub: when a Compound Engineering skill speaks only GitHub, do the same steps with `glab`, and skip only a step with no GitLab counterpart, naming it in your report."
-      "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
-      "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
-      reviewFindingsHeading
+      gpgHeading
     ]
+    ++ lib.filter (sentence: sentence != recipientSentence fakeKey) (gpgSentences fakeKey)
+    ++ [ gitHeading ]
+    ++ gitSentences
+    ++ [ pullRequestsHeading ]
+    ++ pullRequestsSentences
+    ++ [ reviewFindingsHeading ]
     ++ reviewFindingsSentences
     ++ [ compoundEngineeringHeading ]
     ++ compoundSentences
@@ -318,7 +373,16 @@ let
     "# Delegation"
     "type/short-kebab-slug"
     "Conventional Commits type"
-    "Flash"
+    "Flash low"
+    "Flash medium"
+    "Flash high"
+    "Flash Lite"
+    "flash-low"
+    "flash-medium"
+    "flash-lite"
+    "flash-free"
+    "Pick the model by harness"
+    "another harness"
     "Codex"
     "Zen"
     "Model routing"
@@ -412,13 +476,13 @@ let
 
   # The pinned sentences and checked sections of one harness's rendering.
   rulesFor =
-    peers:
+    key: peers:
     let
       compoundSentences = compoundEngineeringSentences peers;
     in
     {
       pinned = pinnedSentences compoundSentences;
-      sections = checkedSections compoundSentences;
+      sections = checkedSections key compoundSentences;
     };
 
   fileRules = label: key: absentKeys: rules: ''
@@ -533,7 +597,7 @@ let
         harness:
         let
           expected = expectedFile harness key;
-          rules = rulesFor harnessPeers.${harness};
+          rules = rulesFor key harnessPeers.${harness};
           # Every path of a harness must equal one expected file, so the
           # sentence rules need to read only its first path.
           firstTarget = lib.head harnessPaths.${harness};

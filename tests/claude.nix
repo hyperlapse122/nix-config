@@ -69,7 +69,6 @@ let
 
   settingsTier = {
     model = "opus[1m]";
-    effortLevel = "medium";
     language = "korean";
     theme = "auto";
     preferredNotifChannel = "ghostty";
@@ -82,6 +81,7 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
+    "effortLevel"
   ];
 
   settingsPaths = [
@@ -91,6 +91,14 @@ let
         "cc-plugin-you-should-know@builtin"
       ];
       value = true;
+    }
+    {
+      path = [
+        "modelSettings"
+        "claude-opus-5-5"
+        "effortLevel"
+      ];
+      value = "medium";
     }
   ];
 
