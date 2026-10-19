@@ -14,7 +14,8 @@ antigravity entries in packages/t3code-release.json.
 
 When nothing newer is found it downloads nothing. It refuses a downgrade, a
 release one system lacks, a download whose size differs from the HEAD length,
-and an archive without exactly the two runtime members. The pin is written
+an archive without exactly the two runtime members, and a HEAD answer other
+than 200 or 404, such as a rate limit, which it cannot read as either. The pin is written
 through a temporary file, so a failed write leaves the old pin in place. No
 vendor checksum exists, so each pin is trust-on-first-use from Google's HTTPS
 endpoint.
@@ -36,7 +37,7 @@ from typing import NamedTuple
 BASE_URL = "https://dl.google.com/agy-extensions/releases"
 # HEAD requests, following redirects, with the headers on stdout. A 404 is a
 # missing candidate, not a failure, so curl must not fail on it.
-DEFAULT_PROBE = "curl -sSIL --max-time 60"
+DEFAULT_PROBE = "curl -sSIL --max-time 30"
 DEFAULT_DOWNLOAD = "curl -sSfL --max-time 1800 -o"
 COMMAND_TIMEOUT = 1900
 
@@ -115,7 +116,11 @@ def archive_url(system, version):
 
 
 def head_length(url):
-    """The content length the final response reports, or None when it is not a 200."""
+    """The content length a 200 reports, or None for a 404 or an unusable length.
+
+    Any other final status, such as 429 or 503, fails: reading it as a missing
+    candidate would report nothing newer while Google only refused the probe.
+    """
     output = run_command("AGY_ACP_RELEASE_PROBE", DEFAULT_PROBE, [url])
     # With redirects followed, curl prints one header block per response.
     blocks = [block for block in re.split(r"\r?\n\r?\n", output.strip()) if block.strip()]
@@ -125,8 +130,10 @@ def head_length(url):
     status = re.match(r"^HTTP/\S+\s+(\d{3})", lines[0])
     if not status:
         raise Failure(f"HEAD {url} returned no status line: {lines[0]!r}")
-    if status.group(1) != "200":
+    if status.group(1) == "404":
         return None
+    if status.group(1) != "200":
+        raise Failure(f"HEAD {url} returned status {status.group(1)}, neither 200 nor 404")
     for line in lines[1:]:
         name, _, value = line.partition(":")
         if name.strip().lower() == "content-length":

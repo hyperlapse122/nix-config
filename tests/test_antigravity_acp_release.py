@@ -30,6 +30,14 @@ SYSTEMS = {
 WINDOW_ABOVE_141 = "1.4.2-1.4.11, 1.5.0-1.5.10, 1.6.0-1.6.10, 1.7.0-1.7.10, 2.0.0-2.0.10"
 
 
+def load_module():
+    loader = importlib.machinery.SourceFileLoader("antigravity_acp_release", str(SCRIPT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
 def url(system, version):
     _, directory, suffix = SYSTEMS[system]
     return f"{BASE}/{directory}/agy-acp-server-{version}-{suffix}.zip"
@@ -41,7 +49,9 @@ url = sys.argv[-1]
 with open(os.environ['FAKE_LOG'], 'a') as log:
     log.write('HEAD ' + url + '\\n')
 served = json.loads(os.environ['FAKE_SERVED'])
-if url in served:
+if url in served and 'status' in served[url]:
+    sys.stdout.write('HTTP/2 %d\\r\\ncontent-length: 0\\r\\n\\r\\n' % served[url]['status'])
+elif url in served:
     sys.stdout.write('HTTP/2 302\\r\\nlocation: x\\r\\n\\r\\nHTTP/2 200\\r\\ncontent-length: %d\\r\\n\\r\\n' % served[url]['length'])
 else:
     sys.stdout.write('HTTP/2 404\\r\\ncontent-length: 1449\\r\\n\\r\\n')
@@ -251,13 +261,49 @@ class RefusalTests(AntigravityAcpReleaseTestCase):
         )
         self.assert_failed_keeping(result, "1.4.1", "failed with status 1")
 
+    def test_a_rate_limited_newest_candidate_fails_instead_of_reporting_nothing_newer(self):
+        self.pin("1.4.1")
+        self.publish("1.4.2")
+        self.served[url("x86_64-linux", "2.0.10")] = {"status": 429}
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.1", "returned status 429, neither 200 nor 404")
+        self.assertEqual(self.requests("HEAD"), [url("x86_64-linux", "2.0.10")])
+        self.assertEqual(self.requests("GET"), [])
+
+    def test_a_downloaded_archive_that_is_not_a_zip_fails(self):
+        self.pin("1.4.0")
+        self.publish("1.4.1")
+        for system in SYSTEMS:
+            served = self.served[url(system, "1.4.1")]
+            Path(served["file"]).write_bytes(b"x" * served["length"])
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.0", "is not a zip archive")
+
+    def test_no_pin_and_no_from_refuses_to_probe(self):
+        result = self.run_release()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("no readable pin to probe above; pass --from VERSION", result.stderr)
+        self.assertEqual(self.requests("HEAD"), [])
+        self.assertFalse(self.output.exists())
+
+    def test_an_unreadable_pin_refuses_to_probe(self):
+        self.output.write_text("{not json")
+        result = self.run_release()
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("no readable pin to probe above", result.stderr)
+        self.assertEqual(self.requests("HEAD"), [])
+        self.assertEqual(self.output.read_text(), "{not json")
+
+    def test_an_invalid_from_version_fails(self):
+        self.pin("1.4.1")
+        result = self.run_release("--from", "1.4")
+        self.assert_failed_keeping(result, "1.4.1", "not a release version such as 1.4.1: '1.4'")
+        self.assertEqual(self.requests("HEAD"), [])
+
     def test_a_failure_mid_write_leaves_the_old_pin_readable(self):
         self.pin("1.4.0")
         self.publish("1.4.1")
-        loader = importlib.machinery.SourceFileLoader("antigravity_acp_release", str(SCRIPT))
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        module = importlib.util.module_from_spec(spec)
-        loader.exec_module(module)
+        module = load_module()
         with mock.patch.dict(os.environ, self.environment()), mock.patch.object(
             module.os, "replace", side_effect=OSError("disk full")
         ):
@@ -265,6 +311,52 @@ class RefusalTests(AntigravityAcpReleaseTestCase):
         self.assertEqual(status, 1)
         self.assertEqual(self.written(), {"version": "1.4.0", "platforms": {}})
         self.assertEqual(sorted(p.name for p in self.root.glob(".antigravity-acp-release.*")), [])
+
+
+class HeadLengthTests(unittest.TestCase):
+    """head_length on headers a server or proxy could return."""
+
+    URL = url("x86_64-linux", "1.4.2")
+
+    def head_length(self, output):
+        module = load_module()
+        with mock.patch.object(module, "run_command", return_value=output):
+            return module.head_length(self.URL)
+
+    def assert_fails(self, output, message):
+        module = load_module()
+        with mock.patch.object(module, "run_command", return_value=output):
+            with self.assertRaises(module.Failure) as raised:
+                module.head_length(self.URL)
+        self.assertIn(message, str(raised.exception))
+
+    def test_the_final_response_of_a_redirect_chain_gives_the_length(self):
+        self.assertEqual(
+            self.head_length("HTTP/2 302\r\nlocation: x\r\n\r\nHTTP/2 200\r\ncontent-length: 42\r\n\r\n"), 42
+        )
+
+    def test_a_404_is_a_missing_candidate(self):
+        self.assertIsNone(self.head_length("HTTP/2 404\r\ncontent-length: 1449\r\n\r\n"))
+
+    def test_any_other_final_status_fails(self):
+        for status in ("429", "403", "500", "503"):
+            with self.subTest(status=status):
+                self.assert_fails(
+                    f"HTTP/2 302\r\nlocation: x\r\n\r\nHTTP/2 {status}\r\n\r\n",
+                    f"returned status {status}, neither 200 nor 404",
+                )
+
+    def test_no_response_headers_fail(self):
+        self.assert_fails("", "returned no response headers")
+        self.assert_fails("\r\n\r\n", "returned no response headers")
+
+    def test_a_response_without_a_status_line_fails(self):
+        self.assert_fails("content-length: 42\r\n\r\n", "returned no status line")
+
+    def test_a_200_without_a_usable_length_is_not_published(self):
+        for headers in ("", "content-type: application/zip\r\n", "content-length: 0\r\n", "content-length: abc\r\n"):
+            with self.subTest(headers=headers):
+                self.assertIsNone(self.head_length(f"HTTP/2 200\r\n{headers}\r\n"))
 
 
 if __name__ == "__main__":

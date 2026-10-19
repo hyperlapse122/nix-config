@@ -46,7 +46,8 @@ sys.stdout.write(os.environ['FAKE_STABLE'])
 """
 
 # Prints the headers curl -sI prints, with the two x-goog-hash lines GCS
-# sends, or fails the way curl -f does on a 404.
+# sends, or only the crc32c one for a URL in FAKE_NO_MD5, or fails the way
+# curl -f does on a 404.
 FAKE_HEAD = """#!/usr/bin/env python3
 import base64, hashlib, os, sys
 url = sys.argv[-1]
@@ -56,8 +57,9 @@ if url in os.environ.get('FAKE_MISSING', '').split():
     sys.exit(22)
 data = ('grok binary at ' + url + '\\n').encode()
 digest = base64.b64encode(hashlib.md5(data).digest()).decode()
+md5 = '' if url in os.environ.get('FAKE_NO_MD5', '').split() else 'x-goog-hash: md5=%s\\r\\n' % digest
 sys.stdout.write('HTTP/2 200 \\r\\ncontent-length: %d\\r\\n'
-                 'x-goog-hash: crc32c=cP/tdA==\\r\\nx-goog-hash: md5=%s\\r\\n\\r\\n' % (len(data), digest))
+                 'x-goog-hash: crc32c=cP/tdA==\\r\\n%s\\r\\n' % (len(data), md5))
 """
 
 FAKE_PREFETCH = """#!/usr/bin/env python3
@@ -72,7 +74,10 @@ path = os.path.join(os.environ['FAKE_STORE'], url.rsplit('/', 1)[-1])
 with open(path, 'wb') as f:
     f.write(data)
 digest = 'sha256-' + base64.b64encode(hashlib.sha256(data).digest()).decode()
-print(json.dumps({'hash': os.environ.get('FAKE_HASH') or digest, 'storePath': path}))
+result = {'hash': os.environ.get('FAKE_HASH') or digest, 'storePath': path}
+if os.environ.get('FAKE_NO_STORE_PATH'):
+    del result['storePath']
+print(json.dumps(result))
 """
 
 
@@ -91,7 +96,16 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         self.log = root / "calls.log"
         self.output = root / "grok-build-release.json"
 
-    def run_release(self, stable="1.0.62", extra_args=None, missing=(), corrupt="", prefetch_hash=""):
+    def run_release(
+        self,
+        stable="1.0.62",
+        extra_args=None,
+        missing=(),
+        corrupt="",
+        prefetch_hash="",
+        no_md5=(),
+        no_store_path=False,
+    ):
         env = dict(os.environ)
         env["GROK_BUILD_RELEASE_FETCH"] = f"{sys.executable} {self.stubs['fetch']}"
         env["GROK_BUILD_RELEASE_HEAD"] = f"{sys.executable} {self.stubs['head']}"
@@ -100,6 +114,8 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         env["FAKE_MISSING"] = " ".join(missing)
         env["FAKE_CORRUPT"] = corrupt
         env["FAKE_HASH"] = prefetch_hash
+        env["FAKE_NO_MD5"] = " ".join(no_md5)
+        env["FAKE_NO_STORE_PATH"] = "1" if no_store_path else ""
         env["FAKE_STORE"] = str(self.store)
         env["FAKE_LOG"] = str(self.log)
         args = [sys.executable, str(SCRIPT)]
@@ -176,6 +192,36 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("carries no sha256 SRI hash", result.stderr)
         self.assertEqual(self.output.read_text(), before)
+
+    def test_a_head_without_an_md5_refuses_before_any_download(self):
+        for platform in SYSTEMS.values():
+            with self.subTest(platform=platform):
+                self.log.unlink(missing_ok=True)
+                before = self.write_pin("1.0.61")
+                result = self.run_release(no_md5=[url("1.0.62", platform)])
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(f"{url('1.0.62', platform)} reports no x-goog-hash md5", result.stderr)
+                self.assertEqual(self.output.read_text(), before)
+                self.assertEqual(self.calls("prefetch"), [])
+
+    def test_a_prefetch_without_a_store_path_fails_and_keeps_the_pin(self):
+        before = self.write_pin("1.0.61")
+        result = self.run_release(no_store_path=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("names no store path", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+
+    def test_a_non_numeric_pin_is_treated_as_older_than_the_stable(self):
+        # version_tuple cannot order the pin, so the helper resolves the
+        # stable release rather than keep an unreadable pin forever.
+        for pinned in ["latest", "1.0.62-beta", ""]:
+            with self.subTest(pinned=pinned):
+                self.log.unlink(missing_ok=True)
+                self.write_pin(pinned)
+                result = self.run_release()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.output.read_text(), self.expected_pin("1.0.62"))
+                self.assertEqual(self.calls("prefetch"), [url("1.0.62", p) for p in SYSTEMS.values()])
 
     def test_a_non_numeric_stable_is_refused(self):
         for stable in ["latest", "1.0.62-alpha", "<html>", ""]:

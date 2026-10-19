@@ -29,6 +29,9 @@
   - the `# Review findings` and `# Compound Engineering` sections hold only
     their pinned sentences, each once and in order, so a separate sentence
     that reverses a pinned rule fails.
+  - the file's top-level `# ` headings are exactly the expected list, in
+    order, so a rule under a new heading cannot contradict a pinned one
+    outside every checked section.
   - the recipient sentence names the entry's own `my.user.gpgKey`, and Git
     signs with that same key. The fixture host whose key is the fake value
     below must carry neither the card fingerprint in its instructions nor the
@@ -145,6 +148,17 @@ let
     "# T3 Code"
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
+  ];
+
+  # In file order. A heading outside this list would end the section above it,
+  # so a contradicting rule under it would escape every section check.
+  topLevelHeadings = [
+    "# GPG and encryption"
+    "# Git"
+    "# Pull and merge requests"
+    "# Review findings"
+    "# Compound Engineering"
+    "# T3 Code"
   ];
 
   removedTerms = [
@@ -264,6 +278,15 @@ let
           section.sentences
         }
       '') checkedSections}
+      expected=$(mktemp)
+      actual=$(mktemp)
+      printf '%s\n' ${lib.escapeShellArgs topLevelHeadings} > "$expected"
+      grep -E -- '^# ' "$file" > "$actual" || true
+      if ! cmp -s "$expected" "$actual"; then
+        echo ${esc "${label} carries top-level headings other than the expected list:"} >&2
+        diff "$expected" "$actual" >&2 || true
+        failed=1
+      fi
       for term in ${lib.escapeShellArgs removedTerms}; do
         if grep -qiF -- "$term" "$file"; then
           echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2

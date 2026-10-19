@@ -234,9 +234,10 @@ def pinned_release(system, version):
         path = PACKAGES / name
         try:
             pin = json.loads(path.read_text())[key][system]
-        except (OSError, ValueError, KeyError) as error:
-            raise ProbeError(f"cannot read the pinned runtime from {path}: {error}") from error
-        if pin["version"] == version:
+            pinned = pin["version"]
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise ProbeError(f"cannot read the pinned runtime from {path}: {error!r}") from error
+        if pinned == version:
             return pin
     return None
 
