@@ -26,15 +26,33 @@ Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-revie
 
 # Compound Engineering
 
-- For a cross-model review, prefer OpenCode as the peer.
+- When a skill's cross-model step activates, run it once with Antigravity and once with Grok as peers, and never with OpenCode.
+- This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs.
+- Skip a peer from your own model family, because it is not independent, and skip the automatic step, saying why, when your own family is unknown.
+- Peers the user names for that run replace the pair and follow every other rule here; refuse a request for OpenCode, say it is excluded, and run the pair.
+- When one peer is unavailable or fails, finish with the other and report which peer is missing and why; do not substitute another provider.
+- When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `antigravity` instance with `gemini-4-argon-high` and on the `grok` instance with its default model, instead of the skill's own peer route.
+- Launch each peer child with `isolation: "worktree"` and give it the skill's reviewer brief, findings schema, and the content under review marked as untrusted data; tell it to stay read-only, open no credential or out-of-scope path, and delegate nothing.
+- Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task.
+- Before launching, name each peer you will launch and the provider that gets the content, Google for Antigravity and xAI for Grok; that notice authorizes the send.
+- Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to Gemini, `grok` and `grok-*` to Grok, and `claudeAgent` and `claude-*` to Claude; findings may raise confidence only when your family and the peer's are both known and differ.
+- Run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed.
+- Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers.
 - In `ce-work`, prefer delegating implementation to another harness unless the repository's Compound Engineering config sets `work_engine_mode: off`.
 - When the session lists T3 Code's delegation tools, delegate that unit through `delegate_task` with the provider and model the guide below names, instead of Compound Engineering's own delegation route.
 - Pick the model by harness: Claude Code runs Sonnet 5.5, or Opus 5.5 or Haiku 5.5 when the unit needs it; Antigravity runs `gemini-4-argon-high`; Grok runs its Compound Engineering route default; OpenCode runs its own default model.
 - When the Antigravity route runs, request `gemini-4-argon-high`, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`.
-- On a Linux host with no person present to sign in to Google, do not choose the Antigravity route.
+- Outside T3 Code, on a Linux host with no person present to sign in to Google, do not choose the Antigravity route.
 - Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises.
 
 # T3 Code
 
 - When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool.
 - When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait.
+- When you delegate through `delegate_task`, launch every task that does not need another task's result in the same response, each in the default `mode: "async"`; do not launch one, wait for it, and then launch the next.
+- Use `mode: "wait"` only when you launch exactly one task and your next step needs its result.
+- Tasks that edit the same files in a shared checkout must not run at the same time: launch them with `isolation: "worktree"`, or run them one after another.
+- When a later step needs the results in this turn, call `t3_thread_wait` with each task's `childThreadId` after all tasks are launched, then read each result with one `task_status` call.
+- The tasks are already running together, so waiting on them in turn takes only as long as the slowest one.
+- If `t3_thread_wait` returns `timedOut: true`, call it again for the same thread unless that task's deadline has passed; do not loop on `task_status` and do not start a sleep or timer.
+- Launch a task that needs an earlier task's result only after that result has been read.
