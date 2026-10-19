@@ -40,11 +40,19 @@ Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-revie
 - When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer to the user.
 - In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed.
 - Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers.
-- In `ce-work`, prefer delegating implementation to another harness unless the repository's Compound Engineering config sets `work_engine_mode: off`.
-- When the session lists T3 Code's delegation tools, delegate that unit through `delegate_task` with the provider and model the guide below names, instead of Compound Engineering's own delegation route.
-- Pick the model by harness: Claude Code runs Sonnet 5.5, or Opus 5.5 or Haiku 5.5 when the unit needs it; Antigravity runs `gemini-4-argon-high`; Grok runs its Compound Engineering route default; OpenCode runs its own default model.
-- When the Antigravity route runs, request `gemini-4-argon-high`, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`.
-- Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route.
+- In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`.
+- Never delegate an implementation unit to Grok or OpenCode, inside or outside T3 Code.
+- A unit is harder when it carries the plan's hardest design call or a security or data-loss risk, even when its edit is mechanical, or when it changes many modules in a way that is not a mechanical edit.
+- Otherwise a unit is lighter when it is a mechanical edit, such as a rename, a pinned-text update, or a one-file docs change, even across files; every other unit is a default unit.
+- A default unit goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` set to the value `orchestrator_capabilities` marks as its default, or to `gemini-3.8-flash-high` on the `antigravity` instance.
+- A harder unit goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` set the same way, or to `gemini-4-argon-medium` on the `antigravity` instance.
+- A lighter unit goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `xhigh`, or `max` when the unit spans more than one file, and has no Gemini worker.
+- Inside T3 Code, within one dependency layer, alternate the units of each two-worker tier between its Claude and Gemini worker in plan order, counting per tier and starting with Claude.
+- Inside T3 Code, when a worker is unavailable or its launch fails, give the unit to the other worker of its tier, and give a lighter unit to whichever default-tier worker is available.
+- When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance, model id, and, for a Claude worker, `effort`, instead of Compound Engineering's own delegation route.
+- Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the default tier as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash-high`, at that route's default effort, `high`.
+- When the Antigravity route runs, request `gemini-4-argon-high` for a cross-model peer and the worker's own model id for an implementation unit, because the runtime advertises only model ids that end in `-low`, `-medium`, or `-high`.
+- Outside T3 Code on a Linux host, `CROSS_MODEL_PEERS` leaves out Antigravity: when a person is present to sign in to Google, add `antigravity` to it for that pass only, and otherwise do not choose the Antigravity route for a peer or for the `ce-work` Gemini worker.
 - Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises.
 
 # T3 Code
