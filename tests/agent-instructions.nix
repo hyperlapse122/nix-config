@@ -26,9 +26,9 @@
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
-  - the `# Review findings` and `# Compound Engineering` sections hold only
-    their pinned sentences, each once and in order, so a separate sentence
-    that reverses a pinned rule fails.
+  - the `# Review findings`, `# Compound Engineering`, and `# T3 Code`
+    sections hold only their pinned sentences, each once and in order, so a
+    separate sentence that reverses a pinned rule fails.
   - the file's top-level `# ` headings are exactly the expected list, in
     order, so a rule under a new heading cannot contradict a pinned one
     outside every checked section.
@@ -110,6 +110,22 @@ let
     "Remove the model request and the Linux rule for the Antigravity route once Compound Engineering reuses a Google sign-in across runs and requests model ids the runtime advertises."
   ];
 
+  t3CodeHeading = "# T3 Code";
+
+  # In section order, like `reviewFindingsSentences`.
+  t3CodeSentences = [
+    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
+    "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
+    "Use `mode: \"wait\"` only when you launch exactly one task and your next step needs its result."
+    "Never run two tasks that edit the same files in one checkout at the same time: commit first, launch each with `isolation: \"worktree\"`, and merge its changes back, or launch them one after another."
+    "Launch a task that needs an earlier task's result only after you have read that result."
+    "When a later step in the same turn needs the results, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` once every task is launched, then read each result with one `task_status` call."
+    "When `t3_thread_wait` returns `timedOut: true`, call it again for that thread; never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself."
+    "When `task_status` shows a `workState` other than `result_available`, call `t3_thread_wait` on that thread again, without `runId`, before reading it once more."
+    "This in-turn wait takes precedence over the `delegate_task` description's advice to end the turn after an `async` launch."
+    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
+  ];
+
   # Sections whose rules a separate contradicting sentence could defeat, so
   # each gets the allowlist, membership, and order checks.
   checkedSections = [
@@ -122,6 +138,11 @@ let
       name = "Compound Engineering";
       heading = compoundEngineeringHeading;
       sentences = compoundEngineeringSentences;
+    }
+    {
+      name = "T3 Code";
+      heading = t3CodeHeading;
+      sentences = t3CodeSentences;
     }
   ];
 
@@ -144,11 +165,8 @@ let
   ++ reviewFindingsSentences
   ++ [ compoundEngineeringHeading ]
   ++ compoundEngineeringSentences
-  ++ [
-    "# T3 Code"
-    "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
-    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
-  ];
+  ++ [ t3CodeHeading ]
+  ++ t3CodeSentences;
 
   # In file order. A heading outside this list would end the section above it,
   # so a contradicting rule under it would escape every section check.
