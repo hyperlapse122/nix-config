@@ -152,6 +152,7 @@
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         grok-build-release = agentTools.grokBuildRelease;
+        grok-bot-release = agentTools.grokBotRelease;
         grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         grok-bot = import ./packages/grok-bot.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -490,6 +491,9 @@
           grok-build-release =
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
+          grok-bot-release =
+            pythonScriptCheck "grok-bot-release" ./scripts/grok-bot-release
+              ./tests/test_grok_bot_release.py;
           antigravity-acp-release =
             pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
               ./tests/test_antigravity_acp_release.py;
