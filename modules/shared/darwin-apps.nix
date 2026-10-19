@@ -3,7 +3,9 @@
   a non-NixOS Linux host's lacks, keyed by package name: the GUI apps, plus the
   desktop and trait packages that come with them. The darwin-config check
   derives that set from evaluated configurations and fails on any name missing
-  here, so adding an app on NixOS forces a macOS decision.
+  here, so adding an app on NixOS forces a macOS decision. `apps` also maps a
+  package every Linux host has that a Mac gets as a cask; the derived set
+  cannot cover it, so the check pins it by value.
 
   Each entry is one of
     { cask = "<Homebrew cask>"; }   installed from Homebrew on macOS
@@ -21,6 +23,7 @@ let
     discord.cask = "discord";
     ghostty.cask = "ghostty";
     google-chrome.cask = "google-chrome";
+    grok-bot.cask = "grok-bot";
     libreoffice.cask = "libreoffice";
     telegram-desktop.cask = "telegram-desktop";
     wifiman-desktop.cask = "wifiman";

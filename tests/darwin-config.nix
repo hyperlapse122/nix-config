@@ -18,7 +18,9 @@
     Nix package, or left out. The set is derived from the evaluated
     configurations, so a package added on NixOS fails here until it has one.
     Telegram maps to the telegram-desktop cask, the NixOS client, and the
-    telegram cask (Telegram for macOS) is absent.
+    telegram cask (Telegram for macOS) is absent. Grok Bot, which every Linux
+    host has, maps to the grok-bot cask, pinned by value because the derived
+    set cannot cover a package non-NixOS hosts also have.
   - Homebrew: the casks are exactly the mapping's casks plus its macOS-only
     ones; an apply never removes an unlisted app and upgrades listed ones;
     every third-party cask's tap is tapped and trusted.
@@ -174,6 +176,7 @@ let
         "1password"
         "parallels"
         "tailscale-app"
+        "grok-bot"
       ]
     )
     (check (!lib.elem "orbstack" mapping.casks) "orbstack is still among the macOS casks")
@@ -182,6 +185,10 @@ let
       mapping.apps.telegram-desktop or null == { cask = "telegram-desktop"; }
     ) "telegram-desktop: the macOS decision must be the telegram-desktop cask")
     (check (!lib.elem "telegram" mapping.casks) "telegram is still among the macOS casks")
+    # Every Linux host has grok-bot, so the derived NixOS-only set skips it.
+    (check (
+      mapping.apps.grok-bot or null == { cask = "grok-bot"; }
+    ) "grok-bot: the macOS decision must be the grok-bot cask")
   ];
 
   sort = lib.sort lib.lessThan;
