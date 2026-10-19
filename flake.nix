@@ -485,8 +485,17 @@
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
           grok-bot-release =
-            pythonScriptCheck "grok-bot-release" ./scripts/grok-bot-release
-              ./tests/test_grok_bot_release.py;
+            let
+              tests =
+                pythonScriptCheck "grok-bot-release" ./scripts/grok-bot-release
+                  ./tests/test_grok_bot_release.py;
+            in
+            # The tests drive a copy of the script; the update workflow runs
+            # the packaged helper, so it must start too.
+            pkgs.runCommand "grok-bot-release-checks" { } ''
+              ${pkgs.lib.getExe agentTools.grokBotRelease} --help >/dev/null
+              ln -s ${tests} $out
+            '';
           antigravity-acp-release =
             pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
               ./tests/test_antigravity_acp_release.py;
@@ -1126,6 +1135,9 @@
             '';
           grok-bot =
             let
+              # The version is compared with the pin for the reason given on
+              # the claude-code check.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-bot-release.json)).version;
               assertUser =
                 entry:
                 let
@@ -1137,14 +1149,30 @@
                     executables = [ "grok-bot" ];
                     desktopEntries = [ "grok-bot.desktop" ];
                   } entry}
+                  ${pkgs.lib.optionalString (package != null && package.version != pinnedVersion) ''
+                    echo "grok-bot on ${entry.name} is built from version '${package.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  ''}
                   ${pkgs.lib.optionalString (package != null) ''
+                    # The app replaces itself whenever APPIMAGE is set, so the
+                    # wrapper must clear an APPIMAGE another wrapper exported.
+                    if ! grep -qxF 'unset APPIMAGE' ${package}/bin/grok-bot; then
+                      echo "grok-bot wrapper on ${entry.name} does not unset APPIMAGE" >&2
+                      fail=1
+                    fi
                     desktopEntry=${package}/share/applications/grok-bot.desktop
                     if [ -f "$desktopEntry" ]; then
-                      exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktopEntry")
-                      if [ -z "$exec" ] || [ "$exec" != "${package}/bin/grok-bot" ]; then
-                        echo "grok-bot.desktop Exec '$exec' does not name ${package}/bin/grok-bot on ${entry.name}" >&2
+                      execs=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktopEntry")
+                      if [ -z "$execs" ]; then
+                        echo "grok-bot.desktop on ${entry.name} has no Exec line" >&2
                         fail=1
                       fi
+                      while IFS= read -r exec; do
+                        if [ -n "$exec" ] && [ "$exec" != "${package}/bin/grok-bot" ]; then
+                          echo "grok-bot.desktop Exec '$exec' does not name ${package}/bin/grok-bot on ${entry.name}" >&2
+                          fail=1
+                        fi
+                      done <<<"$execs"
                     fi
                   ''}
                 '';

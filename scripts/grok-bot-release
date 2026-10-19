@@ -2,10 +2,10 @@
 """Resolve the newest stable Grok Bot release for Linux from xAI's Cursor feed.
 
 Queries the stable download endpoints for linux-x64 and linux-arm64, verifies
-that both architectures agree on version and provide valid .deb download URLs
-under the official cursor download domain, prefetches each .deb to capture its
-sha256 SRI hash, and writes or verifies the packages/grok-bot-release.json pin file.
-Refuses to update if the feed version is not newer than the currently pinned version.
+that both architectures agree on version and that each names its own versioned
+.deb on the official Cursor download host, prefetches each .deb to capture its
+sha256 SRI hash, and writes the packages/grok-bot-release.json pin file, or
+prints it with --dry-run. Leaves the pin alone unless the feed is newer.
 """
 
 import argparse
@@ -19,18 +19,21 @@ import subprocess
 import sys
 import tempfile
 
+# Nix system -> (feed and download directory architecture, Debian architecture).
 PLATFORMS = {
-    "x86_64-linux": "https://api2.cursor.sh/updates/api/download/stable/linux-x64/sand",
-    "aarch64-linux": "https://api2.cursor.sh/updates/api/download/stable/linux-arm64/sand",
+    "x86_64-linux": ("x64", "amd64"),
+    "aarch64-linux": ("arm64", "arm64"),
 }
+FEED_URL = "https://api2.cursor.sh/updates/api/download/stable/linux-{arch}/sand"
 
-DEFAULT_FETCH = "curl -s"
+DEFAULT_FETCH = "curl -fsSL --max-time 60"
 DEFAULT_PREFETCH = "nix store prefetch-file --json --hash-type sha256"
-COMMAND_TIMEOUT = 900
+COMMAND_TIMEOUT = int(os.environ.get("GROK_BOT_RELEASE_TIMEOUT", "900"))
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
 SRI_PATTERN = re.compile(r"^sha256-[A-Za-z0-9+/]{43}=$")
 ALLOWED_DEB_PREFIX = "https://downloads.cursor.com/grokbot/"
+DEB_COMMIT_PATTERN = r"stable/[0-9a-f]+"
 
 
 class Failure(Exception):
@@ -61,7 +64,7 @@ def fetch_feed(url):
     return run_command("GROK_BOT_RELEASE_FETCH", DEFAULT_FETCH, url)
 
 
-def parse_feed_response(content, url):
+def parse_feed_response(content, url, arch, deb_arch):
     try:
         data = json.loads(content)
     except ValueError as exc:
@@ -79,9 +82,16 @@ def parse_feed_response(content, url):
 
     if not VERSION_PATTERN.match(version):
         raise Failure(f"feed for {url} returned invalid version: {version!r}")
-    if not deb_url.startswith(ALLOWED_DEB_PREFIX):
+    expected = re.compile(
+        re.escape(ALLOWED_DEB_PREFIX)
+        + DEB_COMMIT_PATTERN
+        + re.escape(f"/linux/{arch}/grok-bot_{version}_{deb_arch}.deb")
+        + "$"
+    )
+    if not expected.match(deb_url):
         raise Failure(
-            f"debUrl for {url} is not under {ALLOWED_DEB_PREFIX}: {deb_url!r}"
+            f"debUrl for {url} is not grok-bot_{version}_{deb_arch}.deb under "
+            f"{ALLOWED_DEB_PREFIX}: {deb_url!r}"
         )
     return version, deb_url
 
@@ -146,8 +156,9 @@ def main(argv=None):
 
     try:
         feed_results = {}
-        for platform, url in PLATFORMS.items():
-            feed_results[platform] = parse_feed_response(fetch_feed(url), url)
+        for platform, (arch, deb_arch) in PLATFORMS.items():
+            url = FEED_URL.format(arch=arch)
+            feed_results[platform] = parse_feed_response(fetch_feed(url), url, arch, deb_arch)
 
         versions = {found for found, _ in feed_results.values()}
         if len(versions) != 1:

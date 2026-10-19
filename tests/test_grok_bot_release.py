@@ -43,8 +43,9 @@ SAMPLE_X64 = sample_feed_response("0.71.2", X64_DEB_URL)
 SAMPLE_ARM64 = sample_feed_response("0.71.2", ARM64_DEB_URL)
 
 FAKE_FETCH = """#!/usr/bin/env python3
-import os, sys
+import os, sys, time
 url = sys.argv[-1]
+time.sleep(float(os.environ.get('FAKE_FETCH_SLEEP', '0')))
 status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
 if status:
     sys.exit(status)
@@ -96,6 +97,7 @@ class GrokBotReleaseTestCase(unittest.TestCase):
         arm64_body=None,
         prefetch_status=0,
         prefetch_out=None,
+        extra_env=None,
     ):
         env = dict(os.environ)
         env["GROK_BOT_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
@@ -114,6 +116,7 @@ class GrokBotReleaseTestCase(unittest.TestCase):
         env["FAKE_ARM64_SRI"] = ARM64_SRI
         if prefetch_out is not None:
             env["FAKE_PREFETCH_OUT"] = prefetch_out
+        env.update(extra_env or {})
         args = [sys.executable, str(SCRIPT)]
         args.extend(extra_args if extra_args is not None else ["--dry-run"])
         return subprocess.run(args, capture_output=True, text=True, env=env)
@@ -225,6 +228,55 @@ class GrokBotReleaseTestCase(unittest.TestCase):
         self.assertEqual(data["platforms"]["x86_64-linux"]["hash"], X64_SRI)
         self.assertEqual(data["platforms"]["aarch64-linux"]["hash"], ARM64_SRI)
         self.assertFalse(self.output.exists())
+
+    def test_newer_feed_replaces_older_pin_after_querying_both_feeds(self):
+        self.write_pin("0.70.0")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("updated", result.stdout)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "0.71.2")
+        self.assertEqual(
+            sorted(self.fetch_log.read_text().split()), sorted([X64_FEED_URL, ARM64_FEED_URL])
+        )
+        self.assertEqual(
+            sorted(self.prefetch_log.read_text().split()), sorted([X64_DEB_URL, ARM64_DEB_URL])
+        )
+
+    def test_malformed_pinned_version_is_replaced(self):
+        self.write_pin("not-a-version")
+        result = self.run_release(extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.output.read_text())["version"], "0.71.2")
+
+    def test_arm64_feed_naming_the_amd64_deb_fails_and_leaves_output(self):
+        self.write_pin("0.70.0")
+        before = self.output.read_bytes()
+        result = self.run_release(
+            arm64_body=sample_feed_response("0.71.2", X64_DEB_URL),
+            extra_args=["-o", str(self.output)],
+        )
+        self.assert_failure(result, "grok-bot_0.71.2_arm64.deb")
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_deb_url_for_another_version_fails(self):
+        result = self.run_release(
+            x64_body=sample_feed_response("0.71.2", X64_DEB_URL.replace("0.71.2", "0.70.0"))
+        )
+        self.assert_failure(result, "grok-bot_0.71.2_amd64.deb")
+
+    def test_feed_body_that_is_not_json_fails(self):
+        result = self.run_release(x64_body="<html>moved</html>")
+        self.assert_failure(result, "invalid JSON")
+
+    def test_feed_version_that_is_not_numeric_fails(self):
+        result = self.run_release(x64_body=sample_feed_response("latest", X64_DEB_URL))
+        self.assert_failure(result, "invalid version")
+
+    def test_hung_feed_fails_after_the_timeout(self):
+        result = self.run_release(
+            extra_env={"FAKE_FETCH_SLEEP": "5", "GROK_BOT_RELEASE_TIMEOUT": "1"}
+        )
+        self.assert_failure(result, "timed out after 1s")
 
 
 if __name__ == "__main__":

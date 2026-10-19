@@ -12,6 +12,8 @@
   - the account and home directory follow the host's `my.user` values;
   - no desktop configuration reaches the user environment: no Plasma or
     autostart files, no GUI packages, the T3 Code desktop app included;
+    Grok Bot is the one GUI app every Linux host installs, on both
+    architectures;
   - the T3 Code CLI is in the user packages exactly when the host enables
     my.t3.cli.enable, and at least one fixture enables it;
   - production runs the host-secrets activation steps, stage before any link
@@ -46,6 +48,7 @@ let
   inherit (pkgs) lib;
 
   # GUI packages the NixOS desktop installs; none may reach a non-NixOS host.
+  # Grok Bot is installed on every Linux host instead, so it is not listed.
   guiPackages = [
     "discord"
     "google-chrome"
@@ -119,6 +122,7 @@ let
       (check (
         leakedGui == [ ]
       ) "${entry.name}: GUI packages reached a non-NixOS host: ${lib.concatStringsSep ", " leakedGui}")
+      (check (lib.elem "grok-bot" pnames) "${entry.name}: Grok Bot is missing from the user packages")
       (check (lib.elem "t3code-cli" pnames == hm.my.t3.cli.enable)
         "${entry.name}: the T3 Code CLI must be installed exactly when my.t3.cli.enable is on (it is ${lib.boolToString hm.my.t3.cli.enable})"
       )
