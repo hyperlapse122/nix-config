@@ -65,6 +65,18 @@ let
   # command so the sandboxed repository check can drive it with fixtures.
   antigravityCliRelease = pythonHelper "antigravity-cli-release" ../scripts/antigravity-cli-release;
 
+  # Resolves the newest stable Grok Build CLI release and hashes its
+  # per-platform binaries, which xAI publishes no checksum for. Its network
+  # calls go through overridable commands so the sandboxed repository check
+  # can drive it with fixtures.
+  grokBuildRelease = pythonHelper "grok-build-release" ../scripts/grok-build-release;
+  # Resolves the newest complete Antigravity ACP runtime release by probing
+  # candidate versions on Google's download host, and hashes its archives,
+  # which upstream publishes no checksum for. Its network calls go through
+  # overridable commands so the sandboxed repository check can drive it with
+  # fixtures.
+  antigravityAcpRelease = pythonHelper "antigravity-acp-release" ../scripts/antigravity-acp-release;
+
   # Resolves the newest T3 Code nightly and its asset digests from the GitHub
   # releases API. Its network call goes through an overridable command so the
   # sandboxed repository check can drive it with fixtures.
@@ -97,6 +109,8 @@ in
     miseRelease
     opencodeRelease
     antigravityCliRelease
+    grokBuildRelease
+    antigravityAcpRelease
     t3codeRelease
     t3codeAntigravityInstall
     t3codeAntigravityLink

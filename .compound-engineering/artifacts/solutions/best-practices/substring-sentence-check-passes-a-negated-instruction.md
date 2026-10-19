@@ -40,7 +40,7 @@ A deletion round proves only that the check notices the text is gone. Prose inst
 
 Match a required sentence only where a sentence begins, and add a negation round to the mutation list.
 
-The helper now accepts a sentence only when it occurs exactly once in the file and the text before that occurrence is empty, a list marker (a hyphen and a space, optionally indented), or ends with the full stop and space of the previous sentence (`tests/agent-instructions.nix:116-134`):
+The helper now accepts a sentence only when it occurs exactly once in the file and the text before that occurrence is empty, a list marker (a hyphen and a space, optionally indented), or ends with the full stop and space of the previous sentence (`requireSentences` in `tests/agent-instructions.nix`):
 
 ```nix
 requireSentences = message: sentences: ''
@@ -105,7 +105,7 @@ sentencesInOrder = message: heading: sentences: ''
 
 The pinned list must then be written in section order, which also makes it read as the section does. `grep -E -- .` drops the blank lines the awk split leaves. The diff names the lines out of place.
 
-83002d4 slimmed the instructions into one file without a cross-model delegation section, and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder` with it. The current check guards a reversal written as a separate sentence only through `removedTerms` (`tests/agent-instructions.nix:92`), matched without regard to case (`grep -qiF`), which catches a reversal only when it names a banned term such as `type/short-kebab-slug`. Bring the allowlist or the ordered comparison back when a section again holds rules that must not be contradicted or reordered.
+83002d4 slimmed the instructions into one file and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder`. They are back: `tests/agent-instructions.nix` applies all three to every section in `checkedSections` (today `# Review findings` and `# Compound Engineering`, both holding rules that must not be contradicted or reordered), and checks the rendered file's top-level headings against the literal `topLevelHeadings` list, so a reversal cannot hide under a new heading either. Sections outside `checkedSections` are still guarded against a separate-sentence reversal only through `removedTerms`, matched without regard to case (`grep -qiF`), which catches a reversal only when it names a banned term such as `type/short-kebab-slug`. Add a section to `checkedSections` when it comes to hold such rules.
 
 When a rule has a safety stop, guard the stop as its own sentence. The review-findings rule tells autonomous runs to apply the recommended fix. Without a guarded sentence for the stop that protects user decisions, deleting the stop leaves the permissive half guarded and green.
 

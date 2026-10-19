@@ -17,8 +17,9 @@ let
 in
 {
   # Plain store links: no harness rewrites these files. OpenCode always loads
-  # its global AGENTS.md, and the Antigravity CLI reads ~/.gemini/config, so
-  # every run of every installed harness gets the same file.
+  # its global AGENTS.md, and the Antigravity CLI reads ~/.gemini/config.
+  # Grok has no link of its own: it reads ~/.claude/CLAUDE.md through its
+  # Claude Code compatibility. So every installed harness gets the same file.
   home.file = {
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";

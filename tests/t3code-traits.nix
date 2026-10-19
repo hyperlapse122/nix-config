@@ -72,6 +72,16 @@
   the same way as on the assembled configurations, since no macOS
   configuration is evaluated here.
 
+  packages/t3code-release.json and packages/antigravity-acp-release.json may
+  pin the same runtime release, and then the runtime path cannot tell which
+  file the module reads. So the module's source must also read the runtime
+  pins from packages/t3code-release.json's antigravity entry and never name
+  packages/antigravity-acp-release.json, as
+  tests/antigravity-acp-path-profiles.nix checks for the PATH package. The
+  source text is read rather than a rewritten copy imported, because
+  `nix flake check --no-build` evaluates read-only and never writes a
+  builtins.toFile copy to the store.
+
   Every failure is collected in one build and names the configuration.
 */
 {
@@ -146,6 +156,7 @@ let
         "antigravity"
         "claudeAgent"
         "codex"
+        "grok"
         "opencode"
       ];
     };
@@ -207,6 +218,22 @@ let
           "enabled"
         ];
         value = false;
+      }
+      {
+        path = [
+          "providerInstances"
+          "grok"
+          "driver"
+        ];
+        value = "grok";
+      }
+      {
+        path = [
+          "providerInstances"
+          "grok"
+          "enabled"
+        ];
+        value = true;
       }
       {
         path = [
@@ -301,7 +328,10 @@ let
   noContext = builtins.unsafeDiscardStringContext;
   releasePin = builtins.fromJSON (builtins.readFile ../packages/t3code-release.json);
   runtimeExpected = noContext "${
-    import ../packages/antigravity-acp.nix { inherit pkgs; }
+    import ../packages/antigravity-acp.nix {
+      inherit pkgs;
+      pins = releasePin.antigravity;
+    }
   }/libexec/antigravity-acp";
   pinExpected = noContext "${pkgs.writeText "antigravity-acp-pin.json" (
     builtins.toJSON (releasePin.antigravity.${pkgs.stdenv.hostPlatform.system} or { })
@@ -439,15 +469,15 @@ let
   # The module on its own, so the assertion's message and the packages it
   # would otherwise let through can be read. NixOS is the control: there the
   # desktop app installs and nothing fails.
-  moduleOn =
-    kind:
+  moduleWith =
+    module: kind:
     let
       config =
         (hmLib.evalModules {
           specialArgs = { inherit pkgs; };
           modules = [
             ../modules/shared/host.nix
-            ../home/h82/t3code.nix
+            module
             {
               options.assertions = lib.mkOption {
                 type = lib.types.listOf lib.types.unspecified;
@@ -499,6 +529,21 @@ let
             "1"
           ];
     };
+
+  moduleOn = moduleWith ../home/h82/t3code.nix;
+
+  moduleSource = builtins.readFile ../home/h82/t3code.nix;
+  assertPinSource = lib.concatStrings [
+    (lib.optionalString
+      (!lib.hasInfix "builtins.readFile ../../packages/t3code-release.json)).antigravity" moduleSource)
+      (
+        fail "home/h82/t3code.nix does not read its Antigravity runtime pins from packages/t3code-release.json's antigravity entry"
+      )
+    )
+    (lib.optionalString (lib.hasInfix "antigravity-acp-release.json" moduleSource) (
+      fail "home/h82/t3code.nix names packages/antigravity-acp-release.json, the PATH runtime's pin, which T3 Code's managed layout must not read"
+    ))
+  ];
 
   assertModule =
     let
@@ -808,6 +853,7 @@ pkgs.runCommand "t3code-traits" { } ''
   )}
   ${lib.concatMapStrings assertFixture (lib.filter (entry: entry.bootstrap) fixtures)}
   ${assertModule}
+  ${assertPinSource}
 
   [ "$fail" = 0 ] || exit 1
   touch "$out"

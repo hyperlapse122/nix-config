@@ -7,10 +7,18 @@
   Engineering's Antigravity route on every Home Manager user
   `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, production
   and bootstrap alike), by reading each user's built home.path. The expected
-  runtime is the packages/antigravity-acp.nix expression home/h82/t3code.nix
-  links into T3 Code's managed layout and tests/t3code-traits.nix compares
-  against. tests/antigravity-acp-path.nix runs the wrapper; this check proves
-  the profile holds it.
+  runtime is packages/antigravity-acp.nix built from
+  packages/antigravity-acp-release.json, not from the T3 Code pin that
+  home/h82/t3code.nix links into T3 Code's managed layout.
+  tests/antigravity-acp-path.nix runs the wrapper; this check proves the
+  profile holds it.
+
+  The two pins may name the same release, and then the profiles cannot tell
+  which one the PATH package reads. So the package's source must also read
+  its runtime from antigravity-acp-release.json and never name
+  t3code-release.json. The check reads the source text rather than importing
+  a rewritten copy: `nix flake check --no-build` evaluates read-only, where a
+  builtins.toFile copy is never written to the store and cannot be imported.
 
   macOS users are covered by tests/darwin-outputs.nix, which only a macOS
   builder can build.
@@ -28,7 +36,16 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
-  runtimeDir = "${import ../packages/antigravity-acp.nix { inherit pkgs; }}/libexec/antigravity-acp";
+  runtimeDir = "${
+    import ../packages/antigravity-acp.nix {
+      inherit pkgs;
+      pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
+    }
+  }/libexec/antigravity-acp";
+
+  pathPackageSource = builtins.readFile ../packages/antigravity-acp-path.nix;
+  readsPathPin = lib.hasInfix "builtins.readFile ./antigravity-acp-release.json" pathPackageSource;
+  namesT3Pin = lib.hasInfix "t3code-release.json" pathPackageSource;
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -40,6 +57,13 @@ pkgs.runCommand "antigravity-acp-path-profiles-tests" { } ''
   ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
+
+  ${lib.optionalString (!readsPathPin) ''
+    echo "packages/antigravity-acp-path.nix does not read its default runtime from antigravity-acp-release.json" >> "$failures"
+  ''}
+  ${lib.optionalString namesT3Pin ''
+    echo "packages/antigravity-acp-path.nix names t3code-release.json, T3 Code's pin, which the PATH runtime must not read" >> "$failures"
+  ''}
 
   checkUser() (
     user=$1 homePath=$2

@@ -37,7 +37,10 @@ let
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
-  antigravity = import ../../packages/antigravity-acp.nix { inherit pkgs; };
+  antigravity = import ../../packages/antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
+  };
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
@@ -73,6 +76,13 @@ let
         driver = "codex";
         enabled = false;
         config.launchArgs = "";
+      };
+      # The grok on PATH is the wrapper that disables self-update, so no
+      # binaryPath is needed. Grok signs in once per host with `grok login`
+      # and keeps its token in ~/.grok/auth.json, never in this file.
+      grok = {
+        driver = "grok";
+        enabled = true;
       };
       # The opencode on PATH is the wrapper that carries the API key, so no
       # binaryPath is needed and the key never reaches this file.

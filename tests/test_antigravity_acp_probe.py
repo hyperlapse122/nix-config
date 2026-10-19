@@ -2,13 +2,15 @@
 
 The probe itself needs a signed-in Antigravity instance home and the network,
 so no check runs it. These tests cover the parts that need neither: how the
-answer's rule sections become verdicts, and how the global rule file the probe
-plants in the instance home is removed again, including after a failed run.
+answer's rule sections become verdicts, how the global rule file the probe
+plants in the instance home is removed again, including after a failed run,
+and which pin file verifies a version.
 """
 
 import importlib.machinery
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -151,6 +153,47 @@ class GlobalRuleCleanupTests(unittest.TestCase):
 
     def test_stale_cleanup_without_a_rules_directory_is_a_no_op(self):
         self.assertEqual(probe.remove_stale_global_rules(self.home / 'config' / 'rules'), [])
+
+
+class PinnedReleaseTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        self.t3 = t3 = root / 't3code-release.json'
+        t3.write_text(json.dumps({'antigravity': {'x86_64-linux': {'version': '1.3.0', 'sha256': 't3'}}}))
+        path = root / 'antigravity-acp-release.json'
+        path.write_text(json.dumps({'platforms': {'x86_64-linux': {'version': '1.4.1', 'sha256': 'path'}}}))
+        patcher = mock.patch.object(probe, 'PACKAGES', root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_each_pin_file_verifies_its_own_version(self):
+        self.assertEqual(probe.pinned_release('x86_64-linux', '1.3.0')['sha256'], 't3')
+        self.assertEqual(probe.pinned_release('x86_64-linux', '1.4.1')['sha256'], 'path')
+
+    def test_a_version_neither_file_pins_is_unpinned(self):
+        self.assertIsNone(probe.pinned_release('x86_64-linux', '1.4.0'))
+
+    def assert_unreadable(self, message):
+        with self.assertRaises(probe.ProbeError) as raised:
+            probe.pinned_release('x86_64-linux', '1.3.0')
+        self.assertIn(f'cannot read the pinned runtime from {self.t3}', str(raised.exception))
+        self.assertIn(message, str(raised.exception))
+
+    def test_an_unreadable_pin_file_is_a_probe_error(self):
+        self.t3.write_text('{not json')
+        self.assert_unreadable('JSONDecodeError')
+        self.t3.unlink()
+        self.assert_unreadable('FileNotFoundError')
+
+    def test_a_record_without_a_version_is_a_probe_error(self):
+        self.t3.write_text(json.dumps({'antigravity': {'x86_64-linux': {'sha256': 't3'}}}))
+        self.assert_unreadable("KeyError('version')")
+
+    def test_a_record_that_is_not_an_object_is_a_probe_error(self):
+        self.t3.write_text(json.dumps({'antigravity': {'x86_64-linux': '1.3.0'}}))
+        self.assert_unreadable('TypeError')
 
 
 if __name__ == '__main__':

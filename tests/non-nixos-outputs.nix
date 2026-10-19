@@ -23,6 +23,9 @@
   - on fixtures of the builder's own architecture, the Tokscale and OpenCode
     wrappers and the registry credential helper read the tokens host-secrets
     publishes, not /run/secrets, which a non-NixOS host does not have;
+  - on fixtures of the builder's own architecture, grok on the profile's PATH
+    resolves to the packaged Grok Build wrapper, and the profile has no
+    `agent` executable;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
@@ -169,6 +172,7 @@ let
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
       opencode = packageNamed "opencode";
+      grok = packageNamed "grok-build";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -191,6 +195,19 @@ let
             ''
               if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/synthetic_api_key'"} ${opencode}/bin/opencode; then
                 ${fail "${entry.name}: the opencode wrapper does not read ${state}/synthetic_api_key"}
+              fi
+            ''
+        )
+        (
+          if grok == null then
+            fail "${entry.name}: no grok-build in home.packages"
+          else
+            ''
+              if [ "$(readlink -f ${hm.home.path}/bin/grok || true)" != ${grok}/bin/grok ]; then
+                ${fail "${entry.name}: grok on PATH is not the grok-build wrapper"}
+              fi
+              if [ -e ${hm.home.path}/bin/agent ] || [ -L ${hm.home.path}/bin/agent ]; then
+                ${fail "${entry.name}: the profile puts an agent executable on PATH"}
               fi
             ''
         )

@@ -1,0 +1,111 @@
+schema_version: 1
+sources:
+  gh-issues:
+    cursor: "2026-10-19T04:12:42Z"
+items:
+  "gh-issues:hyperlapse122/nix-config#247":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Configure CE cross-model peers and ce-work delegation at user scope. Moves the review and delegation config from each checkout's .compound-engineering/config*.yaml to user scope so every repo on every host shares it."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#247"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/247"
+    updatedAt: "2026-10-19T02:51:29Z"
+  "gh-issues:hyperlapse122/nix-config#249":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Add the Grok Build CLI to every host. Installs xAI's grok CLI on every host kind, pinned and updated like OpenCode and the Antigravity CLI, for use as a CE cross-model reviewer."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#249"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/249"
+    updatedAt: "2026-10-19T02:52:38Z"
+  "gh-issues:hyperlapse122/nix-config#250":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Authenticate Grok Build and enable T3 Code's Grok provider. After #249, confirm non-interactive auth, provision the credential, and enable the provider. Blocked by #249."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#250"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/250"
+    updatedAt: "2026-10-19T02:52:39Z"
+  "gh-issues:hyperlapse122/nix-config#251":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Put the Antigravity ACP runtime on the PATH for CE. Puts agy_acp_server.par and localharness_external on the user's PATH so Compound Engineering's Antigravity route can find them (needed by #247)."
+    fix_ref: "#255"
+    verified_merge_sha: "d66dcf146f548aff5097c308d730c5cf6f43221b"
+    verified_at: "2026-10-19T04:18:44Z"
+    author_class: "teammate"
+    claimed_fix_ref: null
+    closeout_decision: "user confirmed in decision round"
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#251"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/251"
+    updatedAt: "2026-10-19T02:51:26Z"
+  "gh-issues:hyperlapse122/nix-config#252":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Work around CE's Antigravity route limits in agent instructions. Adds a workaround to the shared agent instructions for two upstream limits found in #251 that break the route on Linux."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#252"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/252"
+    updatedAt: "2026-10-19T03:22:44Z"
+  "gh-issues:hyperlapse122/nix-config#254":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Make the agent instructions require applying every review finding. Tightens the review-findings section of the shared agent instructions so agents apply every finding instead of parking one behind an accepted trade-off."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#254"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/254"
+    updatedAt: "2026-10-19T03:31:25Z"
+  "gh-issues:hyperlapse122/nix-config#256":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Use the latest Antigravity ACP runtime outside T3 Code. Gives non-T3 Code uses of the runtime the newest build Google publishes, with its own pin and an automated update."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#256"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/256"
+    updatedAt: "2026-10-19T04:12:42Z"
+last_run:
+  timestamp: "2026-10-19T04:19:06Z"
+  outcome: "completed"
+  writer: "sweep-MS-7D91-t3bb0cbbc9-2026-10-19"
+  counts:
+    gh-issues:
+      ack_deferred: 0
+      acknowledged: 7
+      closed: 1
+      ingested: 7
+      media_analyzed: 0

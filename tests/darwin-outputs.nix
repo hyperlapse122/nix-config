@@ -17,6 +17,9 @@
     profile's `podman`, the machine watchdog's agent abandons its process
     group at interactive priority, a login agent exports the socket to GUI
     apps, and the minikube login agent exists in production only;
+  - the session and a login agent at load set CROSS_MODEL_PEERS to the
+    peers the installed packages call for (tests/lib/cross-model-peers.nix)
+    and CROSS_MODEL_MAX_PEERS to 2;
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -25,9 +28,11 @@
   - the opencode wrapper on PATH reads its key from the state directory
     host-secrets publishes to, and activation merges the declared OpenCode
     config into ~/.config/opencode/opencode.json after writeBoundary;
-  - agy_acp_server.par on PATH is a wrapper that execs the pinned Antigravity
-    runtime and sets no SSL_CERT_FILE, and localharness_external beside it
-    resolves into the same runtime;
+  - grok on PATH resolves to the grok-build wrapper, which turns its
+    self-updater off, and the profile has no `agent` executable;
+  - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
+    packages/antigravity-acp-release.json pins and sets no SSL_CERT_FILE, and
+    localharness_external beside it resolves into the same runtime;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -65,6 +70,7 @@ let
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
   androidPin = import ./lib/android-pin.nix { inherit lib; };
+  expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -85,8 +91,13 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
+      peers = lib.concatStringsSep "," (expectedPeers user.my.kind user.home.packages);
+      grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       antigravityRuntime = "${
-        import ../packages/antigravity-acp.nix { inherit (entry.host) pkgs; }
+        import ../packages/antigravity-acp.nix {
+          inherit (entry.host) pkgs;
+          pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
+        }
       }/libexec/antigravity-acp";
     in
     ''
@@ -152,6 +163,14 @@ let
         *'launchctlsetenvTESTCONTAINERS_DOCKER_SOCKET_OVERRIDE/var/run/docker.sock'*) ;;
         *) bad "no login agent exports the VM's Docker socket to GUI apps" ;;
       esac
+      grep -Fxq 'export CROSS_MODEL_PEERS="${peers}"' "$vars" \
+        || bad "the session does not set CROSS_MODEL_PEERS to ${peers}"
+      grep -Fxq 'export CROSS_MODEL_MAX_PEERS="2"' "$vars" || bad "the session does not set CROSS_MODEL_MAX_PEERS to 2"
+      peeragent=$(agent cross-model-peers)
+      case $peeragent in
+        *'launchctlsetenvCROSS_MODEL_PEERS${peers}/bin/launchctlsetenvCROSS_MODEL_MAX_PEERS2'*'<key>RunAtLoad</key><true/>'*) ;;
+        *) bad "no login agent sets CROSS_MODEL_PEERS to ${peers} and CROSS_MODEL_MAX_PEERS to 2 for GUI apps" ;;
+      esac
       minikube=$(agent minikube)
       if [ "$production" = 1 ]; then
         case $minikube in *minikube-darwin-start*'<key>RunAtLoad</key><true/>'*) ;; *) bad "the minikube login agent is missing" ;; esac
@@ -213,6 +232,16 @@ let
         bad "no opencode on PATH"
       elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
+      fi
+
+      grok=$(readlink -f "$gen/home-path/bin/grok" || true)
+      if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
+        bad "grok on PATH is not the grok-build wrapper"
+      elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
+        bad "the grok wrapper does not turn its self-updater off"
+      fi
+      if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
+        bad "the profile puts an agent executable on PATH"
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the

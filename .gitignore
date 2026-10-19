@@ -26,3 +26,6 @@ agents.lock
 /.claude
 /.claude-plugin
 /.opencode
+/.grok
+.compound-engineering/*.local.yaml
+.compound-engineering/artifacts/feedback-sweep/*.lock

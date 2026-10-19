@@ -151,10 +151,16 @@
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
+        grok-build-release = agentTools.grokBuildRelease;
+        grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
-        antigravity-acp = import ./packages/antigravity-acp.nix { inherit pkgs; };
+        antigravity-acp = import ./packages/antigravity-acp.nix {
+          inherit pkgs;
+          pins = (builtins.fromJSON (builtins.readFile ./packages/t3code-release.json)).antigravity;
+        };
+        antigravity-acp-release = agentTools.antigravityAcpRelease;
         antigravity-acp-path = import ./packages/antigravity-acp-path.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
@@ -202,6 +208,22 @@
           # The user package with this pname, or null when none is installed.
           userPackageOf =
             pname: entry: pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+
+          # Home Manager file targets of one user environment.
+          homeFileTargets =
+            entry: map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }));
+
+          # Runs a stdlib Python test against a copy of the one script it drives.
+          pythonScriptCheck =
+            name: script: test:
+            pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests
+              cp ${script} scripts/${baseNameOf script}
+              cp ${test} tests/${baseNameOf test}
+              python tests/${baseNameOf test}
+              touch $out
+            '';
 
           # Every store-path interpolation stays inside an optionalString guard so
           # that removing the package fails inside the builder with the message
@@ -294,29 +316,15 @@
                 touch $out
               '';
           restore-age-identity =
-            pkgs.runCommand "restore-age-identity-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/restore-age-identity} scripts/restore-age-identity
-                cp ${./tests/restore-age-identity.py} tests/restore-age-identity.py
-                python tests/restore-age-identity.py
-                touch $out
-              '';
+            pythonScriptCheck "restore-age-identity" ./scripts/restore-age-identity
+              ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
           antigravity-acp-probe =
-            pkgs.runCommand "antigravity-acp-probe-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/antigravity-acp-probe} scripts/antigravity-acp-probe
-                cp ${./tests/test_antigravity_acp_probe.py} tests/test_antigravity_acp_probe.py
-                python tests/test_antigravity_acp_probe.py
-                touch $out
-              '';
+            pythonScriptCheck "antigravity-acp-probe" ./scripts/antigravity-acp-probe
+              ./tests/test_antigravity_acp_probe.py;
           agent-settings =
             let
               tools = import ./packages/agent-tools.nix { inherit pkgs; };
@@ -456,81 +464,33 @@
                 touch $out
               '';
           agent-plugin-release =
-            pkgs.runCommand "agent-plugin-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/agent-plugin-release} scripts/agent-plugin-release
-                cp ${./tests/test_agent_plugin_release.py} tests/test_agent_plugin_release.py
-                python tests/test_agent_plugin_release.py
-                touch $out
-              '';
+            pythonScriptCheck "agent-plugin-release" ./scripts/agent-plugin-release
+              ./tests/test_agent_plugin_release.py;
           claude-desktop-release =
-            pkgs.runCommand "claude-desktop-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/claude-desktop-release} scripts/claude-desktop-release
-                cp ${./tests/test_claude_desktop_release.py} tests/test_claude_desktop_release.py
-                python tests/test_claude_desktop_release.py
-                touch $out
-              '';
+            pythonScriptCheck "claude-desktop-release" ./scripts/claude-desktop-release
+              ./tests/test_claude_desktop_release.py;
           wifiman-desktop-release =
-            pkgs.runCommand "wifiman-desktop-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/wifiman-desktop-release} scripts/wifiman-desktop-release
-                cp ${./tests/test_wifiman_desktop_release.py} tests/test_wifiman_desktop_release.py
-                python tests/test_wifiman_desktop_release.py
-                touch $out
-              '';
+            pythonScriptCheck "wifiman-desktop-release" ./scripts/wifiman-desktop-release
+              ./tests/test_wifiman_desktop_release.py;
           claude-code-release =
-            pkgs.runCommand "claude-code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/claude-code-release} scripts/claude-code-release
-                cp ${./tests/test_claude_code_release.py} tests/test_claude_code_release.py
-                python tests/test_claude_code_release.py
-                touch $out
-              '';
-          mise-release = pkgs.runCommand "mise-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            export PYTHONDONTWRITEBYTECODE=1
-            mkdir -p scripts tests
-            cp ${./scripts/mise-release} scripts/mise-release
-            cp ${./tests/test_mise_release.py} tests/test_mise_release.py
-            python tests/test_mise_release.py
-            touch $out
-          '';
+            pythonScriptCheck "claude-code-release" ./scripts/claude-code-release
+              ./tests/test_claude_code_release.py;
+          mise-release = pythonScriptCheck "mise-release" ./scripts/mise-release ./tests/test_mise_release.py;
           opencode-release =
-            pkgs.runCommand "opencode-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/opencode-release} scripts/opencode-release
-                cp ${./tests/test_opencode_release.py} tests/test_opencode_release.py
-                python tests/test_opencode_release.py
-                touch $out
-              '';
+            pythonScriptCheck "opencode-release" ./scripts/opencode-release
+              ./tests/test_opencode_release.py;
           antigravity-cli-release =
-            pkgs.runCommand "antigravity-cli-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/antigravity-cli-release} scripts/antigravity-cli-release
-                cp ${./tests/test_antigravity_cli_release.py} tests/test_antigravity_cli_release.py
-                python tests/test_antigravity_cli_release.py
-                touch $out
-              '';
-          t3code-release = pkgs.runCommand "t3code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            export PYTHONDONTWRITEBYTECODE=1
-            mkdir -p scripts tests
-            cp ${./scripts/t3code-release} scripts/t3code-release
-            cp ${./tests/test_t3code_release.py} tests/test_t3code_release.py
-            python tests/test_t3code_release.py
-            touch $out
-          '';
+            pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
+              ./tests/test_antigravity_cli_release.py;
+          grok-build-release =
+            pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
+              ./tests/test_grok_build_release.py;
+          antigravity-acp-release =
+            pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
+              ./tests/test_antigravity_acp_release.py;
+          t3code-release =
+            pythonScriptCheck "t3code-release" ./scripts/t3code-release
+              ./tests/test_t3code_release.py;
           t3code-antigravity-install =
             pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -635,25 +595,11 @@
               touch $out
             '';
           publish-cli-auth =
-            pkgs.runCommand "publish-cli-auth-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/publish-cli-auth} scripts/publish-cli-auth
-                cp ${./tests/test_publish_cli_auth.py} tests/test_publish_cli_auth.py
-                python tests/test_publish_cli_auth.py
-                touch $out
-              '';
+            pythonScriptCheck "publish-cli-auth" ./scripts/publish-cli-auth
+              ./tests/test_publish_cli_auth.py;
           docker-credential-sops =
-            pkgs.runCommand "docker-credential-sops-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/docker-credential-sops} scripts/docker-credential-sops
-                cp ${./tests/test_docker_credential_sops.py} tests/test_docker_credential_sops.py
-                python tests/test_docker_credential_sops.py
-                touch $out
-              '';
+            pythonScriptCheck "docker-credential-sops" ./scripts/docker-credential-sops
+              ./tests/test_docker_credential_sops.py;
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
@@ -988,9 +934,7 @@
               assertUser =
                 entry:
                 let
-                  codexFiles = builtins.filter (pkgs.lib.hasPrefix ".codex/") (
-                    map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }))
-                  );
+                  codexFiles = builtins.filter (pkgs.lib.hasPrefix ".codex/") (homeFileTargets entry);
                 in
                 ''
                   ${pkgs.lib.optionalString (userPackageOf "codex" entry != null) ''
@@ -1092,6 +1036,52 @@
             pkgs.runCommand "antigravity-cli-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          grok-build =
+            let
+              # The wrapper variable, not a settings file, keeps grok from
+              # updating itself under any HOME, such as T3 Code's per-provider homes.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-build-release.json)).version;
+              assertUser =
+                entry:
+                let
+                  grokPkg = userPackageOf "grok-build" entry;
+                  grokFiles = builtins.filter (target: target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) (
+                    homeFileTargets entry
+                  );
+                  versionMismatch = pkgs.lib.optionalString (grokPkg != null && grokPkg.version != pinnedVersion) ''
+                    echo "grok-build on ${entry.name} is built from version '${grokPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  wrapper = pkgs.lib.optionalString (grokPkg != null) ''
+                    if ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" ${grokPkg}/bin/grok; then
+                      echo "grok on ${entry.name} does not turn its self-updater off" >&2
+                      fail=1
+                    fi
+                    if [ -e ${grokPkg}/bin/agent ] || [ -L ${grokPkg}/bin/agent ]; then
+                      echo "grok-build on ${entry.name} puts an agent executable on PATH" >&2
+                      fail=1
+                    fi
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "grok-build";
+                    executables = [ "grok" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${wrapper}
+                  ${pkgs.lib.optionalString (grokFiles != [ ]) ''
+                    echo 'Home Manager manages files under ~/.grok on ${entry.name}, which Grok owns: ${toString grokFiles}' >&2
+                    fail=1
+                  ''}
+                '';
+            in
+            pkgs.runCommand "grok-build-tests" { } ''
+              set -x
+              ${forEveryUser assertUser}
               touch $out
             '';
           t3code =

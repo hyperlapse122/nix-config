@@ -12,10 +12,17 @@
   session/prompt, so on Linux the wrapper supplies a bundle when the caller set
   none: the first system bundle that exists, so local CAs still apply, then
   the nixpkgs one.
+
+  The runtime defaults to packages/antigravity-acp-release.json, which
+  scripts/antigravity-acp-release keeps at Google's newest complete release.
+  T3 Code's managed layout keeps the runtime its own pin names.
 */
 {
   pkgs,
-  runtime ? import ./antigravity-acp.nix { inherit pkgs; },
+  runtime ? import ./antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ./antigravity-acp-release.json)).platforms;
+  },
   caBundles ? [
     "/etc/ssl/certs/ca-certificates.crt"
     "/etc/pki/tls/certs/ca-bundle.crt"
