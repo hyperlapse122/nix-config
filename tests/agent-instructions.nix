@@ -55,8 +55,9 @@
     sentence is pinned, so a rule elsewhere cannot restore the blocking wait
     for a run with a person present.
   - the file names no removed section, harness, model, or rule, matched
-    without regard to case, and carries no template action (`{{`, `}}`,
-    `<no value>`) or unrendered `@name@` placeholder.
+    without regard to case, carries no unescaped tilde outside a code span,
+    and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
+    `@name@` placeholder.
 
   The expected sentences and the peer literals are written here, not read from
   the module, so a mutation of the instruction file turns this red.
@@ -215,10 +216,10 @@ let
   # Each `\\~` is one literal backslash and tilde: Nix drops the backslash of
   # an unknown escape in a double-quoted string.
   markdownSentences = [
-    "When you write a range in text that renders as Markdown, in any language, use a dash, as in `1-3` or `10:00-12:00`, or escape the tilde, as in `1\\~3`, so a pair of tildes never renders as strikethrough."
-    "Treat a tilde that marks an approximation, such as `~5 min`, the same way: write \"about 5 min\" or `\\~5 min`."
+    "When you write a range in text that renders as Markdown, in any language, write it in prose, not in a code span, with a dash, as in `1-3` or `10:00-12:00`, or an escaped tilde, as in `1\\~3`, and never with a bare `~` or `~~`, so tildes never render as strikethrough."
+    "Treat a tilde that marks an approximation, such as `~5 min`, the same way: write \"about 5 min\" or `\\~5 min` in prose, not in a code span."
     "This covers chat replies, pull request and issue bodies and comments, and Markdown documents; put any other tilde, such as a path like `~/.config` or a Git revision like `HEAD~1`, in a code span, and leave a tilde inside a code span or code block as it is."
-    "In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word and never with `\\~`."
+    "In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word, and an approximation with a word, and never with `\\~`."
   ];
 
   reviewFindingsHeading = "# Review findings";
@@ -441,7 +442,8 @@ let
   # dropped, splitting after each full stop. A pinned sentence must not hold
   # a full stop followed by a space, such as "e.g. ".
   sectionSentences = heading: ''
-    awk -v h=${esc heading} '
+    h=${esc heading} awk '
+      BEGIN { h = ENVIRON["h"] }
       $0 == h { inside = 1; next }
       /^# / { inside = 0 }
       inside { sub(/^ *- /, ""); gsub(/\. /, ".\n"); print }
@@ -542,7 +544,8 @@ let
         fi
       done
       outside=$(mktemp)
-      awk -v t=${esc t3CodeHeading} -v c=${esc compoundEngineeringHeading} '
+      t=${esc t3CodeHeading} c=${esc compoundEngineeringHeading} awk '
+        BEGIN { t = ENVIRON["t"]; c = ENVIRON["c"] }
         /^# / { inside = ($0 == t || $0 == c) }
         !inside { print }
       ' "$file" > "$outside"
@@ -558,6 +561,20 @@ let
           failed=1
         fi
       done
+      if awk '
+        {
+          line = $0
+          gsub(/`[^`]*`/, "", line)
+          if (line ~ /(^|[^\\])~/) {
+            print $0
+            found = 1
+          }
+        }
+        END { exit !found }
+      ' "$file" >&2; then
+        echo ${esc "${label} carries an unescaped tilde outside a code span"} >&2
+        failed=1
+      fi
       if grep -qE '\{\{|\}\}|<no value>|@[A-Za-z_]+@' "$file"; then
         echo ${esc "${label} carries an unrendered template action or placeholder"} >&2
         failed=1

@@ -64,10 +64,10 @@ GitHub-flavored Markdown treats a single pair of tildes as strikethrough. Korean
 The implementer may adjust the wording, provided the sentences still satisfy R1-R5 and KTD3, and at least one keeps a literal `\~` (R4):
 
 ```text
-When you write a range in text that renders as Markdown, in any language, use a dash, as in `1-3` or `10:00-12:00`, or escape the tilde, as in `1\~3`, so a pair of tildes never renders as strikethrough.
-Treat a tilde that marks an approximation, such as `~5 min`, the same way: write "about 5 min" or `\~5 min`.
+When you write a range in text that renders as Markdown, in any language, write it in prose, not in a code span, with a dash, as in `1-3` or `10:00-12:00`, or an escaped tilde, as in `1\~3`, and never with a bare `~` or `~~`, so tildes never render as strikethrough.
+Treat a tilde that marks an approximation, such as `~5 min`, the same way: write "about 5 min" or `\~5 min` in prose, not in a code span.
 This covers chat replies, pull request and issue bodies and comments, and Markdown documents; put any other tilde, such as a path like `~/.config` or a Git revision like `HEAD~1`, in a code span, and leave a tilde inside a code span or code block as it is.
-In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word and never with `\~`.
+In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word, and an approximation with a word, and never with `\~`.
 ```
 
 In the Nix list, each backslash in a sentence needs doubling (`\\~`), because Nix drops the backslash of an unknown escape in a double-quoted string.

@@ -67,7 +67,7 @@ requireSentences = message: sentences: ''
 
 Counting every occurrence also makes a doubled sentence fail, which the first version, which stopped at the first match on a line, could not see.
 
-`index` is a fixed-string search, so backticks, `#`, `/`, and other punctuation in the sentences need no escaping. `awk -v` processes escape sequences in the values it assigns, so the helper passes the sentence through `ENVIRON`, which keeps a backslash such as the pinned `\~` intact.
+`index` is a fixed-string search, so backticks, `#`, `/`, and other punctuation in the sentences need no escaping. `awk -v` processes escape sequences in the values it assigns, so the helper passes the sentence through `ENVIRON`, which keeps a backslash such as the pinned `\~` intact; `sectionSentences` and the confined-terms filter pass their headings through `ENVIRON` for the same reason.
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
@@ -91,7 +91,8 @@ sentencesInOrder = message: heading: sentences: ''
   expected=$(mktemp)
   actual=$(mktemp)
   printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
-  awk -v h=${esc heading} '
+  h=${esc heading} awk '
+    BEGIN { h = ENVIRON["h"] }
     $0 == h { inside = 1; next }
     /^# / { inside = 0 }
     inside { sub(/^- /, ""); gsub(/\. /, ".\n"); print }
@@ -106,7 +107,7 @@ sentencesInOrder = message: heading: sentences: ''
 
 The pinned list must then be written in section order, which also makes it read as the section does. `grep -E -- .` drops the blank lines the awk split leaves. The diff names the lines out of place.
 
-83002d4 slimmed the instructions into one file and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder`. They are back: `tests/agent-instructions.nix` applies all three to every section in `checkedSections` (today `# Review findings` and `# Compound Engineering`, both holding rules that must not be contradicted or reordered), and checks the rendered file's top-level headings against the literal `topLevelHeadings` list, so a reversal cannot hide under a new heading either. Sections outside `checkedSections` are still guarded against a separate-sentence reversal only through `removedTerms`, matched without regard to case (`grep -qiF`), which catches a reversal only when it names a banned term such as `type/short-kebab-slug`. Add a section to `checkedSections` when it comes to hold such rules.
+83002d4 slimmed the instructions into one file and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder`. They are back: `tests/agent-instructions.nix` applies all three to every section in `checkedSections` (originally `# Review findings` and `# Compound Engineering`, and today every top-level section in the file), and checks the rendered file's top-level headings against the literal `topLevelHeadings` list, so a reversal cannot hide under a new heading either. `removedTerms`, matched without regard to case (`grep -qiF`), catches retired headings, rules, and terms anywhere in the file.
 
 When a rule has a safety stop, guard the stop as its own sentence. The review-findings rule tells autonomous runs to apply the recommended fix. Without a guarded sentence for the stop that protects user decisions, deleting the stop leaves the permissive half guarded and green.
 
