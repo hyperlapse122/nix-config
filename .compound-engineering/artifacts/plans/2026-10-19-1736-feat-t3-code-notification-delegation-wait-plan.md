@@ -18,7 +18,7 @@ execution: code
 - **Open blockers:** None.
 - **Stop conditions:** Stop and report when a change would need an edit to T3 Code or the Compound Engineering plugin's files, or would weaken a pinned sentence outside the two sections this plan rewrites.
 - **Execution profile:** One instructions-and-check change with docs and a learning update, implemented by `ce-work` and shipped through `lfg`.
-- **Product Contract preservation:** Product Contract unchanged except that Outstanding Questions were resolved in place from the T3 Code bundle trace, now recorded under Dependencies / Assumptions.
+- **Product Contract preservation:** changed: R6, R7, R8 sharpened and R13, R14 added after code review — the user chose to keep the blocking wait and peer deadline for runs with no person present, and review found the question-answer and approval gaps; Outstanding Questions were resolved in place from the T3 Code bundle trace.
 
 ---
 
@@ -39,7 +39,8 @@ T3 Code already wakes the parent when an `async` child finishes. The `delegate_t
 - **Wait for delegated results by ending the turn and resuming on T3 Code's completion notification, not by blocking in `t3_thread_wait`.** The user's pain is that a blocked turn shuts them out of the conversation. (session-settled: user-directed — chosen over deferring the in-turn wait until results are needed, over a hybrid that ends the turn only for long tasks, and over keeping the 2026-10-19 in-turn wait: only ending the turn frees the thread for the user.) Governs R3, R4, R5, R6.
 - **Ending the turn to wait outranks a skill's rule against ending the turn.** Without this, `lfg` and similar skills fall back to blocking. (session-settled: user-approved — proposed in the scoping synthesis with the `lfg` conflict stated, and confirmed.) Governs R7.
 - **No `mode: "wait"`, even for a single task.** `mode: "wait"` blocks the turn the same way, so it would bring the problem back for single-task steps, at the cost of one extra turn break for short tasks. (session-settled: user-approved — proposed in the scoping synthesis with that cost stated, and confirmed.) Governs R2.
-- **Drop the cross-model peer deadline.** No in-turn tool can enforce a deadline once the turn has ended, and a hung peer sends no notification. (session-settled: user-directed — chosen over checking the deadline on each wake and over keeping an in-turn wait for peers only: the user cancels a peer that runs too long.) Governs R8.
+- **Drop the cross-model peer deadline in a run with a person present.** No in-turn tool can enforce a deadline once the turn has ended, and a hung peer sends no notification. (session-settled: user-directed — chosen over checking the deadline on each wake and over keeping an in-turn wait for peers only: the user cancels a peer that runs too long.) Governs R8.
+- **A run with no person present keeps the blocking in-turn wait and the peer deadline.** Review found that with nobody there to cancel it, a hung peer or child stalls an unattended run for good, since no notification arrives. (session-settled: user-directed — chosen over keeping no deadline everywhere and over restoring the deadline only through elapsed-time checks on each wake: nobody needs the conversation in an unattended run.) Governs R13.
 - **Change only the instructions, their check, the docs that describe them, and the learning about the old wait.** T3 Code and the Compound Engineering plugin stay untouched, as in the 2026-10-15 and 2026-10-19 delegation plans.
 
 ### Requirements
@@ -54,17 +55,19 @@ T3 Code already wakes the parent when an `async` child finishes. The `delegate_t
 - R3. After launching, the agent does the work that does not need the delegated results, and when only those results remain, ends its turn.
 - R4. When a completion notification arrives, the agent reads that task's result once with `task_status`. While other tasks the waiting step needs are still running, it ends the turn again without cancelling them. Once all have arrived, it resumes from the step that waited.
 - R5. The agent never waits for a delegated task with `t3_thread_wait`, never calls `task_status` in a loop, and never starts a sleep, timer, or background command to wake itself.
-- R6. When the user sends a message while delegated tasks are running, the agent answers it, keeps those tasks and the waiting step, and ends the turn again unless the user redirects the work.
-- R7. Ending the turn to wait for a delegated task's notification is allowed where a skill says not to end the turn, naming `lfg`'s rule not to end the turn before `<promise>DONE</promise>`, and the run continues from the step that waited.
+- R6. When the user sends a message while delegated tasks are running, the agent forwards any answer to a pending child question with `t3_pending_request_respond`, answers the rest, keeps those tasks and the waiting step, and ends the turn again unless the user redirects the work.
+- R7. Ending the turn to wait for a delegated task's notification is allowed where a skill says not to end the turn or fails when no blocking wait exists, naming `lfg`'s rule not to end the turn before `<promise>DONE</promise>` and `ce-code-review`'s reviewer collection; for such a skill a notification plus one `task_status` read is the terminal outcome, and the run continues from the step that waited.
 
 **Cross-model peers**
 
-- R8. The `# Compound Engineering` section no longer sets a deadline for peer tasks or cancels them at one; a peer's result arrives by notification like any other task, and only the user cancels a peer that runs too long.
+- R8. In a run with a person present, the `# Compound Engineering` section sets no deadline for peer tasks; a peer's result arrives by notification like any other task, and only the user cancels a peer that runs too long.
+- R13. In a run with no person present, such as a headless, scheduled, or pipeline run, the agent waits for delegated tasks inside the turn with `t3_thread_wait` on each task's run, and the peer batch keeps its shared deadline of `CROSS_MODEL_HARD_SECS` plus 10 seconds.
+- R14. When the agent ends its turn while tasks still run, it names them and says that a task paused on an approval waits for the user without a notification.
 
 **Scope, checks, and docs**
 
 - R9. The new rules apply only when the session lists T3 Code's delegation tools; the fallback to the native subagent tool stays unchanged.
-- R10. `tests/agent-instructions.nix` pins each new sentence and stops pinning the removed ones, so the check fails when a new rule is dropped, reworded, or negated, or when an in-turn wait sentence comes back.
+- R10. `tests/agent-instructions.nix` pins each new sentence and stops pinning the removed ones, so the check fails when a new rule is dropped, reworded, or negated, or when an in-turn wait term appears outside the two pinned sections.
 - R11. `docs/provisioning.md` and `docs/verification.md` describe the notification-based wait and no longer describe the in-turn wait or the peer deadline.
 - R12. The learning `.compound-engineering/artifacts/solutions/integration-issues/t3-thread-wait-cannot-carry-in-turn-delegation-waits-alone.md` and its link in `AGENTS.md` are updated or retired so no tracked guidance still tells an agent to wait in-turn.
 
@@ -125,30 +128,15 @@ flowchart TB
 ### Key Technical Decisions
 
 - KTD1. **Rewrite the wait bullets inside the existing `# T3 Code` section, in place of the six in-turn wait sentences and the `mode: "wait"` sentence.** The section already gates on the session listing T3 Code's tools (R9), and `topLevelHeadings` would reject a new heading. The launch, worktree, `clientRequestId`, dependency-ordering, pull request, and preview bullets keep their text and order.
-- KTD2. **Replace the peer deadline sentence in `# Compound Engineering` with one sentence that says peers have no deadline.** Deleting it alone would leave nothing pinned to stop a deadline from coming back; a positive sentence gives the check something to require (R8).
-- KTD3. **Add the old mechanism's distinctive terms to `removedTerms`.** `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `in-turn wait`, and `childRunId` appear in no new sentence, so the whole-file, case-insensitive guard fails if any of them returns anywhere in the instructions (R10). `t3_thread_wait` cannot join the list because the new prohibition names it.
+- KTD2. **Scope the peer deadline sentence by whether a person is present.** One pinned sentence says peers have no deadline with a person present (R8); the restored deadline sentence applies only with no person present (R13). Positive sentences give the check something to require.
+- KTD3. **Confine the unattended-wait terms to the two pinned sections.** `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `childRunId` are legitimate again for a run with no person present (R13), so they cannot be banned file-wide; the check instead fails when any of them appears outside `# T3 Code` and `# Compound Engineering`, whose every sentence is pinned (R10).
 - KTD4. **Name `t3_thread_wait` in an explicit prohibition.** Its tool description says "call again" after a timeout, which pulls an agent toward a blocking loop; silence would leave that pull unopposed (R5).
 - KTD5. **Rewrite the existing learning in place rather than delete it.** Its file name is already linked from `AGENTS.md`, and its facts about `t3_thread_wait` still hold; what changes is that the instructions no longer rely on it. Keeping the path avoids a rename that the push-time learning refresh would then have to chase (R12).
 - KTD6. **Write every new sentence without a full stop followed by a space inside it.** `sectionSentences` splits on ". ", so an internal ". " would split a pinned sentence and fail the order check.
 
 ### Rule wording
 
-`# T3 Code`, replacing the `mode: "wait"` sentence and the six sentences from "When a later step in the same turn needs the results" through "Outside those cases, this in-turn wait takes precedence", in this order. The first sentence takes the `mode: "wait"` sentence's slot; the rest take the in-turn wait sentences' slot, right after "Launch a task that needs an earlier task's result only after you have read that result."
-
-1. Never use `mode: "wait"`, even for a single task, because it holds your turn until the task finishes. (R2)
-2. After launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run. (R3)
-3. T3 Code starts your next turn with a notification naming the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call. (R4)
-4. While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived. (R4)
-5. When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again. (R4)
-6. When the user writes while delegated tasks are running, answer them, keep the tasks and the waiting step, and end your turn again unless they redirect the work. (R6)
-7. Never wait for a delegated task with `t3_thread_wait`, never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself. (R5)
-8. Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; when the results arrive, continue the same run from the step that waited. (R7)
-
-`# Compound Engineering`, replacing the sentence that begins "Run `date +%s` right after the peer batch launches":
-
-- Sentence 9: When the session lists T3 Code's delegation tools, a peer has no deadline: wait for its notification like any other delegated task, and leave cancelling a slow peer to the user. (R8, R9)
-
-The trailing (R2) to (R8) tags are traceability labels, not template text. The implementer may tighten wording as long as each R holds, KTD3 and KTD6 hold, and U2 pins the final text.
+The shipped wording is the pinned text in `tests/agent-instructions.nix` (`t3CodeSentences` and `compoundEngineeringSentences`), which the check compares to the rendered file sentence by sentence. Each sentence carries one requirement among R2 to R8, R13, and R14, and none holds a full stop followed by a space (KTD6).
 
 ### Assumptions
 
@@ -161,7 +149,7 @@ The trailing (R2) to (R8) tags are traceability labels, not template text. The i
 
 ### U1. Rewrite the wait rules in the template
 
-- **Goal:** The rendered instructions carry Rule wording sentences 1 through 9 and none of the replaced sentences.
+- **Goal:** The rendered instructions carry the Rule wording and none of the replaced sentences.
 - **Requirements:** R1, R2, R3, R4, R5, R6, R7, R8, R9; governed by the Key Decisions on notification waits (R3 to R6), the turn-ending override (R7), `mode: "wait"` (R2), and the peer deadline (R8).
 - **Dependencies:** None.
 - **Files:** `home/h82/agents/instructions/instructions.md.tmpl`.
@@ -172,7 +160,7 @@ The trailing (R2) to (R8) tags are traceability labels, not template text. The i
   4. Leave every other line unchanged; `{{ .user.gpgKey }}` stays the only template action.
 - **Patterns to follow:** The bullet style of the current `# T3 Code` section, which names each tool and mode in backticks.
 - **Test scenarios:** Covered by U2.
-- **Verification:** Each harness's rendered file holds sentences 1 to 8 once, inside `# T3 Code`, in Rule wording order, and sentence 9 once in `# Compound Engineering` where the deadline sentence was.
+- **Verification:** Each harness's rendered file holds every pinned `# T3 Code` and `# Compound Engineering` sentence once, inside its section, in order.
 
 ### U2. Pin the new sentences and guard the removed mechanism
 

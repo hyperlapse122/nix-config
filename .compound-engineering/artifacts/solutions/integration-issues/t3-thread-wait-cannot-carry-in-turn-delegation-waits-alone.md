@@ -39,18 +39,21 @@ Agents in T3 Code delegated several jobs one at a time, because the shared instr
 
 ## Solution
 
-The `# T3 Code` section of `home/h82/agents/instructions/instructions.md.tmpl` now waits by ending the turn (pinned in `tests/agent-instructions.nix`):
+The `# T3 Code` section of `home/h82/agents/instructions/instructions.md.tmpl` splits the wait by whether a person is present (pinned in `tests/agent-instructions.nix`):
 
 - Never use `mode: "wait"`, even for a single task, because it holds the turn until the task finishes.
-- After launching, do the work that needs no delegated result, and when only those results remain, end the turn so the user can talk to the agent while the tasks run.
-- T3 Code starts the next turn with a notification naming the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call.
-- While another task the waiting step needs is still running, end the turn again without cancelling it, and continue that step once every result it needs has arrived.
-- When a notification says a task has a question, read it with `t3_pending_request_read`, answer it with `t3_pending_request_respond` or ask the user, and end the turn again.
-- When the user writes while tasks are running, answer them, keep the tasks and the waiting step, and end the turn again unless they redirect the work.
-- Never wait with `t3_thread_wait`, never call `task_status` in a loop, and never start a sleep, timer, or background command to wake the agent.
-- Ending the turn to wait is allowed even where a skill says not to, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>`; the run continues from the step that waited.
+- With a person present, after launching, do the work that needs no delegated result, then end the turn so the user can talk to the agent while the tasks run.
+- When ending the turn while tasks still run, name them and say that a task paused on an approval shows "Subagent needs approval" and waits for the user, because T3 Code sends no notification for it.
+- Each notification, whether it starts the turn or arrives with a user message, names the tasks that finished or have a question; read each finished task once with `task_status`.
+- While another task the waiting step needs is still running, end the turn again without cancelling it.
+- When a notification says a task has a question, read it with `t3_pending_request_read`, answer it with `t3_pending_request_respond` or ask the user, and end the turn again; when the user's next message answers it, forward that answer with `t3_pending_request_respond`.
+- With a person present, never wait with `t3_thread_wait`; in any run, never call `task_status` in a loop or start a sleep, timer, or background command.
+- Ending the turn to wait is allowed even where a skill forbids ending the turn or fails when no blocking wait exists, such as `lfg` before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; for such a skill a notification plus one `task_status` read is the terminal outcome, and a task past the skill's time bound on resume counts as failed.
+- With no person present, such as a headless, scheduled, or pipeline run, wait inside the turn: `t3_thread_wait` on each task's `childRunId`, one `task_status` read after a timeout, a wait without `runId` while a newer run exists, and ending the turn only when no run is left to block on.
 
-The `# Compound Engineering` section drops the cross-model peer deadline: no in-turn tool can enforce one once the turn has ended, and a hung peer sends no notification. A peer's result arrives by notification like any other task, and the user cancels a slow peer.
+The `# Compound Engineering` section keeps the cross-model peer deadline only for a run with no person present, where the in-turn wait can enforce it through `timeoutMs`. With a person present a peer has no deadline: its result arrives by notification, and the user cancels a slow peer. An unattended run cannot drop the deadline, because a hung peer sends no notification and no person is there to cancel it.
+
+The check confines `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `childRunId` to the two pinned sections, so a rule added under another heading cannot restore the blocking wait for a run with a person present.
 
 ## Why This Works
 
@@ -66,6 +69,7 @@ The `# Compound Engineering` section drops the cross-model peer deadline: no in-
 ## Prevention
 
 - Before writing an agent rule that waits on T3 Code delegated work, check that it leaves the thread open to the user; a rule that blocks in a tool shuts the user out until the work ends.
+- A rule that drops a deadline or ends the turn must name who notices a hung task when no person is present; with nobody there, a missing notification stalls the run for good.
 - Map every `task_status.workState` value and `hasPendingQuestion` to the signal that reports it. A rule that re-calls a waiter must name the state that guarantees the waiter has something to block on, and "call it again" is a polling loop unless the call is bound to a specific non-terminal run.
 - The `agent-instructions` check pins the sentences but cannot show agents follow them; only a live T3 Code run with a message sent mid-delegation, a nested-work child, or a child that asks a question exercises these branches (see [Verification](../../../../docs/verification.md)).
 
