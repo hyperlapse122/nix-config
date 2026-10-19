@@ -454,6 +454,14 @@
             pkgs.linkFarm "opencode-sources" (
               pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
             );
+          # Fetches every platform's pinned Grok Bot deb so a wrong hash fails before landing.
+          grok-bot-sources =
+            let
+              release = builtins.fromJSON (builtins.readFile ./packages/grok-bot-release.json);
+            in
+            pkgs.linkFarm "grok-bot-sources" (
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
+            );
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -1127,6 +1135,36 @@
                 '';
             in
             pkgs.runCommand "grok-build-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              set -x
+              ${forEveryUser assertUser}
+              touch $out
+            '';
+          grok-bot =
+            let
+              assertUser =
+                entry:
+                let
+                  package = userPackageOf "grok-bot" entry;
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "grok-bot";
+                    executables = [ "grok-bot" ];
+                    desktopEntries = [ "grok-bot.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (package != null) ''
+                    desktopEntry=${package}/share/applications/grok-bot.desktop
+                    if [ -f "$desktopEntry" ]; then
+                      exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktopEntry")
+                      if [ -z "$exec" ] || [ "$exec" != "${package}/bin/grok-bot" ]; then
+                        echo "grok-bot.desktop Exec '$exec' does not name ${package}/bin/grok-bot on ${entry.name}" >&2
+                        fail=1
+                      fi
+                    fi
+                  ''}
+                '';
+            in
+            pkgs.runCommand "grok-bot-tests" { } ''
               set -x
               ${forEveryUser assertUser}
               touch $out
