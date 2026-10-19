@@ -45,7 +45,8 @@ The helper now accepts a sentence only when it occurs exactly once in the file a
 ```nix
 requireSentences = message: sentences: ''
   for sentence in ${lib.escapeShellArgs sentences}; do
-    if ! awk -v s="$sentence" '
+    if ! s="$sentence" awk '
+      BEGIN { s = ENVIRON["s"] }
       {
         line = $0
         while ((i = index(line, s)) > 0) {
@@ -66,7 +67,7 @@ requireSentences = message: sentences: ''
 
 Counting every occurrence also makes a doubled sentence fail, which the first version, which stopped at the first match on a line, could not see.
 
-`index` is a fixed-string search, so backticks, `#`, `/`, and other punctuation in the sentences need no escaping. `awk -v` does interpret backslash escapes, so a guarded sentence must not contain a backslash. None does today.
+`index` is a fixed-string search, so backticks, `#`, `/`, and other punctuation in the sentences need no escaping. `awk -v` processes escape sequences in the values it assigns, so the helper passes the sentence through `ENVIRON`, which keeps a backslash such as the pinned `\~` intact.
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
