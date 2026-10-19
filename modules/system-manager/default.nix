@@ -33,7 +33,10 @@ in
   # installer's copy and keeps it as nix.conf.system-manager-backup. The
   # upstream module drops the installer's build-users-group, so it is set here
   # to keep builds running as the unprivileged nixbld users.
-  imports = [ ../shared/nix-settings.nix ];
+  imports = [
+    ../shared/nix-settings.nix
+    ./grok-bot-apparmor.nix
+  ];
   nix.enable = true;
   nix.settings.build-users-group = "nixbld";
 

@@ -33,8 +33,13 @@
   - on fixtures of the builder's own architecture, the materialized system
     layer runs pcscd with the ccid reader drivers, writes a nix.conf that keeps
     builds on the nixbld users and trusts only root, and records the host and
-    variant in /etc/nix-config-host. Other architectures are proven by their
-    own build in CI.
+    variant in /etc/nix-config-host;
+  - on fixtures of the builder's own architecture, the materialized system
+    layer writes /etc/apparmor.d/nix-grok-bot, which grants userns to the
+    Home Manager Grok Bot binary, and a nix-grok-bot-apparmor.service that is
+    not masked, runs only under AppArmor, loads that profile, restarts when it
+    changes, and is wanted by multi-user.target. Other architectures are
+    proven by their own build in CI.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation.
@@ -240,6 +245,9 @@ let
         name: lib.elem name distributionOwned || lib.hasPrefix "nvidia" name || lib.hasPrefix "../" name
       ) managed;
       variant = if entry.bootstrap then "bootstrap" else "production";
+      grokBot = lib.findFirst (
+        p: (p.pname or "") == "grok-bot"
+      ) null entry.host.home.config.home.packages;
     in
     lib.concatStrings [
       (check (owned == [ ])
@@ -271,6 +279,39 @@ let
           ${fail "${entry.name}: /etc/nix-config-host does not record host ${entry.fixture}, variant ${variant}"}
         fi
       '')
+      (lib.optionalString (entry.host.system == pkgs.stdenv.hostPlatform.system) (
+        if grokBot == null then
+          fail "${entry.name}: no grok-bot in home.packages"
+        else
+          ''
+            profile=$(jq -r '.entries["apparmor.d/nix-grok-bot"].source // empty' "$sm/etcFiles/etcFiles.json")/apparmor.d/nix-grok-bot
+            if ! grep -Fxq -- ${lib.escapeShellArg ''profile "nix-grok-bot" "${grokBot}/lib/grok-bot/grok-bot" flags=(unconfined) {''} "$profile"; then
+              ${fail "${entry.name}: the AppArmor profile does not attach to the installed Grok Bot binary"}
+            fi
+            if ! grep -Eq '^[[:space:]]*userns,$' "$profile"; then
+              ${fail "${entry.name}: the AppArmor profile does not grant userns"}
+            fi
+            unit=$(jq -r '.["nix-grok-bot-apparmor.service"].storePath // empty' "$sm/services/services.json")
+            if [ -z "$unit" ] || ! grep -qx 'ConditionSecurity=apparmor' "$unit"; then
+              ${fail "${entry.name}: nix-grok-bot-apparmor.service is missing, masked, or not conditioned on AppArmor"}
+            else
+              start=$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$unit")
+              if [ -z "$start" ] || ! grep -Fxq 'profile=/etc/apparmor.d/nix-grok-bot' "$start" \
+                || ! grep -Fq '"$parser" --replace --write-cache --skip-read-cache "$profile"' "$start"; then
+                ${fail "${entry.name}: nix-grok-bot-apparmor.service does not load /etc/apparmor.d/nix-grok-bot"}
+              fi
+              triggers=$(sed -n 's/^X-Restart-Triggers=//p' "$unit")
+              target=$(readlink -f "$profile" || true)
+              if [ -z "$triggers" ] || [ ! -f "$target" ] || ! grep -Fq -- "$target" "$triggers"; then
+                ${fail "${entry.name}: nix-grok-bot-apparmor.service does not restart when the profile changes"}
+              fi
+            fi
+            units=$(jq -r '.entries["systemd/system"].source // empty' "$sm/etcFiles/etcFiles.json")/systemd/system
+            if [ "$(readlink "$units/system-manager.target.wants/nix-grok-bot-apparmor.service")" != ../nix-grok-bot-apparmor.service ]; then
+              ${fail "${entry.name}: nix-grok-bot-apparmor.service is not wanted by multi-user.target"}
+            fi
+          ''
+      ))
     ];
 
   # The T3 Code CLI trait must be exercised, or its presence assertion would
