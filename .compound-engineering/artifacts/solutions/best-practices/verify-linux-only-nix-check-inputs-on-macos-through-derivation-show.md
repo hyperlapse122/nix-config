@@ -1,6 +1,7 @@
 ---
 title: Verify a Linux-only Nix check's text inputs on macOS through nix derivation show
 date: "2026-10-16"
+last_updated: "2026-10-19"
 category: best-practices
 module: "Nix flake checks (local verification on macOS)"
 problem_type: best_practice
@@ -11,7 +12,8 @@ applies_when:
   - "The check compares files built with pkgs.writeText or another text-file builder, such as an expected declaration against a rendered one"
   - "Mutation-testing such a check locally before CI builds it"
   - "The check greps or runs a fetched upstream artifact, such as the pinned T3 Code CLI bundle in t3code-antigravity-layout"
-tags: ["mutation-testing", "fetched-artifact", "t3code", "prefetch-file", "flake-checks", "macos", "aarch64-darwin", "linux-builder", "derivation-show", "structured-attrs", "write-text", "verification"]
+  - "The check's assertions live in its builder script and read text derivations, plus built paths the script can be pointed away from, such as the sentence and section assertions of agent-instructions"
+tags: ["mutation-testing", "fetched-artifact", "t3code", "prefetch-file", "flake-checks", "macos", "aarch64-darwin", "linux-builder", "derivation-show", "structured-attrs", "write-text", "verification", "agent-instructions", "builder-script", "build-command"]
 related_components:
   - tooling
 retire_when: "The macOS host gains a Linux builder (a nix-darwin linux-builder or a remote builder), so the check builds locally"
@@ -56,14 +58,67 @@ sys.exit(0 if ok else 1)
 
 With this, the red-green loop and each mutation run locally in seconds. For issue #224, updating the expectation first produced a MISMATCH, the module change turned both files to `match`, and three mutations (the key back in `settings`, an empty `retiredKeys`, no `inherit remove`) each produced a MISMATCH again.
 
-It is a check of the inputs, not of the check. The comparison never runs the check's shell logic: the activation exercise, the merger's exit status, or the `cmp` itself. A mutation that breaks only that logic passes here. CI's `check-shards` build stays the evidence for the check as a whole, and a report should say which of the two produced each result.
+For `t3code-traits` this is a check of the inputs, not of the check. The comparison never runs the check's shell logic: the activation exercise, the merger's exit status, or the `cmp` itself. A mutation that breaks only that logic passes here. CI's `check-shards` build stays the evidence for the check as a whole, and a report should say which of the two produced each result.
 
 ## When to Apply
 
 - The check's assertion reduces to equality or content of text files the graph already holds.
 - You are on the macOS host and need red-green or mutation evidence before pushing.
 
-It does not apply to a check whose inputs are built outputs rather than text derivations, such as a host closure, or to assertions made inside the check's builder script. A fetched upstream artifact is the exception below.
+It does not apply to a check whose inputs are built outputs rather than text derivations, such as a host closure. Two exceptions follow: a check whose builder script reads text derivations and built paths it can be pointed away from, so the script can run locally, and a fetched upstream artifact.
+
+## A check whose assertions live in its builder script
+
+`agent-instructions` (`tests/agent-instructions.nix`) makes its sentence, section, order, heading, tilde, removed-term, and confined-term assertions inside the builder script of `agent-instructions-tests`, so comparing text derivations proves nothing about them. The script itself is in the graph, though: `nix derivation show -r` lists it as that derivation's `env.buildCommand`, and every file it reads is either an `expected-instructions-<harness>.md` built with `pkgs.writeText` or a delivery path under a host's `home-manager-files`, which the Mac cannot build. Each delivery path is followed a few lines later by `cmp -s "$file" <expected>`, so point it at that expected file and run the script with `bash`:
+
+```python
+import json, os, re, subprocess, sys, tempfile
+
+repo = sys.argv[1]  # git+file:// URL of a committed copy, so mutations evaluate
+drv = subprocess.check_output(
+    ["nix", "eval", "--raw", repo + "#checks.x86_64-linux.agent-instructions.drvPath"], text=True
+).strip()
+graph = json.loads(subprocess.check_output(["nix", "derivation", "show", "-r", drv], text=True))
+graph = graph.get("derivations", graph)
+work = tempfile.mkdtemp()
+local = {}
+for name, d in graph.items():
+    if re.search(r"-expected-instructions-[a-z-]+\.md\.drv$", name):
+        out = os.path.basename(d["outputs"]["out"]["path"])  # the script names the output path
+        local[out] = os.path.join(work, out)
+        open(local[out], "w").write(d["structuredAttrs"]["text"])
+tests = [k for k in graph if k.endswith("-agent-instructions-tests.drv")]
+if len(tests) != 1:
+    sys.exit("expected one agent-instructions-tests derivation, found %d" % len(tests))
+script = re.sub(
+    r"/nix/store/([a-z0-9]{32}-expected-instructions-[a-z-]+\.md)",
+    lambda m: local[m.group(1)],
+    graph[tests[0]]["env"]["buildCommand"],
+)
+lines = script.split("\n")
+for i, line in enumerate(lines):
+    if re.match(r"^file=/nix/store/[a-z0-9]{32}-home-manager-files/", line):
+        for later in lines[i : i + 12]:
+            m = re.search(r'cmp -s "\$file" (\S+);', later)
+            if m:
+                lines[i] = "file=" + m.group(1)
+                break
+path = os.path.join(work, "build.sh")
+open(path, "w").write("\n".join(lines) + '\nexit "$failed"\n')
+sys.exit(subprocess.run(["bash", path]).returncode)
+```
+
+The byte comparison becomes trivially equal, and the Git-signing assertion fails on every host because the Git config also lives in the unbuilt `home-manager-files`: on an unmodified tree the only output is four "Git on <host> does not sign with my.user.gpgKey" lines. Treat those as the baseline and read every other line as a real failure. Everything else runs for real against the expected text, which is the template with the check's literals substituted, so a template edit reaches it.
+
+Run each mutation on a scratch copy built from `git ls-files -co --exclude-standard -z` piped through `tar`, then `git init` and one commit inside the copy, and pass its `git+file://` URL; never copy `.git` (see [a copied git worktree still writes the real index](copied-git-worktree-writes-the-real-index.md)). Three traps came up while verifying the T3 Code subagent rules this way on 2026-10-19:
+
+- Name the local expected files after their output paths, hash included. A first version named them after their `.drv` files, so no output-path lookup matched and its fallback took the first expected file of each harness; every host was then compared against the fake-key fixture's text, and the run reported GPG-section failures that had nothing to do with the edit. Dropping the hash fails the same way, because the real-key and fake-key variants of a harness share the name `expected-instructions-<harness>.md`.
+- A mutation that finds its target by a sentence opening can hit another section first. "- When the session lists T3 Code's delegation tools" opens three rules in `# Compound Engineering` before the rule in `# T3 Code`, so the mutation broke the wrong section and still turned the run red. Anchor the search after the section heading, and grep the output for the assertion message the mutation should trip, not just for a non-zero count.
+- Several evaluations in parallel print `SQLite database ... is busy` warnings, which look like one extra error line. Rerun a clean tree alone before calling it dirty.
+
+On the branch that added those rules (`feature/disable-harness-subagents`, unmerged as of this writing), the clean tree produced no line beyond the baseline. Eleven mutations each failed with their targeted message on all twelve host and rendering combinations: the check covers four hosts on `x86_64-linux` (the two NixOS outputs and the x86_64 fixture with its bootstrap twin) and three renderings, because OpenCode shares the Claude Code one across its sixteen delivery paths. The mutations restored the old rule, deleted a rule, negated a rule with "Do not" or "Never", added an unpinned sentence, swapped two rules, and added text above the first heading. That last one exposed a gap the same branch closed: text above the first top-level heading escaped every assertion, because `sectionSentences` starts outside any section and the heading assertion reads only the heading lines.
+
+This runs the check's real assertions but not its build, so CI's `check-shards` build stays the evidence for the check as a whole.
 
 ## A check that reads a fetched upstream artifact
 
@@ -92,4 +147,6 @@ Without this, the only local evidence for a `checks.x86_64-linux` edit made on t
 - [Mutation testing reveals decorative assertions in a Nix flake check](mutation-testing-reveals-decorative-nix-check-assertions.md): why each guard needs a mutation that breaks it.
 - [Mutations that only break evaluation](unguarded-derivation-interpolation-defeats-nix-check-mutation-testing.md): a mutation must reach the compared text, not just fail evaluation.
 - [An unanchored grep fragment misses the argument that decides where a write lands](unanchored-grep-fragment-misses-destination-argument.md): how to choose a fragment once it matches the artifact.
+- [Substring sentence checks pass a negated instruction](substring-sentence-check-passes-a-negated-instruction.md): the sentence-start rule the `agent-instructions` assertions enforce.
+- [A copied git worktree still writes the real index](copied-git-worktree-writes-the-real-index.md): why mutation copies get their own `git init`.
 - [A T3 Code setting declared in settings.json outranks every repository's t3.json](../integration-issues/t3code-settings-json-value-outranks-repository-t3-json.md): the change this technique verified.
