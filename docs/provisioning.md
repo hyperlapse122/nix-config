@@ -205,7 +205,7 @@ Check each CLI's authentication status and test Git HTTPS access to the required
 
 ## Coding agent harness configuration
 
-Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`; OpenCode is installed by `home/h82/agents/opencode.nix` (see [OpenCode](#opencode)). Claude Code is configured in `home/h82/agents/claude.nix`, and the Gemini and Antigravity CLIs in `home/h82/agents/gemini.nix`. The shared instructions come from `home/h82/agents/instructions/` (see [Shared agent instructions](#shared-agent-instructions)).
+Coding-agent harnesses (`claude-code` and `antigravity-cli`) are installed declaratively in `home/h82/default.nix`; OpenCode is installed by `home/h82/agents/opencode.nix` (see [OpenCode](#opencode)), and Grok Build by `home/h82/agents/grok.nix`. Grok Build is pinned to xAI's stable channel in `packages/grok-build-release.json`, and its `grok` wrapper sets `GROK_DISABLE_AUTOUPDATER=1`. A `grok leader` process that is already running keeps serving the previous binary after a pin bump until it exits; nothing restarts it. Claude Code is configured in `home/h82/agents/claude.nix`, and the Gemini and Antigravity CLIs in `home/h82/agents/gemini.nix`. The shared instructions come from `home/h82/agents/instructions/` (see [Shared agent instructions](#shared-agent-instructions)).
 
 ### Which tier owns which setting
 

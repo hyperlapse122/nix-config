@@ -25,6 +25,8 @@
   - the opencode wrapper on PATH reads its key from the state directory
     host-secrets publishes to, and activation merges the declared OpenCode
     config into ~/.config/opencode/opencode.json after writeBoundary;
+  - grok on PATH resolves to the grok-build wrapper, which turns its
+    self-updater off, and the profile has no `agent` executable;
   - agy_acp_server.par on PATH is a wrapper that execs the pinned Antigravity
     runtime and sets no SSL_CERT_FILE, and localharness_external beside it
     resolves into the same runtime;
@@ -85,6 +87,7 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
+      grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       antigravityRuntime = "${
         import ../packages/antigravity-acp.nix {
           inherit (entry.host) pkgs;
@@ -216,6 +219,16 @@ let
         bad "no opencode on PATH"
       elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
+      fi
+
+      grok=$(readlink -f "$gen/home-path/bin/grok" || true)
+      if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
+        bad "grok on PATH is not the grok-build wrapper"
+      elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
+        bad "the grok wrapper does not turn its self-updater off"
+      fi
+      if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
+        bad "the profile puts an agent executable on PATH"
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the

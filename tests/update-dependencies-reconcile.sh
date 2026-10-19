@@ -29,6 +29,8 @@
 #   must warn and keep the pin rather than abort the other updates.
 # - The same holds for opencode-release and the OpenCode pin, which the push
 #   step commits on its own as `chore(packages): bump opencode to <version>`.
+# - The same holds for grok-build-release and the Grok Build pin, committed
+#   as `chore(packages): bump grok-build to <version>`.
 
 set -euo pipefail
 
@@ -104,8 +106,10 @@ setup_clone() {
   mkdir -p "$clone/packages"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
   printf '{"version": "2.0.31", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
+  printf '{"version": "1.0.62", "platforms": {}}\n' >"$clone/packages/grok-build-release.json"
   printf 'base\n' >"$clone/tracked.txt"
-  "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json
+  "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json \
+    packages/grok-build-release.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -423,3 +427,76 @@ if grep -q '^::warning' "$scratch/oc-succeeds-step.log"; then
   fail 'a succeeding opencode-release still emitted a warning'
 fi
 pass 'a succeeding opencode-release updates the pin without a warning'
+
+# --- Grok Build bump commit -------------------------------------------------
+
+read -r origin clone <<<"$(setup_clone grok)"
+grok_version=1.0.63
+printf '{"version": "%s", "platforms": {}}\n' "$grok_version" >"$clone/packages/grok-build-release.json"
+# A second changed file, so a commit that sweeps in more than the pin shows.
+printf 'changed\n' >>"$clone/tracked.txt"
+base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/grok-step.log" 2>&1 ||
+  fail "the push step failed on a Grok Build pin change: $(tail -n 5 "$scratch/grok-step.log")"
+bump_shas=$("$git_bin" --git-dir "$origin" log --format=%H \
+  --grep "^chore(packages): bump grok-build to $grok_version\$" "$base_sha..main")
+[[ -n $bump_shas && $(wc -l <<<"$bump_shas") -eq 1 ]] ||
+  fail "a Grok Build pin change did not land as exactly one bump commit: ${bump_shas:-none}"
+files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$bump_shas")
+[[ $files == packages/grok-build-release.json ]] ||
+  fail "the grok-build bump commit carries more than the pin: $files"
+pass 'a Grok Build pin change lands as its own chore(packages): bump grok-build commit'
+
+# --- Grok Build update ------------------------------------------------------
+
+grep -Eq '^[^#]*nix run \.#grok-build-release -- --output packages/grok-build-release\.json' <<<"$update_script" ||
+  fail 'the update step no longer runs grok-build-release against packages/grok-build-release.json'
+pass 'the update step runs grok-build-release against packages/grok-build-release.json'
+
+# The Grok Build part of the update step, cut the way the OpenCode part is.
+# The stable pointer can move before every platform's binary is published, so
+# grok-build-release failing must leave the pin alone and let the step go on.
+grok_script=$(awk '/^# [0-9]+\. Update Grok Build/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $grok_script ]] || fail "could not find the Grok Build part of the update step in $workflow"
+
+# run_grok_step <name> <fails>: as run_opencode_step, for the Grok Build part.
+run_grok_step() {
+  local name=$1 fails=$2 origin clone
+  read -r origin clone <<<"$(setup_clone "$name")"
+  mkdir -p "$scratch/$name-bin"
+  cat >"$scratch/$name-bin/nix" <<EOF
+#!$BASH
+if [[ $fails == 1 ]]; then
+  printf '{"version": "partial' >packages/grok-build-release.json
+  echo 'grok 1.0.63 is not published for aarch64-darwin; refusing to write an incomplete pin' >&2
+  exit 1
+fi
+printf '{"version": "1.0.63", "platforms": {}}\n' >packages/grok-build-release.json
+EOF
+  chmod +x "$scratch/$name-bin/nix"
+  (
+    cd "$clone"
+    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
+$grok_script
+echo after-grok"
+  ) >"$scratch/$name-step.log" 2>&1 ||
+    fail "the Grok Build update aborted the update step ($name): $(tail -n 5 "$scratch/$name-step.log")"
+  grep -qx after-grok "$scratch/$name-step.log" ||
+    fail "the update step stopped after the Grok Build update ($name)"
+  printf '%s\n' "$clone"
+}
+
+clone=$(run_grok_step grok-fails 1)
+grep -q '^::warning' "$scratch/grok-fails-step.log" ||
+  fail "a failing grok-build-release emitted no ::warning:: annotation: $(cat "$scratch/grok-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/grok-build-release.json) ]] ||
+  fail 'a failing grok-build-release left packages/grok-build-release.json changed'
+pass 'a failing grok-build-release warns, keeps the pin, and lets the update step go on'
+
+clone=$(run_grok_step grok-succeeds 0)
+grep -q '"1.0.63"' "$clone/packages/grok-build-release.json" ||
+  fail 'a succeeding grok-build-release did not update the pin'
+if grep -q '^::warning' "$scratch/grok-succeeds-step.log"; then
+  fail 'a succeeding grok-build-release still emitted a warning'
+fi
+pass 'a succeeding grok-build-release updates the pin without a warning'

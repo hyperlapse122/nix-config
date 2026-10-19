@@ -151,6 +151,8 @@
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
+        grok-build-release = agentTools.grokBuildRelease;
+        grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
@@ -530,6 +532,16 @@
                 cp ${./scripts/antigravity-cli-release} scripts/antigravity-cli-release
                 cp ${./tests/test_antigravity_cli_release.py} tests/test_antigravity_cli_release.py
                 python tests/test_antigravity_cli_release.py
+                touch $out
+              '';
+          grok-build-release =
+            pkgs.runCommand "grok-build-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/grok-build-release} scripts/grok-build-release
+                cp ${./tests/test_grok_build_release.py} tests/test_grok_build_release.py
+                python tests/test_grok_build_release.py
                 touch $out
               '';
           t3code-release = pkgs.runCommand "t3code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
@@ -1101,6 +1113,55 @@
             pkgs.runCommand "antigravity-cli-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
+              touch $out
+            '';
+          grok-build =
+            let
+              # The version is compared with the pin for the reason given on the
+              # claude-code check. The wrapper variable is read from the
+              # installed bin/grok, because it keeps grok from updating itself
+              # under any HOME, such as T3 Code's per-provider homes. Users of
+              # both host kinds are covered, as is the one file tree Grok owns.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-build-release.json)).version;
+              assertUser =
+                entry:
+                let
+                  grokPkg = userPackageOf "grok-build" entry;
+                  grokFiles = builtins.filter (target: target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) (
+                    map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }))
+                  );
+                  versionMismatch = pkgs.lib.optionalString (grokPkg != null && grokPkg.version != pinnedVersion) ''
+                    echo "grok-build on ${entry.name} is built from version '${grokPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  wrapper = pkgs.lib.optionalString (grokPkg != null) ''
+                    if ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" ${grokPkg}/bin/grok; then
+                      echo "grok on ${entry.name} does not turn its self-updater off" >&2
+                      fail=1
+                    fi
+                    if [ -e ${grokPkg}/bin/agent ] || [ -L ${grokPkg}/bin/agent ]; then
+                      echo "grok-build on ${entry.name} puts an agent executable on PATH" >&2
+                      fail=1
+                    fi
+                  '';
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "grok-build";
+                    executables = [ "grok" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${wrapper}
+                  ${pkgs.lib.optionalString (grokFiles != [ ]) ''
+                    echo 'Home Manager manages files under ~/.grok on ${entry.name}, which Grok owns: ${toString grokFiles}' >&2
+                    fail=1
+                  ''}
+                '';
+            in
+            pkgs.runCommand "grok-build-tests" { } ''
+              set -x
+              ${forEveryUser assertUser}
               touch $out
             '';
           t3code =

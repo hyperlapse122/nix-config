@@ -109,6 +109,14 @@ jobs:
             git checkout -- packages/opencode-release.json
           fi
 
+          # 11. Update Grok Build. The stable pointer can move before every
+          # platform's binary is published, so a failure keeps the current pin
+          # and lets the other updates through, as T3 Code's does.
+          if ! nix run .#grok-build-release -- --output packages/grok-build-release.json; then
+            echo "::warning title=Grok Build update skipped::grok-build-release failed; keeping the current pin in packages/grok-build-release.json."
+            git checkout -- packages/grok-build-release.json
+          fi
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -178,6 +186,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/opencode-release.json)
             git add packages/opencode-release.json
             git commit -m "chore(packages): bump opencode to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/grok-build-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/grok-build-release.json)
+            git add packages/grok-build-release.json
+            git commit -m "chore(packages): bump grok-build to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/t3code-release.json)" ]; then
