@@ -27,9 +27,9 @@
     config into ~/.config/opencode/opencode.json after writeBoundary;
   - grok on PATH resolves to the grok-build wrapper, which turns its
     self-updater off, and the profile has no `agent` executable;
-  - agy_acp_server.par on PATH is a wrapper that execs the pinned Antigravity
-    runtime and sets no SSL_CERT_FILE, and localharness_external beside it
-    resolves into the same runtime;
+  - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
+    packages/antigravity-acp-release.json pins and sets no SSL_CERT_FILE, and
+    localharness_external beside it resolves into the same runtime;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -91,7 +91,7 @@ let
       antigravityRuntime = "${
         import ../packages/antigravity-acp.nix {
           inherit (entry.host) pkgs;
-          pins = (builtins.fromJSON (builtins.readFile ../packages/t3code-release.json)).antigravity;
+          pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
         }
       }/libexec/antigravity-acp";
     in

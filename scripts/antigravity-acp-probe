@@ -15,8 +15,9 @@ and <GEMINI_HOME>/config/rules.
 
 The runtime is the one T3 Code installed when its version matches; otherwise
 the probe downloads the archive from Google into ~/.cache/antigravity-acp-probe
-and prints its sha256. The version packages/t3code-release.json pins must match
-its pinned digest. Any other version is trusted on its HTTPS origin alone,
+and prints its sha256. A version packages/t3code-release.json or
+packages/antigravity-acp-release.json pins must match that pin's digest and
+binary sizes. Any other version is trusted on its HTTPS origin alone,
 because no trusted digest exists for it; its extracted files are hashed once
 and rechecked on every reuse.
 
@@ -64,7 +65,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 PROG = "antigravity-acp-probe"
-RELEASE_FILE = Path(__file__).resolve().parent.parent / "packages" / "t3code-release.json"
+PACKAGES = Path(__file__).resolve().parent.parent / "packages"
+# Each pin file and the key of its per-system records: T3 Code's runtime, then the one on PATH.
+RELEASE_FILES = (("t3code-release.json", "antigravity"), ("antigravity-acp-release.json", "platforms"))
 AUTH_PREFIX = "Open the following link to authenticate the ACP server: "
 EXECUTABLE = "agy_acp_server.par"
 HARNESS = "localharness_external"
@@ -178,7 +181,7 @@ def remove_global_rule(rule, created):
 
 
 class Platform(NamedTuple):
-    system: str  # the Nix system packages/t3code-release.json pins under
+    system: str  # the Nix system the pin files pin under
     t3: str  # T3 Code's directory under ~/.t3/tools/antigravity-acp
     release_dir: str  # Google's release directory
     suffix: str  # the archive name's platform suffix
@@ -219,16 +222,17 @@ def copy_hashing(source, path):
     return digest.hexdigest()
 
 
-def pinned_release(system):
-    try:
-        return json.loads(RELEASE_FILE.read_text())["antigravity"][system]
-    except (OSError, ValueError, KeyError) as error:
-        raise ProbeError(f"cannot read the pinned runtime from {RELEASE_FILE}: {error}") from error
-
-
-def pinned_for(pin, version):
-    """The repository's pin when it pins version, or None for an unpinned version."""
-    return pin if pin["version"] == version else None
+def pinned_release(system, version):
+    """The pin record either pin file holds for version on system, or None for an unpinned version."""
+    for name, key in RELEASE_FILES:
+        path = PACKAGES / name
+        try:
+            pin = json.loads(path.read_text())[key][system]
+        except (OSError, ValueError, KeyError) as error:
+            raise ProbeError(f"cannot read the pinned runtime from {path}: {error}") from error
+        if pin["version"] == version:
+            return pin
+    return None
 
 
 def check_pinned_sizes(directory, pinned):
@@ -716,7 +720,7 @@ def probe(args):
     if not (home / "antigravity-acp" / "acp_token.json").is_file():
         raise NotSignedIn("no antigravity-acp/acp_token.json")
 
-    pinned = pinned_for(pinned_release(machine.system), args.version)
+    pinned = pinned_release(machine.system, args.version)
     managed = managed_runtime(args.base_dir, machine.t3, args.version, pinned)
     if managed:
         runtime_dir, release = managed

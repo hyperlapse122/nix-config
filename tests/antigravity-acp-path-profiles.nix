@@ -7,10 +7,16 @@
   Engineering's Antigravity route on every Home Manager user
   `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, production
   and bootstrap alike), by reading each user's built home.path. The expected
-  runtime is the packages/antigravity-acp.nix expression home/h82/t3code.nix
-  links into T3 Code's managed layout and tests/t3code-traits.nix compares
-  against. tests/antigravity-acp-path.nix runs the wrapper; this check proves
-  the profile holds it.
+  runtime is packages/antigravity-acp.nix built from
+  packages/antigravity-acp-release.json, not from the T3 Code pin that
+  home/h82/t3code.nix links into T3 Code's managed layout.
+  tests/antigravity-acp-path.nix runs the wrapper; this check proves the
+  profile holds it.
+
+  The two pins may name the same release, and then the profiles cannot tell
+  which one the PATH package reads. So the package's source is also evaluated
+  against two synthetic pins of different versions, and its default runtime
+  must take the version of the synthetic antigravity-acp-release.json.
 
   macOS users are covered by tests/darwin-outputs.nix, which only a macOS
   builder can build.
@@ -31,9 +37,43 @@ let
   runtimeDir = "${
     import ../packages/antigravity-acp.nix {
       inherit pkgs;
-      pins = (builtins.fromJSON (builtins.readFile ../packages/t3code-release.json)).antigravity;
+      pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
     }
   }/libexec/antigravity-acp";
+
+  # Records of a version no release has, so only the version is read and
+  # nothing is fetched.
+  syntheticPins =
+    version:
+    lib.genAttrs [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (_: {
+      inherit version;
+      url = "https://example.invalid/agy-acp-server-${version}.zip";
+      hash = lib.fakeHash;
+      executable.name = "agy_acp_server.par";
+      harness.name = "localharness_external";
+    });
+  syntheticT3Version = "0.0.1";
+  syntheticPathVersion = "0.0.2";
+  # The package's own source with its sibling files pointed at the synthetic
+  # pins. A sibling the replacement misses fails evaluation, since the copy
+  # has no siblings.
+  syntheticPathPackage = import (builtins.toFile "antigravity-acp-path.nix" (
+    builtins.replaceStrings
+      [ "./antigravity-acp.nix" "./antigravity-acp-release.json" "./t3code-release.json" ]
+      [
+        "${../packages/antigravity-acp.nix}"
+        (builtins.toFile "antigravity-acp-release.json" (
+          builtins.toJSON {
+            version = syntheticPathVersion;
+            platforms = syntheticPins syntheticPathVersion;
+          }
+        ))
+        (builtins.toFile "t3code-release.json" (
+          builtins.toJSON { antigravity = syntheticPins syntheticT3Version; }
+        ))
+      ]
+      (builtins.readFile ../packages/antigravity-acp-path.nix)
+  )) { inherit pkgs; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -45,6 +85,12 @@ pkgs.runCommand "antigravity-acp-path-profiles-tests" { } ''
   ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
+
+  if [ ${esc (syntheticPathPackage.version or "")} != ${esc syntheticPathVersion} ]; then
+    echo "packages/antigravity-acp-path.nix defaults to runtime ${
+      syntheticPathPackage.version or "(none)"
+    } under synthetic pins, not ${syntheticPathVersion} from antigravity-acp-release.json" >> "$failures"
+  fi
 
   checkUser() (
     user=$1 homePath=$2

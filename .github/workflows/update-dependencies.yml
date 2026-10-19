@@ -117,6 +117,15 @@ jobs:
             git checkout -- packages/grok-build-release.json
           fi
 
+          # 12. Update the Antigravity ACP runtime on PATH. Google publishes
+          # no pointer, so the helper probes candidate versions and downloads
+          # only a newer complete release. A failure keeps the current pin and
+          # lets the other updates through, as T3 Code's does.
+          if ! nix run .#antigravity-acp-release -- --output packages/antigravity-acp-release.json; then
+            echo "::warning title=Antigravity ACP runtime update skipped::antigravity-acp-release failed; keeping the current pin in packages/antigravity-acp-release.json."
+            git checkout -- packages/antigravity-acp-release.json
+          fi
+
           if [ -z "$(git status --porcelain)" ]; then
             echo "No updates detected across all targets."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -204,6 +213,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/antigravity-cli-release.json)
             git add packages/antigravity-cli-release.json
             git commit -m "chore(packages): bump antigravity-cli to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/antigravity-acp-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/antigravity-acp-release.json)
+            git add packages/antigravity-acp-release.json
+            git commit -m "chore(packages): bump antigravity-acp to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/wifiman-desktop-version.json)" ]; then

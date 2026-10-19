@@ -160,13 +160,8 @@
           inherit pkgs;
           pins = (builtins.fromJSON (builtins.readFile ./packages/t3code-release.json)).antigravity;
         };
-        antigravity-acp-path = import ./packages/antigravity-acp-path.nix {
-          inherit pkgs;
-          runtime = import ./packages/antigravity-acp.nix {
-            inherit pkgs;
-            pins = (builtins.fromJSON (builtins.readFile ./packages/t3code-release.json)).antigravity;
-          };
-        };
+        antigravity-acp-release = agentTools.antigravityAcpRelease;
+        antigravity-acp-path = import ./packages/antigravity-acp-path.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
@@ -542,6 +537,16 @@
                 cp ${./scripts/grok-build-release} scripts/grok-build-release
                 cp ${./tests/test_grok_build_release.py} tests/test_grok_build_release.py
                 python tests/test_grok_build_release.py
+                touch $out
+              '';
+          antigravity-acp-release =
+            pkgs.runCommand "antigravity-acp-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                mkdir -p scripts tests
+                cp ${./scripts/antigravity-acp-release} scripts/antigravity-acp-release
+                cp ${./tests/test_antigravity_acp_release.py} tests/test_antigravity_acp_release.py
+                python tests/test_antigravity_acp_release.py
                 touch $out
               '';
           t3code-release = pkgs.runCommand "t3code-release-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
