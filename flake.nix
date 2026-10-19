@@ -1275,6 +1275,7 @@
             touch $out
           '';
           opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
+          text-template = import ./tests/text-template.nix { inherit pkgs; };
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           vscodium = import ./tests/vscodium.nix { inherit pkgs self; };
           tokscale-wrapper =
