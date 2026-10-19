@@ -37,7 +37,7 @@ The repository writes the Compound Engineering plugin's pinned link into the `pl
 
 ## Solution
 
-Verify from the Mac, before deploying, with a scratch `OPENCODE_CONFIG` overlay. OpenCode loads it after the global file, and the wrapper leaves a caller's value alone (`scripts/opencode:48-50`):
+Verify from the Mac, before deploying, with a scratch `OPENCODE_CONFIG` overlay. OpenCode loads it after the global file, and the wrapper never sets `OPENCODE_CONFIG`, so a caller's value passes through (`tests/opencode.sh` checks both):
 
 ```sh
 overlay=$scratch/overlay.json
