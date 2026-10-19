@@ -1,8 +1,8 @@
 { pkgs, ... }:
 {
-  # Grok Build reads the shared instructions through its Claude Code
-  # compatibility (~/.claude/CLAUDE.md), and it writes its sign-in token,
-  # logs, and config under ~/.grok, so no file is declared there.
+  # Grok Build reads its own rendering of the shared instructions from
+  # ~/.grok/rules/. It writes its sign-in token, logs, and config under
+  # ~/.grok itself.
   home.packages = [ (import ../../../packages/grok-build.nix { inherit pkgs; }) ];
 
   my.agents.crossModelPeers = [ "grok" ];

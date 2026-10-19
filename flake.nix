@@ -1052,9 +1052,12 @@
                 entry:
                 let
                   grokPkg = userPackageOf "grok-build" entry;
-                  grokFiles = builtins.filter (target: target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) (
-                    homeFileTargets entry
-                  );
+                  # Allow exactly .grok/rules/instructions.md. Any other target
+                  # under ~/.grok, including config.toml, still fails below.
+                  grokFiles = builtins.filter (
+                    target:
+                    (target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) && target != ".grok/rules/instructions.md"
+                  ) (homeFileTargets entry);
                   versionMismatch = pkgs.lib.optionalString (grokPkg != null && grokPkg.version != pinnedVersion) ''
                     echo "grok-build on ${entry.name} is built from version '${grokPkg.version}', expected pin ${pinnedVersion}" >&2
                     fail=1
@@ -1062,6 +1065,10 @@
                   wrapper = pkgs.lib.optionalString (grokPkg != null) ''
                     if ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" ${grokPkg}/bin/grok; then
                       echo "grok on ${entry.name} does not turn its self-updater off" >&2
+                      fail=1
+                    fi
+                    if ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" ${grokPkg}/bin/grok; then
+                      echo "grok on ${entry.name} does not turn its Claude Code file scan off" >&2
                       fail=1
                     fi
                     if [ -e ${grokPkg}/bin/agent ] || [ -L ${grokPkg}/bin/agent ]; then
