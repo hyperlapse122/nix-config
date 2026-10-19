@@ -25,6 +25,9 @@
   - the opencode wrapper on PATH reads its key from the state directory
     host-secrets publishes to, and activation merges the declared OpenCode
     config into ~/.config/opencode/opencode.json after writeBoundary;
+  - agy_acp_server.par on PATH is a wrapper that execs the pinned Antigravity
+    runtime and sets no SSL_CERT_FILE, and localharness_external beside it
+    resolves into the same runtime;
   - the VSCodium settings merge targets Application Support;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
@@ -82,6 +85,9 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
+      antigravityRuntime = "${
+        import ../packages/antigravity-acp.nix { inherit (entry.host) pkgs; }
+      }/libexec/antigravity-acp";
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -208,6 +214,22 @@ let
       elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
       fi
+
+      # Compound Engineering's Antigravity route takes the helper from the
+      # directory agy_acp_server.par is found in. The macOS .par finds its CA
+      # bundle itself, so its wrapper only execs the pinned runtime.
+      agyPar=$(readlink -f "$gen/home-path/bin/agy_acp_server.par" || true)
+      if [ -z "$agyPar" ] || [ ! -x "$agyPar" ]; then
+        bad "no agy_acp_server.par on PATH"
+      else
+        grep -qxF ${lib.escapeShellArg "exec ${antigravityRuntime}/agy_acp_server.par \"$@\""} "$agyPar" \
+          || bad "agy_acp_server.par does not exec the pinned runtime's .par"
+        if grep -qF SSL_CERT_FILE "$agyPar"; then
+          bad "the macOS agy_acp_server.par wrapper sets SSL_CERT_FILE"
+        fi
+      fi
+      [ "$(readlink -f "$gen/home-path/bin/localharness_external" || true)" = ${lib.escapeShellArg "${antigravityRuntime}/localharness_external"} ] \
+        || bad "localharness_external on PATH is not the pinned runtime's"
 
       # The OpenCode config merge runs after writeBoundary and targets the
       # user's ~/.config/opencode/opencode.json.

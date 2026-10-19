@@ -155,6 +155,7 @@
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
         antigravity-acp = import ./packages/antigravity-acp.nix { inherit pkgs; };
+        antigravity-acp-path = import ./packages/antigravity-acp-path.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
@@ -409,6 +410,7 @@
           ghq = import ./tests/ghq.nix { inherit pkgs self; };
           git-lfs = import ./tests/git-lfs.nix { inherit pkgs self; };
           git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
+          antigravity-acp-path = import ./tests/antigravity-acp-path.nix { inherit pkgs; };
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
           mise-settings = import ./tests/mise-settings.nix {
             inherit pkgs self;
@@ -655,6 +657,10 @@
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          antigravity-acp-path-profiles = import ./tests/antigravity-acp-path-profiles.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
