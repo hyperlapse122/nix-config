@@ -152,7 +152,9 @@
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         grok-build-release = agentTools.grokBuildRelease;
+        grok-bot-release = agentTools.grokBotRelease;
         grok-build = import ./packages/grok-build.nix { inherit pkgs; };
+        grok-bot = import ./packages/grok-bot.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
@@ -208,6 +210,16 @@
           # The user package with this pname, or null when none is installed.
           userPackageOf =
             pname: entry: pkgs.lib.lists.findFirst (p: (p.pname or "") == pname) null (userPackagesOf entry);
+
+          # Fetches every platform a release pin names, not only this system's,
+          # so a wrong URL or hash for a platform no Linux job builds fails on
+          # the x86_64 updater before the pin reaches main.
+          pinnedSources =
+            name: pinFile:
+            pkgs.linkFarm name (
+              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; })
+                (builtins.fromJSON (builtins.readFile pinFile)).platforms
+            );
 
           # Home Manager file targets of one user environment.
           homeFileTargets =
@@ -432,26 +444,9 @@
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
-          # Fetches every pinned platform's tarball, not only this system's, so
-          # a wrong URL or hash for a platform no Linux job builds, such as
-          # aarch64-darwin, fails before the pin reaches main.
-          antigravity-cli-sources =
-            let
-              release = builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json);
-            in
-            pkgs.linkFarm "antigravity-cli-sources" (
-              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
-            );
-          # Fetches every platform's pinned OpenCode tarball, so a bumped pin
-          # whose aarch64 or macOS hash is wrong fails on the x86_64 updater
-          # instead of after it lands.
-          opencode-sources =
-            let
-              release = builtins.fromJSON (builtins.readFile ./packages/opencode-release.json);
-            in
-            pkgs.linkFarm "opencode-sources" (
-              pkgs.lib.mapAttrs (_: platform: pkgs.fetchurl { inherit (platform) url hash; }) release.platforms
-            );
+          antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
+          opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
+          grok-bot-sources = pinnedSources "grok-bot-sources" ./packages/grok-bot-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -489,6 +484,18 @@
           grok-build-release =
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
+          grok-bot-release =
+            let
+              tests =
+                pythonScriptCheck "grok-bot-release" ./scripts/grok-bot-release
+                  ./tests/test_grok_bot_release.py;
+            in
+            # The tests drive a copy of the script; the update workflow runs
+            # the packaged helper, so it must start too.
+            pkgs.runCommand "grok-bot-release-checks" { } ''
+              ${pkgs.lib.getExe agentTools.grokBotRelease} --help >/dev/null
+              ln -s ${tests} $out
+            '';
           antigravity-acp-release =
             pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
               ./tests/test_antigravity_acp_release.py;
@@ -1122,6 +1129,55 @@
                 '';
             in
             pkgs.runCommand "grok-build-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              set -x
+              ${forEveryUser assertUser}
+              touch $out
+            '';
+          grok-bot =
+            let
+              # The version is compared with the pin for the reason given on
+              # the claude-code check.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-bot-release.json)).version;
+              assertUser =
+                entry:
+                let
+                  package = userPackageOf "grok-bot" entry;
+                in
+                ''
+                  ${assertUserPackage {
+                    pname = "grok-bot";
+                    executables = [ "grok-bot" ];
+                    desktopEntries = [ "grok-bot.desktop" ];
+                  } entry}
+                  ${pkgs.lib.optionalString (package != null && package.version != pinnedVersion) ''
+                    echo "grok-bot on ${entry.name} is built from version '${package.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  ''}
+                  ${pkgs.lib.optionalString (package != null) ''
+                    # The app replaces itself whenever APPIMAGE is set, so the
+                    # wrapper must clear an APPIMAGE another wrapper exported.
+                    if ! grep -qxF 'unset APPIMAGE' ${package}/bin/grok-bot; then
+                      echo "grok-bot wrapper on ${entry.name} does not unset APPIMAGE" >&2
+                      fail=1
+                    fi
+                    desktopEntry=${package}/share/applications/grok-bot.desktop
+                    if [ -f "$desktopEntry" ]; then
+                      execs=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktopEntry")
+                      if [ -z "$execs" ]; then
+                        echo "grok-bot.desktop on ${entry.name} has no Exec line" >&2
+                        fail=1
+                      fi
+                      while IFS= read -r exec; do
+                        if [ -n "$exec" ] && [ "$exec" != "${package}/bin/grok-bot" ]; then
+                          echo "grok-bot.desktop Exec '$exec' does not name ${package}/bin/grok-bot on ${entry.name}" >&2
+                          fail=1
+                        fi
+                      done <<<"$execs"
+                    fi
+                  ''}
+                '';
+            in
+            pkgs.runCommand "grok-bot-tests" { } ''
               set -x
               ${forEveryUser assertUser}
               touch $out

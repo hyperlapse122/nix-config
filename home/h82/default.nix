@@ -61,6 +61,9 @@ in
     ++ lib.optionals (nixos && config.my.wifiman.enable) [
       (import ../../packages/wifiman-desktop.nix { inherit pkgs; })
     ]
+    ++ lib.optionals (hostKind != "darwin") [
+      (import ../../packages/grok-bot.nix { inherit pkgs; })
+    ]
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
       (import ../../packages/antigravity-cli.nix { inherit pkgs; })
