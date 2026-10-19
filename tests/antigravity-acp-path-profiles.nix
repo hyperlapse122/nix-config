@@ -11,7 +11,8 @@
   packages/antigravity-acp-release.json, not from the T3 Code pin that
   home/h82/t3code.nix links into T3 Code's managed layout.
   tests/antigravity-acp-path.nix runs the wrapper; this check proves the
-  profile holds it.
+  profile holds it, and that the wrapper references acp_token.json so the
+  sign-in seeding is not confined to one platform.
 
   The two pins may name the same release, and then the profiles cannot tell
   which one the PATH package reads. So the package's source must also read
@@ -89,6 +90,10 @@ pkgs.runCommand "antigravity-acp-path-profiles-tests" { } ''
     wrapper=$(readlink -f "$par")
     if ! grep -qxF 'exec ${runtimeDir}/agy_acp_server.par "$@"' "$wrapper"; then
       fail "agy_acp_server.par does not exec the pinned runtime's .par"
+    fi
+    # Present on Linux too: seeding is not gated the way the CA default is.
+    if ! grep -qF 'acp_token.json' "$wrapper"; then
+      fail "agy_acp_server.par does not seed acp_token.json"
     fi
     if ! grep -qF 'export SSL_CERT_FILE=' "$wrapper"; then
       fail "agy_acp_server.par sets no SSL_CERT_FILE default"

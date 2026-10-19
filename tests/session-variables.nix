@@ -54,9 +54,7 @@ let
     let
       environmentFile = "${entry.user.home-files}/.config/environment.d/10-home-manager.conf";
       shellFile = "${entry.user.home.sessionVariablesPackage}/etc/profile.d/hm-session-vars.sh";
-      peers = lib.escapeShellArg (
-        lib.concatStringsSep "\n" (expectedPeers entry.kind entry.user.home.packages)
-      );
+      peers = lib.escapeShellArg (lib.concatStringsSep "\n" (expectedPeers entry.user.home.packages));
     in
     ''
       if [ ! -f "${environmentFile}" ]; then
