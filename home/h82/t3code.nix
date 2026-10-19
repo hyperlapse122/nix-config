@@ -77,6 +77,13 @@ let
         enabled = false;
         config.launchArgs = "";
       };
+      # The grok on PATH is the wrapper that disables self-update, so no
+      # binaryPath is needed. Grok signs in once per host with `grok login`
+      # and keeps its token in ~/.grok/auth.json, never in this file.
+      grok = {
+        driver = "grok";
+        enabled = true;
+      };
       # The opencode on PATH is the wrapper that carries the API key, so no
       # binaryPath is needed and the key never reaches this file.
       opencode = {

@@ -146,6 +146,7 @@ let
         "antigravity"
         "claudeAgent"
         "codex"
+        "grok"
         "opencode"
       ];
     };
@@ -207,6 +208,22 @@ let
           "enabled"
         ];
         value = false;
+      }
+      {
+        path = [
+          "providerInstances"
+          "grok"
+          "driver"
+        ];
+        value = "grok";
+      }
+      {
+        path = [
+          "providerInstances"
+          "grok"
+          "enabled"
+        ];
+        value = true;
       }
       {
         path = [
