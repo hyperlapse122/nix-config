@@ -76,6 +76,21 @@ let
     key:
     "For a new SOPS setup or secret file, use the card key `${key}` as the user's recipient, plus a machine's own recipient when it must decrypt without the card.";
 
+  reviewFindingsHeading = "# Review findings";
+
+  # In section order: `sentencesInOrder` compares the section to this list.
+  reviewFindingsSentences = [
+    "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks."
+    "A skill's own apply bar, confidence threshold, or list, including `lfg`'s, does not narrow this rule."
+    "\"By design\", \"no current instance\", \"low impact\", and \"the fix has a trade-off\" are not reasons to leave a finding."
+    "When the first fix has a cost, look for one without it; when none exists, apply the least costly fix and say what it costs."
+    "Leave a finding unapplied only when you verified it is wrong, quoting the evidence, or every fix for it would weaken a safety check, and report it with that reason."
+    "List only those findings under an `Unapplied review findings` heading in the pull request body, and omit that section when there are none."
+    "When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made."
+    "When the user asked only for a review, report the findings and ask once whether to apply them all."
+    "Report what you applied in the pull request body and the final report."
+  ];
+
   pinnedSentences = [
     "# GPG and encryption"
     "Run GPG signing, decryption, and encryption yourself, including SOPS re-encryption and edits; when a pinentry dialog appears, let it reach the user."
@@ -90,10 +105,10 @@ let
     "Treat GitLab like GitHub: when a Compound Engineering skill speaks only GitHub, do the same steps with `glab`, and skip only a step with no GitLab counterpart, naming it in your report."
     "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
     "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
-    "# Review findings"
-    "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report, whatever its severity, confidence, or list, including testing gaps and residual risks."
-    "Leave a finding unapplied only when you verified it is wrong or its fix would weaken a safety check, and say why."
-    "When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made."
+    reviewFindingsHeading
+  ]
+  ++ reviewFindingsSentences
+  ++ [
     "# T3 Code"
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, delegate subagent work through them; otherwise use your native subagent tool."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
@@ -143,6 +158,65 @@ let
     done
   '';
 
+  # Prints the section under `heading` one sentence per line, list markers
+  # dropped, splitting after each full stop. A pinned sentence must not hold
+  # a full stop followed by a space, such as "e.g. ".
+  sectionSentences = heading: ''
+    awk -v h=${esc heading} '
+      $0 == h { inside = 1; next }
+      /^# / { inside = 0 }
+      inside { sub(/^ *- /, ""); gsub(/\. /, ".\n"); print }
+    ' "$file"'';
+
+  # Fails the build, naming each sentence, when the section under `heading`
+  # carries a sentence that is not one of `sentences`. A required-sentence
+  # check cannot see a separate sentence that reverses a pinned rule.
+  onlyPinnedSentences = message: heading: sentences: ''
+    if ! grep -qxF -- ${esc heading} "$file"; then
+      echo ${esc "${message} section missing:"} ${esc heading} >&2
+      failed=1
+    fi
+    allowed=$(mktemp)
+    printf '%s\n' ${lib.escapeShellArgs sentences} > "$allowed"
+    while IFS= read -r sentence; do
+      if ! grep -qxF -- "$sentence" "$allowed"; then
+        echo ${esc message} "$sentence" >&2
+        failed=1
+      fi
+    done < <(
+      ${sectionSentences heading} | grep -E -- . || true
+    )
+  '';
+
+  # Fails the build, naming each sentence, when the section under `heading`
+  # lacks it. `requireSentences` reads the whole file, so a pinned sentence
+  # moved into another section would still pass it.
+  sentencesInSection = message: heading: sentences: ''
+    present=$(mktemp)
+    ${sectionSentences heading} > "$present"
+    for sentence in ${lib.escapeShellArgs sentences}; do
+      if ! grep -qxF -- "$sentence" "$present"; then
+        echo ${esc message} "$sentence" >&2
+        failed=1
+      fi
+    done
+  '';
+
+  # Fails the build when the section under `heading`, read top to bottom, is
+  # not exactly `sentences` in that order. Membership checks pass a
+  # duplicated sentence, or one moved away from the sentence it leans on.
+  sentencesInOrder = message: heading: sentences: ''
+    expected=$(mktemp)
+    actual=$(mktemp)
+    printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
+    ${sectionSentences heading} | grep -E -- . > "$actual" || true
+    if ! cmp -s "$expected" "$actual"; then
+      echo ${esc message} >&2
+      diff "$expected" "$actual" >&2 || true
+      failed=1
+    fi
+  '';
+
   fileRules = label: key: absentKeys: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
@@ -151,6 +225,18 @@ let
       ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
         pinnedSentences ++ [ (recipientSentence key) ]
       )}
+      ${onlyPinnedSentences "${label} carries an unpinned review-findings sentence:"
+        reviewFindingsHeading
+        reviewFindingsSentences
+      }
+      ${sentencesInSection "${label} moves a review-findings sentence out of its section:"
+        reviewFindingsHeading
+        reviewFindingsSentences
+      }
+      ${sentencesInOrder "${label} reorders or duplicates a review-findings sentence:"
+        reviewFindingsHeading
+        reviewFindingsSentences
+      }
       for term in ${lib.escapeShellArgs removedTerms}; do
         if grep -qiF -- "$term" "$file"; then
           echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
