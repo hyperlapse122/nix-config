@@ -1354,6 +1354,15 @@
                 bash tests/opencode.sh scripts/opencode
                 bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
 
+                # The shared instructions reach OpenCode only as
+                # ~/.config/opencode/AGENTS.md, which no config output reports.
+                # The pinned payload must keep global instruction discovery on
+                # unless a caller passes `global: false`, which no run here does.
+                if ! grep -aqE 'project:[A-Za-z_$]+\?\.project!==!1,global:[A-Za-z_$]+\?\.global!==!1' ${packaged}/libexec/opencode/opencode; then
+                  echo "the pinned OpenCode no longer loads ~/.config/opencode/AGENTS.md by default; recheck how the shared instructions reach it" >&2
+                  exit 1
+                fi
+
                 # The pinned binary, not only the wrapper's export, must keep a
                 # checkout's opencode.json out of the process holding the key.
                 # The bare binary loading the canary proves the probe can see it.
