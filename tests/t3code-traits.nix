@@ -28,11 +28,12 @@
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity and OpenCode instances, the Claude instance's launch
-    arguments emptied, which retires the --add-dir an earlier generation
-    wrote, no environment entry upserted, and the built-in Codex instance
-    declared disabled, since Codex is no longer installed; the retired
-    `providers` block of those four instances is migrated into them first.
+    enabled Antigravity, Claude, Grok, and OpenCode instances, the Claude
+    instance's launch arguments emptied, which retires the --add-dir an
+    earlier generation wrote, no environment entry upserted, and the built-in
+    Codex instance declared disabled, since Codex is no longer installed; the
+    retired `providers` block of those five instances is migrated into them
+    first.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -193,6 +194,14 @@ let
           "driver"
         ];
         value = "claudeAgent";
+      }
+      {
+        path = [
+          "providerInstances"
+          "claudeAgent"
+          "enabled"
+        ];
+        value = true;
       }
       {
         path = [

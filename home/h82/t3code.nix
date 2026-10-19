@@ -44,11 +44,14 @@ let
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
-  # value left at its default follows T3 Code when that default changes. App
-  # state (onboarding marks, folded panels, favorites, and every provider
-  # instance field not declared here) stays the app's. T3 Code leaves its
-  # built-in Antigravity and OpenCode instances off until they are enabled,
-  # so neither shows up on its own.
+  # value left at its default follows T3 Code when that default changes. Each
+  # declared provider instance states `enabled`, even where it equals the
+  # default: claudeAgent's does, since T3 Code turns that instance on. A
+  # cleanup that drops default-valued settings must keep it, or the instance
+  # would go back to following T3 Code's default. App state (onboarding marks,
+  # folded panels, favorites, and every provider instance field not declared
+  # here) stays the app's. T3 Code leaves its built-in Antigravity and OpenCode
+  # instances off until they are enabled, so neither shows up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -66,6 +69,7 @@ let
       };
       claudeAgent = {
         driver = "claudeAgent";
+        enabled = true;
         config.launchArgs = "";
       };
       # T3 Code enables its built-in Codex instance unless one is declared.
