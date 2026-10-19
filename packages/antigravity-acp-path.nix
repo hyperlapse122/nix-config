@@ -2,9 +2,7 @@
   The Antigravity ACP runtime's two binaries in one bin/ directory on PATH,
   for Compound Engineering's Antigravity route: it finds the runtime with
   `command -v agy_acp_server.par` and takes localharness_external from the
-  same directory. Both point into the runtime packages/antigravity-acp.nix
-  builds, the one home/h82/t3code.nix links into T3 Code's managed layout, so
-  there is one pin and one store path.
+  same directory.
 
   agy_acp_server.par is a wrapper that execs the runtime by its absolute store
   path. The .par loads its embedded archive through argv[0], and acpx spawns
@@ -14,27 +12,23 @@
   session/prompt, so on Linux the wrapper supplies a bundle when the caller set
   none: the first system bundle that exists, so local CAs still apply, then
   the nixpkgs one.
-
-  `runtime` exists for tests/antigravity-acp-path.nix, which builds this
-  against a stub.
 */
 {
   pkgs,
   runtime ? import ./antigravity-acp.nix { inherit pkgs; },
+  caBundles ? [
+    "/etc/ssl/certs/ca-certificates.crt"
+    "/etc/pki/tls/certs/ca-bundle.crt"
+    "/etc/ssl/cert.pem"
+    "/etc/ssl/ca-bundle.pem"
+    "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+  ],
 }:
 
 let
   inherit (pkgs) lib;
   inherit (runtime.passthru.pin) executable harness;
   dir = "${runtime}/libexec/antigravity-acp";
-
-  caBundles = [
-    "/etc/ssl/certs/ca-certificates.crt"
-    "/etc/pki/tls/certs/ca-bundle.crt"
-    "/etc/ssl/cert.pem"
-    "/etc/ssl/ca-bundle.pem"
-    "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-  ];
 
   wrapper = pkgs.writeShellScript executable.name ''
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -54,7 +48,6 @@ pkgs.runCommand "antigravity-acp-path-${runtime.version}"
   {
     pname = "antigravity-acp-path";
     inherit (runtime) version;
-    passthru = { inherit runtime; };
     meta = {
       description = "Antigravity ACP runtime on PATH for Compound Engineering";
       inherit (runtime.meta) homepage license platforms;

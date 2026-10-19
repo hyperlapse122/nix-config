@@ -6,24 +6,17 @@
   Asserts that the Antigravity ACP runtime is on PATH for Compound
   Engineering's Antigravity route on every Home Manager user
   `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, production
-  and bootstrap alike), by reading each user's built home.path:
-
-  - bin/agy_acp_server.par and bin/localharness_external are both executable
-    in the same directory, which is where the route looks for the helper.
-  - bin/localharness_external resolves into the runtime packages/antigravity-acp.nix
-    builds, the same expression home/h82/t3code.nix links into T3 Code's
-    managed layout and tests/t3code-traits.nix compares against.
-  - bin/agy_acp_server.par is the wrapper that execs that runtime's .par by its
-    store path and defaults SSL_CERT_FILE. tests/antigravity-acp-path.nix runs
-    the wrapper; this check proves the profile holds it.
+  and bootstrap alike), by reading each user's built home.path. The expected
+  runtime is the packages/antigravity-acp.nix expression home/h82/t3code.nix
+  links into T3 Code's managed layout and tests/t3code-traits.nix compares
+  against. tests/antigravity-acp-path.nix runs the wrapper; this check proves
+  the profile holds it.
 
   macOS users are covered by tests/darwin-outputs.nix, which only a macOS
   builder can build.
 
   Every lookup carries an `or` fallback so a mutation that removes the package
   reaches the builder as a failing assertion rather than an evaluation error.
-  Each user runs in a subshell and records failures in a file, so one red
-  build names every broken assertion.
 */
 {
   pkgs,
@@ -75,6 +68,10 @@ pkgs.runCommand "antigravity-acp-path-profiles-tests" { } ''
     fi
     if ! grep -qF 'export SSL_CERT_FILE=' "$wrapper"; then
       fail "agy_acp_server.par sets no SSL_CERT_FILE default"
+    fi
+    # System bundles first, so a host's local CAs apply, and nixpkgs' last.
+    if ! grep -qE '^ *for bundle in /etc/ssl/certs/ca-certificates\.crt .* /nix/store/[^ ]+-nss-cacert-[^ ]+/etc/ssl/certs/ca-bundle\.crt; do$' "$wrapper"; then
+      fail "agy_acp_server.par does not try the system CA bundles before the nixpkgs one"
     fi
   )
 

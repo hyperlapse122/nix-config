@@ -7,16 +7,8 @@
   built against a stub runtime whose .par prints what it was started with. The
   real runtime needs network and a Google sign-in, so its behavior through the
   wrapper is verified by hand (docs/verification.md); this check proves what
-  the wrapper itself does:
-
-  - SSL_CERT_FILE unset or empty: the runtime sees an existing CA bundle. The
-    build sandbox has no /etc/ssl, so this is the nixpkgs fallback.
-  - SSL_CERT_FILE preset: the runtime sees exactly that value.
-  - arguments, including acpx's `--uid=` and one with a space, arrive verbatim
-    and in order, and stdin reaches the runtime with nothing added to stdout.
-  - argv[0] is the stub runtime's absolute store path, and the runtime runs as
-    the wrapper's own process, so the wrapper execs rather than forks.
-  - bin/localharness_external resolves to the stub runtime's helper.
+  the wrapper itself does. The build sandbox has no /etc/ssl, so the CA bundle
+  the runtime gets here is the nixpkgs fallback.
 
   Expected values come from the stub, never from the wrapper's own Nix
   expression, so a mutation of the wrapper cannot pass by changing both sides.
@@ -69,6 +61,20 @@ let
     inherit pkgs;
     runtime = stubRuntime;
   };
+
+  # The sandbox has no /etc/ssl, so the real list always falls through to its
+  # last entry. This one proves the wrapper takes the first bundle that exists.
+  firstBundle = pkgs.writeText "first-bundle.pem" "first\n";
+  secondBundle = pkgs.writeText "second-bundle.pem" "second\n";
+  orderedPackage = import ../packages/antigravity-acp-path.nix {
+    inherit pkgs;
+    runtime = stubRuntime;
+    caBundles = [
+      "/no-such-dir/bundle.pem"
+      "${firstBundle}"
+      "${secondBundle}"
+    ];
+  };
 in
 pkgs.runCommand "antigravity-acp-path-tests" { } ''
   failures=$PWD/failures
@@ -78,8 +84,6 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   wrapper=${pathPackage}/bin/agy_acp_server.par
   runtimePar=${stubRuntime}/libexec/antigravity-acp/agy_acp_server.par
 
-  # Runs the wrapper under a minimal environment as the process whose PID the
-  # first output line names. $1 is "unset", "empty", or a path to preset.
   run() {
     case $1 in
       unset) set -- env -i PATH=/no-such-dir ;;
@@ -100,6 +104,11 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
       fail "$mode SSL_CERT_FILE: the runtime got $cert, which is not a file"
     fi
   done
+
+  printf 'one line\n' | env -i PATH=/no-such-dir ${orderedPackage}/bin/agy_acp_server.par > out \
+    || fail "ordered bundles: the wrapper exited $?"
+  cert=$(field cert)
+  [ "$cert" = ${firstBundle} ] || fail "ordered bundles: the runtime got '$cert', not the first bundle that exists"
 
   preset=$PWD/preset.pem
   printf 'fixture\n' > "$preset"
