@@ -80,7 +80,7 @@ The current guide says which model each harness runs, not which harness gets a u
 - Tiers, alternation, and per-unit fallback apply only inside T3 Code, because Compound Engineering 3.31.0's own route fixes one recipient and one effort per run (`ce-work`'s `references/cross-model-execution.md`).
 - T3 Code's Antigravity instance loads no instructions file, so a `ce-work` run started in an Antigravity thread does not see this guide; that is existing behavior `docs/provisioning.md` already records.
 - Considered and not built: a check that the named model ids exist in T3 Code's live catalog. The catalog is per machine and per login, so no build can read it; the Goal Capsule's stop condition and the hardware check U3 adds to `docs/verification.md` cover a renamed id.
-- Considered and not built: changing the top-level `effortLevel = "medium"` in `home/h82/agents/claude.nix`. R2's explicit effort on every Claude launch already decides the worker's effort, so the session default never reaches a worker.
+- `home/h82/agents/claude.nix` retires its top-level `effortLevel` and sets `medium` for Opus 5.5 alone under `modelSettings`, at the user's choice on 2026-10-19 during PR review. In user settings Claude Code ignores a top-level `effortLevel` for Opus 5.5 and later, so the old key never reached Opus 5.5 sessions.
 
 ### Deferred to Follow-Up Work
 
@@ -93,7 +93,7 @@ The current guide says which model each harness runs, not which harness gets a u
 ### Key Technical Decisions
 
 - KTD1. Name each worker by T3 Code instance and exact model id, not by "latest" class. T3 Code's `delegate_task` takes an exact id, the Antigravity runtime advertises only effort-suffixed ids, and a literal id lets the check pin it. Moving to a newer model is a one-line template edit plus its pinned literal. Governs R1–R4.
-- KTD2. Express "default effort" as an explicit effort equal to the value `orchestrator_capabilities` marks as the model's default, `high` for Sonnet 5.5 and `medium` for Opus 5.5 on 2026-10-19. Omitting the option does not give the model's default: `delegate_task` inherits the parent's model options, and `home/h82/agents/claude.nix` sets a top-level `effortLevel` of `medium` for every Claude model. Reading the default from the catalog at launch still follows it if it moves. Instantiates R1, R2, R3 (session-settled: user-directed — chosen over a fixed `effort: high` pin for Sonnet: the user chose the default effort).
+- KTD2. Express "default effort" as an explicit effort equal to the value `orchestrator_capabilities` marks as the model's default, `high` for Sonnet 5.5 and `medium` for Opus 5.5 on 2026-10-19. Omitting the option does not give the model's default: `delegate_task` inherits the parent's model options, such as a parent session's own effort. Reading the default from the catalog at launch still follows it if it moves. Instantiates R1, R2, R3 (session-settled: user-directed — chosen over a fixed `effort: high` pin for Sonnet: the user chose the default effort).
 - KTD3. Narrow the check's banned term `Flash` to the retired text it guarded. `removedTerms` bans `Flash` case-insensitively since commit `1b075b5` dropped the old model-routing table, so `gemini-3.8-flash-high` would fail the check. Replace it with `Flash low`, `Flash medium`, and `flash-free`, which still catch every Flash row that table had (`Flash low` twice, `Flash medium` once) and the retired `glm-5.3-flash-free` id, and keep `Model routing`. Governs R11.
 - KTD4. Alternate the two workers of a tier across the whole plan, counted per tier. Alternating spreads units across two providers and their rate limits, and counting across layers keeps a plan of single-unit layers from sending every unit to Claude. The issue left the rule open; kind-of-work splits (code versus docs) have no evidence that either model is better at one kind. Governs R7.
 - KTD5. Keep the Antigravity-route workaround sentences and change only what they request and cover, per R10. Compound Engineering 3.31.0 still requests unsuffixed ids on that route, so an implementation unit outside T3 Code would otherwise stall the same way a review peer did.
@@ -130,7 +130,7 @@ Outside T3 Code, every unit takes the default tier through Compound Engineering'
 - Issue #262 and the current guide at `home/h82/agents/instructions/instructions.md.tmpl` (Compound Engineering section).
 - `tests/agent-instructions.nix`: `compoundEngineeringSentences`, `pinnedSentences`, `removedTerms`, and the section split on `". "`.
 - Compound Engineering 3.31.0 `ce-work`: `references/cross-model-execution.md` (one fixed recipient, effort recorded at `init`) and `scripts/cross-model-work.sh` (Claude and Antigravity effort default `high`).
-- `home/h82/agents/claude.nix`: the top-level `effortLevel`.
+- `home/h82/agents/claude.nix`: the Opus 5.5 `effortLevel` under `modelSettings`.
 - `.compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md` for why sentences are anchored and the section is allowlisted.
 - `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md` for the mutation proof.
 

@@ -27,9 +27,6 @@ let
   # that a project-level .claude/settings.json still outranks this tier.
   settingsTier = {
     model = "opus[1m]";
-    # Top-level effortLevel applies to whichever model serves the session.  A
-    # modelSettings entry would cover only the one model ID it names.
-    effortLevel = "medium";
     language = "korean";
     # `auto` follows the background the terminal reports, so the palette
     # tracks whichever theme Ghostty is running rather than pinning one here.
@@ -59,6 +56,18 @@ let
       ];
       value = true;
     }
+    # The session effort for Opus 5.5 only. In user settings, Claude Code
+    # ignores a top-level effortLevel for Opus 5.5 and later models, and a
+    # modelSettings entry applies only to the model it names, so other models
+    # start at their own default. The canonical ID also matches `opus[1m]`.
+    {
+      path = [
+        "modelSettings"
+        "claude-opus-5-5"
+        "effortLevel"
+      ];
+      value = "medium";
+    }
   ];
 
   # Keys Claude Code reads only from its global config, ~/.claude.json, and
@@ -75,6 +84,7 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
+    "effortLevel"
   ];
 
   renderDeclared =

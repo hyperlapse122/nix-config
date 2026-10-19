@@ -43,6 +43,7 @@ Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-revie
 - In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`.
 - Never delegate an implementation unit to Grok or OpenCode, inside or outside T3 Code.
 - In a Grok or OpenCode session, delegate every implementation unit to a worker named below instead of writing it yourself.
+- When the config sets `work_engine_mode: off`, a Grok or OpenCode session implements no unit itself: it stops and tells the user that delegation is off.
 - A unit is harder when its own design is hard, such as a new interface, data format, or concurrency rule, when it carries a security or data-loss risk, even when its edit is mechanical, or when it changes many modules in a way that is not a mechanical edit.
 - Otherwise a unit is lighter when it is a mechanical edit, such as a rename, a pinned-text update, or a one-file docs change, even across files; every other unit is a default unit.
 - A default unit goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` set to the value `orchestrator_capabilities` marks as its default, or to `gemini-3.8-flash-high` on the `antigravity` instance.
