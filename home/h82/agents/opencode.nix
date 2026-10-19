@@ -11,7 +11,7 @@ let
 
   # The wrapper reads /run/secrets/cli-auth/synthetic_api_key at run time.
   # Bootstrap generations have no such file, and Synthetic then serves
-  # nothing, so a review that picks OpenCode as its peer skips that pass.
+  # nothing.
   wrapper = import ../../../packages/opencode.nix (
     {
       inherit pkgs;
@@ -110,8 +110,6 @@ let
     '';
 in
 {
-  my.agents.crossModelPeers = [ "opencode" ];
-
   home.packages = [ wrapper ];
 
   # Unguarded and after installPackages for the reasons given on

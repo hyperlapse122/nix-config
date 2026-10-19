@@ -11,9 +11,8 @@ RIPGREP_BIN='@RIPGREP_BIN@'
 
 # A key the caller already exported wins, so another account can be tested
 # without touching secrets. Anything wrong with the file means no key, and
-# Synthetic then refuses every request, so a review skips its peer: the file
-# is absent on bootstrap generations, and saying nothing about it keeps every
-# run quiet.
+# Synthetic then refuses every request: the file is absent on bootstrap
+# generations, and saying nothing about it keeps every run quiet.
 if [[ -z ${SYNTHETIC_API_KEY:-} ]]; then
   unset SYNTHETIC_API_KEY
   # A missing, unreadable, or directory path fails the read, which leaves
@@ -30,9 +29,9 @@ fi
 # The self-update switch holds under any config T3 Code supplies inline or
 # through OPENCODE_CONFIG_DIR, which never see the declared update key.
 # A process holding the key loads no project opencode.json or .opencode/
-# directory, whose plugins and provider overrides are the reviewed checkout's
-# code, and no Claude Code instructions or skills. A review peer still loads the
-# plugins the global opencode.json lists. OpenCode v2 reads
+# directory, whose plugins and provider overrides are the checkout's code, and
+# no Claude Code instructions or skills. OpenCode still loads the plugins the
+# global opencode.json lists. OpenCode v2 reads
 # OPENCODE_CONFIG_PROJECT_DISABLE before OPENCODE_DISABLE_PROJECT_CONFIG, so
 # both are set and a caller's value for either cannot turn project config back
 # on.
