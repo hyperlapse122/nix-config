@@ -69,10 +69,11 @@ class ServeHtmlTests(unittest.TestCase):
         self.assertEqual(sorted(target), ['kind', 'path', 'port'])
         return target
 
-    def get(self, target, path=None, host='127.0.0.1'):
+    def get(self, target, path=None, host='127.0.0.1', headers=None):
         connection = http.client.HTTPConnection(host, target['port'], timeout=5)
         try:
-            connection.request('GET', target['path'] if path is None else path)
+            connection.request('GET', target['path'] if path is None else path,
+                               headers=headers or {})
             response = connection.getresponse()
             return response.status, response, response.read()
         finally:
@@ -98,6 +99,29 @@ class ServeHtmlTests(unittest.TestCase):
         _, response, _ = self.get(target)
         self.assertEqual(response.getheader('Cache-Control'), 'no-store')
         self.assertEqual(response.getheader('Content-Type'), 'text/html; charset=utf-8')
+
+    def test_page_without_an_html_suffix_is_still_served_as_html(self):
+        page = self.write('cov/report', '<p>report</p>')
+        for args in ([str(page)], ['--root', str(self.dir / 'cov'), str(page)]):
+            target = self.serve(*args)
+            _, response, _ = self.get(target)
+            self.assertEqual(response.getheader('Content-Type'), 'text/html; charset=utf-8', args)
+        _, response, _ = self.get(target, '/./report')
+        self.assertEqual(response.getheader('Content-Type'), 'text/html; charset=utf-8')
+
+    def test_only_loopback_host_names_are_answered(self):
+        target = self.serve(str(self.write('a.html', 'host')))
+        for host in ('localhost:{}'.format(target['port']), '127.0.0.1', '[::1]:1'):
+            self.assertEqual(self.get(target, headers={'Host': host})[0], 200, host)
+        for host in ('attacker.example', 'attacker.example:{}'.format(target['port'])):
+            status, _, body = self.get(target, headers={'Host': host})
+            self.assertEqual((status, body), (404, b''), host)
+
+    def test_a_silent_connection_does_not_block_requests(self):
+        target = self.serve(str(self.write('a.html', 'busy')))
+        silent = socket.create_connection(('127.0.0.1', target['port']), timeout=3)
+        self.addCleanup(silent.close)
+        self.assertEqual(self.get(target)[2], b'busy')
 
     def test_reload_shows_current_content(self):
         page = self.write('a.html', 'first')
@@ -138,7 +162,8 @@ class ServeHtmlTests(unittest.TestCase):
         (self.dir / 'cov' / 'link.txt').symlink_to(self.dir / 'outside.txt')
         target = self.serve('--root', str(self.dir / 'cov'), str(page))
         for path in ('/../outside.txt', '/%2e%2e/outside.txt', '/..%2foutside.txt',
-                     '/sub/../../outside.txt', '/link.txt', '/missing.txt', '/js'):
+                     '/sub/../../outside.txt', '/sub/../index.html', '/link.txt',
+                     '/missing.txt', '/js'):
             self.assertEqual(self.get(target, path)[0], 404, path)
 
     def test_root_prints_the_root_relative_path(self):
@@ -156,6 +181,20 @@ class ServeHtmlTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         self.assertNotEqual(result.stderr, '')
         self.assertEqual(self.pids, [])
+
+    def test_root_that_is_not_a_directory_fails(self):
+        page = self.write('page.html', 'page')
+        result = self.run_script('--root', str(page), str(page))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('not a directory', result.stderr)
+
+    def test_server_start_failure_prints_nothing_and_fails(self):
+        page = self.write('page.html', 'page')
+        result = self.run_script('--pid-file', str(self.dir / 'missing' / 'x.pid'), str(page))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('did not start', result.stderr)
 
     def test_missing_file_fails(self):
         result = self.run_script(str(self.dir / 'missing.html'))
@@ -195,10 +234,10 @@ class ServeHtmlTests(unittest.TestCase):
 
     def test_server_exits_after_the_idle_window_and_requests_extend_it(self):
         page = self.write('a.html', 'idle')
-        target = self.serve('--idle-seconds', '2', str(page))
+        target = self.serve('--idle-seconds', '4', str(page))
         pid = self.pids[-1]
         for _ in range(3):
-            time.sleep(1)
+            time.sleep(1.5)
             self.assertEqual(self.get(target)[0], 200)
             self.assertTrue(alive(pid), 'a request inside the window must keep the server up')
         deadline = time.monotonic() + 10
@@ -218,9 +257,11 @@ class ServeHtmlTests(unittest.TestCase):
             socket.create_connection(('127.0.0.2', target['port']), timeout=3).close()
 
     def test_default_idle_window_is_thirty_minutes(self):
-        source = SCRIPT.read_text(encoding='utf-8')
-        self.assertIn("'--idle-seconds'", source)
-        self.assertIn('default=1800', source)
+        result = subprocess.run([sys.executable, str(SCRIPT), '--help'],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(' '.join(result.stdout.split()),
+                         r'--idle-seconds IDLE_SECONDS [^-]*\(default: 1800(\.0)?\)')
 
 
 if __name__ == '__main__':

@@ -13,8 +13,11 @@
   macOS users are covered by tests/darwin-outputs.nix, which only a macOS
   builder can build.
 
-  The lookup carries an `or` fallback so a mutation that removes the package
-  reaches the builder as a failing assertion rather than an evaluation error.
+  Every lookup carries an `or` fallback so a mutation that removes the package,
+  from the profile or from packages/agent-tools.nix, reaches the builder as a
+  failing assertion rather than an evaluation error. The check also runs the
+  profile's command with an empty environment, so a packaged script whose
+  interpreter line was not rewritten into the store fails here.
 */
 {
   pkgs,
@@ -26,7 +29,8 @@ let
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
-  helper = lib.getExe (import ../packages/agent-tools.nix { inherit pkgs; }).serveHtml;
+  package = (import ../packages/agent-tools.nix { inherit pkgs; }).serveHtml or null;
+  helper = lib.optionalString (package != null) (lib.getExe package);
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -38,6 +42,9 @@ pkgs.runCommand "serve-html-profiles-tests" { } ''
   ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
+  ${lib.optionalString (helper == "") ''
+    echo "packages/agent-tools.nix exports no serveHtml" >> "$failures"
+  ''}
 
   checkUser() (
     user=$1 homePath=$2
@@ -52,6 +59,8 @@ pkgs.runCommand "serve-html-profiles-tests" { } ''
       fail "no executable serve-html on PATH"
     elif [ "$(readlink -f "$command")" != ${esc helper} ]; then
       fail "serve-html resolves to $(readlink -f "$command"), not the packaged helper"
+    elif ! env -i "$command" --help > /dev/null 2>&1; then
+      fail "serve-html does not run with an empty environment"
     fi
   )
 

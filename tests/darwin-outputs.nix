@@ -94,9 +94,9 @@ let
       masExe = lib.getExe entry.host.pkgs.mas;
       peers = lib.concatStringsSep "," (expectedPeers user.my.kind user.home.packages);
       grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
-      serveHtml =
-        lib.getExe
-          (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml;
+      serveHtmlPackage =
+        (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
+      serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
       antigravityRuntime = "${
         import ../packages/antigravity-acp.nix {
           inherit (entry.host) pkgs;
@@ -264,10 +264,11 @@ let
       [ "$(readlink -f "$gen/home-path/bin/localharness_external" || true)" = ${lib.escapeShellArg "${antigravityRuntime}/localharness_external"} ] \
         || bad "localharness_external on PATH is not the pinned runtime's"
 
-      # The shared instructions tell agents under T3 Code to open local HTML
-      # through serve-html.
-      [ "$(readlink -f "$gen/home-path/bin/serve-html" || true)" = ${lib.escapeShellArg serveHtml} ] \
-        || bad "serve-html on PATH is not the packaged helper"
+      if [ -z ${lib.escapeShellArg serveHtml} ]; then
+        bad "packages/agent-tools.nix exports no serveHtml"
+      elif [ "$(readlink -f "$gen/home-path/bin/serve-html" || true)" != ${lib.escapeShellArg serveHtml} ]; then
+        bad "serve-html on PATH is not the packaged helper"
+      fi
 
       # The OpenCode config merge runs after writeBoundary and targets the
       # user's ~/.config/opencode/opencode.json.

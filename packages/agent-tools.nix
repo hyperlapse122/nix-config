@@ -35,8 +35,6 @@ let
   # with fixtures; a sandboxed check has no network.
   agentPluginRelease = pythonHelper "agent-plugin-release" ../scripts/agent-plugin-release;
 
-  # Serves one local HTML file on loopback so a T3 Code browser tab can open
-  # it; agents run it from PATH.
   serveHtml = pythonHelper "serve-html" ../scripts/serve-html;
 
   # Resolves the latest release of Claude Desktop from the Debian APT repository.
