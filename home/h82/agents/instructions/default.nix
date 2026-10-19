@@ -8,8 +8,6 @@ let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
 
-  # The template reads the host facts and nothing else; a missing key or a
-  # printed null fails this build.
   context = pkgs.writeText "agent-instructions-context.json" (
     builtins.toJSON (hostFacts.of config.my)
   );

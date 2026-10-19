@@ -6,12 +6,14 @@
   Runs packages/text-template.nix, the renderer of the shared agent
   instructions, against the fixtures in tests/text-template/ and asserts:
 
-  - a template reading a string and two trait conditions renders exactly
-    render.md, with shell-style `${...}` text passed through unchanged.
+  - a template reading a string by field and through `index`, two trait
+    conditions, and a condition on a `null` renders exactly render.md, with
+    shell-style `${...}` text passed through unchanged. The `null` condition
+    takes its false branch: only a printed `null` fails.
   - a missing key fails whether the template prints it or only reads it in an
-    `if`, and the printed case names Go's missing-key error. The `if` case is
-    what separates `missingkey=error` from the output scan, since Go's default
-    renders it as empty.
+    `if`, through a field or through `index`, and each case names a missing-key
+    error. The `if` cases are what separate `missingkey=error` and the strict
+    `index` from the output scan, since Go's defaults render them as empty.
   - a `null` value fails when printed directly (`<no value>`) and when printed
     through `printf` (`<nil>`).
   - a function the renderer does not define, such as gomplate's `env`, fails.
@@ -73,6 +75,7 @@ pkgs.runCommand "text-template-tests" { } ''
 
   ${failureCase "a printed missing key" "missing-printed.tmpl" "map has no entry for key"}
   ${failureCase "a missing key read in an if" "missing-read.tmpl" "map has no entry for key"}
+  ${failureCase "a missing key indexed in an if" "missing-index.tmpl" "map has no entry for key"}
   ${failureCase "a printed null" "null-printed.tmpl" "<no value>"}
   ${failureCase "a null printed through printf" "null-printf.tmpl" "<nil>"}
   ${failureCase "an undefined function" "undefined-function.tmpl" ''function "env" not defined''}

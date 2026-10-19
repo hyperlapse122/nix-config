@@ -5,14 +5,16 @@
 //
 // The template can read only that document: no functions beyond Go's
 // builtins are defined, so a gomplate-style env, file, or http call fails at
-// parse time. A missing key fails execution, and so does printing a null,
-// which Go renders as "<no value>" or, through print and printf, "<nil>".
-// Nothing reaches stdout unless the whole render succeeds.
+// parse time. A missing key fails execution, whether read through a field or
+// through index, and so does printing a null, which Go renders as
+// "<no value>" or, through print and printf, "<nil>". Nothing reaches stdout
+// unless the whole render succeeds.
 package main
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,7 +33,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) != 2 {
-		return fmt.Errorf("usage: text-template <template> <data.json>")
+		return errors.New("usage: text-template <template> <data.json>")
 	}
 	templatePath, dataPath := args[0], args[1]
 
@@ -49,7 +51,10 @@ func run(args []string) error {
 		return fmt.Errorf("%s: %w", dataPath, err)
 	}
 
-	tmpl, err := template.New(filepath.Base(templatePath)).Option("missingkey=error").Parse(string(source))
+	tmpl, err := template.New(filepath.Base(templatePath)).
+		Option("missingkey=error").
+		Funcs(template.FuncMap{"index": strictIndex}).
+		Parse(string(source))
 	if err != nil {
 		return err
 	}
@@ -64,4 +69,33 @@ func run(args []string) error {
 	}
 	_, err = os.Stdout.Write(out.Bytes())
 	return err
+}
+
+// strictIndex replaces the builtin index, which returns the zero value for a
+// missing map key whatever missingkey says, so a missing fact read in an `if`
+// would render the false branch instead of failing.
+func strictIndex(item any, keys ...any) (any, error) {
+	for _, key := range keys {
+		switch collection := item.(type) {
+		case map[string]any:
+			name, ok := key.(string)
+			if !ok {
+				return nil, fmt.Errorf("index: map key %v is not a string", key)
+			}
+			value, ok := collection[name]
+			if !ok {
+				return nil, fmt.Errorf("index: map has no entry for key %q", name)
+			}
+			item = value
+		case []any:
+			position, ok := key.(int)
+			if !ok || position < 0 || position >= len(collection) {
+				return nil, fmt.Errorf("index: %v is out of range for a list of %d", key, len(collection))
+			}
+			item = collection[position]
+		default:
+			return nil, fmt.Errorf("index: cannot index %T", item)
+		}
+	}
+	return item, nil
 }
