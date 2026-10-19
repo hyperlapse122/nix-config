@@ -28,9 +28,10 @@
     declaration removes in opencode.json, a password and a port in
     service.json), and creates a missing file holding only the
     declared keys. The result is mode 0600 in every case. opencode.json drops
-    the retired autoupdate key and the stale syn: alias, and allowlists the
-    synthetic provider; service.json disables OpenCode's shared
-    background server.
+    the retired autoupdate key and the stale syn: alias, allowlists the
+    synthetic provider, and pins GLM 5.3's reasoning effort to max beside
+    the user's own synthetic model entries; service.json disables OpenCode's
+    shared background server.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
@@ -69,7 +70,7 @@ let
     {
       "set": {
         "$schema": "https://opencode.ai/config.json",
-        "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
+        "model": "synthetic/hf:zai-org/GLM-5.3",
         "update": "disable",
         "share": "disabled"
       },
@@ -77,6 +78,12 @@ let
       "own": {
         "enabled_providers": ["synthetic"]
       },
+      "setPaths": [
+        {
+          "path": ["provider", "synthetic", "models", "hf:zai-org/GLM-5.3", "options", "reasoningEffort"],
+          "value": "max"
+        }
+      ],
       "removePaths": [
         {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
       ]
@@ -110,7 +117,7 @@ let
   mergedExpected = pkgs.writeText "opencode-merged-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
+      "model": "synthetic/hf:zai-org/GLM-5.3",
       "update": "disable",
       "share": "disabled",
       "enabled_providers": ["synthetic"],
@@ -125,7 +132,8 @@ let
         "synthetic": {
           "options": {"timeout": 300000},
           "models": {
-            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"}
+            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
+            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
           }
         }
       }
@@ -135,10 +143,17 @@ let
   createdExpected = pkgs.writeText "opencode-created-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3-Flash",
+      "model": "synthetic/hf:zai-org/GLM-5.3",
       "update": "disable",
       "share": "disabled",
-      "enabled_providers": ["synthetic"]
+      "enabled_providers": ["synthetic"],
+      "provider": {
+        "synthetic": {
+          "models": {
+            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
+          }
+        }
+      }
     }
   '';
 

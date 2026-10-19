@@ -36,6 +36,15 @@ let
   # syn: alias is not, and would need a setPaths entry declaring
   # provider.synthetic.models.<alias>.name -- which is also how the retired
   # syn:large:text alias got in, so removePaths takes it back out.
+  #
+  # OpenCode 2.0.32 drops a variant given in the config file (`model#max`, a
+  # model object, or agent.build.variant) and honours one only from
+  # `--model`, which the wrapper cannot add without overriding a caller's own
+  # choice. A model's options reach the provider request, so the effort is
+  # pinned there: every session on this model, through `opencode run`,
+  # `opencode acp`, or `opencode serve`, sends reasoning_effort "max" unless
+  # the caller selects another variant. OpenCode passes the value through
+  # unchecked; GLM 5.3 offers low, high, and max.
   declared = pkgs.writeText "opencode-declared-settings.json" (
     builtins.toJSON {
       set = {
@@ -48,6 +57,19 @@ let
       # enabled_providers is an array, which set refuses; nothing else writes
       # the key, so owning it whole is the right tier.
       own.enabled_providers = [ "synthetic" ];
+      setPaths = [
+        {
+          path = [
+            "provider"
+            "synthetic"
+            "models"
+            (lib.removePrefix "synthetic/" model)
+            "options"
+            "reasoningEffort"
+          ];
+          value = "max";
+        }
+      ];
       removePaths = [
         # The retired cross-reviewer alias: the merge that once wrote it can
         # only assign, so activation takes it back out.
