@@ -14,6 +14,17 @@ let
   # for.
   topLevel = lib.removeSuffix ".tar.gz" pin.asset;
   platformKey = lib.removePrefix "t3-${source.version}-" topLevel;
+  # patchelf 0.17 and later rewrite the program headers of `t3`, whose PHDR
+  # segment sits past its other segments, into overlapping LOAD segments, and
+  # the patched binary segfaults on start. 0.16.1 is the last release that
+  # leaves it runnable; versionCheckHook fails the build when that breaks.
+  patchelf = pkgs.patchelf.overrideAttrs {
+    version = "0.16.1";
+    src = pkgs.fetchurl {
+      url = "https://github.com/NixOS/patchelf/releases/download/0.16.1/patchelf-0.16.1.tar.bz2";
+      hash = "sha256-q5FfP0zMRj2Wzh5yaFsWMRD5RcIq7lvGIRjVet/wq30=";
+    };
+  };
 in
 pkgs.stdenv.mkDerivation {
   pname = "t3code-cli";
@@ -83,7 +94,7 @@ pkgs.stdenv.mkDerivation {
   # and file(1) reports no static-pie Mach-O, so nothing was set aside.
   dontAutoPatchelf = true;
   postFixup = lib.optionalString isLinux ''
-    autoPatchelf -- "$out"
+    PATH=${patchelf}/bin:$PATH autoPatchelf -- "$out"
     (cd "$TMPDIR/static-pie" && find . -type f -print0 | while IFS= read -r -d "" file; do
       install -Dm755 "$file" "$out/libexec/t3code/$file"
     done)
