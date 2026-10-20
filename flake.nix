@@ -101,6 +101,7 @@
           "agent-browser-deps"
           "baloo-extractor"
           "desktop-ssh"
+          "elf-load-segments"
           "emoji-font"
           "iphone-restore"
           "kde-theme"
@@ -446,6 +447,10 @@
             fixtures = linuxFixtures;
           };
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
+          elf-load-segments = import ./tests/elf-load-segments.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
           korean-skills = import ./tests/korean-skills.nix {

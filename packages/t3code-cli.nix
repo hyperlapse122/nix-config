@@ -27,11 +27,17 @@ pkgs.stdenv.mkDerivation {
   sourceRoot = topLevel;
 
   # The darwin tarball's Mach-O binaries link only system libraries, so only
-  # the Linux build is patched.
-  nativeBuildInputs = lib.optional isLinux pkgs.autoPatchelfHook ++ [
-    pkgs.file
-    pkgs.writableTmpDirAsHomeHook
-  ];
+  # the Linux build is patched. patchelf 0.19 leaves `t3` segfaulting on start;
+  # versionCheckHook fails the build when that breaks.
+  nativeBuildInputs =
+    lib.optionals isLinux [
+      (import ./patchelf-0-16.nix { inherit pkgs; })
+      pkgs.autoPatchelfHook
+    ]
+    ++ [
+      pkgs.file
+      pkgs.writableTmpDirAsHomeHook
+    ];
 
   # libstdc++, libgcc_s, and libatomic for the Node binary and node-pty; every
   # other library the binaries need is glibc's.

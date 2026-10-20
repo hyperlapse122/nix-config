@@ -11,7 +11,25 @@ let
 
   # Accepting here, not through nixpkgs.config, keeps the acceptance next to
   # the one SDK it applies to. androidenv refuses to build without it.
-  androidenv = pkgs.androidenv.override { licenseAccepted = true; };
+  # patchelf 0.19 leaves the ninja in CMake 3.22.1 segfaulting on start, so
+  # every androidenv package runs autoPatchelf with 0.16.1. androidenv builds
+  # its packages through pkgs.callPackage, so a scope that swaps
+  # autoPatchelfHook reaches them and nothing else; pkgs.extend would also
+  # rebuild every package in the closure that uses the hook, rustc among them.
+  androidScope = lib.makeScope pkgs.newScope (_: {
+    autoPatchelfHook = pkgs.autoPatchelfHook.overrideAttrs (old: {
+      propagatedBuildInputs = [
+        (import ./patchelf-0-16.nix { inherit pkgs; })
+      ]
+      ++ old.propagatedBuildInputs;
+    });
+  });
+  androidenv = pkgs.androidenv.override {
+    licenseAccepted = true;
+    pkgs = pkgs // {
+      inherit (androidScope) callPackage;
+    };
+  };
 
   isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 

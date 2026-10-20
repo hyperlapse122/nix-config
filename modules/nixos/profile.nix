@@ -30,6 +30,7 @@
     ./hardware/dualsense.nix
     ./hardware/iphone-restore.nix
     ./hardware/bluetooth-audio.nix
+    ./hardware/nvidia.nix
     ../shared/host.nix
   ];
 

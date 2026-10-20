@@ -12,6 +12,19 @@ let
   envName = label: lib.toUpper label;
   cups = config.services.printing.package;
 
+  # nixpkgs' hplip 3.26.4 builds with structured attrs, where the unquoted
+  # `$makeWrapperArgs` in its preFixup expands to the array's first element
+  # only. makeWrapper then reads every later argument one place off and the
+  # build fails. NixOS/nixpkgs#575319 (hplip 3.26.6) fixes it; drop the
+  # override once nixpkgs reaches that version.
+  brokenWrapperArgs = "$makeWrapperArgs ";
+  hplip = pkgs.hplip.overrideAttrs (old: {
+    preFixup =
+      lib.warnIfNot (lib.hasInfix brokenWrapperArgs old.preFixup)
+        "modules/nixos/services/printing.nix: nixpkgs fixed hplip's makeWrapperArgs expansion; drop the hplip override"
+        (lib.replaceStrings [ brokenWrapperArgs ] [ "\"\${makeWrapperArgs[@]}\" " ] old.preFixup);
+  });
+
   ensureQueue = label: ''
     uri=''$${envName label}_URI
     info=''$${envName label}_INFO
@@ -66,7 +79,7 @@ in
           enable = true;
           drivers = [
             pkgs.gutenprint
-            pkgs.hplip
+            hplip
           ];
           # cupsd creates temporary queues for printers Avahi finds on its own.
           # cups-browsed, which nixpkgs enables whenever Avahi is, adds only the
