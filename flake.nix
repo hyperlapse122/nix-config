@@ -47,6 +47,13 @@
       url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.31.0";
       flake = false;
     };
+    # Pinned the same way: home/h82/agents/korean-skills.nix records the revision
+    # this tag is expected to name, and the korean-skills check compares it
+    # against the locked one.
+    korean-skills = {
+      url = "github:DaleSeo/korean-skills/v1.0.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -444,6 +451,10 @@
           nix-cleanup = import ./tests/nix-cleanup.nix { inherit pkgs self; };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+          korean-skills = import ./tests/korean-skills.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
