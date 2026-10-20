@@ -54,14 +54,18 @@ in
   };
 
   config.home.file = lib.listToAttrs (
-    lib.concatMap (
-      root:
-      map (
-        name:
+    map
+      (
+        { root, name }:
         lib.nameValuePair "${root}/${name}" {
           source = "${skillTree}/${name}";
         }
-      ) registry.skills
-    ) roots
+      )
+      (
+        lib.cartesianProduct {
+          root = roots;
+          name = registry.skills;
+        }
+      )
   );
 }

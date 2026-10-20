@@ -21,11 +21,15 @@
     its resolved `target` rather than its attribute name, because either can
     move the file without changing its text.
   - each target exists in the materialized `home-files`, holds a SKILL.md whose
-    frontmatter `name` equals the directory name, and holds a LICENSE that
-    starts with "MIT License". See
+    frontmatter `name` equals the directory name and whose `description` is
+    not empty, holds a LICENSE that starts with "MIT License", and matches the
+    pinned input byte for byte: the skill directory without LICENSE against
+    `skills/<name>` (so `references/` and `examples/` are there too), and
+    LICENSE against the input's root LICENSE. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
-  - the names under each root are exactly the three skills, so a skill dropped
-    from or added to the module turns this red.
+  - the enabled targets at or under each root are exactly the three skill
+    directories, so a skill dropped from or added to the module, or a file
+    declared inside a skill directory, turns this red.
   - nothing exists at ~/.agents/skills or ~/.gemini/config/skills in the
     materialized `home-files`: the Antigravity CLI lists skills under
     ~/.gemini/config/skills twice, and ~/.agents/skills is no harness's root
@@ -56,8 +60,6 @@
 {
   pkgs,
   self,
-  # tests/lib/linux-fixtures.nix. The flake passes the list it already built,
-  # so the fixtures are assembled once per evaluation.
   fixtures,
 }:
 let
@@ -91,16 +93,18 @@ let
 
   sorted = lib.sort lib.lessThan;
 
-  # The first path segment under `root` of every enabled file under it.
-  namesUnder =
+  upstream = self.inputs.korean-skills or null;
+
+  # Every enabled target at or under `root`.
+  targetsUnder =
     userConfig: root:
     sorted (
-      lib.unique (
-        map (file: lib.head (lib.splitString "/" (lib.removePrefix "${root}/" file.target))) (
-          lib.filter (file: (file.enable or false) && lib.hasPrefix "${root}/" (file.target or "")) (
-            lib.attrValues (userConfig.home.file or { })
-          )
-        )
+      map (file: file.target) (
+        lib.filter (
+          file:
+          (file.enable or false)
+          && ((file.target or "") == root || lib.hasPrefix "${root}/" (file.target or ""))
+        ) (lib.attrValues (userConfig.home.file or { }))
       )
     );
 
@@ -143,12 +147,35 @@ let
           echo ${esc "the SKILL.md of ~/${target} on ${label} must declare name ${name}, got:"} "'$actual'" >&2
           failed=1
         fi
+        description=$(awk '
+          NR == 1 && $0 != "---" { exit }
+          NR > 1 && $0 == "---" { exit }
+          NR > 1 && /^description:/ { sub(/^description:[ ]*/, ""); print; exit }
+        ' "$dir/SKILL.md")
+        if [ -z "$description" ]; then
+          echo ${esc "the SKILL.md of ~/${target} on ${label} declares no description"} >&2
+          failed=1
+        fi
       fi
       if [ ! -f "$dir/LICENSE" ]; then
         echo ${esc "~/${target} on ${label} holds no LICENSE in home-files"} >&2
         failed=1
       elif [ "$(head -c 11 "$dir/LICENSE")" != "MIT License" ]; then
         echo ${esc "the LICENSE of ~/${target} on ${label} must start with MIT License"} >&2
+        failed=1
+      fi
+    ''
+    + lib.optionalString (upstream == null) ''
+      echo ${esc "no korean-skills flake input to compare ~/${target} against"} >&2
+      failed=1
+    ''
+    + lib.optionalString (upstream != null) ''
+      if ! diff -r --exclude=LICENSE "$dir" ${upstream}/skills/${name} >&2; then
+        echo ${esc "~/${target} on ${label} differs from skills/${name} of the pinned input"} >&2
+        failed=1
+      fi
+      if [ -f "$dir/LICENSE" ] && ! cmp -s "$dir/LICENSE" ${upstream}/LICENSE; then
+        echo ${esc "the LICENSE of ~/${target} on ${label} differs from the pinned input's LICENSE"} >&2
         failed=1
       fi
     '';
@@ -167,10 +194,11 @@ let
     + lib.concatMapStrings (
       root:
       let
-        found = namesUnder userConfig root;
+        found = targetsUnder userConfig root;
+        expected = sorted (map (name: "${root}/${name}") skillNames);
       in
-      lib.optionalString (found != sorted skillNames) ''
-        echo ${esc "~/${root} on ${label} must hold exactly ${lib.concatStringsSep ", " (sorted skillNames)}, got: ${lib.concatStringsSep ", " found}"} >&2
+      lib.optionalString (found != expected) ''
+        echo ${esc "~/${root} on ${label} must hold exactly ${lib.concatStringsSep ", " expected}, got: ${lib.concatStringsSep ", " found}"} >&2
         failed=1
       ''
     ) roots
@@ -179,7 +207,6 @@ let
       failed=1
     ''
     + lib.optionalString (registry != null) ''
-      # The lock is written by Nix; the expected revision is written by hand.
       if [ ${esc (registry.expectedRev or "")} != ${esc lockedRev} ]; then
         echo ${esc "the pinned korean-skills revision drifted on ${label}: registry expects '${registry.expectedRev or ""}', flake.lock resolved '${lockedRev}'"} >&2
         failed=1

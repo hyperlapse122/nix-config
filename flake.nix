@@ -47,9 +47,6 @@
       url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.31.0";
       flake = false;
     };
-    # Pinned the same way: home/h82/agents/korean-skills.nix records the revision
-    # this tag is expected to name, and the korean-skills check compares it
-    # against the locked one.
     korean-skills = {
       url = "github:DaleSeo/korean-skills/v1.0.0";
       flake = false;

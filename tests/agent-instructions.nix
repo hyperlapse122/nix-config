@@ -225,13 +225,14 @@ let
 
   koreanTextHeading = "# Korean text";
 
-  # In section order, like `reviewFindingsSentences`.
   koreanTextSentences = [
     "Korean text that outlasts the conversation is covered text: commit messages, pull and merge request bodies and comments, issue bodies and comments, documents, Korean inside code such as comments, string literals, user-facing messages, logs, and localization resources, and a closing report, summary, or handoff to the user."
     "A short conversational chat reply is not covered text."
     "Before you write covered text, load the `humanizer`, `grammar-checker`, and `style-guide` skills, once per session."
     "Write covered text by those skills' rules, check it with all three before you publish it, and apply every correction you find."
     "Apply them silently: do not paste their analysis tables, grades, or change summaries into the text or the conversation."
+    "These instructions outrank those skills' own procedures: publish only the corrected text, never call `AskUserQuestion` or stop for confirmation on their behalf, and infer the closest document type when it is unclear."
+    "Where those skills' rules conflict with the Markdown section above, such as a bare tilde in a range, follow the Markdown section."
     "Leave text the user asks you to post as written, and verbatim quotes, unchanged."
     "When a report also goes through `ce-noslop`, run `ce-noslop` first, then `humanizer`, `grammar-checker`, and `style-guide` in that order."
     "When `ce-code-review`, `ce-doc-review`, or `ce-simplify-code` meets Korean text in the diff or document under review, audit that text with all three skills and report each problem as a finding of that review, whoever wrote the text."
