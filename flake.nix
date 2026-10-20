@@ -95,6 +95,7 @@
         # through fixtureChecksFor because their names embed a fixture host.
         hostClosureChecks = [
           "agent-browser-deps"
+          "baloo-extractor"
           "desktop-ssh"
           "emoji-font"
           "iphone-restore"
@@ -1326,6 +1327,7 @@
           desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
           kde-theme = import ./tests/kde-theme.nix { inherit pkgs self; };
+          baloo-extractor = import ./tests/baloo-extractor.nix { inherit pkgs self; };
           emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
           logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };

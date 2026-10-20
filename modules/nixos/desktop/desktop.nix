@@ -4,6 +4,20 @@
   services.displayManager.sddm.enable = true;
   services.displayManager.sddm.wayland.enable = true;
 
+  # kde-baloo starts before KWin exports WAYLAND_DISPLAY and DISPLAY, so the
+  # extractor's QGuiApplication falls back to wayland-0, which KWin 6.8 no
+  # longer creates, and aborts. The extractor draws nothing. The unit comes
+  # from the system path, not systemd.packages, so only an explicit drop-in
+  # keeps NixOS from writing a bare unit over it. A raw unit, unlike
+  # systemd.user.services, does not also replace the session's PATH.
+  systemd.user.units."kde-baloo.service" = {
+    overrideStrategy = "asDropin";
+    text = ''
+      [Service]
+      Environment=QT_QPA_PLATFORM=offscreen
+    '';
+  };
+
   programs._1password.enable = true;
 
   programs._1password-gui = {
