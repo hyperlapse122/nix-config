@@ -1,29 +1,29 @@
 ---
-title: OpenCode plugin loading is verifiable only by a live run, never by debug config or a sandboxed check
+title: OpenCode plugin and skill loading is verifiable only by a live session server, never by debug config or a sandboxed check
 date: "2026-10-19"
-last_updated: "2026-10-19"
+last_updated: "2026-10-20"
 category: integration-issues
-module: OpenCode Compound Engineering plugin (scripts/agent-plugin-sync, home/h82/agents/opencode.nix)
+module: OpenCode Compound Engineering plugin and standalone skills (scripts/agent-plugin-sync, home/h82/agents/opencode.nix, home/h82/agents/korean-skills.nix)
 problem_type: integration_issue
 component: tooling
 severity: medium
 symptoms:
-  - "opencode debug config lists the plugins path from every config layer but never shows whether the plugin loaded"
+  - "opencode debug config lists the plugins path from every config layer but never shows whether the plugin or skills loaded"
   - "A plugin directory without a root index.js is skipped with no message, so a missing entrypoint looks like a working configuration"
   - "opencode debug config in a scratch HOME with no network prints nothing and runs until killed (timeout 120)"
 root_cause: wrong_api
 resolution_type: workflow_improvement
 related_components:
   - testing_framework
-tags: ["opencode", "plugin", "compound-engineering", "verification", "opencode-config", "overlay", "cross-model-peer", "sandbox", "opencode-db"]
-retire_when: "OpenCode reports loaded plugins without a model call (check: opencode debug --help lists a plugin subcommand), or opencode debug config finishes offline (check: env -i HOME=<scratch> opencode debug config under timeout 30 exits 0)"
+tags: ["opencode", "plugin", "skills", "compound-engineering", "verification", "opencode-config", "overlay", "cross-model-peer", "sandbox", "opencode-db"]
+retire_when: "opencode debug --help lists a plugin or skill subcommand, or opencode debug config finishes offline (check: env -i HOME=<scratch> opencode debug config under timeout 30 exits 0)"
 ---
 
-# OpenCode plugin loading is verifiable only by a live run, never by debug config or a sandboxed check
+# OpenCode plugin and skill loading is verifiable only by a live session server, never by debug config or a sandboxed check
 
 ## Problem
 
-The repository writes the Compound Engineering plugin's pinned link into the `plugins` list of `~/.config/opencode/opencode.json` (`agent-plugin-sync --harness opencode`). Neither of the obvious checks shows that OpenCode loads it. `opencode debug config` reads config only, and a Nix check cannot run OpenCode at all. On OpenCode 2.0.32 the only evidence is a real run's debug log.
+The repository writes the Compound Engineering plugin's pinned link into the `plugins` list of `~/.config/opencode/opencode.json` (`agent-plugin-sync --harness opencode`) and links standalone skills such as `humanizer`, `grammar-checker`, and `style-guide` under `~/.config/opencode/skills/<name>` (`home/h82/agents/korean-skills.nix`). Neither `opencode debug config` nor a Nix build check can verify that OpenCode loads them: `opencode debug config` reads config layers without starting the session server that resolves plugins and skills, and OpenCode hangs inside an offline build sandbox. On OpenCode 2.0.32, verification requires starting a live session server on the host—either headlessly via `opencode serve` and `GET /api/skill` (no model call) or through `opencode run`.
 
 ## Symptoms
 
@@ -38,7 +38,48 @@ The repository writes the Compound Engineering plugin's pinned link into the `pl
 
 ## Solution
 
-Verify from the Mac, before deploying, with a scratch `OPENCODE_CONFIG` overlay. OpenCode loads it after the global file, and the wrapper never sets `OPENCODE_CONFIG`, so a caller's value passes through (`tests/opencode.sh` checks both):
+### 1. Headless skill and plugin probe without a model call (`opencode serve` + `GET /api/skill`)
+
+To verify that OpenCode loads plugins listed in `~/.config/opencode/opencode.json` or standalone skills under `~/.config/opencode/skills/<name>` without spending model tokens, start `opencode serve` in a scratch `HOME` with `~/.config/opencode/service.json` set to `{"disabled": true}` (so the client does not reuse a background server), `OPENCODE_SERVER_PASSWORD` set, and the wrapper's four disable switches enabled (`scripts/opencode`, tested in `tests/opencode.sh:126-131`):
+
+```sh
+scratch=$(mktemp -d)
+home=$scratch/home
+ws=$scratch/ws
+mkdir -p "$home/.config/opencode" "$ws"
+printf '{"disabled": true}\n' > "$home/.config/opencode/service.json"
+printf '{"$schema": "https://opencode.ai/config.json", "plugins": ["%s"]}\n' \
+  "$(readlink -f ~/.local/share/agent-plugins/compound-engineering/v3.31.0)" \
+  > "$home/.config/opencode/opencode.json"
+
+env -i HOME="$home" PATH=/run/current-system/sw/bin \
+  XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
+  XDG_CACHE_HOME="$home/.cache" XDG_STATE_HOME="$home/.local/state" \
+  OPENCODE_SERVER_PASSWORD=probe \
+  OPENCODE_DISABLE_AUTOUPDATE=true \
+  OPENCODE_DISABLE_PROJECT_CONFIG=true \
+  OPENCODE_CONFIG_PROJECT_DISABLE=true \
+  OPENCODE_DISABLE_CLAUDE_CODE=true \
+  opencode serve --port 4097 --hostname 127.0.0.1 >"$scratch/serve.log" 2>&1 &
+srv_pid=$!
+
+for _ in $(seq 1 30); do
+  out=$(curl -s -u opencode:probe "http://127.0.0.1:4097/api/skill?location%5Bdirectory%5D=$ws" || true)
+  printf '%s' "$out" | grep -q '"ce-plan"' && break
+  sleep 1
+done
+kill "$srv_pid"; wait "$srv_pid" 2>/dev/null || true
+```
+
+Key details of this probe on OpenCode 2.0.32:
+
+- Without `OPENCODE_SERVER_PASSWORD` and HTTP basic auth (`opencode:<password>`), `GET /api/skill` returns `{"_tag":"UnauthorizedError"}`.
+- Skills and plugins load asynchronously after the server prints `server listening`, so poll `GET /api/skill?location[directory]=<dir>` for a few seconds until the expected skill name appears.
+- On 2026-10-20, this probe returned all 34 `ce-` skills from the Compound Engineering plugin and, when `~/.config/opencode/skills/{humanizer,grammar-checker,style-guide}` were linked in the scratch `HOME`, returned each standalone skill once without reading `~/.claude/skills` (`OPENCODE_DISABLE_CLAUDE_CODE=true` gates `~/.claude/skills` while leaving `~/.config/opencode/skills` and `~/.agents/skills` active).
+
+### 2. Live run and peer-timing probe (`opencode run` + `OPENCODE_CONFIG` overlay)
+
+When verifying `loading plugin` log lines or measuring a Compound Engineering review peer before deploying, use a scratch `OPENCODE_CONFIG` overlay. OpenCode loads it after the global file, and the wrapper never sets `OPENCODE_CONFIG`, so a caller's value passes through (`tests/opencode.sh:196-207`):
 
 ```sh
 overlay=$scratch/overlay.json
@@ -71,16 +112,17 @@ That peer, on a 1,935-line diff and on `hf:zai-org/GLM-5.3-Flash` at default eff
 
 ## Why This Works
 
-OpenCode resolves and imports plugins only when it starts a session server, which `opencode run` does and `debug config` does not. The overlay reproduces the generation's config for one process without `nr switch`, which the repository forbids as validation. A sandbox check fails for a different reason: `debug config` does not finish without network access, so it cannot be the runner even for layering.
+OpenCode resolves and imports plugins and skills only when it starts a session server, which both `opencode serve` and `opencode run` do and `debug config` does not. Querying `GET /api/skill` on an isolated `opencode serve` instance exercises the session server's skill loader without making a model request, while the `OPENCODE_CONFIG` overlay reproduces a generation's config for one process without `nr switch`, which the repository forbids as validation. A sandbox check still fails because OpenCode's startup does not finish without network access in a Nix build sandbox.
 
 ## Prevention
 
-- After a change to the plugin path, the pin, or OpenCode itself, rerun the live probe above and the post-activation step in `docs/verification.md`. Every repository check stays green when OpenCode stops loading the plugin.
-- Keep the sync adapter's `index.js` refusal. It is the only guard against the silent skip.
+- After a change to the plugin path, standalone skill links, the pin, or OpenCode itself, run the `opencode serve` `/api/skill` probe above and the post-activation step in `docs/verification.md`. Every repository check stays green when OpenCode stops loading a plugin or skill.
+- Keep the sync adapter's `index.js` refusal (`scripts/agent-plugin-sync:345-349`). It is the only build-time guard against the silent skip.
 - When measuring a peer, confirm `model.id` in `session_message` before trusting the numbers. A missing overlay runs the deployed model instead.
 
 ## Related Issues
 
-- #239, #240, #241 (open until this branch merges): the peer rule, the timing bound, and the model switch this verification served.
-- [agy CLI ignores GEMINI_HOME](agy-cli-ignores-gemini-home-cannot-verify-t3-instance-homes.md): the same shape for Antigravity, where a CLI cannot show what a session loads and a live probe answers instead.
-- [OpenCode v2's shared background server keeps the first client's environment](opencode-v2-shared-background-server-keeps-first-client-env.md): why a probe's environment reaches its own server.
+- #239, #240, #241: the peer rule, the timing bound, and the model switch this verification served.
+- [OpenCode silently drops a model variant written in its config file](opencode-config-file-model-variant-silently-dropped.md): why the overlay pins `reasoningEffort` per model rather than via a `#variant` suffix.
+- [agy CLI ignores GEMINI_HOME](agy-cli-ignores-gemini-home-cannot-verify-t3-instance-homes.md): the same shape for Antigravity, where a CLI cannot show what a session loads and a live daemon probe answers instead.
+- [OpenCode v2's shared background server keeps the first client's environment](opencode-v2-shared-background-server-keeps-first-client-env.md): why a probe's environment reaches its own server when `service.json` sets `{"disabled": true}`.

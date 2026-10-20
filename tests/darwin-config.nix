@@ -71,6 +71,13 @@
     arm64-v8a image, which tests/lib/android-pin.nix reads from the pin. No
     non-NixOS Linux fixture has the step.
 
+  - Korean skills: Home Manager links the humanizer, grammar-checker, and
+    style-guide directories of the korean-skills-v1.0.0 tree under
+    ~/.claude/skills, ~/.config/opencode/skills, and
+    ~/.gemini/antigravity-cli/skills, each as exactly one enabled file and
+    nothing else under those roots; nothing lands under ~/.agents/skills or
+    ~/.gemini/config/skills; my.koreanSkills pins v1.0.0 with those skills.
+
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
   is interpolated, so the check builds on Linux.
@@ -317,6 +324,34 @@ let
       pathLines = lib.filter (lib.hasPrefix "export PATH=") (
         map lib.trim (lib.splitString "\n" (plain user.home.sessionVariablesExtra))
       );
+      # The Korean writing skills: the harness roots and skill names are
+      # literals, so a mutated registry or root cannot move the expectation.
+      koreanRoots = [
+        ".claude/skills"
+        ".config/opencode/skills"
+        ".gemini/antigravity-cli/skills"
+      ];
+      koreanNames = [
+        "humanizer"
+        "grammar-checker"
+        "style-guide"
+      ];
+      koreanTargets = lib.concatMap (root: map (name: "${root}/${name}") koreanNames) koreanRoots;
+      # Resolved targets of enabled entries, not attribute names. The source is
+      # compared as a string with its context dropped, so no darwin derivation
+      # is built, and the store path is never interpolated.
+      enabledFiles = lib.filter (file: file.enable) (lib.attrValues user.home.file);
+      enabledTargets = map (file: file.target) enabledFiles;
+      koreanFilesAt = target: lib.filter (file: file.target == target) enabledFiles;
+      koreanSourceOf = file: plain (toString (file.source or ""));
+      underDir = dir: target: target == dir || lib.hasPrefix "${dir}/" target;
+      koreanUnderRoots = lib.filter (
+        target: lib.any (root: underDir root target) koreanRoots
+      ) enabledTargets;
+      koreanElsewhere = lib.filter (
+        target: underDir ".agents/skills" target || underDir ".gemini/config/skills" target
+      ) enabledTargets;
+      koreanSkills = user.my.koreanSkills or { };
       devicesStep = activation.mobileDevices or { };
       devicesData = plain (devicesStep.data or "");
       # The helper creates devices, so a dry run must reach only the echo:
@@ -585,6 +620,31 @@ let
       )
       (check (config.homebrew.masApps == { } && !(config.programs.mas.enable or false))
         "${entry.name}: homebrew.masApps must stay empty and programs.mas off; both can abort or end activation"
+      )
+      (lib.concatMapStrings (
+        target:
+        let
+          name = baseNameOf target;
+          files = koreanFilesAt target;
+        in
+        check
+          (
+            lib.length files == 1
+            && lib.hasSuffix "-korean-skills-v1.0.0/${name}" (koreanSourceOf (lib.head files))
+          )
+          "${entry.name}: ${target} must be exactly one enabled home.file whose source is the ${name} directory of the korean-skills-v1.0.0 tree, got ${builtins.toJSON (map koreanSourceOf files)}"
+      ) koreanTargets)
+      (check (sort koreanUnderRoots == sort koreanTargets)
+        "${entry.name}: the targets under the Korean skill roots must be exactly ${builtins.toJSON koreanTargets}, got ${builtins.toJSON (sort koreanUnderRoots)}"
+      )
+      (check (koreanElsewhere == [ ])
+        "${entry.name}: Korean skills must not be installed under .agents/skills or .gemini/config/skills, got ${builtins.toJSON koreanElsewhere}"
+      )
+      (check
+        ((koreanSkills.tag or null) == "v1.0.0" && sort (koreanSkills.skills or [ ]) == sort koreanNames)
+        "${entry.name}: my.koreanSkills must pin tag v1.0.0 with skills ${builtins.toJSON koreanNames}, got ${
+          builtins.toJSON (koreanSkills.tag or null)
+        } and ${builtins.toJSON (koreanSkills.skills or [ ])}"
       )
       (check (androidSdkFile != null && androidDataFiles == [ ])
         "${entry.name}: the Android SDK must be linked at ~/Library/Android/sdk, and no android-sdk data file declared"

@@ -7,6 +7,7 @@
     ./gemini.nix
     ./grok.nix
     ./instructions
+    ./korean-skills.nix
     ./opencode.nix
     ./tokscale.nix
   ];
