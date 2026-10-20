@@ -11,7 +11,22 @@ let
 
   # Accepting here, not through nixpkgs.config, keeps the acceptance next to
   # the one SDK it applies to. androidenv refuses to build without it.
-  androidenv = pkgs.androidenv.override { licenseAccepted = true; };
+  # patchelf 0.19 leaves the ninja in CMake 3.22.1 segfaulting on start, so
+  # every androidenv package runs autoPatchelf with 0.16.1. androidenv takes
+  # autoPatchelfHook from the package set it is given.
+  androidenv = pkgs.androidenv.override {
+    licenseAccepted = true;
+    pkgs = pkgs.extend (
+      _: prev: {
+        autoPatchelfHook = prev.autoPatchelfHook.overrideAttrs (old: {
+          propagatedBuildInputs = [
+            (import ./patchelf-0-16.nix { pkgs = prev; })
+          ]
+          ++ old.propagatedBuildInputs;
+        });
+      }
+    );
+  };
 
   isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 
