@@ -205,6 +205,12 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   printf '%s\n' "$expectedToken" > "$sourceToken"
   chmod 600 "$sourceToken"
 
+  fakeSkillsDir=$fakeHome/.gemini/antigravity-cli/skills
+  mkdir -p "$fakeSkillsDir"
+  for skill in humanizer grammar-checker style-guide; do
+    printf 'fake-%s\n' "$skill" > "$fakeSkillsDir/$skill"
+  done
+
   make_ce_home() {
     local parent
     case $1 in
@@ -237,13 +243,25 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
     check_invariants "$label"
   }
 
-  # 1. Home under xmodel-cr-scratch-abc123: runtime sees fake token, mode 600 (AE1).
+  # 1. Home under xmodel-cr-scratch-abc123: runtime sees fake token, mode 600 (AE1),
+  #    and gains the three Korean skills symlinked to fake HOME.
   ce1=$(make_ce_home "$tmpdir/xmodel-cr-scratch-abc123")
   run_seed "xmodel-cr-scratch-abc123" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce1"
   [ "$(field token)" = "$expectedToken" ] || fail "xmodel-cr-scratch-abc123: runtime got token '$(field token)'"
   [ "$(field tokenmode)" = 600 ] || fail "xmodel-cr-scratch-abc123: token mode is '$(field tokenmode)', not 600"
   [ "$(cat "$ce1/antigravity-acp/settings.json")" = "$expectedSettings" ] || fail "xmodel-cr-scratch-abc123: settings.json changed"
   [ ! -s stderr ] || fail "xmodel-cr-scratch-abc123: unexpected stderr: $(cat stderr)"
+  for skill in humanizer grammar-checker style-guide; do
+    link=$ce1/antigravity-cli/skills/$skill
+    [ -L "$link" ] || fail "xmodel-cr-scratch-abc123: $skill is not a symlink"
+    [ "$(readlink "$link")" = "$fakeSkillsDir/$skill" ] \
+      || fail "xmodel-cr-scratch-abc123: $skill points to '$(readlink "$link")', expected '$fakeSkillsDir/$skill'"
+  done
+  [ "$(stat -c %a "$ce1/antigravity-cli")" = 700 ] \
+    || fail "xmodel-cr-scratch-abc123: antigravity-cli mode is '$(stat -c %a "$ce1/antigravity-cli")', not 700"
+  [ "$(stat -c %a "$ce1/antigravity-cli/skills")" = 700 ] \
+    || fail "xmodel-cr-scratch-abc123: skills dir mode is '$(stat -c %a "$ce1/antigravity-cli/skills")', not 700"
+  [ ! -e "$ce1/config/skills" ] || fail "xmodel-cr-scratch-abc123: config/skills created"
 
   # 2. Same for the other four templates (built with mktemp -d).
   for prefix in xmodel-doc-scratch xmodel-pov-peer ce-work-model-check ce-work-adapter; do
@@ -280,7 +298,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field tokenmode)" = 600 ] || fail "nested scratch parent: token mode is '$(field tokenmode)', not 600"
   [ ! -s stderr ] || fail "nested scratch parent: unexpected stderr: $(cat stderr)"
 
-  # 5. Home already holds a different token: that token unchanged (AE3).
+  # 5. Home already holds a different token: that token unchanged, but skills are linked.
   ce5=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
   existingToken='{"existing":"keep-me"}'
   printf '%s\n' "$existingToken" > "$ce5/antigravity-acp/acp_token.json"
@@ -288,39 +306,49 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   run_seed "existing token" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce5"
   [ "$(field token)" = "$existingToken" ] || fail "existing token: runtime got '$(field token)', expected '$existingToken'"
   [ ! -s stderr ] || fail "existing token: unexpected stderr: $(cat stderr)"
+  for skill in humanizer grammar-checker style-guide; do
+    link=$ce5/antigravity-cli/skills/$skill
+    [ -L "$link" ] || fail "existing token: $skill is not a symlink"
+    [ "$(readlink "$link")" = "$fakeSkillsDir/$skill" ] \
+      || fail "existing token: $skill points to '$(readlink "$link")', expected '$fakeSkillsDir/$skill'"
+  done
 
-  # 6. T3-instance-shaped home $HOME/.t3/userdata/providers/antigravity/<hex> with antigravity-acp/: no token (AE2).
+  # 6. T3-instance-shaped home $HOME/.t3/userdata/providers/antigravity/<hex> with antigravity-acp/: no token (AE2), no links.
   t3Home=$fakeHome/.t3/userdata/providers/antigravity/ac0a3dfd6dddb20962cecff6ee5fe65e19d3923be20e52c5ab52ff877f7e4c32
   mkdir -p "$t3Home/antigravity-acp"
   chmod 700 "$t3Home"
   run_seed "T3 instance home" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$t3Home"
   [ "$(field token)" = "<none>" ] || fail "T3 instance home: runtime got token '$(field token)'"
   [ ! -e "$t3Home/antigravity-acp/acp_token.json" ] || fail "T3 instance home: token file created"
+  [ ! -e "$t3Home/antigravity-cli" ] || fail "T3 instance home: antigravity-cli dir created"
   [ ! -s stderr ] || fail "T3 instance home: unexpected stderr: $(cat stderr)"
 
-  # 7. gemini-home under a parent with another name: no token.
+  # 7. gemini-home under a parent with another name: no token, no links.
   ce7=$(make_ce_home "$tmpdir/other-parent-XXXXXX")
   run_seed "wrong parent name" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce7"
   [ "$(field token)" = "<none>" ] || fail "wrong parent name: runtime got token '$(field token)'"
   [ ! -e "$ce7/antigravity-acp/acp_token.json" ] || fail "wrong parent name: token file created"
+  [ ! -e "$ce7/antigravity-cli" ] || fail "wrong parent name: antigravity-cli dir created"
   [ ! -s stderr ] || fail "wrong parent name: unexpected stderr: $(cat stderr)"
 
   # 7b. A home that is itself named like a CE scratch directory, under a
-  # gemini-home-like parent: the leaf must be gemini-home, so no token.
+  # gemini-home-like parent: the leaf must be gemini-home, so no token, no links.
   leafHome=$tmpdir/gemini-homes/xmodel-cr-scratch-leaf
   mkdir -p "$leafHome/antigravity-acp"
   chmod 700 "$tmpdir/gemini-homes" "$leafHome"
   run_seed "wrong leaf name" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$leafHome"
   [ "$(field token)" = "<none>" ] || fail "wrong leaf name: runtime got token '$(field token)'"
   [ ! -e "$leafHome/antigravity-acp/acp_token.json" ] || fail "wrong leaf name: token file created"
+  [ ! -e "$leafHome/antigravity-cli" ] || fail "wrong leaf name: antigravity-cli dir created"
   [ ! -s stderr ] || fail "wrong leaf name: unexpected stderr: $(cat stderr)"
 
-  # 8a. Matching parent with mode 0755: no token.
+  # 8a. Matching parent with mode 0755: no token, no links.
   ce8a=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
   chmod 755 "$(dirname "$ce8a")"
   run_seed "parent mode 0755" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce8a"
   [ "$(field token)" = "<none>" ] || fail "parent mode 0755: runtime got token '$(field token)'"
   [ ! -e "$ce8a/antigravity-acp/acp_token.json" ] || fail "parent mode 0755: token file created"
+  [ ! -e "$ce8a/antigravity-cli" ] || fail "parent mode 0755: antigravity-cli dir created"
   [ ! -s stderr ] || fail "parent mode 0755: unexpected stderr: $(cat stderr)"
 
   # 8b. gemini-home that is a symlink to a real dir: no token at either end.
@@ -332,6 +360,8 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "symlink gemini-home: runtime got token '$(field token)'"
   [ ! -e "$parent8b/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink gemini-home: token at symlink path"
   [ ! -e "$realGh8b/antigravity-acp/acp_token.json" ] || fail "symlink gemini-home: token at real dir"
+  [ ! -e "$parent8b/gemini-home/antigravity-cli" ] || fail "symlink gemini-home: antigravity-cli at symlink path"
+  [ ! -e "$realGh8b/antigravity-cli" ] || fail "symlink gemini-home: antigravity-cli at real dir"
   [ ! -s stderr ] || fail "symlink gemini-home: unexpected stderr: $(cat stderr)"
 
   # 8c. antigravity-acp that is a symlink: no token at either end.
@@ -343,6 +373,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "symlink antigravity-acp: runtime got token '$(field token)'"
   [ ! -e "$parent8c/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink antigravity-acp: token at symlink path"
   [ ! -e "$realAcp8c/acp_token.json" ] || fail "symlink antigravity-acp: token at real dir"
+  [ ! -e "$parent8c/gemini-home/antigravity-cli" ] || fail "symlink antigravity-acp: antigravity-cli at symlink path"
   [ ! -s stderr ] || fail "symlink antigravity-acp: unexpected stderr: $(cat stderr)"
 
   # 8d. scratch parent itself is a symlink to a real 0700 dir: no token at either end.
@@ -353,6 +384,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "symlink parent: runtime got token '$(field token)'"
   [ ! -e "$tmpdir/xmodel-cr-scratch-symlinkparent/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink parent: token at symlink path"
   [ ! -e "$realParent8d/gemini-home/antigravity-acp/acp_token.json" ] || fail "symlink parent: token at real dir"
+  [ ! -e "$tmpdir/xmodel-cr-scratch-symlinkparent/gemini-home/antigravity-cli" ] || fail "symlink parent: antigravity-cli at symlink path"
   [ ! -s stderr ] || fail "symlink parent: unexpected stderr: $(cat stderr)"
 
   # 9. Dangling symlink planted at the target path: link left as is, nothing written through it, stderr line appears.
@@ -402,6 +434,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   run_seed "no antigravity-acp dir" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$parent10/gemini-home"
   [ "$(field token)" = "<none>" ] || fail "no antigravity-acp dir: runtime got token '$(field token)'"
   [ ! -e "$parent10/gemini-home/antigravity-acp" ] || fail "no antigravity-acp dir: antigravity-acp created"
+  [ ! -e "$parent10/gemini-home/antigravity-cli" ] || fail "no antigravity-acp dir: antigravity-cli created"
   [ ! -s stderr ] || fail "no antigravity-acp dir: unexpected stderr: $(cat stderr)"
 
   # 11. GEMINI_HOME unset, and GEMINI_HOME=$HOME/.gemini: nothing created.
@@ -414,20 +447,32 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   run_seed "GEMINI_HOME=HOME/.gemini" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$emptyDotGeminiHome/.gemini"
   [ "$(field token)" = "<none>" ] || fail "GEMINI_HOME=HOME/.gemini: runtime got token '$(field token)'"
   [ ! -e "$emptyDotGeminiHome/.gemini/antigravity-acp/acp_token.json" ] || fail "GEMINI_HOME=HOME/.gemini: token created"
+  [ ! -e "$emptyDotGeminiHome/.gemini/antigravity-cli" ] || fail "GEMINI_HOME=HOME/.gemini: antigravity-cli created"
   [ ! -s stderr ] || fail "GEMINI_HOME=HOME/.gemini: unexpected stderr: $(cat stderr)"
 
   run_seed "GEMINI_HOME=fakeHome/.gemini" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$fakeHome/.gemini"
   [ "$(field token)" = "$expectedToken" ] || fail "GEMINI_HOME=fakeHome/.gemini: source token missing"
   [ ! -s stderr ] || fail "GEMINI_HOME=fakeHome/.gemini: unexpected stderr: $(cat stderr)"
 
-  # 12. No source token: runtime starts, no token, wrapper writes nothing to stdout or stderr (R5).
+  # 12. No source token: runtime starts, no token, wrapper writes nothing to stdout or stderr (R5),
+  #     and skills are still linked.
   noTokenHome=$PWD/no-token-home
   mkdir -p "$noTokenHome/.gemini/antigravity-acp"
+  mkdir -p "$noTokenHome/.gemini/antigravity-cli/skills"
+  for skill in humanizer grammar-checker style-guide; do
+    printf 'no-token-%s\n' "$skill" > "$noTokenHome/.gemini/antigravity-cli/skills/$skill"
+  done
   ce12=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
   run_seed "no source token" TMPDIR="$tmpdir" HOME="$noTokenHome" GEMINI_HOME="$ce12"
   [ "$(field token)" = "<none>" ] || fail "no source token: runtime got token '$(field token)'"
   [ ! -e "$ce12/antigravity-acp/acp_token.json" ] || fail "no source token: token file created"
   [ ! -s stderr ] || fail "no source token: unexpected stderr: $(cat stderr)"
+  for skill in humanizer grammar-checker style-guide; do
+    link=$ce12/antigravity-cli/skills/$skill
+    [ -L "$link" ] || fail "no source token: $skill is not a symlink"
+    [ "$(readlink "$link")" = "$noTokenHome/.gemini/antigravity-cli/skills/$skill" ] \
+      || fail "no source token: $skill points to '$(readlink "$link")', expected '$noTokenHome/.gemini/antigravity-cli/skills/$skill'"
+  done
 
   # 12b. Symlinked source token: rejected silently without seeding.
   symlinkSourceHome=$PWD/symlink-source-home
@@ -473,6 +518,66 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "HOME unset: runtime got token '$(field token)'"
   [ ! -e "$ce14/antigravity-acp/acp_token.json" ] || fail "HOME unset: token file created"
   [ ! -s stderr ] || fail "HOME unset: unexpected stderr: $(cat stderr)"
+
+  # 15. Missing skill source: skipped silently and the wrapper still runs.
+  missingHome=$PWD/missing-skill-source-home
+  mkdir -p "$missingHome/.gemini/antigravity-acp"
+  mkdir -p "$missingHome/.gemini/antigravity-cli/skills"
+  printf '%s\n' "$expectedToken" > "$missingHome/.gemini/antigravity-acp/acp_token.json"
+  chmod 600 "$missingHome/.gemini/antigravity-acp/acp_token.json"
+  printf 'fake-humanizer\n' > "$missingHome/.gemini/antigravity-cli/skills/humanizer"
+  printf 'fake-style-guide\n' > "$missingHome/.gemini/antigravity-cli/skills/style-guide"
+  ce15=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  run_seed "missing skill source" TMPDIR="$tmpdir" HOME="$missingHome" GEMINI_HOME="$ce15"
+  [ "$(field token)" = "$expectedToken" ] || fail "missing skill source: runtime got token '$(field token)'"
+  [ -L "$ce15/antigravity-cli/skills/humanizer" ] || fail "missing skill source: humanizer not linked"
+  [ "$(readlink "$ce15/antigravity-cli/skills/humanizer")" = "$missingHome/.gemini/antigravity-cli/skills/humanizer" ] \
+    || fail "missing skill source: humanizer points to '$(readlink "$ce15/antigravity-cli/skills/humanizer")'"
+  [ -L "$ce15/antigravity-cli/skills/style-guide" ] || fail "missing skill source: style-guide not linked"
+  [ "$(readlink "$ce15/antigravity-cli/skills/style-guide")" = "$missingHome/.gemini/antigravity-cli/skills/style-guide" ] \
+    || fail "missing skill source: style-guide points to '$(readlink "$ce15/antigravity-cli/skills/style-guide")'"
+  [ ! -e "$ce15/antigravity-cli/skills/grammar-checker" ] && [ ! -L "$ce15/antigravity-cli/skills/grammar-checker" ] \
+    || fail "missing skill source: grammar-checker exists"
+  [ ! -s stderr ] || fail "missing skill source: unexpected stderr: $(cat stderr)"
+
+  # 16. Existing destination entry: left untouched.
+  ce16=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  mkdir -p "$ce16/antigravity-cli/skills"
+  chmod 700 "$ce16/antigravity-cli" "$ce16/antigravity-cli/skills"
+  existingContent='custom-skill-do-not-overwrite'
+  printf '%s\n' "$existingContent" > "$ce16/antigravity-cli/skills/grammar-checker"
+  run_seed "existing destination entry" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce16"
+  [ "$(field token)" = "$expectedToken" ] || fail "existing destination entry: runtime got token '$(field token)'"
+  [ ! -L "$ce16/antigravity-cli/skills/grammar-checker" ] || fail "existing destination entry: grammar-checker became a symlink"
+  [ "$(cat "$ce16/antigravity-cli/skills/grammar-checker")" = "$existingContent" ] \
+    || fail "existing destination entry: grammar-checker content was overwritten"
+  [ -L "$ce16/antigravity-cli/skills/humanizer" ] || fail "existing destination entry: humanizer not linked"
+  [ "$(readlink "$ce16/antigravity-cli/skills/humanizer")" = "$fakeSkillsDir/humanizer" ] \
+    || fail "existing destination entry: humanizer points to '$(readlink "$ce16/antigravity-cli/skills/humanizer")'"
+  [ -L "$ce16/antigravity-cli/skills/style-guide" ] || fail "existing destination entry: style-guide not linked"
+  [ "$(readlink "$ce16/antigravity-cli/skills/style-guide")" = "$fakeSkillsDir/style-guide" ] \
+    || fail "existing destination entry: style-guide points to '$(readlink "$ce16/antigravity-cli/skills/style-guide")'"
+  [ ! -s stderr ] || fail "existing destination entry: unexpected stderr: $(cat stderr)"
+
+  # 17. Unrecognized scratch home gains no links.
+  ce17Parent=$tmpdir/unrecognized-parent-17
+  mkdir -p "$ce17Parent/gemini-home/antigravity-acp"
+  chmod 700 "$ce17Parent" "$ce17Parent/gemini-home"
+  ce17=$ce17Parent/gemini-home
+  run_seed "unrecognized home no links" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce17"
+  [ "$(field token)" = "<none>" ] || fail "unrecognized home no links: runtime got token '$(field token)'"
+  [ ! -e "$ce17/antigravity-cli" ] && [ ! -L "$ce17/antigravity-cli" ] \
+    || fail "unrecognized home no links: antigravity-cli was created"
+  [ ! -s stderr ] || fail "unrecognized home no links: unexpected stderr: $(cat stderr)"
+
+  # 18. Planted symlink at antigravity-cli is not followed outside scratch home.
+  outsideDir=$tmpdir/outside-target-skills
+  mkdir -p "$outsideDir"
+  ce18=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
+  ln -s "$outsideDir" "$ce18/antigravity-cli"
+  run_seed "planted symlink at antigravity-cli" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce18"
+  [ ! -e "$outsideDir/skills" ] || fail "planted symlink at antigravity-cli: created skills in outside target"
+  [ ! -s stderr ] || fail "planted symlink at antigravity-cli: unexpected stderr: $(cat stderr)"
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

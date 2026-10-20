@@ -188,6 +188,23 @@
         "type": "github"
       }
     },
+    "korean-skills": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1777778530,
+        "narHash": "sha256-icYLFo9UMpX3xn44iqn7ktI1nChyygsZHH0q8XlmPfk=",
+        "owner": "DaleSeo",
+        "repo": "korean-skills",
+        "rev": "fe6432e95f6675f7e411eacb2e1c36f1de54f962",
+        "type": "github"
+      },
+      "original": {
+        "owner": "DaleSeo",
+        "ref": "v1.0.0",
+        "repo": "korean-skills",
+        "type": "github"
+      }
+    },
     "lanzaboote": {
       "inputs": {
         "crane": "crane",
@@ -343,6 +360,7 @@
         "compound-engineering-plugin": "compound-engineering-plugin",
         "disko": "disko",
         "home-manager": "home-manager",
+        "korean-skills": "korean-skills",
         "lanzaboote": "lanzaboote",
         "nix-darwin": "nix-darwin",
         "nix-homebrew": "nix-homebrew",

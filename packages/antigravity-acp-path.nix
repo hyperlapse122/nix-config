@@ -14,7 +14,9 @@
   the nixpkgs one. When GEMINI_HOME is a private scratch home that Compound
   Engineering created for a run and holds no token yet, the wrapper copies
   ~/.gemini/antigravity-acp/acp_token.json into it with mode 0600 before
-  execing the runtime.
+  execing the runtime. It also links the three Korean writing skills
+  (humanizer, grammar-checker, style-guide) from ~/.gemini/antigravity-cli/skills/
+  into the scratch home's antigravity-cli/skills/ when the source skills exist.
 
   The runtime defaults to packages/antigravity-acp-release.json, which
   scripts/antigravity-acp-release keeps at Google's newest complete release.
@@ -84,21 +86,40 @@ let
       [ -n "''${HOME:-}" ] || return 0
       token_source=$HOME/.gemini/antigravity-acp/acp_token.json
       token_target=$acp_dir/acp_token.json
-      [ -f "$token_source" ] && [ -s "$token_source" ] && [ ! -L "$token_source" ] || return 0
-      if [ -f "$token_target" ] && [ ! -L "$token_target" ]; then
-        return 0
-      fi
-      if ! (
-        umask 077
-        tmp=$(${coreutils}/mktemp "$acp_dir/.acp_token.XXXXXX") || exit 1
-        if ! ${coreutils}/cat "$token_source" > "$tmp" || [ ! -s "$tmp" ] || ! ${coreutils}/ln "$tmp" "$token_target"; then
-          ${coreutils}/rm -f "$tmp"
-          exit 1
+      if [ -f "$token_source" ] && [ -s "$token_source" ] && [ ! -L "$token_source" ]; then
+        if [ ! -f "$token_target" ] || [ -L "$token_target" ]; then
+          if ! (
+            umask 077
+            tmp=$(${coreutils}/mktemp "$acp_dir/.acp_token.XXXXXX") || exit 1
+            if ! ${coreutils}/cat "$token_source" > "$tmp" || [ ! -s "$tmp" ] || ! ${coreutils}/ln "$tmp" "$token_target"; then
+              ${coreutils}/rm -f "$tmp"
+              exit 1
+            fi
+            ${coreutils}/rm -f "$tmp"
+          ) 2>/dev/null; then
+            printf 'agy_acp_server.par: could not copy the ~/.gemini sign-in into GEMINI_HOME\n' >&2
+          fi
         fi
-        ${coreutils}/rm -f "$tmp"
-      ) 2>/dev/null; then
-        printf 'agy_acp_server.par: could not copy the ~/.gemini sign-in into GEMINI_HOME\n' >&2
       fi
+
+      local agy_cli_dir skills_dir src_dir skill src dest
+      agy_cli_dir=$gemini_home/antigravity-cli
+      skills_dir=$agy_cli_dir/skills
+      src_dir=$HOME/.gemini/antigravity-cli/skills
+      (
+        umask 077
+        [ -e "$agy_cli_dir" ] || [ -L "$agy_cli_dir" ] || ${coreutils}/mkdir -m 700 "$agy_cli_dir" || exit 0
+        private_dir "$agy_cli_dir" || exit 0
+        [ -e "$skills_dir" ] || [ -L "$skills_dir" ] || ${coreutils}/mkdir -m 700 "$skills_dir" || exit 0
+        private_dir "$skills_dir" || exit 0
+        for skill in humanizer grammar-checker style-guide; do
+          src=$src_dir/$skill
+          dest=$skills_dir/$skill
+          if [ -e "$src" ] && [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+            ${coreutils}/ln -s "$src" "$dest" || true
+          fi
+        done
+      ) 2>/dev/null || true
     }
 
     seed_acp_token
