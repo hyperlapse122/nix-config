@@ -77,7 +77,8 @@
     each mutant in `selfTestMutants` (a removed, a negated, an inverted, and
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
     relaunch, the approval note, and the confined terms; a retired peer rule,
-    a removed peer safeguard, a negated session_info-first rule, an OpenCode
+    a removed peer safeguard, a removed, negated, or reworded scout rule,
+    a negated session_info-first rule, an OpenCode
     variant that differs from its source role, and an effort or instance the
     assignment rule forbids) fails them with its own message, so a guard that stops failing
     turns this red. See
@@ -279,6 +280,11 @@ let
   sessionInfoSentence = "In OpenCode, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.";
   writingSentence = "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `${role "glm" "writing-fallback"}` as fallback.";
   deepSentence = "A unit is `deep` when its own design is hard, such as a new interface, data format, or concurrency rule, when it debugs subtle cross-module behavior, or when it carries a security or data-loss risk, even when its edit is mechanical; it goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `${role "glm" "deep-fallback"}` as fallback.";
+  scoutDefinitionSentence = "When the session lists T3 Code's delegation tools, the scouts of `ce-plan` are its repository, learnings, framework-docs, best-practices, and web researchers, in its first research pass or in deepening, and no other subagent is a scout.";
+  scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval, counts as a failed launch";
+  scoutFallbackClause = "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
+  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `variant` for an OpenCode worker and `effort` for a Claude worker: a scout goes to `synthetic/${deepseekId}` on the `opencode` instance with `variant` `${role "deepseek" "scout"}` as primary and to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
+  scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, and no gitignored or untracked file, and before launching, name each scout and the provider that gets its prompt, Synthetic for OpenCode and Anthropic for Claude Code; that notice authorizes the send.";
 
   # In section order, like `reviewFindingsSentences`.
   compoundEngineeringSentences = [
@@ -321,6 +327,9 @@ let
     "Inside T3 Code, launch each unit on its category's primary worker first, and when that worker is unavailable or its launch fails, give the unit to its category's fallback worker with that worker's own effort rule."
     "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target` and its effort in `target.options`, as `effort` for a Claude worker and as `variant` for an OpenCode worker, instead of Compound Engineering's own delegation route."
     "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the `unspecified-low` category as ordered candidates, `opencode` with `synthetic/${deepseekId}`, which runs at the effort OpenCode's settings pin for it, and then `claude` with `claude-sonnet-5-5` at `high`."
+    scoutDefinitionSentence
+    scoutAssignmentSentence
+    scoutSafeguardSentence
   ];
 
   t3CodeHeading = "# T3 Code";
@@ -930,6 +939,68 @@ let
     {
       name = "self-wake prohibition sentence negated";
       line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout definition sentence removed";
+      line = "- ${scoutDefinitionSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout definition sentence negated";
+      line = "- ${scoutDefinitionSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout assignment sentence removed";
+      line = "- ${scoutAssignmentSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout assignment sentence negated";
+      line = "- ${scoutAssignmentSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout assignment loses its failed-launch clause";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutFailedLaunchClause "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout failed-launch clause joined by and instead of or";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "returns no findings, or that waits" "returns no findings, and that waits";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout fallback raised to claude-opus-5-5 high";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutFallbackClause "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `high` as fallback";
+      expect = "runs claude-opus-5-5 above effort medium: high";
+    }
+    {
+      name = "scout rendered at another effort than its source role";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "`variant` `${role "deepseek" "scout"}`" "`variant` `${
+        if role "deepseek" "scout" == "max" then "high" else "max"
+      }`";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout safeguard sentence removed";
+      line = "- ${scoutSafeguardSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout safeguard sentence negated";
+      line = "- ${scoutSafeguardSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }

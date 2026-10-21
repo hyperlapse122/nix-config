@@ -229,7 +229,7 @@ class ClassificationTest(WatchTestCase):
         finding = self.finding(result, "new-version", "deepseek")
         self.assertEqual(finding["id"], DEEPSEEK)
         self.assertEqual(finding["candidates"], [candidate])
-        self.assertEqual(finding["uses"], ["quick", "text-generation", "unspecified-low", "small", "textGeneration"])
+        self.assertEqual(finding["uses"], ["quick", "scout", "text-generation", "unspecified-low", "small", "textGeneration"])
         first = body.splitlines()[0]
         for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`quick`", "`unspecified-low`", DETECTED):
             self.assertIn(needle, first)
