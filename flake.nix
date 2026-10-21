@@ -1036,71 +1036,107 @@
             '';
           grok-absent =
             let
-              isGrokName = pkgs.lib.hasInfix "grok";
+              inherit (pkgs) lib;
+              isGrokName = name: lib.hasInfix "grok" (lib.toLower name);
+              # Names that contain "grok" but are not Grok. None today.
+              allowed = [ ];
+              grokNamesOf =
+                names: lib.unique (builtins.filter (name: isGrokName name && !lib.elem name allowed) names);
+              # A package counts by its pname or its name, so a renamed wrapper
+              # such as grok-cli is caught as well as grok-build or grok-bot.
+              grokPackagesOf =
+                packages:
+                grokNamesOf (
+                  lib.concatMap (p: [
+                    (p.pname or "")
+                    (p.name or "")
+                  ]) packages
+                );
               darwinApps = import ./modules/shared/darwin-apps.nix;
-              grokApps = builtins.filter isGrokName (builtins.attrNames darwinApps.apps);
-              grokCasks = builtins.filter isGrokName darwinApps.casks;
+              grokApps = grokNamesOf (builtins.attrNames darwinApps.apps);
+              report =
+                names: message:
+                lib.optionalString (names != [ ]) ''
+                  echo ${lib.escapeShellArg "${message}: ${toString names}"} >&2
+                  fail=1
+                '';
               assertUser =
                 entry:
                 let
-                  grokFiles = builtins.filter (target: target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) (
+                  grokFiles = builtins.filter (target: target == ".grok" || lib.hasPrefix ".grok/" target) (
                     homeFileTargets entry
                   );
                 in
                 ''
-                  ${pkgs.lib.concatMapStrings
-                    (
-                      pname:
-                      pkgs.lib.optionalString (userPackageOf pname entry != null) ''
-                        echo '${pname} is still in the user packages on ${entry.name}' >&2
-                        fail=1
-                      ''
-                    )
-                    [
-                      "grok-build"
-                      "grok-bot"
-                    ]
-                  }
-                  ${pkgs.lib.optionalString (grokFiles != [ ]) ''
-                    echo 'home files under ~/.grok remain on ${entry.name}: ${toString grokFiles}' >&2
-                    fail=1
-                  ''}
+                  ${report (grokPackagesOf (userPackagesOf entry)) "Grok packages are still in the user packages on ${entry.name}"}
+                  ${report grokFiles "home files under ~/.grok remain on ${entry.name}"}
                 '';
+              assertNixos = entry: ''
+                ${report (grokPackagesOf (
+                  entry.config.environment.systemPackages or [ ]
+                )) "Grok packages are still in environment.systemPackages on ${entry.name}"}
+                ${report (grokNamesOf (
+                  builtins.attrNames (entry.config.systemd.services or { })
+                )) "${entry.name} still has Grok system units"}
+                ${report (grokNamesOf (
+                  builtins.attrNames (entry.config.systemd.user.services or { })
+                )) "${entry.name} still has Grok user units"}
+              '';
               assertFixture =
                 fixture:
                 let
                   smConfig = fixture.host.systemManager.config;
-                  grokEtc = builtins.filter isGrokName (builtins.attrNames smConfig.environment.etc);
-                  grokUnits = builtins.filter isGrokName (builtins.attrNames smConfig.systemd.services);
                 in
                 ''
-                  ${pkgs.lib.optionalString (grokEtc != [ ]) ''
-                    echo 'the system-manager configuration of ${fixture.name} still writes /etc files for Grok: ${toString grokEtc}' >&2
-                    fail=1
-                  ''}
-                  ${pkgs.lib.optionalString (grokUnits != [ ]) ''
-                    echo 'the system-manager configuration of ${fixture.name} still has Grok units: ${toString grokUnits}' >&2
-                    fail=1
-                  ''}
+                  ${report (grokNamesOf (builtins.attrNames smConfig.environment.etc)) "the system-manager configuration of ${fixture.name} still writes /etc files for Grok"}
+                  ${report (grokNamesOf (builtins.attrNames smConfig.systemd.services)) "the system-manager configuration of ${fixture.name} still has Grok units"}
                 '';
+              # Real Mac hosts and the macOS fixtures alike, read from the
+              # evaluated configuration, so a cask, App Store app, or package a
+              # module adds outside modules/shared/darwin-apps.nix is caught too.
+              darwinEntries =
+                map (entry: { inherit (entry) name host; }) darwinFixtures
+                ++ lib.mapAttrsToList (name: host: { inherit name host; }) self.darwinConfigurations;
+              assertDarwin =
+                entry:
+                let
+                  inherit (entry.host) config;
+                  user = config.home-manager.users.${config.my.user.name} or { };
+                in
+                ''
+                  ${report (grokNamesOf (
+                    map (cask: cask.name) config.homebrew.casks
+                  )) "the macOS casks of ${entry.name} still include Grok"}
+                  ${report (grokNamesOf (builtins.attrNames config.homebrew.masApps)) "the App Store apps of ${entry.name} still include Grok"}
+                  ${report (grokPackagesOf (
+                    config.environment.systemPackages or [ ]
+                  )) "Grok packages are still in environment.systemPackages on ${entry.name}"}
+                  ${assertUser {
+                    inherit (entry) name;
+                    inherit user;
+                  }}
+                '';
+              standaloneUsers = lib.mapAttrsToList (name: home: {
+                inherit name;
+                user = home.config;
+              }) self.homeConfigurations;
             in
             pkgs.runCommand "grok-absent" { } ''
               ${configurations.userGuard}
               fail=0
-              ${pkgs.lib.concatMapStrings assertUser configurations.userEntries}
-              ${pkgs.lib.optionalString (configurations.linuxFixtures == [ ]) ''
+              ${lib.concatMapStrings assertUser (configurations.userEntries ++ standaloneUsers)}
+              ${lib.concatMapStrings assertNixos configurations.entries}
+              ${lib.optionalString (configurations.linuxFixtures == [ ]) ''
                 echo 'no non-NixOS fixture host of this architecture, so the system-manager side of this check would cover none' >&2
                 fail=1
               ''}
-              ${pkgs.lib.concatMapStrings assertFixture configurations.linuxFixtures}
-              ${pkgs.lib.optionalString (grokApps != [ ]) ''
-                echo 'modules/shared/darwin-apps.nix still maps Grok apps: ${toString grokApps}' >&2
+              ${lib.concatMapStrings assertFixture configurations.linuxFixtures}
+              ${lib.optionalString (darwinFixtures == [ ]) ''
+                echo 'no macOS fixture host, so the evaluated-cask side of this check would cover none' >&2
                 fail=1
               ''}
-              ${pkgs.lib.optionalString (grokCasks != [ ]) ''
-                echo 'the macOS casks still include Grok: ${toString grokCasks}' >&2
-                fail=1
-              ''}
+              ${lib.concatMapStrings assertDarwin darwinEntries}
+              ${report grokApps "modules/shared/darwin-apps.nix still maps Grok apps"}
               [ "$fail" = 0 ] || exit 1
               touch $out
             '';

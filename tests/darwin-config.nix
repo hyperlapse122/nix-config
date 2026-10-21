@@ -57,9 +57,13 @@
     ids name system.primaryUser.
   - Retired casks: after the KakaoTalk step and before Home Manager,
     postActivation uninstalls the installed grok-bot cask with
-    `brew uninstall --cask`, never `--zap`, through the absolute brew path
-    under `sudo --user` for the primary user, since Homebrew refuses to run
-    as root. Every brew call sits in an `if !` guard, each branch prints one
+    `brew uninstall --cask --force`, never `--zap`, through the absolute brew
+    path under `sudo --preserve-env=PATH --user` for the primary user with
+    brew's prefix on PATH, the way nix-darwin calls brew bundle, since
+    Homebrew refuses to run as root. Only a `brew list` failure with empty
+    stderr or "Error: Cask 'grok-bot' is not installed." counts as no cask;
+    any other failure prints brew's stderr on one line and skips the
+    uninstall. Every brew call sits in an `if !` guard, each branch prints one
     line, and none exits, so a failure never aborts the apply. The cask has
     no entry in modules/shared/darwin-apps.nix.
   - Android SDK: Home Manager links it at ~/Library/Android/sdk and declares
@@ -305,14 +309,19 @@ let
       retiredBrewCalls = lib.filter (
         line: lib.hasInfix "retiredBrew " line && !lib.hasPrefix "retiredBrew()" line
       ) rootLines;
-      retiredStart = lineIndex "if ! retiredBrew list --cask grok-bot >/dev/null 2>&1; then";
+      retiredList = "if ! retiredList=$(retiredBrew list --cask grok-bot 2>&1 >/dev/null); then";
+      retiredStart = lineIndex retiredList;
       retiredBlock = [
-        "if ! retiredBrew list --cask grok-bot >/dev/null 2>&1; then"
-        "echo \"retired casks: no grok-bot cask to remove\" >&2"
-        "elif ! retiredBrew uninstall --cask grok-bot; then"
-        "echo \"retired casks: uninstalling grok-bot failed; run brew uninstall --cask grok-bot as ${primaryUser}\" >&2"
+        retiredList
+        ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'grok-bot' is not installed." ]; then''
+        ''echo "retired casks: no grok-bot cask to remove" >&2''
         "else"
-        "echo \"retired casks: removed the grok-bot cask\" >&2"
+        ''echo "retired casks: could not tell whether grok-bot is installed: ''${retiredList//$'\n'/ }; run brew list --cask grok-bot as ${primaryUser}" >&2''
+        "fi"
+        "elif ! retiredBrew uninstall --cask --force grok-bot; then"
+        ''echo "retired casks: uninstalling grok-bot failed; run brew uninstall --cask --force grok-bot as ${primaryUser}" >&2''
+        "else"
+        ''echo "retired casks: removed the grok-bot cask" >&2''
         "fi"
       ];
       xcodeInstall = "if ! xcodeMas install ${xcodeId} && ! xcodeMas get ${xcodeId}; then";
@@ -636,11 +645,11 @@ let
       (check
         (
           brewLines == [
-            ''/usr/bin/sudo --user=${primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''
+            ''PATH="${config.homebrew.prefix}/bin:$PATH" /usr/bin/sudo --preserve-env=PATH --user=${primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''
           ]
           && lib.elem "retiredBrew() {" rootLines
         )
-        "${entry.name}: every brew call of the retired-cask step must run through /usr/bin/sudo --user=${primaryUser} with the absolute brew path, since Homebrew refuses to run as root"
+        "${entry.name}: every brew call of the retired-cask step must run through /usr/bin/sudo --preserve-env=PATH --user=${primaryUser} with brew's prefix on PATH and the absolute brew path, since Homebrew refuses to run as root"
       )
       (check (retiredBrewCalls != [ ] && lib.all guarded retiredBrewCalls)
         "${entry.name}: every brew call of the retired-cask step must be guarded by if !, so a failed brew cannot abort activation"
@@ -649,7 +658,7 @@ let
         (
           retiredStart != null && lib.sublist retiredStart (lib.length retiredBlock) rootLines == retiredBlock
         )
-        "${entry.name}: the grok-bot cask must be uninstalled when installed, with one line per outcome and no exit on failure"
+        "${entry.name}: the grok-bot cask must be uninstalled with --force when installed, a brew list failure other than not-installed must print brew's stderr, with one line per outcome and no exit on failure"
       )
       (check (
         !lib.hasInfix "zap" postActivation

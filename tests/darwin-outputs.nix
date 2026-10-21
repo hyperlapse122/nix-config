@@ -380,8 +380,9 @@ let
       installline=$(lineof 'if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then'); installline=''${installline:-0}
       kakaomasline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$appStoreUid" /usr/bin/env SUDO_UID="$appStoreUid" SUDO_GID="$appStoreGid" ${masExe} "$@"''}); kakaomasline=''${kakaomasline:-0}
       kakaoline=$(lineof 'if ! appStoreMas install 869223134 && ! appStoreMas get 869223134; then'); kakaoline=''${kakaoline:-0}
-      retiredbrewline=$(lineof ${lib.escapeShellArg ''/usr/bin/sudo --user=${config.system.primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''}); retiredbrewline=''${retiredbrewline:-0}
-      retiredline=$(lineof 'elif ! retiredBrew uninstall --cask grok-bot; then'); retiredline=''${retiredline:-0}
+      retiredbrewline=$(lineof ${lib.escapeShellArg ''PATH="${config.homebrew.prefix}/bin:$PATH" /usr/bin/sudo --preserve-env=PATH --user=${config.system.primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''}); retiredbrewline=''${retiredbrewline:-0}
+      retiredlistline=$(lineof ${lib.escapeShellArg ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'grok-bot' is not installed." ]; then''}); retiredlistline=''${retiredlistline:-0}
+      retiredline=$(lineof 'elif ! retiredBrew uninstall --cask --force grok-bot; then'); retiredline=''${retiredline:-0}
       hmline=$(lineof "echo Activating home-manager configuration for "); hmline=''${hmline:-0}
       if [ "$bundleline" = 0 ] || [ "$hmline" = 0 ]; then
         bad "the system activation has no brew bundle or Home Manager activation call"
@@ -395,9 +396,9 @@ let
       elif ! [ "$installline" -lt "$kakaomasline" ] || ! [ "$kakaomasline" -lt "$kakaoline" ] || ! [ "$kakaoline" -lt "$hmline" ]; then
         bad "the KakaoTalk step does not run after the Xcode step and before Home Manager"
       fi
-      if [ "$retiredbrewline" = 0 ] || [ "$retiredline" = 0 ]; then
-        bad "the system activation has no retired-cask step running brew through sudo for grok-bot"
-      elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$kakaoline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
+      if [ "$retiredbrewline" = 0 ] || [ "$retiredlistline" = 0 ] || [ "$retiredline" = 0 ]; then
+        bad "the system activation has no retired-cask step running brew through sudo for grok-bot, telling not-installed from other brew list failures, and uninstalling with --force"
+      elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$kakaoline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
         bad "the retired-cask step does not run after brew bundle and the KakaoTalk step and before Home Manager"
       fi
 
