@@ -2,7 +2,7 @@
 title: OpenCode silently drops a model variant written in its config file
 date: "2026-10-19"
 category: integration-issues
-module: OpenCode default model and effort (home/h82/agents/opencode.nix, home/h82/agents/opencode-model.nix)
+module: OpenCode default model and effort (home/h82/agents/opencode.nix, home/h82/agents/synthetic-models.nix)
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -45,7 +45,7 @@ Injecting `--model <id>#max` from the `opencode` wrapper was rejected rather tha
 
 ## Solution
 
-Pin the effort on the model, not on the session. `home/h82/agents/opencode.nix` declares one `setPaths` leaf, `provider.synthetic.models."hf:zai-org/GLM-5.3".options.reasoningEffort = "max"`, merged into `~/.config/opencode/opencode.json`, and `home/h82/agents/opencode-model.nix` names the plain model id, `synthetic/hf:zai-org/GLM-5.3`. The merged result as the check asserts it:
+Pin the effort on the model, not on the session. `home/h82/agents/opencode.nix` declares a `setPaths` leaf per model, such as `provider.synthetic.models."hf:zai-org/GLM-5.3".options.reasoningEffort = "max"`, merged into `~/.config/opencode/opencode.json`, and sets `model` to the plain id, `synthetic/hf:zai-org/GLM-5.3`. Both come from `home/h82/agents/synthetic-models.nix`, the one source of every Synthetic model id and its `opencodeEffort`. The merged result for the default model as the check asserts it:
 
 ```json
 {
@@ -62,7 +62,7 @@ Pin the effort on the model, not on the session. `home/h82/agents/opencode.nix` 
 
 The option reached the HTTP request body as `reasoning_effort` on every path checked against a local capture listener with a fake key: `opencode run --standalone`, `opencode acp` driven by a JSON-RPC client, `opencode serve` with a prompt posted to `/api/session/<id>/prompt` (the path T3 Code uses), and the real merged file through the wrapper with `OPENCODE_CONFIG_CONTENT='{}'` (how a Compound Engineering peer starts). Removing the leaf removed the field. The same leaf on a different model (Flash) sent nothing, so the pin is per model. A `--model <id>#low` or `#high` still wins over the pin.
 
-`tests/opencode.nix` asserts the declared, merged, and created settings as literals, and turns red when the model returns to Flash, when the leaf is removed, or when the value changes.
+`tests/opencode.nix` asserts the declared, merged, and created settings with the efforts written as literals and the model ids read from `synthetic-models.nix`, and turns red when the default model changes away from the source's, when a leaf is removed, or when an effort changes.
 
 ## Why This Works
 
@@ -72,6 +72,6 @@ A model variant in OpenCode 2.0.32 is a session-level choice that the CLI and a 
 
 - Do not rely on a config-file `#variant`, a model object's `variant`, or `agent.*.variant` to set reasoning effort on OpenCode 2.0.32. Use `provider.<provider>.models."<model-id>".options`.
 - OpenCode passes the option through without checking it, so a misspelled effort reaches the provider as written. Keep the value pinned by `tests/opencode.nix`, and check that a new model offers the level before moving the pin (GLM 5.3 lists `low`, `high`, and `max` in the models.dev catalog).
-- The leaf is keyed by the model id. When `opencode-model.nix` changes, the effort pin follows the new id, so verify that model accepts the value.
+- The leaf is keyed by the model id. When an id in `synthetic-models.nix` changes, the effort pin follows the new id, so verify that model accepts the value, and add the previous key to `retiredModels` in `opencode.nix` so its stale entry is removed.
 - A check cannot prove the request body; confirm a change with a live capture as `docs/verification.md` lists, and see [OpenCode plugin loading is verifiable only by a live run](opencode-plugin-loading-verifiable-only-by-a-live-run.md) for the overlay recipe, which carries this pin.
 - Related: [OpenCode v2's shared background server keeps the first client's key and switches](opencode-v2-shared-background-server-keeps-first-client-env.md). The per-model option is read from config at each run only because that server is disabled.
