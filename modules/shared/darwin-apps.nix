@@ -23,7 +23,6 @@ let
     discord.cask = "discord";
     ghostty.cask = "ghostty";
     google-chrome.cask = "google-chrome";
-    grok-bot.cask = "grok-bot";
     libreoffice.cask = "libreoffice";
     telegram-desktop.cask = "telegram-desktop";
     wifiman-desktop.cask = "wifiman";

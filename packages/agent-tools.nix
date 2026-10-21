@@ -67,18 +67,6 @@ let
   # command so the sandboxed repository check can drive it with fixtures.
   antigravityCliRelease = pythonHelper "antigravity-cli-release" ../scripts/antigravity-cli-release;
 
-  # Resolves the newest stable Grok Build CLI release and hashes its
-  # per-platform binaries, which xAI publishes no checksum for. Its network
-  # calls go through overridable commands so the sandboxed repository check
-  # can drive it with fixtures.
-  grokBuildRelease = pythonHelper "grok-build-release" ../scripts/grok-build-release;
-
-  # Resolves the newest stable Grok Bot release for Linux from xAI's Cursor
-  # feed and hashes its per-architecture .deb packages, which xAI publishes no
-  # checksum for. Its network calls go through overridable commands so the
-  # sandboxed repository check can drive it with fixtures.
-  grokBotRelease = pythonHelper "grok-bot-release" ../scripts/grok-bot-release;
-
   # Resolves the newest complete Antigravity ACP runtime release by probing
   # candidate versions on Google's download host, and hashes its archives,
   # which upstream publishes no checksum for. Its network calls go through
@@ -90,6 +78,9 @@ let
   # releases API. Its network call goes through an overridable command so the
   # sandboxed repository check can drive it with fixtures.
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
+
+  # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
+  syntheticModelsWatch = pythonHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
 
   # Runs from home activation and links the pinned Antigravity runtime into
   # T3 Code's managed runtime directory, which T3 Code checks on disk.
@@ -118,10 +109,9 @@ in
     miseRelease
     opencodeRelease
     antigravityCliRelease
-    grokBuildRelease
-    grokBotRelease
     antigravityAcpRelease
     t3codeRelease
+    syntheticModelsWatch
     t3codeAntigravityInstall
     t3codeAntigravityLink
     androidSdkRelease

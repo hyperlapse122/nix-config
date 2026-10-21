@@ -21,7 +21,7 @@ retire_when: "The macOS host gains a Linux builder (a nix-darwin linux-builder o
 
 ## Context
 
-The macOS host has no Linux builder, so `nix build` cannot produce a Linux package or a `checks.*-linux` output there. [Verify a Linux-only Nix check's text inputs on macOS through nix derivation show](verify-linux-only-nix-check-inputs-on-macos-through-derivation-show.md) covers what evaluation alone can prove. Evaluation cannot catch a build-time failure. While adding Grok Bot (`packages/grok-bot.nix`, built from xAI's `.deb`), code review found that the four native Node addons under `resources/app.asar.unpacked` need `libstdc++.so.6`, which no `buildInputs` entry provided, so `autoPatchelfHook` would fail the build on Linux. Without a local builder, the only proof that the fix worked would have been the first CI run.
+The macOS host has no Linux builder, so `nix build` cannot produce a Linux package or a `checks.*-linux` output there. [Verify a Linux-only Nix check's text inputs on macOS through nix derivation show](verify-linux-only-nix-check-inputs-on-macos-through-derivation-show.md) covers what evaluation alone can prove. Evaluation cannot catch a build-time failure. While adding Grok Bot (`packages/grok-bot.nix`, built from xAI's `.deb`), code review found that the four native Node addons under `resources/app.asar.unpacked` need `libstdc++.so.6`, which no `buildInputs` entry provided, so `autoPatchelfHook` would fail the build on Linux. Without a local builder, the only proof that the fix worked would have been the first CI run. Grok Bot, its package, and its AppArmor profile were later removed (issue #284), so the Grok Bot paths below are the historical case; substitute the package or profile you are changing.
 
 The host already runs a Podman machine for the container setup (`podman machine list` shows `podman-machine-default`, VM type `libkrun`, and `podman info` reports `arm64 linux`). That VM can run the official `nixos/nix` image and build aarch64-linux outputs for real.
 
@@ -45,7 +45,7 @@ The flake exposes no `packages.aarch64-linux`, so to build one package, import i
 nix build -L --no-link --impure --expr '
   let f = builtins.getFlake "path:/work";
       pkgs = import f.inputs.nixpkgs { system = "aarch64-linux"; config.allowUnfree = true; };
-  in import /work/packages/grok-bot.nix { inherit pkgs; }'
+  in import /work/packages/<package>.nix { inherit pkgs; }'
 ```
 
 Each step in this setup works around a failure seen while finding it:
@@ -61,12 +61,12 @@ For an AppArmor profile, an `ubuntu:24.04` container runs the distribution's own
 ```sh
 podman run --rm -v "$HOME/.cache/profile":/p:ro docker.io/library/ubuntu:24.04 sh -c '
   apt-get update -qq && apt-get install -y -qq apparmor >/dev/null
-  cp /p/nix-grok-bot /etc/apparmor.d/ && apparmor_parser --skip-kernel-load --debug /etc/apparmor.d/nix-grok-bot >/dev/null && echo PARSE_OK'
+  cp /p/<profile> /etc/apparmor.d/ && apparmor_parser --skip-kernel-load --debug /etc/apparmor.d/<profile> >/dev/null && echo PARSE_OK'
 ```
 
 ## Why This Matters
 
-These builds caught what evaluation could not. The Grok Bot build reported `auto-patchelf: 0 dependencies could not be satisfied` after `pkgs.stdenv.cc.cc.lib` joined `buildInputs` (`packages/grok-bot.nix`). Running the built `bin/grok-bot` as the container's root user reached Electron's `Running as root without --no-sandbox is not supported`, which shows every shared library loaded and execution reached Electron's main code. Building `checks.aarch64-linux.non-nixos-system-<fixture>` and `non-nixos-home-<fixture>` proved the system-manager AppArmor module and the Home Manager generation build. The Ubuntu container showed AppArmor 4.0.1 accepts the profile's `abi <abi/4.0>` line.
+These builds caught what evaluation could not. The Grok Bot build (since removed) reported `auto-patchelf: 0 dependencies could not be satisfied` after `pkgs.stdenv.cc.cc.lib` joined `buildInputs` (`packages/grok-bot.nix`). Running the built `bin/grok-bot` as the container's root user reached Electron's `Running as root without --no-sandbox is not supported`, which shows every shared library loaded and execution reached Electron's main code. Building `checks.aarch64-linux.non-nixos-system-<fixture>` and `non-nixos-home-<fixture>` proved the system-manager AppArmor module and the Home Manager generation build. The Ubuntu container showed AppArmor 4.0.1 accepts the profile's `abi <abi/4.0>` line.
 
 Without this, each of those would have been a push, a wait for CI, and another push.
 

@@ -28,8 +28,6 @@
   - the opencode wrapper on PATH reads its key from the state directory
     host-secrets publishes to, and activation merges the declared OpenCode
     config into ~/.config/opencode/opencode.json after writeBoundary;
-  - grok on PATH resolves to the grok-build wrapper, which turns its
-    self-updater off, and the profile has no `agent` executable;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -58,6 +56,9 @@
     asuser for App Store id 497799835, after brew bundle and before the Home
     Manager activation call, then the KakaoTalk step for App Store id
     869223134, through its own launchctl asuser wrapper, before that call;
+  - the retired-cask step runs after the KakaoTalk step and before the Home
+    Manager activation call, with every brew call going through /usr/bin/sudo
+    as the primary user with the absolute brew path;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
     apply takes over an existing /opt/homebrew instead of stopping.
 
@@ -93,8 +94,8 @@ let
       deviceArgs = map androidPin.deviceArg (user.my.mobileDevices or [ ]);
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
+      brewExe = "${config.homebrew.prefix}/bin/brew";
       peers = lib.concatStringsSep "," (expectedPeers user.home.packages);
-      grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
       serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
@@ -239,18 +240,6 @@ let
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
       fi
 
-      grok=$(readlink -f "$gen/home-path/bin/grok" || true)
-      if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
-        bad "grok on PATH is not the grok-build wrapper"
-      elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
-        bad "the grok wrapper does not turn its self-updater off"
-      elif ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" "$grok"; then
-        bad "the grok wrapper does not turn its Claude Code file scan off"
-      fi
-      if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
-        bad "the profile puts an agent executable on PATH"
-      fi
-
       # Compound Engineering's Antigravity route takes the helper from the
       # directory agy_acp_server.par is found in. The macOS .par finds its CA
       # bundle itself, so the wrapper sets no SSL_CERT_FILE. It seeds
@@ -391,6 +380,9 @@ let
       installline=$(lineof 'if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then'); installline=''${installline:-0}
       kakaomasline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$appStoreUid" /usr/bin/env SUDO_UID="$appStoreUid" SUDO_GID="$appStoreGid" ${masExe} "$@"''}); kakaomasline=''${kakaomasline:-0}
       kakaoline=$(lineof 'if ! appStoreMas install 869223134 && ! appStoreMas get 869223134; then'); kakaoline=''${kakaoline:-0}
+      retiredbrewline=$(lineof ${lib.escapeShellArg ''PATH="${config.homebrew.prefix}/bin:$PATH" /usr/bin/sudo --preserve-env=PATH --user=${config.system.primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''}); retiredbrewline=''${retiredbrewline:-0}
+      retiredlistline=$(lineof ${lib.escapeShellArg ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'grok-bot' is not installed." ]; then''}); retiredlistline=''${retiredlistline:-0}
+      retiredline=$(lineof 'elif ! retiredBrew uninstall --cask --force grok-bot; then'); retiredline=''${retiredline:-0}
       hmline=$(lineof "echo Activating home-manager configuration for "); hmline=''${hmline:-0}
       if [ "$bundleline" = 0 ] || [ "$hmline" = 0 ]; then
         bad "the system activation has no brew bundle or Home Manager activation call"
@@ -403,6 +395,11 @@ let
         bad "the system activation has no KakaoTalk step running mas through launchctl asuser for 869223134"
       elif ! [ "$installline" -lt "$kakaomasline" ] || ! [ "$kakaomasline" -lt "$kakaoline" ] || ! [ "$kakaoline" -lt "$hmline" ]; then
         bad "the KakaoTalk step does not run after the Xcode step and before Home Manager"
+      fi
+      if [ "$retiredbrewline" = 0 ] || [ "$retiredlistline" = 0 ] || [ "$retiredline" = 0 ]; then
+        bad "the system activation has no retired-cask step running brew through sudo for grok-bot, telling not-installed from other brew list failures, and uninstalling with --force"
+      elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$kakaoline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
+        bad "the retired-cask step does not run after brew bundle and the KakaoTalk step and before Home Manager"
       fi
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \

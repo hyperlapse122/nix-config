@@ -12,8 +12,6 @@
   - the account and home directory follow the host's `my.user` values;
   - no desktop configuration reaches the user environment: no Plasma or
     autostart files, no GUI packages, the T3 Code desktop app included;
-    Grok Bot is the one GUI app every Linux host installs, on both
-    architectures;
   - the T3 Code CLI is in the user packages exactly when the host enables
     my.t3.cli.enable, and at least one fixture enables it;
   - production runs the host-secrets activation steps, stage before any link
@@ -25,21 +23,13 @@
   - on fixtures of the builder's own architecture, the Tokscale and OpenCode
     wrappers and the registry credential helper read the tokens host-secrets
     publishes, not /run/secrets, which a non-NixOS host does not have;
-  - on fixtures of the builder's own architecture, grok on the profile's PATH
-    resolves to the packaged Grok Build wrapper, and the profile has no
-    `agent` executable;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
     layer runs pcscd with the ccid reader drivers, writes a nix.conf that keeps
     builds on the nixbld users and trusts only root, and records the host and
-    variant in /etc/nix-config-host;
-  - on fixtures of the builder's own architecture, the materialized system
-    layer writes /etc/apparmor.d/nix-grok-bot, which grants userns to the
-    Home Manager Grok Bot binary, and a nix-grok-bot-apparmor.service that is
-    not masked, runs only under AppArmor, loads that profile, restarts when it
-    changes, and is wanted by multi-user.target. Other architectures are
-    proven by their own build in CI.
+    variant in /etc/nix-config-host. Other architectures are proven by their
+    own build in CI.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation.
@@ -53,7 +43,6 @@ let
   inherit (pkgs) lib;
 
   # GUI packages the NixOS desktop installs; none may reach a non-NixOS host.
-  # Grok Bot is installed on every Linux host instead, so it is not listed.
   guiPackages = [
     "discord"
     "google-chrome"
@@ -127,7 +116,6 @@ let
       (check (
         leakedGui == [ ]
       ) "${entry.name}: GUI packages reached a non-NixOS host: ${lib.concatStringsSep ", " leakedGui}")
-      (check (lib.elem "grok-bot" pnames) "${entry.name}: Grok Bot is missing from the user packages")
       (check (lib.elem "t3code-cli" pnames == hm.my.t3.cli.enable)
         "${entry.name}: the T3 Code CLI must be installed exactly when my.t3.cli.enable is on (it is ${lib.boolToString hm.my.t3.cli.enable})"
       )
@@ -181,7 +169,6 @@ let
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
       opencode = packageNamed "opencode";
-      grok = packageNamed "grok-build";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -204,19 +191,6 @@ let
             ''
               if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/synthetic_api_key'"} ${opencode}/bin/opencode; then
                 ${fail "${entry.name}: the opencode wrapper does not read ${state}/synthetic_api_key"}
-              fi
-            ''
-        )
-        (
-          if grok == null then
-            fail "${entry.name}: no grok-build in home.packages"
-          else
-            ''
-              if [ "$(readlink -f ${hm.home.path}/bin/grok || true)" != ${grok}/bin/grok ]; then
-                ${fail "${entry.name}: grok on PATH is not the grok-build wrapper"}
-              fi
-              if [ -e ${hm.home.path}/bin/agent ] || [ -L ${hm.home.path}/bin/agent ]; then
-                ${fail "${entry.name}: the profile puts an agent executable on PATH"}
               fi
             ''
         )
@@ -245,9 +219,6 @@ let
         name: lib.elem name distributionOwned || lib.hasPrefix "nvidia" name || lib.hasPrefix "../" name
       ) managed;
       variant = if entry.bootstrap then "bootstrap" else "production";
-      grokBot = lib.findFirst (
-        p: (p.pname or "") == "grok-bot"
-      ) null entry.host.home.config.home.packages;
     in
     lib.concatStrings [
       (check (owned == [ ])
@@ -279,39 +250,6 @@ let
           ${fail "${entry.name}: /etc/nix-config-host does not record host ${entry.fixture}, variant ${variant}"}
         fi
       '')
-      (lib.optionalString (entry.host.system == pkgs.stdenv.hostPlatform.system) (
-        if grokBot == null then
-          fail "${entry.name}: no grok-bot in home.packages"
-        else
-          ''
-            profile=$(jq -r '.entries["apparmor.d/nix-grok-bot"].source // empty' "$sm/etcFiles/etcFiles.json")/apparmor.d/nix-grok-bot
-            if ! grep -Fxq -- ${lib.escapeShellArg ''profile "nix-grok-bot" "${grokBot}/lib/grok-bot/grok-bot" flags=(unconfined) {''} "$profile"; then
-              ${fail "${entry.name}: the AppArmor profile does not attach to the installed Grok Bot binary"}
-            fi
-            if ! grep -Eq '^[[:space:]]*userns,$' "$profile"; then
-              ${fail "${entry.name}: the AppArmor profile does not grant userns"}
-            fi
-            unit=$(jq -r '.["nix-grok-bot-apparmor.service"].storePath // empty' "$sm/services/services.json")
-            if [ -z "$unit" ] || ! grep -qx 'ConditionSecurity=apparmor' "$unit"; then
-              ${fail "${entry.name}: nix-grok-bot-apparmor.service is missing, masked, or not conditioned on AppArmor"}
-            else
-              start=$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$unit")
-              if [ -z "$start" ] || ! grep -Fxq 'profile=/etc/apparmor.d/nix-grok-bot' "$start" \
-                || ! grep -Fq '"$parser" --replace --write-cache --skip-read-cache "$profile"' "$start"; then
-                ${fail "${entry.name}: nix-grok-bot-apparmor.service does not load /etc/apparmor.d/nix-grok-bot"}
-              fi
-              triggers=$(sed -n 's/^X-Restart-Triggers=//p' "$unit")
-              target=$(readlink -f "$profile" || true)
-              if [ -z "$triggers" ] || [ ! -f "$target" ] || ! grep -Fq -- "$target" "$triggers"; then
-                ${fail "${entry.name}: nix-grok-bot-apparmor.service does not restart when the profile changes"}
-              fi
-            fi
-            units=$(jq -r '.entries["systemd/system"].source // empty' "$sm/etcFiles/etcFiles.json")/systemd/system
-            if [ "$(readlink "$units/system-manager.target.wants/nix-grok-bot-apparmor.service")" != ../nix-grok-bot-apparmor.service ]; then
-              ${fail "${entry.name}: nix-grok-bot-apparmor.service is not wanted by multi-user.target"}
-            fi
-          ''
-      ))
     ];
 
   # The T3 Code CLI trait must be exercised, or its presence assertion would

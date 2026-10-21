@@ -10,7 +10,10 @@
   the sops manifest under test. It reads what the generations materialize --
   home-path, the rendered activation script and the sops manifests -- rather
   than the options they come from. Expected values are literals stated here,
-  independently of home/h82/agents/opencode.nix and opencode-model.nix.
+  independently of home/h82/agents/opencode.nix, except the model IDs and the
+  text-generation role's effort, which come from
+  home/h82/agents/synthetic-models.nix so a new build or role there needs no
+  edit here; the pinned efforts stay written in this check.
 
   Verifies, on every configuration:
   - home-path/bin/opencode is the packaged wrapper, reading the key from
@@ -24,14 +27,24 @@
   - running that exact merger with that exact declared document reasserts the
     declared values and leaves every other key as it was, against a seeded
     divergent file (an MCP server, a 1.x plugin key, a user plugins entry, a
-    user-added provider entry, and the stale syn: model alias that the
-    declaration removes in opencode.json, a password and a port in
-    service.json), and creates a missing file holding only the
-    declared keys. The result is mode 0600 in every case. opencode.json drops
-    the retired autoupdate key and the stale syn: alias, allowlists the
-    synthetic provider, and pins GLM 5.3's reasoning effort to max beside
-    the user's own synthetic model entries; service.json disables OpenCode's
-    shared background server.
+    user-added provider entry, the synthetic provider's own options, and
+    synthetic model entries the user wrote, keys the user added inside the
+    declared entries, and the retired syn:large:text alias in opencode.json,
+    a password and a port in service.json), and creates a missing file holding
+    only the declared keys. The result is mode 0600 in every case.
+    opencode.json drops the retired autoupdate key, allowlists the synthetic
+    provider, names the source's default model and a small_model entry keyed
+    `<DeepSeek ID>@<text-generation effort>` that points at the source's
+    DeepSeek ID at that effort, and assigns only the managed leaves under
+    provider.synthetic.models: each source model's
+    options.reasoningEffort at its pinned effort (GLM and Kimi max, DeepSeek
+    high), and that small entry's id and effort. A model entry the user wrote
+    and every other key inside a declared entry stay, the retired
+    syn:large:text entry goes, and the provider's options and other providers
+    stay; service.json disables OpenCode's shared background server. The
+    small_model entry is also the one T3 Code's text generation selects, so
+    the check fails while the source's `small` and `textGeneration` would
+    name different entries.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
@@ -64,13 +77,51 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  models = import ../home/h82/agents/synthetic-models.nix;
+  # JSON string literals, for splicing into the JSON text below.
+  json = value: builtins.toJSON value;
+  defaultModel = json ("synthetic/" + models.${models.opencodeDefault}.id);
+  glm = json models.glm.id;
+  kimi = json models.kimi.id;
+  deepseek = json models.deepseek.id;
+  # The text-generation effort names the entry small_model and T3 Code's text
+  # generation select, so both follow the source's role. Each selection must
+  # find its own entry, so the two are read separately; today they share one.
+  smallEffort = models.${models.small}.roles.text-generation;
+  smallKey = "${models.${models.small}.id}@${smallEffort}";
+  textEffort = models.${models.textGeneration}.roles.text-generation;
+  textKey = "${models.${models.textGeneration}.id}@${textEffort}";
+  deepseekSmall = json smallKey;
+  smallModel = json "synthetic/${smallKey}";
+  smallEffortJson = json smallEffort;
+
+  # The leaves the declaration assigns under provider.synthetic.models.
+  textSelectionShared = smallKey == textKey;
+
+  modelLeaf = key: leaf: value: ''
+    {"path": ["provider", "synthetic", "models", ${key}${
+      lib.concatMapStrings (name: ", ${json name}") leaf
+    }], "value": ${value}}
+  '';
+
+  # provider.synthetic.models after a merge into a file without one.
+  syntheticModels = ''
+    {
+      ${glm}: {"options": {"reasoningEffort": "max"}},
+      ${kimi}: {"options": {"reasoningEffort": "max"}},
+      ${deepseek}: {"options": {"reasoningEffort": "high"}},
+      ${deepseekSmall}: {"id": ${deepseek}, "options": {"reasoningEffort": ${smallEffortJson}}}
+    }
+  '';
+
   # Written as JSON text rather than a Nix attribute set so the comparison
   # cannot share a rendering path with the module.
   declaredExpected = pkgs.writeText "opencode-expected-settings.json" ''
     {
       "set": {
         "$schema": "https://opencode.ai/config.json",
-        "model": "synthetic/hf:zai-org/GLM-5.3",
+        "model": ${defaultModel},
+        "small_model": ${smallModel},
         "update": "disable",
         "share": "disabled"
       },
@@ -79,10 +130,11 @@ let
         "enabled_providers": ["synthetic"]
       },
       "setPaths": [
-        {
-          "path": ["provider", "synthetic", "models", "hf:zai-org/GLM-5.3", "options", "reasoningEffort"],
-          "value": "max"
-        }
+        ${modelLeaf deepseek [ "options" "reasoningEffort" ] (json "high")},
+        ${modelLeaf glm [ "options" "reasoningEffort" ] (json "max")},
+        ${modelLeaf kimi [ "options" "reasoningEffort" ] (json "max")},
+        ${modelLeaf deepseekSmall [ "id" ] deepseek},
+        ${modelLeaf deepseekSmall [ "options" "reasoningEffort" ] smallEffortJson}
       ],
       "removePaths": [
         {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
@@ -107,7 +159,9 @@ let
           "options": {"timeout": 300000},
           "models": {
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "syn:large:text": {"name": "syn:large:text"}
+            "syn:large:text": {"name": "syn:large:text"},
+            ${glm}: {"options": {"reasoningEffort": "low", "temperature": 0.2}, "name": "user edit"},
+            ${deepseekSmall}: {"id": "hf:example/Other", "name": "user title model"}
           }
         }
       }
@@ -117,7 +171,8 @@ let
   mergedExpected = pkgs.writeText "opencode-merged-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3",
+      "model": ${defaultModel},
+      "small_model": ${smallModel},
       "update": "disable",
       "share": "disabled",
       "enabled_providers": ["synthetic"],
@@ -133,7 +188,10 @@ let
           "options": {"timeout": 300000},
           "models": {
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
+            ${glm}: {"options": {"reasoningEffort": "max", "temperature": 0.2}, "name": "user edit"},
+            ${kimi}: {"options": {"reasoningEffort": "max"}},
+            ${deepseek}: {"options": {"reasoningEffort": "high"}},
+            ${deepseekSmall}: {"id": ${deepseek}, "name": "user title model", "options": {"reasoningEffort": ${smallEffortJson}}}
           }
         }
       }
@@ -143,15 +201,14 @@ let
   createdExpected = pkgs.writeText "opencode-created-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3",
+      "model": ${defaultModel},
+      "small_model": ${smallModel},
       "update": "disable",
       "share": "disabled",
       "enabled_providers": ["synthetic"],
       "provider": {
         "synthetic": {
-          "models": {
-            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
-          }
+          "models": ${syntheticModels}
         }
       }
     }
@@ -454,6 +511,9 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
   }
   compareJson=${compareJson}
   declare -A merged
+  ${lib.optionalString (!textSelectionShared) ''
+    fail ${esc "small and textGeneration in synthetic-models.nix name different entries (${smallKey}, ${textKey}); this check expects one shared text-generation entry, so extend it"}
+  ''}
 
   ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}
 

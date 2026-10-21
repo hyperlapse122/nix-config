@@ -7,7 +7,7 @@
   `h82` on every host this flake declares, and that their pin still names the
   revision this repository expects:
 
-    Claude Code, Grok Build   ~/.claude/skills/<name>
+    Claude Code               ~/.claude/skills/<name>
     OpenCode                  ~/.config/opencode/skills/<name>
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/<name>

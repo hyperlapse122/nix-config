@@ -28,12 +28,16 @@
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, Grok, and OpenCode instances, the Claude
-    instance's launch arguments emptied, which retires the --add-dir an
+    enabled Antigravity, Claude, and OpenCode instances, the disabled Grok
+    instance, the Claude instance's launch arguments emptied, which retires the --add-dir an
     earlier generation wrote, no environment entry upserted, and the built-in
     Codex instance declared disabled, since Codex is no longer installed; the
     retired `providers` block of those five instances is migrated into them
-    first.
+    first. It owns two model selections whole: the default, Claude Opus at
+    effort medium, and text generation, the OpenCode instance with the
+    `<id>@<effort>` entry home/h82/agents/opencode.nix declares for the
+    text-generation model of home/h82/agents/synthetic-models.nix at its
+    text-generation role's effort, with no options, so no variant.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -48,7 +52,7 @@
     same activation. Its script is executed with the
     packaged linker swapped for a stub: on a live run the stub must run with
     --base-dir ~/.t3, --gemini-config ~/.gemini/config, and --instance
-    antigravity, the instance the text-generation selection names; a failing
+    antigravity, the instance whose runtime is preinstalled; a failing
     stub must fail the script; and a dry run must not run it.
   The same holds on each non-NixOS fixture host of the builder's
   architecture, production and bootstrap, and on each bootstrap fixture
@@ -137,6 +141,11 @@ let
   settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
     builtins.toJSON settingsExpectedBase
   );
+
+  # The model ID comes from the one source the module reads, so a pinned
+  # build moving there moves both sides; every other literal is written here.
+  syntheticModels = import ../home/h82/agents/synthetic-models.nix;
+  textGeneration = syntheticModels.${syntheticModels.textGeneration};
 
   settingsExpectedBase = {
     set = {
@@ -251,7 +260,7 @@ let
           "grok"
           "enabled"
         ];
-        value = true;
+        value = false;
       }
       {
         path = [
@@ -323,10 +332,17 @@ let
       defaultModelSelection = {
         instanceId = "claudeAgent";
         model = "claude-opus-5-5";
+        options = [
+          {
+            id = "effort";
+            value = "medium";
+          }
+        ];
       };
+      # The text-generation entry opencode.nix declares, with no variant.
       textGenerationModelSelection = {
-        instanceId = "antigravity";
-        model = "gemini-3.8-flash";
+        instanceId = "opencode";
+        model = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
       };
     };
   };

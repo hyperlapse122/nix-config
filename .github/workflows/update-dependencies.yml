@@ -109,23 +109,7 @@ jobs:
             git checkout -- packages/opencode-release.json
           fi
 
-          # 11. Update Grok Build. The stable pointer can move before every
-          # platform's binary is published, so a failure keeps the current pin
-          # and lets the other updates through, as T3 Code's does.
-          if ! nix run .#grok-build-release -- --output packages/grok-build-release.json; then
-            echo "::warning title=Grok Build update skipped::grok-build-release failed; keeping the current pin in packages/grok-build-release.json."
-            git checkout -- packages/grok-build-release.json
-          fi
-
-          # 12. Update Grok Bot. The feed can move before both Linux
-          # architectures are published, so a failure keeps the current pin and
-          # lets the other updates through, as T3 Code's does.
-          if ! nix run .#grok-bot-release -- --output packages/grok-bot-release.json; then
-            echo "::warning title=Grok Bot update skipped::grok-bot-release failed; keeping the current pin in packages/grok-bot-release.json."
-            git checkout -- packages/grok-bot-release.json
-          fi
-
-          # 13. Update the Antigravity ACP runtime on PATH. Google publishes
+          # 11. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.
@@ -209,18 +193,6 @@ jobs:
             NEW_VER=$(jq -r .version packages/opencode-release.json)
             git add packages/opencode-release.json
             git commit -m "chore(packages): bump opencode to $NEW_VER"
-          fi
-
-          if [ -n "$(git status --porcelain packages/grok-build-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/grok-build-release.json)
-            git add packages/grok-build-release.json
-            git commit -m "chore(packages): bump grok-build to $NEW_VER"
-          fi
-
-          if [ -n "$(git status --porcelain packages/grok-bot-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/grok-bot-release.json)
-            git add packages/grok-bot-release.json
-            git commit -m "chore(packages): bump grok-bot to $NEW_VER"
           fi
 
           # The ACP updater writes the PATH pin and the antigravity section of
