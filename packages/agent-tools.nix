@@ -79,6 +79,12 @@ let
   # sandboxed repository check can drive it with fixtures.
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
 
+  # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
+  # Synthetic's catalog for the model-watch workflow. Its network call and its
+  # Nix evaluation go through overridable commands so the sandboxed repository
+  # check can drive it with fixtures.
+  syntheticModelsWatch = pythonHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
+
   # Runs from home activation and links the pinned Antigravity runtime into
   # T3 Code's managed runtime directory, which T3 Code checks on disk.
   t3codeAntigravityInstall = pythonHelper "t3code-antigravity-install" ../scripts/t3code-antigravity-install;
@@ -108,6 +114,7 @@ in
     antigravityCliRelease
     antigravityAcpRelease
     t3codeRelease
+    syntheticModelsWatch
     t3codeAntigravityInstall
     t3codeAntigravityLink
     androidSdkRelease

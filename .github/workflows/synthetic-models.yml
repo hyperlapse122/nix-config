@@ -1,0 +1,88 @@
+name: Synthetic models
+
+# Compares the Synthetic models home/h82/agents/synthetic-models.nix uses with
+# Synthetic's catalog, and keeps one model-reconcile issue open while they
+# differ. It never edits code or opens a pull request.
+on:
+  schedule:
+    - cron: '23 4 * * *' # Daily, off the hour
+  workflow_dispatch:
+
+concurrency:
+  group: synthetic-models
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
+
+      # The only step that sees the Synthetic key. The helper sends it on the
+      # fetch command's stdin and exits non-zero when the catalog cannot be
+      # read twice or is empty, which skips the issue step below.
+      - name: Compare with Synthetic's catalog
+        env:
+          SYNTHETIC_API_KEY: ${{ secrets.SYNTHETIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          nix run .#synthetic-models-watch -- \
+            --result "$RUNNER_TEMP/watch.json" \
+            --issue-body "$RUNNER_TEMP/issue.md"
+
+      - name: Open, update, or close the reconcile issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL: model-reconcile
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/watch.json"
+          body="$RUNNER_TEMP/issue.md"
+          status=$(jq -r '.status' "$result")
+          fingerprint=$(jq -r '.fingerprint // ""' "$result")
+
+          gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --force \
+            --color B60205 --description 'Synthetic model drift for home/h82/agents/synthetic-models.nix'
+          gh issue list --repo "$GITHUB_REPOSITORY" --label "$LABEL" --state open \
+            --json number,body --limit 1 > "$RUNNER_TEMP/open.json"
+          number=$(jq -r '.[0].number // ""' "$RUNNER_TEMP/open.json")
+          previous=$(jq -r '.[0].body // "" | (capture("synthetic-models-watch fingerprint: (?<f>sha256:[0-9a-f]{64})").f) // ""' "$RUNNER_TEMP/open.json")
+
+          case "$status" in
+            drift)
+              title=$(jq -r '.title' "$result")
+              if [ -z "$number" ]; then
+                gh issue create --repo "$GITHUB_REPOSITORY" --label "$LABEL" \
+                  --title "$title" --body-file "$body"
+              elif [ "$previous" != "$fingerprint" ]; then
+                gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+                {
+                  printf 'The drift changed; the issue body now reads:\n\n'
+                  head -n 1 "$body"
+                } > "$RUNNER_TEMP/changed.md"
+                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/changed.md"
+              else
+                echo "Issue #$number already reports this drift."
+              fi
+              ;;
+            clean)
+              if [ -n "$number" ]; then
+                printf 'No Synthetic model drift remains as of commit %s.\n' "$GITHUB_SHA" > "$RUNNER_TEMP/resolved.md"
+                gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/resolved.md"
+                gh issue close "$number" --repo "$GITHUB_REPOSITORY"
+              fi
+              ;;
+            *)
+              echo "unexpected watch status: $status" >&2
+              exit 1
+              ;;
+          esac

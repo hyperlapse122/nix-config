@@ -158,6 +158,7 @@
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
+        synthetic-models-watch = agentTools.syntheticModelsWatch;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
         antigravity-acp = import ./packages/antigravity-acp.nix {
@@ -501,6 +502,26 @@
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
               ./tests/test_t3code_release.py;
+          # Copies the fixture catalogs too, then runs the helper once on the
+          # real model source, so a source shape the helper cannot read fails
+          # here rather than in the daily workflow.
+          synthetic-models-watch =
+            let
+              realSource = pkgs.writeText "synthetic-models.json" (
+                builtins.toJSON (import ./home/h82/agents/synthetic-models.nix)
+              );
+            in
+            pkgs.runCommand "synthetic-models-watch-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+              export PYTHONDONTWRITEBYTECODE=1
+              mkdir -p scripts tests/fixtures
+              cp ${./scripts/synthetic-models-watch} scripts/synthetic-models-watch
+              cp ${./tests/test_synthetic_models_watch.py} tests/test_synthetic_models_watch.py
+              cp -r ${./tests/fixtures/synthetic-models} tests/fixtures/synthetic-models
+              python tests/test_synthetic_models_watch.py
+              python scripts/synthetic-models-watch --source-json ${realSource} \
+                --catalog tests/fixtures/synthetic-models/catalog-2026-10-21.json --result result.json
+              touch $out
+            '';
           t3code-antigravity-install =
             pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
