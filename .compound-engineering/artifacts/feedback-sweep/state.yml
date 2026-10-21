@@ -1,43 +1,59 @@
 schema_version: 1
+lease:
+  writer: "sweep-macbook-t3-2359782f-2026-10-21"
+  timestamp: "2026-10-21T13:51:22.759299+00:00"
+  ttl_minutes: 60
 sources:
   gh-issues:
-    cursor: "2026-10-19T04:12:42Z"
+    cursor: "2026-10-21T13:42:58Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Configure CE cross-model peers and ce-work delegation at user scope. Moves the review and delegation config from each checkout's .compound-engineering/config*.yaml to user scope so every repo on every host shares it."
+    fix_ref: "#286"
+    verified_merge_sha: "12c766bf0a8f6482ecb547542a57b01fd9ed8c54"
+    verified_at: "2026-10-21T13:51:06Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "PR #286 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#247"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/247"
     updatedAt: "2026-10-19T02:51:29Z"
   "gh-issues:hyperlapse122/nix-config#249":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Add the Grok Build CLI to every host. Installs xAI's grok CLI on every host kind, pinned and updated like OpenCode and the Antigravity CLI, for use as a CE cross-model reviewer."
+    fix_ref: "#257"
+    verified_merge_sha: "375b70ac8384e73d18d5a6babf21aebebdc6fd15"
+    verified_at: "2026-10-21T13:51:11Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "PR #257 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#249"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/249"
     updatedAt: "2026-10-19T02:52:38Z"
   "gh-issues:hyperlapse122/nix-config#250":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Authenticate Grok Build and enable T3 Code's Grok provider. After #249, confirm non-interactive auth, provision the credential, and enable the provider. Blocked by #249."
+    fix_ref: "526920d"
+    verified_merge_sha: "526920d047d774035863eb9434704b18654f3b85"
+    verified_at: "2026-10-21T13:51:14Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "commit cited in the owner's closing comment; ancestor of origin/main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#250"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/250"
@@ -61,43 +77,94 @@ items:
     updatedAt: "2026-10-19T02:51:26Z"
   "gh-issues:hyperlapse122/nix-config#252":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Work around CE's Antigravity route limits in agent instructions. Adds a workaround to the shared agent instructions for two upstream limits found in #251 that break the route on Linux."
+    fix_ref: "#270"
+    verified_merge_sha: "b6396cff1fa5d8603f181f255405d11063c6dd53"
+    verified_at: "2026-10-21T13:51:16Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "PR #270 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#252"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/252"
     updatedAt: "2026-10-19T03:22:44Z"
   "gh-issues:hyperlapse122/nix-config#254":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Make the agent instructions require applying every review finding. Tightens the review-findings section of the shared agent instructions so agents apply every finding instead of parking one behind an accepted trade-off."
+    fix_ref: "#257"
+    verified_merge_sha: "375b70ac8384e73d18d5a6babf21aebebdc6fd15"
+    verified_at: "2026-10-21T13:51:19Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "PR #257 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#254"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/254"
     updatedAt: "2026-10-19T03:31:25Z"
   "gh-issues:hyperlapse122/nix-config#256":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
     body: "Use the latest Antigravity ACP runtime outside T3 Code. Gives non-T3 Code uses of the runtime the newest build Google publishes, with its own pin and an automated update."
+    fix_ref: "#257"
+    verified_merge_sha: "375b70ac8384e73d18d5a6babf21aebebdc6fd15"
+    verified_at: "2026-10-21T13:51:22Z"
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    closeout_decision: "PR #257 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#256"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/256"
     updatedAt: "2026-10-19T04:12:42Z"
+  "gh-issues:hyperlapse122/nix-config#285":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Route ce-plan scouts to Synthetic models. Deferred from #284: send the repository, learnings, and framework research scouts that ce-plan launches to Synthetic models on T3 Code's opencode instance."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#285"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/285"
+    updatedAt: "2026-10-21T13:16:34Z"
+  "gh-issues:hyperlapse122/nix-config#287":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Skip worktrees for delegated tasks unless a task needs one. Change the shared agent instructions so delegated tasks share the parent checkout by default and use worktree isolation only when a task needs a separate checkout."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#287"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/287"
+    updatedAt: "2026-10-21T13:25:54Z"
+  "gh-issues:hyperlapse122/nix-config#288":
+    source: "gh-issues"
+    status: "acknowledged"
+    sensitive: false
+    body: "Merge the duplicate OpenCode DeepSeek model entries. DeepSeek V4.1 Flash 1017 appears twice in T3 Code's model picker because of the alias entry in opencode.nix; merge them while keeping the text-generation and title-generation effort settings."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#288"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/288"
+    updatedAt: "2026-10-21T13:42:58Z"
 last_run:
   timestamp: "2026-10-19T04:19:06Z"
   outcome: "completed"
