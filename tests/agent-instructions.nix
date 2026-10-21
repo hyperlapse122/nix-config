@@ -51,18 +51,20 @@
     harness's peer. Any other action in the template turns the check red. The
     byte comparison stays green across a prose edit of the template; the
     pinned sentences do not.
-  - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `childRunId`, and
-    `t3_thread_read` appear only inside `# T3 Code` and `# Compound
-    Engineering`, where every sentence is pinned, so a rule elsewhere cannot
-    restore the blocking wait for a run with a person present or change when
-    a result is taken from a task's session.
+  - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `childRunId`,
+    `t3_thread_read`, and `runtimeMode` appear only inside `# T3 Code` and
+    `# Compound Engineering`, where every sentence is pinned, so a rule
+    elsewhere cannot restore the blocking wait for a run with a person
+    present, change when a result is taken from a task's session, restore
+    inheritance of the thread's mode, or request a supervised mode.
   - the file names no removed section, harness, model, or rule, matched
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
     `@name@` placeholder.
   - the per-file rules fire: the Claude Code rendering for the fake key
     passes them, and each mutant in `selfTestMutants` (a removed, a negated,
-    and an out-of-section rule) fails them with its own message, so a guard
+    and an out-of-section rule, for the wait, the launch mode, and the
+    confined terms) fails them with its own message, so a guard
     that stops failing turns this red. See
     .compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md
 
@@ -308,6 +310,7 @@ let
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
   allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, and a wait that blocks on the task's own run stay allowed.";
+  fullAccessSentence = "Launch every delegated task, cross-model peers and implementation units included, with `runtimeMode: \"full-access\"`, so it never pauses on an approval nobody sees.";
 
   t3CodeSentences = [
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
@@ -317,6 +320,8 @@ let
     "In a Grok or OpenCode session, a subagent that edits files follows the implementation-unit rules of the Compound Engineering section."
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
+    fullAccessSentence
+    "When `delegate_task` rejects that launch with an error that names the runtime mode, because your thread runs below Full Access or the target provider does not offer that mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer."
     "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer and for an implementation unit in a Grok or OpenCode session."
     "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
@@ -326,7 +331,7 @@ let
     "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch."
     "Launch a task that needs an earlier task's result only after you have read that result."
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
-    "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it."
+    "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it."
     "Each notification T3 Code delivers, whether it starts your turn or arrives with a user message, names the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call."
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
@@ -431,17 +436,20 @@ let
   ];
 
   # Terms of the in-turn delegated wait and the peer deadline, which apply
-  # only to a run with no person present, and of the session check that takes
-  # a stalled task's result. They may appear only inside the checked
-  # `# T3 Code` and `# Compound Engineering` sections, where every sentence is
-  # pinned, so a rule added elsewhere cannot bring the blocking wait back for
-  # a run with a person present or change when a session result is taken.
+  # only to a run with no person present, of the session check that takes
+  # a stalled task's result, and of the launch mode. They may appear only
+  # inside the checked `# T3 Code` and `# Compound Engineering` sections,
+  # where every sentence is pinned, so a rule added elsewhere cannot bring the
+  # blocking wait back for a run with a person present, change when a session
+  # result is taken, restore inheritance of the thread's mode, or request a
+  # supervised mode.
   confinedTerms = [
     "t3_thread_wait"
     "CROSS_MODEL_HARD_SECS"
     "timeoutMs"
     "childRunId"
     "t3_thread_read"
+    "runtimeMode"
   ];
 
   removedTerms = [
@@ -619,7 +627,7 @@ let
       ' "$file" > "$outside"
       for term in ${lib.escapeShellArgs confinedTerms}; do
         if grep -qiF -- "$term" "$outside"; then
-          echo ${esc "${label} names a delegated-wait term outside the T3 Code and Compound Engineering sections:"} "$term" >&2
+          echo ${esc "${label} names a delegation term outside the T3 Code and Compound Engineering sections:"} "$term" >&2
           failed=1
         fi
       done
@@ -756,7 +764,25 @@ let
       name = "t3_thread_read rule added under # Git";
       line = "- Read a task with `t3_thread_read` before you push.";
       edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
-      expect = "names a delegated-wait term outside the T3 Code and Compound Engineering sections: t3_thread_read";
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: t3_thread_read";
+    }
+    {
+      name = "full-access launch sentence removed";
+      line = "- ${fullAccessSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "full-access launch sentence negated";
+      line = "- ${fullAccessSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "runtimeMode rule added under # Git";
+      line = "- Launch every review task with `runtimeMode: \"approval-required\"`.";
+      edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: runtimeMode";
     }
     {
       name = "self-wake prohibition sentence removed";
