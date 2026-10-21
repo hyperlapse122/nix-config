@@ -116,6 +116,12 @@ in
 
   home.packages = [ wrapper ];
 
+  # OpenCode autoloads every directory under ~/.config/opencode/plugins, so
+  # the plugin needs no plugins entry in opencode.json.
+  home.file.".config/opencode/plugins/session-info".source =
+    import ../../../packages/opencode-session-info.nix
+      { inherit pkgs; };
+
   # Unguarded and after installPackages for the reasons given on
   # claudeSettings in claude.nix: a refusal must fail the rebuild loudly
   # without stranding linkGeneration or installPackages behind it.
