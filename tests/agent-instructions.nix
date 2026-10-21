@@ -283,10 +283,13 @@ let
   writingSentence = "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `${role "glm" "writing-fallback"}` as fallback.";
   deepSentence = "A unit is `deep` when its own design is hard, such as a new interface, data format, or concurrency rule, when it debugs subtle cross-module behavior, or when it carries a security or data-loss risk, even when its edit is mechanical; it goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `${role "glm" "deep-fallback"}` as fallback.";
   scoutDefinitionSentence = "When the session lists T3 Code's delegation tools, the scouts of `ce-plan` are its repository, learnings, framework-docs, best-practices, and web researchers, in its first research pass or in deepening, and no other subagent is a scout.";
-  scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval, counts as a failed launch";
+  scoutRelaunchClause = " is relaunched once on that fallback under a new `clientRequestId`";
+  scoutHandoffClause = ", and when that relaunch fails too, or returns no findings, you do its research yourself and say so";
+  scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval,${scoutRelaunchClause}${scoutHandoffClause}";
   scoutFallbackClause = "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
   scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `variant` for an OpenCode worker and `effort` for a Claude worker: a scout goes to `synthetic/${deepseekId}` on the `opencode` instance with `variant` `${role "deepseek" "scout"}` as primary and to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
-  scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, and no gitignored or untracked file, and before launching, name each scout and the provider that gets its prompt, Synthetic for OpenCode and Anthropic for Claude Code; that notice authorizes the send.";
+  scoutUntrackedClause = ", and an untracked file only when the task prompt names it";
+  scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, no gitignored file${scoutUntrackedClause}, and before launching, name each scout and the provider that gets its prompt, Synthetic for OpenCode and Anthropic for Claude Code; that notice authorizes the send.";
 
   # In section order, like `reviewFindingsSentences`.
   compoundEngineeringSentences = [
@@ -344,12 +347,14 @@ let
   rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer, but a failure of the relaunch is one.";
   noteSentence = "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
   oldNoteSentence = "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
-  worktreeFallbackClause = "; a worktree launch of a task other than a cross-model peer that still fails after that relaunch runs in your checkout once every other task there has finished, or, when it needed the committed state, is skipped and reported with the reason";
+  worktreeFallbackRewriteCase = " or must rewrite files beyond its own";
+  worktreeFallbackClause = "; a worktree launch of a task other than a cross-model peer that still fails after that relaunch is skipped and reported with the reason when the task needed the committed state${worktreeFallbackRewriteCase}, and runs in your checkout once every other task there has finished only when it got its worktree for parallel edits of one file";
   launchFailureSentence = "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer${worktreeFallbackClause}.";
   sharedCheckoutDefaultPeerClause = "; a cross-model peer is the one task that always gets a worktree, as the peer rule above says";
   sharedCheckoutDefaultSentence = "Launch every delegated task other than a cross-model peer in the checkout you work in, with no `isolation` argument, and give a task its own worktree only in the three cases below${sharedCheckoutDefaultPeerClause}.";
   parallelEditsSentence = "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another.";
-  rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as a formatter, a code generator, or a dependency update, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
+  rewriteTriggerExamples = "a formatter, a code generator, a dependency update, a branch switch, or a mutation test run inside the checkout";
+  rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
   committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
   sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
@@ -993,6 +998,24 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "scout relaunch reuses the failed scout's clientRequestId";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "under a new `clientRequestId`" "under the same `clientRequestId`";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout failure no longer ends in the parent's own research";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutHandoffClause "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout no longer relaunches on its fallback";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutRelaunchClause " counts as a failed launch";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
       name = "scout fallback raised to claude-opus-5-5 high";
       line = "- ${scoutAssignmentSentence}";
       edit = replaceInLine scoutFallbackClause "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `high` as fallback";
@@ -1016,6 +1039,18 @@ let
       name = "scout safeguard sentence negated";
       line = "- ${scoutSafeguardSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout safeguard bans every untracked file again";
+      line = "- ${scoutSafeguardSentence}";
+      edit = replaceInLine ", no gitignored file${scoutUntrackedClause}" ", and no gitignored or untracked file";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout safeguard drops the untracked-file allowance";
+      line = "- ${scoutSafeguardSentence}";
+      edit = replaceInLine scoutUntrackedClause "";
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
@@ -1049,6 +1084,12 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "rewrite-command trigger loses its branch switch and mutation test examples";
+      line = "- ${rewriteTriggerSentence}";
+      edit = replaceInLine rewriteTriggerExamples "a formatter, a code generator, or a dependency update";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
       name = "committed-state worktree trigger removed";
       line = "- ${committedStateTriggerSentence}";
       edit = ''awk '$0 != ENVIRON["line"]' '';
@@ -1070,6 +1111,18 @@ let
       name = "worktree fallback no longer excludes a cross-model peer";
       line = "- ${launchFailureSentence}";
       edit = replaceInLine "a worktree launch of a task other than a cross-model peer" "a worktree launch of a task";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "worktree fallback no longer skips a task that must rewrite files";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine worktreeFallbackRewriteCase "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "worktree fallback runs any task in the checkout again";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine " only when it got its worktree for parallel edits of one file" "";
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
