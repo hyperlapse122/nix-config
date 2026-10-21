@@ -136,7 +136,7 @@ let
     };
     textGenerationModelSelection = {
       instanceId = textGenerationInstance;
-      model = "gemini-3.8-flash-low";
+      model = "gemini-3.8-flash";
     };
   };
 
