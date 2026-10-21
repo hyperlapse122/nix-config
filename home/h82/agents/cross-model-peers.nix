@@ -17,8 +17,8 @@ in
     type = lib.types.listOf lib.types.str;
     default = [ ];
     description = ''
-      Compound Engineering review route tokens (claude, grok, antigravity)
-      that CROSS_MODEL_PEERS allows. Each agent module adds the token of the
+      Compound Engineering review route tokens (claude, grok, opencode) that
+      CROSS_MODEL_PEERS allows. Each agent module adds the token of the
       harness it installs.
     '';
   };

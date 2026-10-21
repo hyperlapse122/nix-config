@@ -34,9 +34,6 @@ let
   );
 in
 {
-  # The token is antigravity, not this file's name.
-  my.agents.crossModelPeers = [ "antigravity" ];
-
   # Disable cross-session, implicit memory for the Gemini and Antigravity CLIs
   # to preserve declarative environment determinism.
   #
