@@ -3,76 +3,80 @@
 
     import ./tests/git-cli-repo-flags.nix { inherit pkgs; }
 
-  Asserts that the gh and glab packages the profile installs
-  (home/h82/default.nix) still accept every flag and variable the shared agent
-  instructions name for a command run outside a checkout, where the CLI cannot
-  read the host and repository from a remote:
+  Runs the gh and glab packages the profile installs (home/h82/default.nix)
+  the way the shared agent instructions tell an agent to name a repository
+  outside a checkout, and asserts that each request goes to the named host and
+  repository rather than to github.com, gitlab.com, or the current directory:
 
-    gh pr view --help      lists --repo
-    gh api --help          lists --hostname
-    gh help environment    lists GH_REPO
-    glab mr view --help    lists --repo
-    glab api --help        lists --hostname
-    glab binary            contains GITLAB_REPO, which no glab help topic
-                           documents; the check reads bin/glab and the
-                           bin/.glab-wrapped Go binary nixpkgs wraps it around
+    gh pr view 1 --repo HOST/OWNER/REPO
+    gh repo view HOST/OWNER/REPO
+    GH_REPO=HOST/OWNER/REPO gh api --hostname HOST 'repos/{owner}/{repo}'
+    glab mr view 1 --repo https://HOST/GROUP/PROJECT
+    glab repo view https://HOST/GROUP/PROJECT
+    GITLAB_REPO=https://HOST/GROUP/PROJECT glab api 'projects/:fullpath'
 
-  Each help text goes to a file first and grep reads that file, so no pipe can
+  The build sandbox has no network, so every request fails to resolve its
+  host. Each CLI prints the request it was about to send first (GH_DEBUG=api,
+  GLAB_DEBUG_HTTP=1), and that is what the check reads. The hosts sit under
+  the reserved .invalid zone, the tokens are fake, and HOME is empty, so no
+  real configuration or credential takes part. A help-text check would stay
+  green while glab sent a bare HOST/OWNER/REPO to gitlab.com, which it does.
+
+  Each output goes to a file first and grep reads that file, so no pipe can
   report a miss when grep stops early. See
   .compound-engineering/artifacts/solutions/logic-errors/printf-pipe-grep-q-under-pipefail-reports-a-miss.md
-
-  A name matches only when no identifier character follows it, so `--repo`
-  does not pass on `--repository`. Every missing item is recorded, so one red
-  build names all of them, and a help command that exits nonzero still has its
-  output inspected.
+  Every miss is recorded, so one red build names all of them.
 */
 { pkgs }:
 pkgs.runCommand "git-cli-repo-flags" { } ''
   export HOME="$(mktemp -d)"
-  export NO_COLOR=1
+  export NO_COLOR=1 GH_TOKEN=fake-token GH_ENTERPRISE_TOKEN=fake-token
+  export GH_DEBUG=api GLAB_DEBUG_HTTP=1
   failures="$HOME/failures"
   : > "$failures"
+  cd "$HOME"
 
-  # help <name> <command...>: capture a help text, tolerating a nonzero exit
-  help() {
+  gh=${pkgs.gh}/bin/gh
+  glab=${pkgs.glab}/bin/glab
+  ghHost=ghe.invalid
+  glHost=gitlab.invalid
+
+  # run <name> <command...>: capture a run that is expected to fail offline
+  run() {
     name=$1
     shift
-    "$@" > "$HOME/$name" 2>&1 || true
+    timeout 60 "$@" > "$HOME/$name" 2>&1 || true
   }
 
-  # expect <file> <extended regex> <description>
+  # expect <name> <fixed string> <description>
   expect() {
-    if ! grep -qE "$2" "$1"; then
+    if ! grep -qF -e "$2" "$HOME/$1"; then
       echo "missing: $3" >> "$failures"
+      sed 's/^/  | /' "$HOME/$1" >> "$failures"
     fi
   }
 
-  help gh-pr-view ${pkgs.gh}/bin/gh pr view --help
-  help gh-api ${pkgs.gh}/bin/gh api --help
-  help gh-environment ${pkgs.gh}/bin/gh help environment
-  help glab-mr-view ${pkgs.glab}/bin/glab mr view --help
-  help glab-api ${pkgs.glab}/bin/glab api --help
+  run gh-pr-view "$gh" pr view 1 --repo "$ghHost/owner/repo"
+  expect gh-pr-view "Host: $ghHost" "gh pr view --repo HOST/OWNER/REPO does not reach HOST"
 
-  flag='(^|[^[:alnum:]_-])--repo([^[:alnum:]_-]|$)'
-  host='(^|[^[:alnum:]_-])--hostname([^[:alnum:]_-]|$)'
-  expect "$HOME/gh-pr-view" "$flag" "gh pr view --help does not list --repo"
-  expect "$HOME/gh-api" "$host" "gh api --help does not list --hostname"
-  expect "$HOME/gh-environment" '(^|[^[:alnum:]_])GH_REPO([^[:alnum:]_]|$)' \
-    "gh help environment does not list GH_REPO"
-  expect "$HOME/glab-mr-view" "$flag" "glab mr view --help does not list --repo"
-  expect "$HOME/glab-api" "$host" "glab api --help does not list --hostname"
+  run gh-repo-view "$gh" repo view "$ghHost/owner/repo"
+  expect gh-repo-view "Host: $ghHost" "gh repo view HOST/OWNER/REPO does not reach HOST"
 
-  # nixpkgs wraps glab, so the Go binary is bin/.glab-wrapped. Go packs string
-  # literals back to back, so the match has no trailing boundary.
-  found=
-  for bin in ${pkgs.glab}/bin/glab ${pkgs.glab}/bin/.glab-wrapped; do
-    if [ -e "$bin" ] && grep -a -F -q -e GITLAB_REPO "$bin"; then
-      found=1
-    fi
-  done
-  if [ -z "$found" ]; then
-    echo "missing: the glab binary does not contain GITLAB_REPO" >> "$failures"
-  fi
+  run gh-api env GH_REPO="$ghHost/owner/repo" "$gh" api --hostname "$ghHost" 'repos/{owner}/{repo}'
+  expect gh-api "Host: $ghHost" "gh api --hostname HOST does not reach HOST"
+  expect gh-api "/repos/owner/repo " "gh api does not fill {owner}/{repo} from GH_REPO"
+
+  run glab-mr-view "$glab" mr view 1 --repo "https://$glHost/group/project"
+  expect glab-mr-view "Host: $glHost" "glab mr view --repo FULL_URL does not reach HOST"
+  expect glab-mr-view "/projects/group%2Fproject/" "glab mr view --repo FULL_URL does not name the project"
+
+  run glab-repo-view "$glab" repo view "https://$glHost/group/project"
+  expect glab-repo-view "Host: $glHost" "glab repo view FULL_URL does not reach HOST"
+  expect glab-repo-view "/projects/group%2Fproject" "glab repo view FULL_URL does not name the project"
+
+  run glab-api env GITLAB_REPO="https://$glHost/group/project" "$glab" api 'projects/:fullpath'
+  expect glab-api "Host: $glHost" "glab api with GITLAB_REPO=FULL_URL does not reach HOST"
+  expect glab-api "/projects/group%2Fproject " "glab api does not fill :fullpath from GITLAB_REPO"
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

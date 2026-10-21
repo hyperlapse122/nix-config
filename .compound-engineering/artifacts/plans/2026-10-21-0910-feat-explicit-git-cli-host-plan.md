@@ -56,7 +56,7 @@ The current instructions say nothing about this.
 - KTD3. **Use the repository variables, not the host variables, for commands without `--repo`.** `gh help environment` documents `GH_REPO` in `[HOST/]OWNER/REPO` form, and `gh api` fills `{owner}` and `{repo}` from it. The profile's `glab` 1.114.0 reads `GITLAB_REPO` with a full URL and routes both host and `:fullpath` from it. `GH_HOST` and `GITLAB_HOST` set only the host, so they leave the repository to the current checkout.
 - KTD4. **Add `--hostname` for `gh api`.** With `GH_REPO=HOST/OWNER/REPO` alone, `gh api` 2.102.0 still sends the request to `github.com`. Only `--hostname` or `GH_HOST` moves it, and `--hostname` is per command by construction.
 - KTD5. **Prefix the variables to one command instead of exporting them.** Harnesses that keep one shell across commands would otherwise send a later call for another project to the wrong repository.
-- KTD6. **Guard the named flags and variables against the installed packages.** `gh pr view --help` lists `--repo`, `gh api --help` lists `--hostname`, `gh help environment` lists `GH_REPO`, `glab mr view --help` lists `--repo`, and `glab api --help` lists `--hostname`. `glab` 1.114.0 documents `GITLAB_REPO` in no help topic, so the guard reads that name from the binary itself.
+- KTD6. **Guard the prescribed forms by running them.** The check runs each form the rule names against the installed `gh` and `glab` offline, with debug output on, and asserts the host and project of the request each CLI was about to send. A help-text grep would stay green while `glab` sent a bare `HOST/OWNER/REPO` to `gitlab.com`, which it does, so the rule gives `glab` the full URL.
 
 ## Implementation Units
 
@@ -87,10 +87,10 @@ The current instructions say nothing about this.
 - **Dependencies:** U1.
 - **Files:**
   - `tests/agent-instructions.nix`, or a new check beside it registered in `flake.nix` and `tests/check-shards.nix`
-- **Approach:** For the `gh` and `glab` packages the Home Manager profile installs, assert each item KTD6 lists against the named help output, and `GITLAB_REPO` against the `glab` binary.
+- **Approach:** For the `gh` and `glab` packages the Home Manager profile installs, run each form per KTD6 and assert the request's host and project.
 - **Test scenarios:**
   - The check passes against the current `gh` and `glab` packages.
-  - Replacing one asserted name with a name the CLI lacks, such as `--repository`, makes the check fail and names the missing flag.
+  - Giving `glab repo view` a bare `HOST/OWNER/REPO`, or dropping `--hostname` from `gh api`, makes the check fail and names the form.
 - **Verification:** the check builds, and the mutation above fails it.
 
 ## Verification Contract
