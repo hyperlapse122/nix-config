@@ -286,9 +286,6 @@ def owned_path_entries(entries, assign, retire, owned, paths, upserts, prefixes,
         check_top_level(path, assign, retire, owned)
         if migration is not None and path[0] in migration[:2]:
             raise ValueError('declared path starts at a migrated key: {}'.format(describe(path)))
-        # The owned value replaces the whole node, so any declaration at it,
-        # under it, or on an ancestor would fight that replacement with an
-        # outcome that depends on order.  A removal's leaf is the node it pops.
         check_disjoint(path, assigned_paths(paths, upserts, prefixes)
                        + [other + [key] for other, key in removals]
                        + [other for other, _ in owned_paths])

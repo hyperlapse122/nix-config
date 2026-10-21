@@ -68,13 +68,17 @@ def command_from(variable, default):
     return command
 
 
+def read_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Failure(f"cannot read {path}: {exc}") from None
+
+
 def load_source(source, source_json):
     if source_json:
-        try:
-            with open(source_json, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
-            raise Failure(f"cannot read {source_json}: {exc}") from None
+        return read_json(source_json)
     proc = subprocess.run(
         command_from("SYNTHETIC_MODELS_EVAL", DEFAULT_EVAL) + [source],
         stdin=subprocess.DEVNULL,
@@ -167,14 +171,6 @@ def fetch(url, retry_wait):
         if attempt == 1:
             time.sleep(retry_wait)
     raise Failure(f"fetching {url} failed twice")
-
-
-def read_catalog(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise Failure(f"cannot read {path}: {exc}") from None
 
 
 def catalog_rows(catalog):
@@ -365,7 +361,7 @@ def main(argv=None):
 
     try:
         models = models_in_use(load_source(args.source, args.source_json))
-        catalog = read_catalog(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
+        catalog = read_json(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
         rows, rejected = catalog_rows(catalog)
         findings = classify(models, rows)
         mark = fingerprint(findings)

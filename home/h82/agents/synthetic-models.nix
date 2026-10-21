@@ -1,7 +1,3 @@
-# The one source of every Synthetic model the repository uses. It takes no
-# module arguments, so Home Manager modules, checks, and the model-watch
-# workflow (`nix eval --json --file`) all import the same attrset.
-#
 # Each entry:
 # - `id`: the upstream model ID, without OpenCode's `synthetic/` provider prefix.
 # - `family`: the family the shared instructions map the ID's org to.
@@ -55,8 +51,6 @@
     opencodeEffort = "high";
   };
 
-  # The entries OpenCode's `model` and `small_model` and T3 Code's text
-  # generation use.
   opencodeDefault = "glm";
   small = "deepseek";
   textGeneration = "deepseek";

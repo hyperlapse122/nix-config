@@ -30,14 +30,14 @@ let
   # the main entry keeps its own. The suffix keeps the key under the
   # model's org, which the shared instructions map to its family.
   smallKey = "${small.id}@low";
-  syntheticModels =
+  providerModels =
     lib.mapAttrs' (
       _: entry: lib.nameValuePair entry.id { options.reasoningEffort = entry.opencodeEffort; }
     ) (lib.filterAttrs (_: builtins.isAttrs) models)
     // {
       ${smallKey} = {
         inherit (small) id;
-        options.reasoningEffort = "low";
+        options.reasoningEffort = small.roles.text-generation;
       };
     };
 
@@ -45,10 +45,7 @@ let
   # activation assigns these keys and leaves everything else as OpenCode wrote
   # it. update replaces autoupdate in OpenCode v2, so the merge deletes the
   # legacy key; the wrapper's OPENCODE_DISABLE_AUTOUPDATE stays as the
-  # backstop under every config T3 Code supplies. share = "disabled" keeps a
-  # session from being published by link. enabled_providers allowlists the
-  # synthetic provider, so no other provider loads even when its credentials
-  # are present.
+  # backstop under every config T3 Code supplies.
   #
   # OpenCode 2.0.32 drops a variant given in the config file (`model#max`, a
   # model object, or agent.build.variant) and honours one only from
@@ -71,9 +68,6 @@ let
       # enabled_providers is an array, which set refuses; nothing else writes
       # the key, so owning it whole is the right tier.
       own.enabled_providers = [ "synthetic" ];
-      # The model map holds exactly the source's entries, so one an earlier
-      # source declared, such as the retired syn:large:text alias, leaves on
-      # the next apply. The provider's options and other providers stay.
       ownPaths = [
         {
           path = [
@@ -81,7 +75,7 @@ let
             "synthetic"
             "models"
           ];
-          value = syntheticModels;
+          value = providerModels;
         }
       ];
     }

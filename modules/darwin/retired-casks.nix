@@ -15,8 +15,6 @@ in
   # `if !` guard and prints one line, so a failed brew never stops the `set -e`
   # activate script.
   #
-  # Order 800 runs this after Homebrew's own step, the KakaoTalk step (750),
-  # and before Home Manager's activation call (default, 1000).
   system.activationScripts.postActivation.text = lib.mkOrder 800 ''
     retiredBrew() {
       /usr/bin/sudo --user=${user} --set-home /usr/bin/env NONINTERACTIVE=1 ${brew} "$@"

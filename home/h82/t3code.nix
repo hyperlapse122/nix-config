@@ -30,8 +30,6 @@ let
 
   syntheticModels = import ./agents/synthetic-models.nix;
 
-  # The Antigravity instances whose home is prepared on activation, so the
-  # plugin skills are there before T3 Code first starts one by hand.
   antigravityInstances = [ "antigravity" ];
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
@@ -82,8 +80,7 @@ let
         enabled = false;
         config.launchArgs = "";
       };
-      # T3 Code enables its built-in Grok instance unless one is declared;
-      # Grok is no longer installed.
+      # T3 Code enables its built-in Grok instance unless one is declared.
       grok = {
         driver = "grok";
         enabled = false;
@@ -144,7 +141,7 @@ let
       options = [
         {
           id = "variant";
-          value = "low";
+          value = syntheticModels.${syntheticModels.textGeneration}.roles.text-generation;
         }
       ];
     };

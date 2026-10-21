@@ -80,9 +80,6 @@ let
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
 
   # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
-  # Synthetic's catalog for the model-watch workflow. Its network call and its
-  # Nix evaluation go through overridable commands so the sandboxed repository
-  # check can drive it with fixtures.
   syntheticModelsWatch = pythonHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
 
   # Runs from home activation and links the pinned Antigravity runtime into

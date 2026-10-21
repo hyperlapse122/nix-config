@@ -1,11 +1,8 @@
 name: Synthetic models
 
-# Compares the Synthetic models home/h82/agents/synthetic-models.nix uses with
-# Synthetic's catalog, and keeps one model-reconcile issue open while they
-# differ. It never edits code or opens a pull request.
 on:
   schedule:
-    - cron: '23 4 * * *' # Daily, off the hour
+    - cron: '23 4 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -27,9 +24,7 @@ jobs:
 
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
 
-      # The only step that sees the Synthetic key. The helper sends it on the
-      # fetch command's stdin and exits non-zero when the catalog cannot be
-      # read twice or is empty, which skips the issue step below.
+      # The only step that sees the Synthetic key.
       - name: Compare with Synthetic's catalog
         env:
           SYNTHETIC_API_KEY: ${{ secrets.SYNTHETIC_API_KEY }}
@@ -50,8 +45,6 @@ jobs:
           status=$(jq -r '.status' "$result")
           fingerprint=$(jq -r '.fingerprint // ""' "$result")
 
-          gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --force \
-            --color B60205 --description 'Synthetic model drift for home/h82/agents/synthetic-models.nix'
           gh issue list --repo "$GITHUB_REPOSITORY" --label "$LABEL" --state open \
             --json number,body --limit 1 > "$RUNNER_TEMP/open.json"
           number=$(jq -r '.[0].number // ""' "$RUNNER_TEMP/open.json")
@@ -61,6 +54,8 @@ jobs:
             drift)
               title=$(jq -r '.title' "$result")
               if [ -z "$number" ]; then
+                gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --force \
+                  --color B60205 --description 'Synthetic model drift for home/h82/agents/synthetic-models.nix'
                 gh issue create --repo "$GITHUB_REPOSITORY" --label "$LABEL" \
                   --title "$title" --body-file "$body"
               elif [ "$previous" != "$fingerprint" ]; then

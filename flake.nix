@@ -229,16 +229,22 @@
             entry: map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }));
 
           # Runs a stdlib Python test against a copy of the one script it drives.
-          pythonScriptCheck =
+          optionalLines = text: pkgs.lib.optionalString (text != "") "\n${pkgs.lib.removeSuffix "\n" text}";
+          pythonScriptCheckWith =
+            {
+              setup ? "",
+              extra ? "",
+            }:
             name: script: test:
             pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${script} scripts/${baseNameOf script}
-              cp ${test} tests/${baseNameOf test}
-              python tests/${baseNameOf test}
+              cp ${test} tests/${baseNameOf test}${optionalLines setup}
+              python tests/${baseNameOf test}${optionalLines extra}
               touch $out
             '';
+          pythonScriptCheck = pythonScriptCheckWith { };
 
           # Every store-path interpolation stays inside an optionalString guard so
           # that removing the package fails inside the builder with the message
@@ -502,26 +508,22 @@
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
               ./tests/test_t3code_release.py;
-          # Copies the fixture catalogs too, then runs the helper once on the
-          # real model source, so a source shape the helper cannot read fails
-          # here rather than in the daily workflow.
           synthetic-models-watch =
             let
               realSource = pkgs.writeText "synthetic-models.json" (
                 builtins.toJSON (import ./home/h82/agents/synthetic-models.nix)
               );
             in
-            pkgs.runCommand "synthetic-models-watch-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-              export PYTHONDONTWRITEBYTECODE=1
-              mkdir -p scripts tests/fixtures
-              cp ${./scripts/synthetic-models-watch} scripts/synthetic-models-watch
-              cp ${./tests/test_synthetic_models_watch.py} tests/test_synthetic_models_watch.py
-              cp -r ${./tests/fixtures/synthetic-models} tests/fixtures/synthetic-models
-              python tests/test_synthetic_models_watch.py
-              python scripts/synthetic-models-watch --source-json ${realSource} \
-                --catalog tests/fixtures/synthetic-models/catalog-2026-10-21.json --result result.json
-              touch $out
-            '';
+            pythonScriptCheckWith {
+              setup = ''
+                mkdir -p tests/fixtures
+                cp -r ${./tests/fixtures/synthetic-models} tests/fixtures/synthetic-models
+              '';
+              extra = ''
+                python scripts/synthetic-models-watch --source-json ${realSource} \
+                  --catalog tests/fixtures/synthetic-models/catalog-2026-10-21.json --result result.json
+              '';
+            } "synthetic-models-watch" ./scripts/synthetic-models-watch ./tests/test_synthetic_models_watch.py;
           t3code-antigravity-install =
             pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
@@ -1032,11 +1034,6 @@
               ${forEveryUser assertUser}
               touch $out
             '';
-          # Grok Build and Grok Bot are gone from every host. Beyond what
-          # codex-absent reads, this reads the cask mapping the macOS hosts
-          # install from and each Linux fixture's evaluated system-manager
-          # configuration, by attribute evaluation and without building a
-          # host closure; nothing here interpolates a store path.
           grok-absent =
             let
               isGrokName = pkgs.lib.hasInfix "grok";
