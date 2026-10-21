@@ -465,7 +465,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
-          git-cli-repo-flags = import ./tests/git-cli-repo-flags.nix { inherit pkgs; };
+          git-cli-repo-flags = import ./tests/git-cli-repo-flags.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           agent-plugin-sync =
             pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''

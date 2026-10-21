@@ -209,6 +209,7 @@ let
     "Pass `--repo HOST/OWNER/REPO` to a `gh` subcommand that takes `--repo`, and pass `HOST/OWNER/REPO` as the argument of one that takes the repository as an argument, such as `gh repo view`."
     "Give `glab` the repository's full URL instead, through `--repo` or as the argument, because it can read a bare `HOST/OWNER/REPO` as a project on `gitlab.com`."
     "Prefix any other `gh` command, `gh api` included, with `GH_REPO=HOST/OWNER/REPO` and any other `glab` command, `glab api` included, with `GITLAB_REPO` set to the full URL, for that one command and never exported, and also pass `--hostname HOST` to `gh api`, which ignores the host in `GH_REPO`."
+    "In the same way, prefix every `glab` command with `GITLAB_HOST=HOST`, because `glab repo clone` and `glab repo delete` send their requests to `gitlab.com` without it, even with a full URL or `GITLAB_REPO`."
     "Write a branch into an API endpoint yourself, because `{branch}` and `:branch` still come from the current checkout."
     "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user."
     "Babysit a draft only when asked."
