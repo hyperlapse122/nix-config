@@ -55,6 +55,13 @@
     through its own wrapper in the primary user's session, every call guarded
     the same way. A failed install names the App Store sign-in; unresolved
     ids name system.primaryUser.
+  - Retired casks: after the KakaoTalk step and before Home Manager,
+    postActivation uninstalls the installed grok-bot cask with
+    `brew uninstall --cask`, never `--zap`, through the absolute brew path
+    under `sudo --user` for the primary user, since Homebrew refuses to run
+    as root. Every brew call sits in an `if !` guard, each branch prints one
+    line, and none exits, so a failure never aborts the apply. The cask has
+    no entry in modules/shared/darwin-apps.nix.
   - Android SDK: Home Manager links it at ~/Library/Android/sdk and declares
     no android-sdk data file; ANDROID_HOME and ANDROID_SDK_ROOT name that
     path, and the PATH assignment gains its emulator directory; the linked
@@ -293,6 +300,21 @@ let
         lib.any (wrapper: lib.hasInfix "${wrapper} " line && !lib.hasPrefix "${wrapper}()" line) masWrappers
       ) rootLines;
       lineIndex = line: lib.lists.findFirstIndex (l: l == line) null rootLines;
+      brewExe = "${config.homebrew.prefix}/bin/brew";
+      brewLines = lib.filter (lib.hasInfix brewExe) rootLines;
+      retiredBrewCalls = lib.filter (
+        line: lib.hasInfix "retiredBrew " line && !lib.hasPrefix "retiredBrew()" line
+      ) rootLines;
+      retiredStart = lineIndex "if ! retiredBrew list --cask grok-bot >/dev/null 2>&1; then";
+      retiredBlock = [
+        "if ! retiredBrew list --cask grok-bot >/dev/null 2>&1; then"
+        "echo \"retired casks: no grok-bot cask to remove\" >&2"
+        "elif ! retiredBrew uninstall --cask grok-bot; then"
+        "echo \"retired casks: uninstalling grok-bot failed; run brew uninstall --cask grok-bot as ${primaryUser}\" >&2"
+        "else"
+        "echo \"retired casks: removed the grok-bot cask\" >&2"
+        "fi"
+      ];
       xcodeInstall = "if ! xcodeMas install ${xcodeId} && ! xcodeMas get ${xcodeId}; then";
       kakaoInstall = "if ! appStoreMas install ${kakaoTalkId} && ! appStoreMas get ${kakaoTalkId}; then";
       xcodebuildActions = lib.filter (
@@ -610,6 +632,36 @@ let
           && lib.elem "if ! /usr/bin/xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then" rootLines
         )
         "${entry.name}: xcode-select, the license, and first launch must run by absolute path, only when pending, guarded by if !"
+      )
+      (check
+        (
+          brewLines == [
+            ''/usr/bin/sudo --user=${primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''
+          ]
+          && lib.elem "retiredBrew() {" rootLines
+        )
+        "${entry.name}: every brew call of the retired-cask step must run through /usr/bin/sudo --user=${primaryUser} with the absolute brew path, since Homebrew refuses to run as root"
+      )
+      (check (retiredBrewCalls != [ ] && lib.all guarded retiredBrewCalls)
+        "${entry.name}: every brew call of the retired-cask step must be guarded by if !, so a failed brew cannot abort activation"
+      )
+      (check
+        (
+          retiredStart != null && lib.sublist retiredStart (lib.length retiredBlock) rootLines == retiredBlock
+        )
+        "${entry.name}: the grok-bot cask must be uninstalled when installed, with one line per outcome and no exit on failure"
+      )
+      (check (
+        !lib.hasInfix "zap" postActivation
+      ) "${entry.name}: no activation step may zap a cask, since --zap deletes the app's user data")
+      (check (
+        let
+          kakao = lineIndex kakaoInstall;
+        in
+        kakao != null && retiredStart != null && kakao < retiredStart
+      ) "${entry.name}: the retired-cask step must run after the KakaoTalk step and before Home Manager")
+      (check (!lib.elem "grok-bot" mapping.casks)
+        "${entry.name}: modules/shared/darwin-apps.nix must map no grok-bot, or an apply would install the cask it removes"
       )
       (check (config.homebrew.masApps == { } && !(config.programs.mas.enable or false))
         "${entry.name}: homebrew.masApps must stay empty and programs.mas off; both can abort or end activation"
