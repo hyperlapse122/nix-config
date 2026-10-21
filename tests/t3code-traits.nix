@@ -166,6 +166,15 @@ let
         path = [
           "providerInstances"
           "antigravity"
+          "config"
+          "binaryPath"
+        ];
+        value = binaryPathExpected;
+      }
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
           "driver"
         ];
         value = "antigravity";
@@ -335,6 +344,9 @@ let
   # activation names are built: the check compares the paths, and the paths
   # are the store hashes of what the module would install.
   noContext = builtins.unsafeDiscardStringContext;
+  binaryPathExpected = noContext "${
+    import ../packages/antigravity-acp-path.nix { inherit pkgs; }
+  }/bin/agy_acp_server.par";
   releasePin = builtins.fromJSON (builtins.readFile ../packages/t3code-release.json);
   runtimeExpected = noContext "${
     import ../packages/antigravity-acp.nix {

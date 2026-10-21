@@ -304,9 +304,10 @@ let
 
   t3CodeHeading = "# T3 Code";
 
-  # The self-test below mutates these two sentences, so they are named once.
+  # The self-test below mutates these sentences, so they are named once.
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
-  backgroundWaitSentence = "Whenever you end your turn while a task the waiting step needs still runs and you have not taken its result, keep exactly one background command pending that waits 10 minutes, such as `sleep 600`, started through your harness's own way of running a command in the background that wakes you when it exits; when it wakes you, check those tasks as above, and start the next one only while such a task remains.";
+  prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
+  allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, and a wait that blocks on the task's own run stay allowed.";
 
   t3CodeSentences = [
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
@@ -334,16 +335,14 @@ let
     "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting."
     takeFromSessionSentence
     "When `task_cancel` leaves that task running, keep the result, tell the user once that it still runs so they can stop it, and count its result as taken."
-    backgroundWaitSentence
-    "Stop a pending background wait through the same facility once no such task remains or the user redirects the work."
-    "When your harness has no such way, or ends background commands with your turn, say so when you end your turn, so the user can write to you to have you check the sessions."
-    "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself other than the 10-minute waits these rules name."
+    prohibitionSentence
+    allowedWaitsSentence
     "Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn or to fail when no blocking wait exists, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; when the results arrive, continue the same run from the step that waited."
     "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
-    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, and unless you took its result or its bound has passed, stay in the turn, wait the smaller of 10 minutes and the time left before its bound through your harness's own way of waiting inside a turn, and check it again."
+    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
     "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
@@ -756,8 +755,14 @@ let
       expect = "names a delegated-wait term outside the T3 Code and Compound Engineering sections: t3_thread_read";
     }
     {
-      name = "background-wait sentence negated";
-      line = "- ${backgroundWaitSentence}";
+      name = "self-wake prohibition sentence removed";
+      line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
+      edit = ''p=${esc prohibitionSentence} awk 'BEGIN { p = ENVIRON["p"] } $0 == ENVIRON["line"] { $0 = "- " substr($0, length(p) + 4) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "self-wake prohibition sentence negated";
+      line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }

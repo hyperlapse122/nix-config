@@ -230,6 +230,10 @@ def main(argv=None):
         help="Path to the antigravity-acp-release.json pin file to write or update",
     )
     parser.add_argument(
+        "--t3code-output",
+        help="Path to the t3code-release.json pin file to update with the antigravity section",
+    )
+    parser.add_argument(
         "--from",
         dest="base",
         help="Probe above this version instead of the pinned one, such as when no pin exists yet",
@@ -268,7 +272,28 @@ def main(argv=None):
         if args.dry_run or not args.output:
             sys.stdout.write(out_json)
             return 0
+
+        t3code_path = args.t3code_output or os.path.join(
+            os.path.dirname(os.path.abspath(args.output)), "t3code-release.json"
+        )
+        # Read the t3 pin before either write. JSONDecodeError is a
+        # ValueError, so the handler below would not catch it, and writing
+        # the PATH pin first would leave that file new beside a t3 pin the
+        # command never updated.
+        try:
+            with open(t3code_path, "r", encoding="utf-8") as f:
+                t3_data = json.load(f)
+        except FileNotFoundError:
+            t3_data = {}
+        except json.JSONDecodeError as exc:
+            raise Failure(f"{t3code_path} is not valid JSON: {exc}") from None
+        if not isinstance(t3_data, dict):
+            raise Failure(f"{t3code_path} does not contain a JSON object")
+
         write_pin(args.output, out_json)
+        t3_data["antigravity"] = platforms
+        write_pin(t3code_path, json.dumps(t3_data, indent=2) + "\n")
+
         print(f"updated {args.output} to version {version}")
         return 0
 

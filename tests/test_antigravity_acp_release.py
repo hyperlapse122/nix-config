@@ -80,6 +80,7 @@ class AntigravityAcpReleaseTestCase(unittest.TestCase):
             path.chmod(0o755)
         self.log = self.root / "fetch.log"
         self.output = self.root / "antigravity-acp-release.json"
+        self.t3_output = self.root / "t3code-release.json"
         self.served = {}
 
     def make_zip(self, name, members):
@@ -104,6 +105,24 @@ class AntigravityAcpReleaseTestCase(unittest.TestCase):
 
     def pin(self, version):
         self.output.write_text(json.dumps({"version": version, "platforms": {}}) + "\n")
+
+    def pin_t3(self, version, t3_version="0.1.1-nightly.20261020.3438"):
+        data = {
+            "version": t3_version,
+            "tag": f"v{t3_version}",
+            "platforms": {},
+            "antigravity": {
+                system: {
+                    "platform": SYSTEMS[system][0],
+                    "version": version,
+                }
+                for system in SYSTEMS
+            },
+        }
+        self.t3_output.write_text(json.dumps(data, indent=2) + "\n")
+
+    def written_t3(self):
+        return json.loads(self.t3_output.read_text())
 
     def environment(self):
         env = dict(os.environ)
@@ -177,6 +196,42 @@ class ResolvesTests(AntigravityAcpReleaseTestCase):
         self.assertEqual(pin["version"], "1.4.1")
         self.assertEqual({record["version"] for record in pin["platforms"].values()}, {"1.4.1"})
         self.assertNotIn(url("x86_64-linux", "1.5.0"), self.requests("GET"))
+
+    def test_updates_both_pin_files_when_complete_release_found(self):
+        self.pin("1.4.0")
+        self.pin_t3("1.4.0")
+        self.publish("1.4.1")
+        result = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        acp_pin = self.written()
+        t3_pin = self.written_t3()
+        self.assertEqual(acp_pin["version"], "1.4.1")
+        self.assertEqual(t3_pin["version"], "0.1.1-nightly.20261020.3438")
+
+        for system in SYSTEMS:
+            acp_rec = acp_pin["platforms"][system]
+            t3_rec = t3_pin["antigravity"][system]
+            self.assertEqual(acp_rec["version"], "1.4.1")
+            self.assertEqual(t3_rec["version"], "1.4.1")
+            self.assertEqual(acp_rec["url"], t3_rec["url"])
+            self.assertEqual(acp_rec["sha256"], t3_rec["sha256"])
+            self.assertEqual(acp_rec["hash"], t3_rec["hash"])
+            self.assertEqual(acp_rec["archiveBytes"], t3_rec["archiveBytes"])
+            self.assertEqual(acp_rec["executable"], t3_rec["executable"])
+            self.assertEqual(acp_rec["harness"], t3_rec["harness"])
+
+    def test_incomplete_candidate_leaves_both_files_at_n(self):
+        self.pin("1.4.1")
+        self.pin_t3("1.4.1")
+        self.publish("1.5.0", systems=("x86_64-linux", "aarch64-darwin"))
+        result = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.written()["version"], "1.4.1")
+        self.assertEqual(
+            {r["version"] for r in self.written_t3()["antigravity"].values()},
+            {"1.4.1"},
+        )
 
     def test_from_seeds_a_missing_pin(self):
         self.publish("1.4.1")
@@ -293,6 +348,22 @@ class RefusalTests(AntigravityAcpReleaseTestCase):
         self.assertIn("no readable pin to probe above", result.stderr)
         self.assertEqual(self.requests("HEAD"), [])
         self.assertEqual(self.output.read_text(), "{not json")
+
+    def test_a_corrupt_t3_pin_leaves_the_path_pin_unchanged(self):
+        self.pin("1.4.0")
+        self.publish("1.4.1")
+        self.t3_output.write_text("{not json")
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.0", "is not valid JSON")
+        self.assertEqual(self.t3_output.read_text(), "{not json")
+
+    def test_a_t3_pin_that_is_not_an_object_leaves_the_path_pin_unchanged(self):
+        self.pin("1.4.0")
+        self.publish("1.4.1")
+        self.t3_output.write_text("[]\n")
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.0", "does not contain a JSON object")
+        self.assertEqual(self.t3_output.read_text(), "[]\n")
 
     def test_an_invalid_from_version_fails(self):
         self.pin("1.4.1")

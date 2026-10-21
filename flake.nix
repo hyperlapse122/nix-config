@@ -542,16 +542,62 @@
                 python tests/test_t3code_antigravity_link.py
                 touch $out
               '';
-          # The pin and the CLI are independent sources: scripts/t3code-release
-          # writes the pin from the T3 Code source, and the CLI is the release
-          # binary the flake builds, which embeds the table T3 Code installs from.
           t3code-antigravity-pin =
             pkgs.runCommand "t3code-antigravity-pin" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
-                python3 -I ${./tests/t3code-antigravity-pin.py} \
-                  ${self.packages.${system}.t3code-cli}/libexec/t3code/t3 \
-                  ${./packages/t3code-release.json}
-                touch $out
+                                python3 -I ${./tests/t3code-antigravity-pin.py} \
+                                  ${./packages/t3code-release.json} \
+                                  ${./packages/antigravity-acp-release.json}
+
+                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
+                                  nonexistent.json \
+                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
+                                  echo "t3code-antigravity-pin passed with a missing pin file" >&2
+                                  exit 1
+                                fi
+
+                                python3 - <<'PY'
+                import json
+                d = json.load(open('${./packages/t3code-release.json}'))
+                del d["antigravity"]["x86_64-linux"]
+                with open("missing-system.json", "w") as f:
+                    json.dump(d, f)
+                PY
+                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
+                                  missing-system.json \
+                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
+                                  echo "t3code-antigravity-pin passed with a missing supported system" >&2
+                                  exit 1
+                                fi
+
+                                python3 - <<'PY'
+                import base64, json
+                d = json.load(open('${./packages/t3code-release.json}'))
+                d["antigravity"]["x86_64-linux"]["sha256"] = "0" * 64
+                d["antigravity"]["x86_64-linux"]["hash"] = "sha256-" + base64.b64encode(bytes.fromhex("0" * 64)).decode("ascii")
+                with open("differing-sha.json", "w") as f:
+                    json.dump(d, f)
+                PY
+                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
+                                  differing-sha.json \
+                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
+                                  echo "t3code-antigravity-pin passed when sha256 differed" >&2
+                                  exit 1
+                                fi
+
+                                python3 - <<'PY'
+                src = open('${./tests/t3code-antigravity-pin.py}').read()
+                mutant = src.replace("if val_a != val_b:", "if False and val_a != val_b:")
+                assert mutant != src, "equality comparison mutation failed to apply"
+                with open("mutant.py", "w") as f:
+                    f.write(mutant)
+                PY
+                                if ! python3 -I mutant.py differing-sha.json ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
+                                  echo "self-test: mutant script without equality comparison still failed mismatched pins" >&2
+                                  exit 1
+                                fi
+
+                                touch $out
               '';
           # scripts/t3code-antigravity-link derives each instance home the way
           # the pinned T3 Code does: the hex SHA-256 of the instance id under

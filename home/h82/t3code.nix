@@ -42,6 +42,7 @@ let
     pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
   };
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
+  antigravityPath = import ../../packages/antigravity-acp-path.nix { inherit pkgs; };
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
@@ -64,6 +65,7 @@ let
     enableDeviceSupport = true;
     providerInstances = {
       antigravity = {
+        config.binaryPath = "${antigravityPath}/bin/agy_acp_server.par";
         driver = "antigravity";
         enabled = true;
       };
