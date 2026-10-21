@@ -37,8 +37,8 @@
     `<DeepSeek ID>@<text-generation effort>` that points at the source's
     DeepSeek ID at that effort, and assigns only the managed leaves under
     provider.synthetic.models: each source model's
-    options.reasoningEffort at its pinned effort (GLM and Kimi max, DeepSeek
-    high), and that small entry's id and effort. A model entry the user wrote
+    options.reasoningEffort at its pinned effort (GLM and Kimi max, GLM-5.3-Flash
+    and DeepSeek high), and that small entry's id and effort. A model entry the user wrote
     and every other key inside a declared entry stay, the retired
     syn:large:text entry goes, and the provider's options and other providers
     stay; service.json disables OpenCode's shared background server. The
@@ -82,6 +82,7 @@ let
   json = value: builtins.toJSON value;
   defaultModel = json ("synthetic/" + models.${models.opencodeDefault}.id);
   glm = json models.glm.id;
+  glmFlash = json models.glmFlash.id;
   kimi = json models.kimi.id;
   deepseek = json models.deepseek.id;
   # The text-generation effort names the entry small_model and T3 Code's text
@@ -108,6 +109,7 @@ let
   syntheticModels = ''
     {
       ${glm}: {"options": {"reasoningEffort": "max"}},
+      ${glmFlash}: {"options": {"reasoningEffort": "high"}},
       ${kimi}: {"options": {"reasoningEffort": "max"}},
       ${deepseek}: {"options": {"reasoningEffort": "high"}},
       ${deepseekSmall}: {"id": ${deepseek}, "options": {"reasoningEffort": ${smallEffortJson}}}
@@ -132,6 +134,7 @@ let
       "setPaths": [
         ${modelLeaf deepseek [ "options" "reasoningEffort" ] (json "high")},
         ${modelLeaf glm [ "options" "reasoningEffort" ] (json "max")},
+        ${modelLeaf glmFlash [ "options" "reasoningEffort" ] (json "high")},
         ${modelLeaf kimi [ "options" "reasoningEffort" ] (json "max")},
         ${modelLeaf deepseekSmall [ "id" ] deepseek},
         ${modelLeaf deepseekSmall [ "options" "reasoningEffort" ] smallEffortJson}
@@ -189,6 +192,7 @@ let
           "models": {
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
             ${glm}: {"options": {"reasoningEffort": "max", "temperature": 0.2}, "name": "user edit"},
+            ${glmFlash}: {"options": {"reasoningEffort": "high"}},
             ${kimi}: {"options": {"reasoningEffort": "max"}},
             ${deepseek}: {"options": {"reasoningEffort": "high"}},
             ${deepseekSmall}: {"id": ${deepseek}, "name": "user title model", "options": {"reasoningEffort": ${smallEffortJson}}}

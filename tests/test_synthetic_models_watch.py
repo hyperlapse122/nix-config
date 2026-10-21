@@ -58,6 +58,7 @@ DETECTED = "2026-10-21T09:00:00Z"
 KEY = "syn-fake-key-0123456789"
 
 GLM = "hf:zai-org/GLM-5.3"
+GLM_FLASH = "hf:zai-org/GLM-5.3-Flash"
 KIMI = "hf:moonshotai/Kimi-K3"
 DEEPSEEK = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017"
 
@@ -255,13 +256,45 @@ class ClassificationTest(WatchTestCase):
         later = max(created_of(catalog, GLM), created_of(catalog, KIMI)) + 86400
         self.assert_clean(with_rows(
             catalog,
-            row("hf:zai-org/GLM-5.3-Flash", later),
+            row("hf:zai-org/GLM-5.3-Flash-Lite", later),
             row("hf:zai-org/GLM-5.3-Air", later),
+            row("hf:zai-org/GLM-4.7-Flash", later),
             row("hf:moonshotai/Kimi-K2.7-Code", later),
             row("hf:zai-org/GLM-4.7", later),
             row("hf:moonshotai/Kimi-K2.9", later),
             row("hf:deepseek-ai/DeepSeek-V4.0-Flash-1201", later + created_of(catalog, DEEPSEEK)),
         ))
+
+    def test_a_newer_flash_and_a_newer_base_model_are_separate_new_versions(self):
+        catalog = snapshot()
+        later = max(created_of(catalog, GLM), created_of(catalog, GLM_FLASH)) + 86400
+        result, _ = self.drift(with_rows(
+            catalog, row("hf:zai-org/GLM-5.4-Flash", later), row("hf:zai-org/GLM-5.4", later)
+        ))
+        self.assertEqual(sorted(f["entry"] for f in result["findings"]), ["glm", "glmFlash"])
+        self.assertEqual(self.finding(result, "new-version", "glm")["candidates"], ["hf:zai-org/GLM-5.4"])
+        self.assertEqual(
+            self.finding(result, "new-version", "glmFlash")["candidates"], ["hf:zai-org/GLM-5.4-Flash"]
+        )
+
+    def test_missing_glm_flash_is_removed_with_its_reviewer_role_and_no_older_replacement(self):
+        result, _ = self.drift(without(snapshot(), GLM_FLASH))
+        self.assertEqual(len(result["findings"]), 1, result["findings"])
+        finding = self.finding(result, "removed", "glmFlash")
+        self.assertEqual(finding["id"], GLM_FLASH)
+        self.assertEqual(finding["uses"], ["reviewer"])
+        self.assertEqual(finding["candidates"], [])
+
+    def test_glm_flash_without_high_is_changed_for_its_reviewer_role_and_opencode_effort(self):
+        catalog = snapshot()
+        for model in catalog["data"]:
+            if model["id"] == GLM_FLASH:
+                model["reasoning_parameters"]["efforts"] = ["low", "max"]
+        result, _ = self.drift(catalog)
+        self.assertEqual(len(result["findings"]), 1, result["findings"])
+        finding = self.finding(result, "changed", "glmFlash")
+        self.assertEqual(finding["missingEfforts"], ["high"])
+        self.assertEqual(finding["uses"], ["reviewer", "opencodeEffort"])
 
     def test_a_higher_version_on_the_same_created_is_newer(self):
         catalog = snapshot()
@@ -375,7 +408,7 @@ class ClassificationTest(WatchTestCase):
             if model["id"] == KIMI:
                 del model["reasoning_parameters"]
         result, _ = self.drift(catalog)
-        self.assertEqual(self.finding(result, "changed", "kimi")["missingEfforts"], ["max"])
+        self.assertEqual(self.finding(result, "changed", "kimi")["missingEfforts"], ["high", "max"])
 
     def test_unsafe_catalog_ids_are_reported_only_as_a_count(self):
         catalog = without(snapshot(), KIMI)
