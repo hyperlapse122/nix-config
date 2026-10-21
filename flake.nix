@@ -338,6 +338,7 @@
               ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
           antigravity-acp-probe =
