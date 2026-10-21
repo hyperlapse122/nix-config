@@ -262,7 +262,7 @@ let
     "The third candidate, which runs only when the user names it, is OpenCode, `synthetic/${kimiId}` on the `opencode` instance with `variant` `max`, of family `kimi`."
     "Map a model ID to its family after removing one leading provider prefix such as `synthetic/`: `claude-*` to `claude`, `gemini-*` to `gemini`, an `hf:<org>/<name>` ID by its org, with `zai-org` to `glm`, `moonshotai` to `kimi`, `deepseek-ai` to `deepseek`, and `Qwen` to `qwen`, and a `syn:` alias or any other org to `unknown`."
     "Your own family comes from the model ID you run, not from your harness."
-    "In OpenCode, read that ID from `orchestrator_capabilities` and `t3_thread_configuration` when the session lists T3 Code's tools, and otherwise from the tool of the `session-info` plugin or from the model section of your system prompt."
+    "In OpenCode, read that ID from `orchestrator_capabilities` and `t3_thread_configuration` when the session lists T3 Code's tools, and otherwise from the `session_info` tool or from the model section of your system prompt."
     "When none of them names your model, your family is `unknown`, and no peer finding in your reviews raises confidence."
     "By default, a `claude` session runs the GLM candidate, a `glm` session runs the Claude Code candidate, and every other session, an `unknown` one included, runs both default candidates."
     "Peers the user names for that run, the third candidate included, replace the defaults, follow every other rule here, and number at most two."
