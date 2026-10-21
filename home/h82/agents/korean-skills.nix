@@ -33,8 +33,7 @@ let
   '';
 
   # Each root is a directory one harness reads skills from. Claude Code reads
-  # ~/.claude/skills, and Grok Build reads it through its Claude compatibility.
-  # OpenCode ignores that directory under the wrapper's
+  # ~/.claude/skills. OpenCode ignores that directory under the wrapper's
   # OPENCODE_DISABLE_CLAUDE_CODE=true. The Antigravity CLI and T3 Code's
   # Antigravity instances read ~/.gemini/antigravity-cli/skills; not
   # ~/.gemini/config/skills, which the CLI lists twice.

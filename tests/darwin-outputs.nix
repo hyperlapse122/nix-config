@@ -28,8 +28,6 @@
   - the opencode wrapper on PATH reads its key from the state directory
     host-secrets publishes to, and activation merges the declared OpenCode
     config into ~/.config/opencode/opencode.json after writeBoundary;
-  - grok on PATH resolves to the grok-build wrapper, which turns its
-    self-updater off, and the profile has no `agent` executable;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -94,7 +92,6 @@ let
       androidSdkRoot = "${config.my.user.home}/Library/Android/sdk";
       masExe = lib.getExe entry.host.pkgs.mas;
       peers = lib.concatStringsSep "," (expectedPeers user.home.packages);
-      grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
       serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
@@ -237,18 +234,6 @@ let
         bad "no opencode on PATH"
       elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
-      fi
-
-      grok=$(readlink -f "$gen/home-path/bin/grok" || true)
-      if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
-        bad "grok on PATH is not the grok-build wrapper"
-      elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
-        bad "the grok wrapper does not turn its self-updater off"
-      elif ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" "$grok"; then
-        bad "the grok wrapper does not turn its Claude Code file scan off"
-      fi
-      if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
-        bad "the profile puts an agent executable on PATH"
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the

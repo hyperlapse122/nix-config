@@ -35,7 +35,6 @@ in
   # to keep builds running as the unprivileged nixbld users.
   imports = [
     ../shared/nix-settings.nix
-    ./grok-bot-apparmor.nix
   ];
   nix.enable = true;
   nix.settings.build-users-group = "nixbld";

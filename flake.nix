@@ -157,10 +157,6 @@
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
-        grok-build-release = agentTools.grokBuildRelease;
-        grok-bot-release = agentTools.grokBotRelease;
-        grok-build = import ./packages/grok-build.nix { inherit pkgs; };
-        grok-bot = import ./packages/grok-bot.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
@@ -461,7 +457,6 @@
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
-          grok-bot-sources = pinnedSources "grok-bot-sources" ./packages/grok-bot-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -500,21 +495,6 @@
           antigravity-cli-release =
             pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
               ./tests/test_antigravity_cli_release.py;
-          grok-build-release =
-            pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
-              ./tests/test_grok_build_release.py;
-          grok-bot-release =
-            let
-              tests =
-                pythonScriptCheck "grok-bot-release" ./scripts/grok-bot-release
-                  ./tests/test_grok_bot_release.py;
-            in
-            # The tests drive a copy of the script; the update workflow runs
-            # the packaged helper, so it must start too.
-            pkgs.runCommand "grok-bot-release-checks" { } ''
-              ${pkgs.lib.getExe agentTools.grokBotRelease} --help >/dev/null
-              ln -s ${tests} $out
-            '';
           antigravity-acp-release =
             pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
               ./tests/test_antigravity_acp_release.py;
@@ -1031,6 +1011,81 @@
               ${forEveryUser assertUser}
               touch $out
             '';
+          # Grok Build and Grok Bot are gone from every host. Beyond what
+          # codex-absent reads, this reads the cask mapping the macOS hosts
+          # install from and each Linux fixture's evaluated system-manager
+          # configuration, by attribute evaluation and without building a
+          # host closure; nothing here interpolates a store path.
+          grok-absent =
+            let
+              isGrokName = pkgs.lib.hasInfix "grok";
+              darwinApps = import ./modules/shared/darwin-apps.nix;
+              grokApps = builtins.filter isGrokName (builtins.attrNames darwinApps.apps);
+              grokCasks = builtins.filter isGrokName darwinApps.casks;
+              assertUser =
+                entry:
+                let
+                  grokFiles = builtins.filter (target: target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) (
+                    homeFileTargets entry
+                  );
+                in
+                ''
+                  ${pkgs.lib.concatMapStrings
+                    (
+                      pname:
+                      pkgs.lib.optionalString (userPackageOf pname entry != null) ''
+                        echo '${pname} is still in the user packages on ${entry.name}' >&2
+                        fail=1
+                      ''
+                    )
+                    [
+                      "grok-build"
+                      "grok-bot"
+                    ]
+                  }
+                  ${pkgs.lib.optionalString (grokFiles != [ ]) ''
+                    echo 'home files under ~/.grok remain on ${entry.name}: ${toString grokFiles}' >&2
+                    fail=1
+                  ''}
+                '';
+              assertFixture =
+                fixture:
+                let
+                  smConfig = fixture.host.systemManager.config;
+                  grokEtc = builtins.filter isGrokName (builtins.attrNames smConfig.environment.etc);
+                  grokUnits = builtins.filter isGrokName (builtins.attrNames smConfig.systemd.services);
+                in
+                ''
+                  ${pkgs.lib.optionalString (grokEtc != [ ]) ''
+                    echo 'the system-manager configuration of ${fixture.name} still writes /etc files for Grok: ${toString grokEtc}' >&2
+                    fail=1
+                  ''}
+                  ${pkgs.lib.optionalString (grokUnits != [ ]) ''
+                    echo 'the system-manager configuration of ${fixture.name} still has Grok units: ${toString grokUnits}' >&2
+                    fail=1
+                  ''}
+                '';
+            in
+            pkgs.runCommand "grok-absent" { } ''
+              ${configurations.userGuard}
+              fail=0
+              ${pkgs.lib.concatMapStrings assertUser configurations.userEntries}
+              ${pkgs.lib.optionalString (configurations.linuxFixtures == [ ]) ''
+                echo 'no non-NixOS fixture host of this architecture, so the system-manager side of this check would cover none' >&2
+                fail=1
+              ''}
+              ${pkgs.lib.concatMapStrings assertFixture configurations.linuxFixtures}
+              ${pkgs.lib.optionalString (grokApps != [ ]) ''
+                echo 'modules/shared/darwin-apps.nix still maps Grok apps: ${toString grokApps}' >&2
+                fail=1
+              ''}
+              ${pkgs.lib.optionalString (grokCasks != [ ]) ''
+                echo 'the macOS casks still include Grok: ${toString grokCasks}' >&2
+                fail=1
+              ''}
+              [ "$fail" = 0 ] || exit 1
+              touch $out
+            '';
           opencode =
             let
               # The version is compared with the pin for the reason given on
@@ -1116,135 +1171,6 @@
             pkgs.runCommand "antigravity-cli-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
-          grok-build =
-            let
-              # The wrapper variable, not a settings file, keeps grok from
-              # updating itself under any HOME, such as T3 Code's per-provider homes.
-              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-build-release.json)).version;
-              assertUser =
-                entry:
-                let
-                  grokPkg = userPackageOf "grok-build" entry;
-                  grokFiles = builtins.filter (
-                    target:
-                    (target == ".grok" || pkgs.lib.hasPrefix ".grok/" target) && target != ".grok/rules/instructions.md"
-                  ) (homeFileTargets entry);
-                  versionMismatch = pkgs.lib.optionalString (grokPkg != null && grokPkg.version != pinnedVersion) ''
-                    echo "grok-build on ${entry.name} is built from version '${grokPkg.version}', expected pin ${pinnedVersion}" >&2
-                    fail=1
-                  '';
-                  # Runs the built wrapper offline in a throwaway HOME, so a grok
-                  # release that stops treating `false` as off fails here, not
-                  # only in the live inspect item. Skipped for a package this
-                  # builder cannot execute.
-                  inspect =
-                    pkgs.lib.optionalString
-                      (grokPkg != null && (grokPkg.system or null) == pkgs.stdenv.hostPlatform.system)
-                      ''
-                        home=$(mktemp -d)
-                        mkdir -p "$home/.claude" "$home/.grok/rules" "$home/project"
-                        echo probe > "$home/.claude/CLAUDE.md"
-                        echo probe > "$home/.grok/rules/instructions.md"
-                        if ! report=$(cd "$home/project" && HOME="$home" ${grokPkg}/bin/grok inspect --json); then
-                          echo "grok inspect fails on ${entry.name}" >&2
-                          fail=1
-                        else
-                          claude=$(jq -r --arg p "$home/.claude/CLAUDE.md" '.projectInstructions[] | select(.path == $p) | .compatibilityStatus' <<<"$report")
-                          rules=$(jq -r --arg p "$home/.grok/rules/instructions.md" '.projectInstructions[] | select(.path == $p) | .scope' <<<"$report")
-                          if [ "$claude" != disabled ]; then
-                            echo "grok on ${entry.name} still reads ~/.claude/CLAUDE.md (compatibilityStatus: '$claude')" >&2
-                            fail=1
-                          fi
-                          if [ "$rules" != global ]; then
-                            echo "grok on ${entry.name} does not load ~/.grok/rules/instructions.md as a global rule (scope: '$rules')" >&2
-                            fail=1
-                          fi
-                        fi
-                      '';
-                  wrapper = pkgs.lib.optionalString (grokPkg != null) ''
-                    if ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" ${grokPkg}/bin/grok; then
-                      echo "grok on ${entry.name} does not turn its self-updater off" >&2
-                      fail=1
-                    fi
-                    if ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" ${grokPkg}/bin/grok; then
-                      echo "grok on ${entry.name} does not turn its Claude Code file scan off" >&2
-                      fail=1
-                    fi
-                    if [ -e ${grokPkg}/bin/agent ] || [ -L ${grokPkg}/bin/agent ]; then
-                      echo "grok-build on ${entry.name} puts an agent executable on PATH" >&2
-                      fail=1
-                    fi
-                  '';
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "grok-build";
-                    executables = [ "grok" ];
-                    desktopEntries = [ ];
-                  } entry}
-                  ${versionMismatch}
-                  ${wrapper}
-                  ${inspect}
-                  ${pkgs.lib.optionalString (grokFiles != [ ]) ''
-                    echo 'Home Manager manages files under ~/.grok on ${entry.name}, which Grok owns: ${toString grokFiles}' >&2
-                    fail=1
-                  ''}
-                '';
-            in
-            pkgs.runCommand "grok-build-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              set -x
-              ${forEveryUser assertUser}
-              touch $out
-            '';
-          grok-bot =
-            let
-              # The version is compared with the pin for the reason given on
-              # the claude-code check.
-              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/grok-bot-release.json)).version;
-              assertUser =
-                entry:
-                let
-                  package = userPackageOf "grok-bot" entry;
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "grok-bot";
-                    executables = [ "grok-bot" ];
-                    desktopEntries = [ "grok-bot.desktop" ];
-                  } entry}
-                  ${pkgs.lib.optionalString (package != null && package.version != pinnedVersion) ''
-                    echo "grok-bot on ${entry.name} is built from version '${package.version}', expected pin ${pinnedVersion}" >&2
-                    fail=1
-                  ''}
-                  ${pkgs.lib.optionalString (package != null) ''
-                    # The app replaces itself whenever APPIMAGE is set, so the
-                    # wrapper must clear an APPIMAGE another wrapper exported.
-                    if ! grep -qxF 'unset APPIMAGE' ${package}/bin/grok-bot; then
-                      echo "grok-bot wrapper on ${entry.name} does not unset APPIMAGE" >&2
-                      fail=1
-                    fi
-                    desktopEntry=${package}/share/applications/grok-bot.desktop
-                    if [ -f "$desktopEntry" ]; then
-                      execs=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$desktopEntry")
-                      if [ -z "$execs" ]; then
-                        echo "grok-bot.desktop on ${entry.name} has no Exec line" >&2
-                        fail=1
-                      fi
-                      while IFS= read -r exec; do
-                        if [ -n "$exec" ] && [ "$exec" != "${package}/bin/grok-bot" ]; then
-                          echo "grok-bot.desktop Exec '$exec' does not name ${package}/bin/grok-bot on ${entry.name}" >&2
-                          fail=1
-                        fi
-                      done <<<"$execs"
-                    fi
-                  ''}
-                '';
-            in
-            pkgs.runCommand "grok-bot-tests" { } ''
-              set -x
-              ${forEveryUser assertUser}
               touch $out
             '';
           t3code =

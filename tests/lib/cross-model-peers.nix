@@ -16,7 +16,6 @@ packages:
 let
   tokens = {
     claude-code = "claude";
-    grok-build = "grok";
     opencode = "opencode";
   };
   pnames = map (p: p.pname or (lib.getName p)) packages;
