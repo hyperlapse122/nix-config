@@ -78,6 +78,8 @@
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
     relaunch, the approval note, and the confined terms; a retired peer rule,
     a removed peer safeguard, a removed, negated, or reworded scout rule,
+    a removed, negated, or moved shared-checkout default, worktree trigger, or
+    worktree fallback clause, an added worktree rule for every task,
     a negated session_info-first rule, an OpenCode
     variant that differs from its source role, and an effort or instance the
     assignment rule forbids) fails them with its own message, so a guard that stops failing
@@ -342,6 +344,15 @@ let
   rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer, but a failure of the relaunch is one.";
   noteSentence = "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
   oldNoteSentence = "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
+  worktreeFallbackClause = "; a worktree launch of a task other than a cross-model peer that still fails after that relaunch runs in your checkout once every other task there has finished, or, when it needed the committed state, is skipped and reported with the reason";
+  launchFailureSentence = "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer${worktreeFallbackClause}.";
+  sharedCheckoutDefaultPeerClause = "; a cross-model peer is the one task that always gets a worktree, as the peer rule above says";
+  sharedCheckoutDefaultSentence = "Launch every delegated task other than a cross-model peer in the checkout you work in, with no `isolation` argument, and give a task its own worktree only in the three cases below${sharedCheckoutDefaultPeerClause}.";
+  parallelEditsSentence = "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another.";
+  rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as a formatter, a code generator, or a dependency update, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
+  committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
+  sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
+  sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   t3CodeSentences = [
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
@@ -352,12 +363,15 @@ let
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
     fullAccessSentence
     rejectionSentence
-    "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer."
+    launchFailureSentence
     "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
-    "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another."
-    "Tell tasks that share one checkout not to commit, stage, or format files beyond their own, and commit their results yourself."
+    sharedCheckoutDefaultSentence
+    parallelEditsSentence
+    rewriteTriggerSentence
+    committedStateTriggerSentence
+    sharedCheckoutSentence
     "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch, except for the relaunch without `runtimeMode` after a rejected runtime mode, which takes a new one."
     "Launch a task that needs an earlier task's result only after you have read that result."
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
@@ -1003,6 +1017,72 @@ let
       line = "- ${scoutSafeguardSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "shared-checkout default sentence removed";
+      line = "- ${sharedCheckoutDefaultSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "shared-checkout default sentence negated";
+      line = "- ${sharedCheckoutDefaultSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "shared-checkout default loses its cross-model peer exception";
+      line = "- ${sharedCheckoutDefaultSentence}";
+      edit = replaceInLine sharedCheckoutDefaultPeerClause "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "parallel-edits worktree trigger removed";
+      line = "- ${parallelEditsSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "rewrite-command worktree trigger removed";
+      line = "- ${rewriteTriggerSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "committed-state worktree trigger removed";
+      line = "- ${committedStateTriggerSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "shared-checkout rule loses its leave-to-the-parent clause";
+      line = "- ${sharedCheckoutSentence}";
+      edit = replaceInLine sharedCheckoutLeaveClause "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "launch-failure sentence loses its worktree fallback clause";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine worktreeFallbackClause "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "worktree fallback no longer excludes a cross-model peer";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine "a worktree launch of a task other than a cross-model peer" "a worktree launch of a task";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "rewrite-command trigger moved above the shared-checkout default";
+      line = "- ${rewriteTriggerSentence}";
+      edit = ''d=${esc "- ${sharedCheckoutDefaultSentence}"} awk '$0 == ENVIRON["d"] { print ENVIRON["line"] } $0 != ENVIRON["line"] { print }' '';
+      expect = "reorders or duplicates a T3 Code sentence:";
+    }
+    {
+      name = "worktree sentence for every delegated task added";
+      line = "- Launch every delegated task with `isolation: \"worktree\"`.";
+      edit = ''awk '{ print } $0 == "# T3 Code" { print ENVIRON["line"] }' '';
+      expect = "carries an unpinned T3 Code sentence:";
     }
   ];
 
