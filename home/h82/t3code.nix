@@ -130,6 +130,7 @@ let
   # pinned to it in OpenCode's settings, with no variant: T3 Code sends none
   # then, so the effort does not depend on a variant reaching the request.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
+  textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
     defaultModelSelection = {
       instanceId = "claudeAgent";
@@ -143,7 +144,7 @@ let
     };
     textGenerationModelSelection = {
       instanceId = "opencode";
-      model = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+      model = textGenerationAlias;
     };
   };
 
@@ -159,7 +160,7 @@ let
       "hiddenModels"
     ];
     prefix = "synthetic/${textGeneration.id}@";
-    value = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+    value = textGenerationAlias;
   };
 
   clientSettings.fontFamilyCode = "JetBrains Mono";
