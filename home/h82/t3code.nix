@@ -28,12 +28,11 @@ let
   linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
   t3 = cfg.cli.enable || cfg.desktop.enable;
 
-  # The Antigravity instances this file selects a model on. Each gets its home
-  # prepared on activation, so the plugin skills are there before
-  # T3 Code first starts it.
-  antigravityInstances = [ textGenerationInstance ];
-  # The instance T3 Code generates commit messages and titles with.
-  textGenerationInstance = "antigravity";
+  syntheticModels = import ./agents/synthetic-models.nix;
+
+  # The Antigravity instances whose home is prepared on activation, so the
+  # plugin skills are there before T3 Code first starts one by hand.
+  antigravityInstances = [ "antigravity" ];
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
@@ -83,12 +82,11 @@ let
         enabled = false;
         config.launchArgs = "";
       };
-      # The grok on PATH is the wrapper that disables self-update, so no
-      # binaryPath is needed. Grok signs in once per host with `grok login`
-      # and keeps its token in ~/.grok/auth.json, never in this file.
+      # T3 Code enables its built-in Grok instance unless one is declared;
+      # Grok is no longer installed.
       grok = {
         driver = "grok";
-        enabled = true;
+        enabled = false;
       };
       # The opencode on PATH is the wrapper that carries the API key, so no
       # binaryPath is needed and the key never reaches this file.
@@ -133,10 +131,22 @@ let
     defaultModelSelection = {
       instanceId = "claudeAgent";
       model = "claude-opus-5-5";
+      options = [
+        {
+          id = "effort";
+          value = "medium";
+        }
+      ];
     };
     textGenerationModelSelection = {
-      instanceId = textGenerationInstance;
-      model = "gemini-3.8-flash";
+      instanceId = "opencode";
+      model = "synthetic/${syntheticModels.${syntheticModels.textGeneration}.id}";
+      options = [
+        {
+          id = "variant";
+          value = "low";
+        }
+      ];
     };
   };
 
