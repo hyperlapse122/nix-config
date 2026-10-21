@@ -38,6 +38,12 @@
     `<id>@<effort>` entry home/h82/agents/opencode.nix declares for the
     text-generation model of home/h82/agents/synthetic-models.nix at its
     text-generation role's effort, with no options, so no variant.
+    On a full configuration, tests/t3code-hidden-model.py also ties the alias
+    the declaration hides in the OpenCode picker to the small_model the
+    OpenCode activation declares, and runs the real merger over a settings.json
+    that already hides another model and an alias of another effort: the other
+    model must stay hidden, the earlier alias must go, and the current one must
+    appear once, also on a second run.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -159,6 +165,17 @@ let
       snoozeLimitedThreads = true;
     };
     remove = [ ];
+    prefixEntries = [
+      {
+        path = [
+          "providerModelPreferences"
+          "opencode"
+          "hiddenModels"
+        ];
+        prefix = "synthetic/${textGeneration.id}@";
+        value = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+      }
+    ];
     migrateInstances = {
       from = "providers";
       to = "providerInstances";
@@ -397,13 +414,17 @@ let
       merge:
       let
         activation = user.home.activation.${merge.attr} or null;
+        # The OpenCode settings activation, whose small_model the hidden alias
+        # in settings.json must equal. The module evaluated on its own has none.
+        opencodeScript =
+          if merge.attr == "t3codeSettings" then (user.home.activation.opencodeSettings.data or "") else "";
       in
       ''
         checkSettings ${esc name} ${merge.attr} ${lib.boolToString expected} ${
           lib.boolToString (activation != null)
         } ${esc (activation.data or "")} ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected}
+        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected} ${esc opencodeScript} ${lib.boolToString pluginsDeclared}
       ''
     ) merges
     + (
@@ -617,7 +638,7 @@ let
       (assertSettingsWith false "macOS module with my.t3.desktop.enable" darwin.config true)
     ];
 in
-pkgs.runCommand "t3code-traits" { } ''
+pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   fail=0
   ${configurations.guard}
   ${cliTrait.guard}
@@ -699,11 +720,13 @@ pkgs.runCommand "t3code-traits" { } ''
   # $2 names the activation entry, $3 says whether the merge belongs on this
   # configuration, $4 whether it is declared; $5 is its script, $6 whether it
   # runs after installPackages, $7 the settings file it must name, and $8 the
-  # declaration it must pass. The script is executed rather than
-  # matched, so a merger that is only mentioned, echoed, or has its exit
-  # status swallowed fails.
+  # declaration it must pass. $9 is the OpenCode settings activation script,
+  # and $10 whether it must exist: settings.json is also merged through the
+  # real merger and tied to OpenCode's small_model. The script is executed
+  # rather than matched, so a merger that is only mentioned, echoed, or has its
+  # exit status swallowed fails.
   checkSettings() {
-    local name=$1 attr=$2 expected=$3 present=$4 after=$6 settings=$7 want=$8 merger actual declared
+    local name=$1 attr=$2 expected=$3 present=$4 after=$6 settings=$7 want=$8 opencode=$9 full=''${10} merger actual declared
     if [ "$present" != "$expected" ]; then
       echo "$name: home.activation.$attr is present=$present, either T3 Code trait on is $expected" >&2
       fail=1
@@ -749,6 +772,42 @@ pkgs.runCommand "t3code-traits" { } ''
     exercise ':' 0 || true
     if [ -f args ]; then
       echo "$name: the $attr activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
+      fail=1
+    fi
+
+    [ "$attr" = t3codeSettings ] && [ "$full" = true ] || return 0
+    checkHiddenModel "$name" "$merger" "$declared" "$opencode"
+  }
+
+  # Ties the alias settings.json hides to the small_model the OpenCode
+  # activation declares, and merges the declared document into a seeded file
+  # with the real merger. $2 is the packaged merger, $3 the T3 Code declaration
+  # the activation passed it, and $4 the OpenCode settings activation script.
+  # The script is run against the stub only to read the declaration it passes.
+  checkHiddenModel() {
+    local name=$1 realMerger=$2 t3declared=$3 script=$4 opencodeMerger opencodeDeclared
+    if [ -z "$script" ]; then
+      echo "$name: no home.activation.opencodeSettings declares the small_model the hidden alias must equal" >&2
+      fail=1
+      return
+    fi
+    printf '%s\n' "$script" > opencode-script
+    opencodeMerger=$(grep -oE '/nix/store/[^[:space:]]+/bin/agent-settings' opencode-script | head -n 1 || true)
+    if [ -z "$opencodeMerger" ]; then
+      echo "$name: the opencodeSettings activation names no packaged merger" >&2
+      fail=1
+      return
+    fi
+    sed "s|$opencodeMerger|$PWD/merger-stub|g" opencode-script > swapped
+    if ! exercise '"$@"' 0 || [ ! -f args ]; then
+      echo "$name: on a live run the opencodeSettings activation does not run the merger" >&2
+      fail=1
+      return
+    fi
+    opencodeDeclared=$(argAfter --declared)
+    if ! python3 -I ${./t3code-hidden-model.py} "$realMerger" "$t3declared" "$opencodeDeclared" 2> hidden-model.log; then
+      echo "$name: the hidden text-generation alias drifted from OpenCode's small_model, or the real merger does not hide exactly it:" >&2
+      cat hidden-model.log >&2
       fail=1
     fi
   }
