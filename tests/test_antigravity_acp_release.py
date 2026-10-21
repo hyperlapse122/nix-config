@@ -349,6 +349,22 @@ class RefusalTests(AntigravityAcpReleaseTestCase):
         self.assertEqual(self.requests("HEAD"), [])
         self.assertEqual(self.output.read_text(), "{not json")
 
+    def test_a_corrupt_t3_pin_leaves_the_path_pin_unchanged(self):
+        self.pin("1.4.0")
+        self.publish("1.4.1")
+        self.t3_output.write_text("{not json")
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.0", "is not valid JSON")
+        self.assertEqual(self.t3_output.read_text(), "{not json")
+
+    def test_a_t3_pin_that_is_not_an_object_leaves_the_path_pin_unchanged(self):
+        self.pin("1.4.0")
+        self.publish("1.4.1")
+        self.t3_output.write_text("[]\n")
+        result = self.run_release()
+        self.assert_failed_keeping(result, "1.4.0", "does not contain a JSON object")
+        self.assertEqual(self.t3_output.read_text(), "[]\n")
+
     def test_an_invalid_from_version_fails(self):
         self.pin("1.4.1")
         result = self.run_release("--from", "1.4")

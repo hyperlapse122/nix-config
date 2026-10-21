@@ -223,7 +223,27 @@ jobs:
             git commit -m "chore(packages): bump grok-bot to $NEW_VER"
           fi
 
-          if [ -n "$(git status --porcelain packages/t3code-release.json)" ]; then
+          # The ACP updater writes the PATH pin and the antigravity section of
+          # t3code-release.json as one identity. Commit those two files
+          # together when both are dirty. A commit of the t3 file alone would
+          # publish the new section beside the previous PATH pin, and the pin
+          # check fails on that revision. Verify runs before these commits, so
+          # it would stay green. A T3-only change, with the PATH pin clean,
+          # stays its own commit. The PATH-only commit below still covers a
+          # dirty PATH pin whose t3 file is clean.
+          if [ -n "$(git status --porcelain packages/antigravity-acp-release.json)" ] &&
+            [ -n "$(git status --porcelain packages/t3code-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/antigravity-acp-release.json)
+            T3_VER=$(jq -r .version packages/t3code-release.json)
+            OLD_T3=$(git show HEAD:packages/t3code-release.json | jq -r .version)
+            git add packages/antigravity-acp-release.json packages/t3code-release.json
+            if [ "$T3_VER" != "$OLD_T3" ]; then
+              git commit -m "chore(packages): bump antigravity-acp to $NEW_VER" \
+                -m "Also bumps t3code to $T3_VER."
+            else
+              git commit -m "chore(packages): bump antigravity-acp to $NEW_VER"
+            fi
+          elif [ -n "$(git status --porcelain packages/t3code-release.json)" ]; then
             NEW_VER=$(jq -r .version packages/t3code-release.json)
             git add packages/t3code-release.json
             git commit -m "chore(packages): bump t3code to $NEW_VER"
