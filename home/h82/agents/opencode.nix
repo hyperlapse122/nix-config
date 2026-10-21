@@ -23,7 +23,23 @@ let
     }
   );
 
-  model = import ./opencode-model.nix;
+  models = import ./synthetic-models.nix;
+  small = models.${models.small};
+  # A second entry for the same upstream model, so small_model, which
+  # OpenCode 2.x uses only for title generation, runs at effort low while
+  # the main entry keeps its own. The suffix keeps the key under the
+  # model's org, which the shared instructions map to its family.
+  smallKey = "${small.id}@low";
+  syntheticModels =
+    lib.mapAttrs' (
+      _: entry: lib.nameValuePair entry.id { options.reasoningEffort = entry.opencodeEffort; }
+    ) (lib.filterAttrs (_: builtins.isAttrs) models)
+    // {
+      ${smallKey} = {
+        inherit (small) id;
+        options.reasoningEffort = "low";
+      };
+    };
 
   # `opencode mcp add` and `opencode plugin add` rewrite this file, so
   # activation assigns these keys and leaves everything else as OpenCode wrote
@@ -32,24 +48,22 @@ let
   # backstop under every config T3 Code supplies. share = "disabled" keeps a
   # session from being published by link. enabled_providers allowlists the
   # synthetic provider, so no other provider loads even when its credentials
-  # are present. The model is in OpenCode's built-in synthetic catalog; a
-  # syn: alias is not, and would need a setPaths entry declaring
-  # provider.synthetic.models.<alias>.name -- which is also how the retired
-  # syn:large:text alias got in, so removePaths takes it back out.
+  # are present.
   #
   # OpenCode 2.0.32 drops a variant given in the config file (`model#max`, a
   # model object, or agent.build.variant) and honours one only from
   # `--model`, which the wrapper cannot add without overriding a caller's own
-  # choice. A model's options reach the provider request, so the effort is
-  # pinned there: every session on this model, through `opencode run`,
-  # `opencode acp`, or `opencode serve`, sends reasoning_effort "max" unless
+  # choice. A model's options reach the provider request, so each model's
+  # effort is pinned there: every session on it, through `opencode run`,
+  # `opencode acp`, or `opencode serve`, sends that reasoning_effort unless
   # the caller selects another variant. OpenCode passes the value through
-  # unchecked; GLM 5.3 offers low, high, and max.
+  # unchecked.
   declared = pkgs.writeText "opencode-declared-settings.json" (
     builtins.toJSON {
       set = {
         "$schema" = "https://opencode.ai/config.json";
-        inherit model;
+        model = "synthetic/" + models.${models.opencodeDefault}.id;
+        small_model = "synthetic/" + smallKey;
         update = "disable";
         share = "disabled";
       };
@@ -57,29 +71,17 @@ let
       # enabled_providers is an array, which set refuses; nothing else writes
       # the key, so owning it whole is the right tier.
       own.enabled_providers = [ "synthetic" ];
-      setPaths = [
-        {
-          path = [
-            "provider"
-            "synthetic"
-            "models"
-            (lib.removePrefix "synthetic/" model)
-            "options"
-            "reasoningEffort"
-          ];
-          value = "max";
-        }
-      ];
-      removePaths = [
-        # The retired cross-reviewer alias: the merge that once wrote it can
-        # only assign, so activation takes it back out.
+      # The model map holds exactly the source's entries, so one an earlier
+      # source declared, such as the retired syn:large:text alias, leaves on
+      # the next apply. The provider's options and other providers stay.
+      ownPaths = [
         {
           path = [
             "provider"
             "synthetic"
             "models"
           ];
-          key = "syn:large:text";
+          value = syntheticModels;
         }
       ];
     }

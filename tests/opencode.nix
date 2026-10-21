@@ -10,7 +10,9 @@
   the sops manifest under test. It reads what the generations materialize --
   home-path, the rendered activation script and the sops manifests -- rather
   than the options they come from. Expected values are literals stated here,
-  independently of home/h82/agents/opencode.nix and opencode-model.nix.
+  independently of home/h82/agents/opencode.nix, except the model IDs, which
+  come from home/h82/agents/synthetic-models.nix so a new build there needs no
+  edit here; the efforts stay written in this check.
 
   Verifies, on every configuration:
   - home-path/bin/opencode is the packaged wrapper, reading the key from
@@ -24,14 +26,17 @@
   - running that exact merger with that exact declared document reasserts the
     declared values and leaves every other key as it was, against a seeded
     divergent file (an MCP server, a 1.x plugin key, a user plugins entry, a
-    user-added provider entry, and the stale syn: model alias that the
-    declaration removes in opencode.json, a password and a port in
-    service.json), and creates a missing file holding only the
-    declared keys. The result is mode 0600 in every case. opencode.json drops
-    the retired autoupdate key and the stale syn: alias, allowlists the
-    synthetic provider, and pins GLM 5.3's reasoning effort to max beside
-    the user's own synthetic model entries; service.json disables OpenCode's
-    shared background server.
+    user-added provider entry, the synthetic provider's own options, and
+    synthetic model entries from an earlier declaration in opencode.json, a
+    password and a port in service.json), and creates a missing file holding
+    only the declared keys. The result is mode 0600 in every case.
+    opencode.json drops the retired autoupdate key, allowlists the synthetic
+    provider, names the source's default model and a small_model entry at
+    effort low that points at the source's DeepSeek ID, and replaces
+    provider.synthetic.models whole with one entry per source model at its
+    pinned effort (GLM and Kimi max, DeepSeek high) plus that low entry, so
+    earlier entries are gone while the provider's options and other providers
+    stay; service.json disables OpenCode's shared background server.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json.
   - home.activation.opencodeServiceStop runs after opencodeService and runs
@@ -64,13 +69,34 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  models = import ../home/h82/agents/synthetic-models.nix;
+  # JSON string literals, for splicing into the JSON text below.
+  json = value: builtins.toJSON value;
+  defaultModel = json ("synthetic/" + models.${models.opencodeDefault}.id);
+  glm = json models.glm.id;
+  kimi = json models.kimi.id;
+  deepseek = json models.deepseek.id;
+  deepseekLow = json "${models.deepseek.id}@low";
+  smallModel = json "synthetic/${models.deepseek.id}@low";
+
+  # The whole provider.synthetic.models object the declaration owns.
+  syntheticModels = ''
+    {
+      ${glm}: {"options": {"reasoningEffort": "max"}},
+      ${kimi}: {"options": {"reasoningEffort": "max"}},
+      ${deepseek}: {"options": {"reasoningEffort": "high"}},
+      ${deepseekLow}: {"id": ${deepseek}, "options": {"reasoningEffort": "low"}}
+    }
+  '';
+
   # Written as JSON text rather than a Nix attribute set so the comparison
   # cannot share a rendering path with the module.
   declaredExpected = pkgs.writeText "opencode-expected-settings.json" ''
     {
       "set": {
         "$schema": "https://opencode.ai/config.json",
-        "model": "synthetic/hf:zai-org/GLM-5.3",
+        "model": ${defaultModel},
+        "small_model": ${smallModel},
         "update": "disable",
         "share": "disabled"
       },
@@ -78,14 +104,8 @@ let
       "own": {
         "enabled_providers": ["synthetic"]
       },
-      "setPaths": [
-        {
-          "path": ["provider", "synthetic", "models", "hf:zai-org/GLM-5.3", "options", "reasoningEffort"],
-          "value": "max"
-        }
-      ],
-      "removePaths": [
-        {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
+      "ownPaths": [
+        {"path": ["provider", "synthetic", "models"], "value": ${syntheticModels}}
       ]
     }
   '';
@@ -107,7 +127,8 @@ let
           "options": {"timeout": 300000},
           "models": {
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "syn:large:text": {"name": "syn:large:text"}
+            "syn:large:text": {"name": "syn:large:text"},
+            ${glm}: {"options": {"reasoningEffort": "low"}, "name": "user edit"}
           }
         }
       }
@@ -117,7 +138,8 @@ let
   mergedExpected = pkgs.writeText "opencode-merged-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3",
+      "model": ${defaultModel},
+      "small_model": ${smallModel},
       "update": "disable",
       "share": "disabled",
       "enabled_providers": ["synthetic"],
@@ -131,10 +153,7 @@ let
         "anthropic": {"options": {"timeout": 600000}},
         "synthetic": {
           "options": {"timeout": 300000},
-          "models": {
-            "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
-            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
-          }
+          "models": ${syntheticModels}
         }
       }
     }
@@ -143,15 +162,14 @@ let
   createdExpected = pkgs.writeText "opencode-created-settings.json" ''
     {
       "$schema": "https://opencode.ai/config.json",
-      "model": "synthetic/hf:zai-org/GLM-5.3",
+      "model": ${defaultModel},
+      "small_model": ${smallModel},
       "update": "disable",
       "share": "disabled",
       "enabled_providers": ["synthetic"],
       "provider": {
         "synthetic": {
-          "models": {
-            "hf:zai-org/GLM-5.3": {"options": {"reasoningEffort": "max"}}
-          }
+          "models": ${syntheticModels}
         }
       }
     }
