@@ -62,7 +62,7 @@
     `@name@` placeholder.
   - the per-file rules fire: the Claude Code rendering for the fake key
     passes them, and each mutant in `selfTestMutants` (a removed, a negated,
-    and an out-of-section rule) fails them with its own message, so a guard
+    an out-of-section, and two unpinned-sentence rules) fails them with its own message, so a guard
     that stops failing turns this red. See
     .compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md
 
@@ -326,12 +326,12 @@ let
     "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch."
     "Launch a task that needs an earlier task's result only after you have read that result."
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
-    "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it."
+    "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it, and that a task which wrote its result and never finishes sends no notification either, so any message from the user starts the session check."
     "Each notification T3 Code delivers, whether it starts your turn or arrives with a user message, names the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call."
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
-    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task, such as a Grok cross-model peer, can write its result and never finish."
+    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task, such as a Grok cross-model peer, can write its result and never finish."
     "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting."
     takeFromSessionSentence
     "When `task_cancel` leaves that task running, keep the result, tell the user once that it still runs so they can stop it, and count its result as taken."
@@ -342,8 +342,8 @@ let
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
-    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present."
-    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
+    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and in any run name each task still unresolved as unresolved, neither failed nor done."
+    "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of polling."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
     "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
     "When the user asks to see a page again, or says its tab no longer loads, run `serve-html` again instead of reusing an earlier target, and navigate the same tab to the new target."
@@ -765,6 +765,18 @@ let
       line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "unpinned wait sentence added under # T3 Code";
+      line = "- keep one background command pending that waits 10 minutes";
+      edit = ''awk '{ print } $0 == "# T3 Code" { print ENVIRON["line"] }' '';
+      expect = "carries an unpinned T3 Code sentence: keep one background command pending that waits 10 minutes";
+    }
+    {
+      name = "allowed-waits sentence broadened with timer";
+      line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { sub("a wait the user asked for,", "a wait the user asked for, a timer that checks the task later,") } { print }' '';
+      expect = "carries an unpinned T3 Code sentence: A delay a test must reproduce, a retry interval, a wait the user asked for, a timer that checks the task later, and a wait that blocks on the task's own run stay allowed.";
     }
   ];
 
