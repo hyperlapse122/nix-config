@@ -191,7 +191,7 @@ def release_list(newest=None):
     )
 
 
-def expected_pin(tag):
+def expected_pin(tag, antigravity=None):
     version = tag[1:]
     return {
         "version": version,
@@ -203,7 +203,7 @@ def expected_pin(tag):
             }
             for system, components in target_assets(version).items()
         },
-        "antigravity": expected_antigravity(),
+        "antigravity": {} if antigravity is None else antigravity,
     }
 
 
@@ -269,8 +269,11 @@ class T3codeReleaseTestCase(unittest.TestCase):
             return []
         return [json.loads(line)[-1] for line in self.args_log.read_text().splitlines()]
 
-    def write_pin(self, version):
-        self.output.write_text(json.dumps({"version": version, "tag": f"v{version}"}))
+    def write_pin(self, version, antigravity=None):
+        payload = {"version": version, "tag": f"v{version}"}
+        if antigravity is not None:
+            payload["antigravity"] = antigravity
+        self.output.write_text(json.dumps(payload))
 
     def assert_refused(self, result, needle):
         self.assertEqual(result.returncode, 1)
@@ -279,10 +282,11 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_picks_the_newest_nightly_over_stable_and_preview(self):
+        self.write_pin("0.0.45-nightly.20261001.1000", antigravity=expected_antigravity())
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)
-        self.assertEqual(json.loads(self.output.read_text()), expected_pin(NEWEST))
+        self.assertEqual(json.loads(self.output.read_text()), expected_pin(NEWEST, antigravity=expected_antigravity()))
 
     def test_digest_converts_to_the_matching_sri_hash(self):
         result = self.run_release()
@@ -418,68 +422,42 @@ class T3codeReleaseTestCase(unittest.TestCase):
         result = self.run_release(token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 0, result.stderr)
         stdins = [json.loads(line) for line in self.stdin_log.read_text().splitlines()]
-        # Both the release list and the source file get the header.
-        self.assertEqual(stdins, [f"Authorization: Bearer {FAKE_TOKEN}\n"] * 2)
+        self.assertEqual(stdins, [f"Authorization: Bearer {FAKE_TOKEN}\n"])
         self.assertNotIn(FAKE_TOKEN, self.args_log.read_text())
 
     def test_no_header_without_gh_token(self):
         result = self.run_release()
         self.assertEqual(result.returncode, 0, result.stderr)
         stdins = [json.loads(line) for line in self.stdin_log.read_text().splitlines()]
-        self.assertEqual(stdins, ["", ""])
+        self.assertEqual(stdins, [""])
 
     def test_fetch_failure_does_not_print_the_token(self):
         result = self.run_release(status=22, token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(FAKE_TOKEN, result.stdout + result.stderr)
 
-    def test_antigravity_entries_match_the_source_at_the_selected_tag(self):
-        result = self.run_release(extra_args=["-o", str(self.output)])
+    def test_preserves_existing_antigravity_section_on_nightly_bump(self):
+        # Given packages/t3code-release.json whose antigravity section is release N,
+        # when scripts/t3code-release resolves a newer nightly whose antigravityRelease.ts
+        # table is 1.3.0, the written file's antigravity section is still N and the T3
+        # version is the newer nightly.
+        custom_antigravity = {
+            "x86_64-linux": {"version": "release-N", "sha256": "1234"},
+        }
+        self.write_pin("0.0.45-nightly.20261001.1000", antigravity=custom_antigravity)
+        result = self.run_release(
+            source=agy_source(),
+            extra_args=["-o", str(self.output)],
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         pin = json.loads(self.output.read_text())
-        self.assertEqual(pin["antigravity"], expected_antigravity())
-        self.assertEqual(
-            pin["antigravity"]["x86_64-linux"]["hash"],
-            sri(AGY_PLATFORMS["linux-x64"][2]),
-        )
+        self.assertEqual(pin["version"], NEWEST_VERSION)
+        self.assertEqual(pin["antigravity"], custom_antigravity)
 
-    def test_source_is_fetched_at_the_selected_tag(self):
+    def test_source_is_not_fetched(self):
         result = self.run_release()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            self.fetched_urls(),
-            [
-                DEFAULT_LIST_URL,
-                f"https://raw.githubusercontent.com/pingdotgg/t3code/{NEWEST}/{AGY_SOURCE_PATH}",
-            ],
-        )
-
-    def test_refuses_a_source_missing_a_required_platform(self):
-        for key in AGY_PLATFORMS:
-            with self.subTest(missing=key):
-                result = self.run_release(
-                    source=agy_source(omit=(key,)), extra_args=["-o", str(self.output)]
-                )
-                self.assert_refused(result, key)
-
-    def test_refuses_a_malformed_runtime_sha256(self):
-        good = AGY_PLATFORMS["linux-arm64"][2]
-        for sha256 in [good.upper(), good[:-1], good + "0", "", "sha256:" + good]:
-            with self.subTest(sha256=sha256):
-                result = self.run_release(
-                    source=agy_source(sha256s={"linux-arm64": sha256}),
-                    extra_args=["-o", str(self.output)],
-                )
-                self.assert_refused(result, "sha256")
-
-    def test_refuses_an_unparsable_source(self):
-        no_version = agy_source().replace(
-            f'const ANTIGRAVITY_RELEASE_VERSION = "{AGY_VERSION}";', ""
-        )
-        for source in ["", "<html>404: Not Found</html>", no_version]:
-            with self.subTest(source=source[:40]):
-                result = self.run_release(source=source, extra_args=["-o", str(self.output)])
-                self.assert_refused(result, "antigravityRelease.ts")
+        self.assertEqual(self.fetched_urls(), [DEFAULT_LIST_URL])
 
     def test_empty_fetch_command_fails(self):
         result = self.run_release(fetch="")

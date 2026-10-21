@@ -129,9 +129,15 @@ jobs:
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.
+          PRE_ACP_T3_ANTIGRAVITY=$(jq -c '.antigravity' packages/t3code-release.json)
           if ! nix run .#antigravity-acp-release -- --output packages/antigravity-acp-release.json; then
             echo "::warning title=Antigravity ACP runtime update skipped::antigravity-acp-release failed; keeping the current pin in packages/antigravity-acp-release.json."
             git checkout -- packages/antigravity-acp-release.json
+            if [ "$PRE_ACP_T3_ANTIGRAVITY" = "null" ]; then
+              jq --indent 2 'del(.antigravity)' packages/t3code-release.json > packages/t3code-release.json.tmp && mv packages/t3code-release.json.tmp packages/t3code-release.json
+            else
+              jq --indent 2 --argjson agy "$PRE_ACP_T3_ANTIGRAVITY" '.antigravity = $agy' packages/t3code-release.json > packages/t3code-release.json.tmp && mv packages/t3code-release.json.tmp packages/t3code-release.json
+            fi
           fi
 
           if [ -z "$(git status --porcelain)" ]; then

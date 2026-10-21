@@ -1,77 +1,44 @@
-"""Check the Antigravity runtime pin against the T3 Code CLI the flake builds.
+"""Check that the Antigravity ACP runtime pin matches between pin files.
 
-Usage: t3code-antigravity-pin.py T3_BINARY RELEASE_JSON
+Usage: t3code-antigravity-pin.py T3CODE_RELEASE_JSON AGY_ACP_RELEASE_JSON
 
-T3 Code downloads the Antigravity ACP server itself and verifies the archive
-against a table compiled into its CLI: the releaseAssets map in
-src/provider/antigravityRelease.ts, which the bundled binary carries as plain
-JavaScript text. The repository pins the same runtime under the `antigravity`
-key of packages/t3code-release.json so Nix can fetch it ahead of time. When
-the two disagree, T3 Code rejects or replaces the runtime Nix provides.
+KTD1: scripts/antigravity-acp-release is the only writer that changes the
+Antigravity archive identity, and it writes that identity into
+packages/antigravity-acp-release.json and into the antigravity section of
+packages/t3code-release.json. This check compares the two pin files with each
+other. It does not download archives, and it does not compare either file
+with the table embedded in the CLI.
 
-Every system the flake supports must be pinned, each pin must name the Node
-platform key T3 Code looks up on that system, the key must be present in the
-binary's table, and the version, url, sha256, archiveBytes, executable, and
-harness must equal that entry. The pin's `hash` is what the Nix fetch uses, so
-it must also be the SRI form of the pinned sha256. A binary without a parseable
-table, or a pin with no entry compared, fails rather than passing vacuously.
+Every system the flake supports must be pinned in both files, and their
+platform, version, url, sha256, hash, archiveBytes, executable, and harness
+must match. The pin's `hash` must be the SRI form of sha256. Fails closed when
+a pin file is missing, when a supported system is missing, when the two files
+disagree, or when no comparison was executed.
 """
 
 import base64
 import json
-import mmap
-import re
+import os
 import sys
 
-VERSION_RE = re.compile(rb'ANTIGRAVITY_RELEASE_VERSION\s*=\s*"([^"]*)"')
-# The bundler rewrites `const releaseAssets = new Map([...])` into a hoisted
-# `var` plus an assignment, so match the assignment alone.
-TABLE_RE = re.compile(
-    rb"releaseAssets\s*=\s*(?:/\*.*?\*/\s*)?new Map\((\[.*?\])\)", re.DOTALL
+SYSTEMS = (
+    "x86_64-linux",
+    "aarch64-linux",
+    "aarch64-darwin",
 )
-# T3 Code looks the table up by `${process.platform}-${process.arch}`.
-NODE_PLATFORMS = {
-    "x86_64-linux": "linux-x64",
-    "aarch64-linux": "linux-arm64",
-    "aarch64-darwin": "darwin-arm64",
-}
+
 FIELDS = (
+    ("platform",),
     ("version",),
     ("url",),
     ("sha256",),
+    ("hash",),
     ("archiveBytes",),
     ("executable", "name"),
     ("executable", "bytes"),
     ("harness", "name"),
     ("harness", "bytes"),
 )
-
-
-def js_to_json(text, version):
-    """Turn the bundled object literal into JSON, resolving the version name."""
-    text = re.sub(r":\s*ANTIGRAVITY_RELEASE_VERSION\b", ": " + json.dumps(version), text)
-    text = re.sub(r"([{,]\s*)([A-Za-z_$][\w$]*)\s*:", r'\1"\2":', text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return json.loads(text)
-
-
-def release_assets(binary):
-    """Return the one releaseAssets table the binary embeds, or an error."""
-    versions = {m.group(1).decode() for m in VERSION_RE.finditer(binary)}
-    if len(versions) != 1:
-        return None, f"expected one ANTIGRAVITY_RELEASE_VERSION, found {sorted(versions)}"
-    (version,) = versions
-    tables = []
-    for match in TABLE_RE.finditer(binary):
-        try:
-            tables.append(dict(js_to_json(match.group(1).decode(), version)))
-        except (UnicodeDecodeError, ValueError, TypeError):
-            continue
-    if not tables:
-        return None, "no parseable releaseAssets table in the T3 Code binary"
-    if any(table != tables[0] for table in tables):
-        return None, "the T3 Code binary embeds releaseAssets tables that differ"
-    return tables[0], None
 
 
 def field(entry, path):
@@ -81,51 +48,74 @@ def field(entry, path):
 
 
 def sri(sha256):
-    return "sha256-" + base64.b64encode(bytes.fromhex(sha256)).decode()
+    return "sha256-" + base64.b64encode(bytes.fromhex(sha256)).decode("ascii")
 
 
-def main(binary_path, release_path):
-    # Mapped rather than read, so the 150 MB binary is not copied into memory.
-    with open(binary_path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as binary:
-        assets, error = release_assets(binary)
-    with open(release_path, encoding="utf-8") as f:
-        pins = json.load(f).get("antigravity", {})
-    if error:
-        print(f"t3code-antigravity-pin: {error}", file=sys.stderr)
+def load_pins(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"pin file {path} does not exist")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} does not contain a JSON object")
+    if "antigravity" in data:
+        return data.get("antigravity", {})
+    if "platforms" in data:
+        return data.get("platforms", {})
+    return {}
+
+
+def main(file_a, file_b):
+    try:
+        pins_a = load_pins(file_a)
+        pins_b = load_pins(file_b)
+    except Exception as exc:
+        print(f"t3code-antigravity-pin: {exc}", file=sys.stderr)
         return 1
 
     compared = []
     failures = []
-    for system in sorted(set(NODE_PLATFORMS) | set(pins)):
-        platform = NODE_PLATFORMS.get(system)
-        pin = pins.get(system)
-        if pin is None:
-            failures.append(f"{system} ({platform}): the pin has no Antigravity entry")
+    all_systems = sorted(set(SYSTEMS) | set(pins_a) | set(pins_b))
+    for system in all_systems:
+        if system not in SYSTEMS:
+            failures.append(f"{system}: unexpected system in pin files")
             continue
-        if pin.get("platform") != platform:
-            failures.append(f"{system} ({platform}): platform is {pin.get('platform')!r}")
-        try:
-            hash_ok = pin.get("hash") == sri(pin.get("sha256", ""))
-        except ValueError:
-            hash_ok = False
-        if not hash_ok:
-            failures.append(f"{system} ({platform}): hash is not the SRI form of sha256")
-        entry = assets.get(platform)
-        if entry is None:
-            failures.append(f"{system} ({platform}): platform not in the binary's releaseAssets")
+        entry_a = pins_a.get(system)
+        entry_b = pins_b.get(system)
+        if entry_a is None or entry_b is None:
+            failures.append(f"{system}: missing from one or both pin files")
             continue
-        compared.append(f"{system} ({platform})")
+
+        for p_name, entry in (("first pin", entry_a), ("second pin", entry_b)):
+            sha = entry.get("sha256", "")
+            expected_hash = ""
+            try:
+                expected_hash = sri(sha)
+            except Exception:
+                pass
+            if entry.get("hash") != expected_hash:
+                failures.append(f"{system} ({p_name}): hash is not the SRI form of sha256")
+
         for path in FIELDS:
-            if field(pin, path) != field(entry, path):
-                failures.append(f"{system} ({platform}): {'.'.join(path)} differs from the binary")
+            val_a = field(entry_a, path)
+            val_b = field(entry_b, path)
+            if val_a != val_b:
+                failures.append(
+                    f"{system}: {'.'.join(path)} differs between pin files: {val_a!r} != {val_b!r}"
+                )
+
+        compared.append(system)
 
     if not compared:
         failures.append("no pinned Antigravity entry was compared")
+
     for failure in failures:
         print(f"t3code-antigravity-pin: {failure}", file=sys.stderr)
+
     if failures:
         return 1
-    print(f"matches the T3 Code binary: {len(compared)} entries, {', '.join(compared)}")
+
+    print(f"matches: {len(compared)} entries, {', '.join(compared)}")
     return 0
 
 
