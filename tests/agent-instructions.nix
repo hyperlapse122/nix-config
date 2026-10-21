@@ -4,35 +4,33 @@
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
   Asserts that the shared agent instructions, one Go template rendered once
-  per harness over the host facts and that harness's peers, reach every
-  installed harness for user `h82` on every host this flake declares:
+  over the host facts and the Synthetic model source, reach every installed
+  harness for user `h82` on every host this flake declares, all through the
+  same file:
 
     Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
-    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads;
-                      the Claude Code rendering
+    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads
     Antigravity CLI   ~/.gemini/config/AGENTS.md
-    Grok Build        ~/.grok/rules/instructions.md
 
   The user list is `userEntries` from `tests/lib/configurations.nix`.
 
   Verifies, per Home Manager user:
   - exactly one enabled Home Manager file resolves to each delivery path, and
     none to the retired ~/.t3/instructions/claude-code/CLAUDE.md, Codex's
-    ~/.codex/AGENTS.md, or Gemini's ~/.gemini/GEMINI.md, none of which is
-    installed. The lookup compares each entry's resolved `target` rather than
-    its attribute name, and reads `enable`, because either can move the file
-    without changing its text.
-  - each delivery path exists in the materialized `home-files` and equals its
-    harness's expected file byte for byte. Paths of one harness share one
-    expected file, so OpenCode matches the Claude Code rendering. See
+    ~/.codex/AGENTS.md, Gemini's ~/.gemini/GEMINI.md, or the retired
+    ~/.grok/rules/instructions.md, none of which is installed. The lookup
+    compares each entry's resolved `target` rather than its attribute name,
+    and reads `enable`, because either can move the file without changing its
+    text.
+  - each delivery path exists in the materialized `home-files` and equals the
+    one expected file byte for byte. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
   - every section holds only its pinned sentences, each once and in order,
     so a separate sentence that reverses a pinned rule fails wherever it is
-    added. The Compound Engineering list is a function of that harness's peer
-    literals.
+    added.
   - the file's top-level `# ` headings are exactly the expected list, in
     order, and no text precedes the first, so a rule under a new heading or
     above every heading cannot escape the section checks.
@@ -45,12 +43,19 @@
     fails when no entry carries it on x86_64-linux, where that fixture builds.
     See
     .compound-engineering/artifacts/solutions/best-practices/converged-fixture-state-defeats-nix-check-mutation-testing.md
-  - each expected file is the template with the known actions replaced by
-    literals written in this check, not read from the module: `{{ .user.gpgKey }}`
-    by the entry's key, and each `{{ .peers.<first|second>.<field> }}` by that
-    harness's peer. Any other action in the template turns the check red. The
-    byte comparison stays green across a prose edit of the template; the
-    pinned sentences do not.
+  - the expected file is the template with the known actions replaced:
+    `{{ .user.gpgKey }}` by the entry's key, and each `{{ .models.<name>.id }}`
+    by that entry's `id` in home/h82/agents/synthetic-models.nix. Any other
+    action in the template, such as `index`, `range`, or `if`, turns the
+    check red. The byte comparison stays green across a prose edit of the
+    template; the pinned sentences do not.
+  - every assignment written as "`<model>` on the `<instance>` instance with
+    `<knob>` `<value>`" pairs `claudeAgent` with `effort` and `opencode` with
+    `variant`, gives `claude-opus-5-5` only `low` or `medium`, any other
+    Claude model `low`, `medium`, or `high`, and an OpenCode model `low`,
+    `high`, or `max`, never `medium`, which Synthetic's models do not offer.
+    The file must carry at least one such assignment, so a rephrasing that
+    the pattern no longer matches turns this red.
   - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `childRunId`,
     `t3_thread_read`, `runtimeMode`, `full-access`, `full access`,
     `approval-required`, `auto-accept-edits`, and `pendingApproval` appear
@@ -63,16 +68,19 @@
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
     `@name@` placeholder.
-  - the per-file rules fire: the Claude Code rendering for the fake key
-    passes them, and each mutant in `selfTestMutants` (a removed, a negated,
-    an inverted, and an out-of-section rule, for the wait, the launch
-    mode, the rejected-mode relaunch, the approval note, and the confined
-    terms) fails them with its own message, so a guard
-    that stops failing turns this red. See
+  - the per-file rules fire: the rendering for the fake key passes them, and
+    each mutant in `selfTestMutants` (a removed, a negated, an inverted, and
+    an out-of-section rule, for the wait, the launch mode, the rejected-mode
+    relaunch, the approval note, and the confined terms; a retired peer rule,
+    a removed peer safeguard, and an effort or instance the assignment rule
+    forbids) fails them with its own message, so a guard that stops failing
+    turns this red. See
     .compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md
 
-  The expected sentences and the peer literals are written here, not read from
-  the module, so a mutation of the instruction file turns this red.
+  The sentences, instances, and efforts are written here, not read from the
+  module, so a mutation of the instruction file turns this red. Only the model
+  IDs come from the model source, so a changed ID reaches the expected file
+  and the pinned sentences together.
 
   Every lookup carries an `or` fallback and each store path is interpolated
   only inside its present branch, so a removed declaration fails inside the
@@ -96,64 +104,27 @@ let
 
   template = builtins.readFile ../home/h82/agents/instructions/instructions.md.tmpl;
 
-  # Peer literals live here on purpose. Importing them from
-  # home/h82/agents/instructions/default.nix would let that module and this
-  # check drift together and stay green.
-  peerClaudeCode = {
-    name = "Claude Code";
-    instance = "claudeAgent";
-    model = "`claude-opus-5-5`";
-    provider = "Anthropic";
-  };
-  peerAntigravity = {
-    name = "Antigravity";
-    instance = "antigravity";
-    model = "`gemini-4-argon` at thinking level `medium`";
-    provider = "Google";
-  };
-  peerGrok = {
-    name = "Grok";
-    instance = "grok";
-    model = "its default model";
-    provider = "xAI";
-  };
+  # Only the model IDs come from the module side, through the source every
+  # consumer reads; instances, efforts, and sentences stay written here.
+  models = import ../home/h82/agents/synthetic-models.nix;
+  glmId = models.glm.id;
+  kimiId = models.kimi.id;
+  deepseekId = models.deepseek.id;
 
-  harnessPaths = {
-    claude-code = [
-      ".claude/CLAUDE.md"
-      ".config/opencode/AGENTS.md"
-    ];
-    antigravity = [ ".gemini/config/AGENTS.md" ];
-    grok = [ ".grok/rules/instructions.md" ];
-  };
-  harnessPeers = {
-    claude-code = {
-      first = peerAntigravity;
-      second = peerGrok;
-    };
-    antigravity = {
-      first = peerClaudeCode;
-      second = peerGrok;
-    };
-    grok = {
-      first = peerClaudeCode;
-      second = peerAntigravity;
-    };
-  };
-  harnessNames = lib.attrNames harnessPaths;
+  # Every harness reads the same rendering.
+  deliveryPaths = [
+    ".claude/CLAUDE.md"
+    ".config/opencode/AGENTS.md"
+    ".gemini/config/AGENTS.md"
+  ];
 
-  actionValues = key: peers: {
+  actionValues = key: {
     "{{ .user.gpgKey }}" = key;
-    "{{ .peers.first.name }}" = peers.first.name;
-    "{{ .peers.first.instance }}" = peers.first.instance;
-    "{{ .peers.first.model }}" = peers.first.model;
-    "{{ .peers.first.provider }}" = peers.first.provider;
-    "{{ .peers.second.name }}" = peers.second.name;
-    "{{ .peers.second.instance }}" = peers.second.instance;
-    "{{ .peers.second.model }}" = peers.second.model;
-    "{{ .peers.second.provider }}" = peers.second.provider;
+    "{{ .models.glm.id }}" = glmId;
+    "{{ .models.kimi.id }}" = kimiId;
+    "{{ .models.deepseek.id }}" = deepseekId;
   };
-  knownActions = lib.attrNames (actionValues fakeKey harnessPeers.claude-code);
+  knownActions = lib.attrNames (actionValues fakeKey);
 
   extractActions =
     text:
@@ -172,11 +143,11 @@ let
   malformedAction = lib.any (action: action == null) templateActions;
 
   expectedFile =
-    harness: key:
+    key:
     let
-      values = actionValues key harnessPeers.${harness};
+      values = actionValues key;
     in
-    pkgs.writeText "expected-instructions-${harness}.md" (
+    pkgs.writeText "expected-instructions.md" (
       lib.replaceStrings (lib.attrNames values) (lib.attrValues values) template
     );
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
@@ -274,37 +245,54 @@ let
 
   compoundEngineeringHeading = "# Compound Engineering";
 
+  # The self-test below mutates these sentences, so they are named once.
+  firstPeerSentence = "When a skill's cross-model step activates, run it with the peers these rules pick from the candidates below, leaving out every candidate whose model family matches yours.";
+  claudeCandidateSentence = "The first default candidate is Claude Code, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium`, of family `claude`.";
+  glmCandidateSentence = "The second default candidate is OpenCode, `synthetic/${glmId}` on the `opencode` instance with `variant` `max`, of family `glm`.";
+  isolationSentence = "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing.";
+  secretsSentence = "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task.";
+  deepSentence = "A unit is `deep` when its own design is hard, such as a new interface, data format, or concurrency rule, when it debugs subtle cross-module behavior, or when it carries a security or data-loss risk, even when its edit is mechanical; it goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `max` as fallback.";
+
   # In section order, like `reviewFindingsSentences`.
-  compoundEngineeringSentences = peers: [
-    "When a skill's cross-model step activates, run it once with ${peers.first.name} and once with ${peers.second.name} as peers, and never with OpenCode."
+  compoundEngineeringSentences = [
+    firstPeerSentence
     "This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs."
-    "Your model family and each peer's are their harness's vendor (Claude Code `claude`, Antigravity `gemini`, Grok `grok`), used as the attested host family when a skill asks for it."
-    "Peers the user names for that run replace the pair and follow every other rule here; refuse a request for OpenCode, say it is excluded, and run the pair."
-    "When one peer is unavailable or fails, finish with the other and report which peer is missing and why; do not substitute another provider."
-    "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child, on the `${peers.first.instance}` instance with ${peers.first.model} and on the `${peers.second.instance}` instance with ${peers.second.model}, instead of the skill's own peer route."
-    "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing."
-    "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task."
-    "Before launching, name each peer you will launch and the provider that gets the content, ${peers.first.provider} for ${peers.first.name} and ${peers.second.provider} for ${peers.second.name}; that notice authorizes the send."
-    "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family is known and differs from yours."
+    claudeCandidateSentence
+    glmCandidateSentence
+    "The third candidate, which runs only when the user names it, is OpenCode, `synthetic/${kimiId}` on the `opencode` instance with `variant` `max`, of family `kimi`."
+    "Map a model ID to its family after removing one leading provider prefix such as `synthetic/`: `claude-*` to `claude`, `gemini-*` to `gemini`, an `hf:<org>/<name>` ID by its org, with `zai-org` to `glm`, `moonshotai` to `kimi`, `deepseek-ai` to `deepseek`, and `Qwen` to `qwen`, and a `syn:` alias or any other org to `unknown`."
+    "Your own family comes from the model ID you run, not from your harness."
+    "In OpenCode, read that ID from `orchestrator_capabilities` and `t3_thread_configuration` when the session lists T3 Code's tools, and otherwise from the tool of the `session-info` plugin or from the model section of your system prompt."
+    "When none of them names your model, your family is `unknown`, and no peer finding in your reviews raises confidence."
+    "By default, a `claude` session runs the GLM candidate, a `glm` session runs the Claude Code candidate, and every other session, an `unknown` one included, runs both default candidates."
+    "Peers the user names for that run, the third candidate included, replace the defaults, follow every other rule here, and number at most two."
+    "Inside T3 Code, a session whose family Compound Engineering's own gate would skip, such as `glm`, `kimi`, `deepseek`, or `unknown`, still runs the cross-model step with the peers these rules pick."
+    "Outside T3 Code, such a session reports the cross-model pass as skipped by Compound Engineering."
+    "When a Compound Engineering script asks for your host family and yours is not in its list, pass `unknown`."
+    "Outside T3 Code, Compound Engineering's own route reports OpenCode's family as `unknown`, so an OpenCode peer there raises no confidence, and your review report says that OpenCode's family is `unknown`."
+    "Run each peer on its pinned model ID only."
+    "When a peer is unavailable or fails, its pinned ID returning 404 included, finish with the others and report which peer failed and why; do not run another candidate or model in its place."
+    "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child on its candidate's instance and model, with `effort` in `target.options` for Claude Code and `variant` in `target.options` for OpenCode, instead of the skill's own peer route."
+    isolationSentence
+    secretsSentence
+    "Before launching, name each peer you will launch and the provider that gets the content, Anthropic for Claude Code and Synthetic for OpenCode; that notice authorizes the send."
+    "Treat the provider and model that `task_status` reports as the peer's identity receipt, and map its model, not its instance, to a family by the rule above; findings may raise confidence only when the peer's family is known and differs from yours."
     "Read each peer's result from its `task_status`, or from its session when the T3 Code rules take it from there, and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
     "When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer whose session holds no whole result to the user."
     "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the smaller of 600000 and the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and at the deadline treat a peer still running as the T3 Code rules treat a task whose bound has passed: take a whole result from its session, and otherwise cancel it with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
     "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`."
-    "Never delegate an implementation unit to Grok or OpenCode, inside or outside T3 Code."
-    "In a Grok or OpenCode session, delegate every implementation unit to a worker named below instead of writing it yourself."
-    "When the config sets `work_engine_mode: off`, a Grok or OpenCode session implements no unit itself: it stops and tells the user that delegation is off."
     "In `ce-work`, classify each implementation unit into `quick`, `writing`, `visual-engineering`, `unspecified-low`, `unspecified-high`, or `deep`, splitting independent mechanical or small edits into `quick` or `unspecified-low` units while keeping cohesive hard work whose shared reasoning would suffer if split as one `unspecified-high` or `deep` unit."
-    "A unit is `quick` when it is a mechanical edit, such as a rename, a pinned-text sync, boilerplate, a config tweak, or a one-file copy fix, even across files; it goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `gemini-3.8-flash` at thinking level `low` on the `antigravity` instance as fallback."
-    "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `gemini-4-argon` at thinking level `low` on the `antigravity` instance as primary and to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `low` as fallback."
-    "A unit is `visual-engineering` when it builds or styles frontend UI, UX, CSS, layouts, animation, or design-system components; it goes to `gemini-4-argon` at thinking level `low` on the `antigravity` instance as primary and to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `max` as fallback."
-    "A unit is `deep` when its own design is hard, such as a new interface, data format, or concurrency rule, when it debugs subtle cross-module behavior, or when it carries a security or data-loss risk, even when its edit is mechanical, and `unspecified-high` when it changes several modules across known patterns; both go to `claude-opus-5-5` on the `claudeAgent` instance as primary, with `effort` `max` for `deep` and `medium` for `unspecified-high`, and to `gemini-4-argon` at thinking level `medium` on the `antigravity` instance as fallback."
-    "Every other unit is `unspecified-low`, which goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `gemini-3.8-flash` at thinking level `high` on the `antigravity` instance as fallback."
+    "A unit is `quick` when it is a mechanical edit, such as a rename, a pinned-text sync, boilerplate, a config tweak, or a one-file copy fix, even across files; it goes to `synthetic/${deepseekId}` on the `opencode` instance with `variant` `low` as primary and to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback."
+    "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `high` as fallback."
+    "A unit is `visual-engineering` when it builds or styles frontend UI, UX, CSS, layouts, animation, or design-system components; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${kimiId}` on the `opencode` instance with `variant` `max` as fallback."
+    deepSentence
+    "A unit is `unspecified-high` when it changes several modules across known patterns; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `opencode` instance with `variant` `high` as fallback."
+    "Every other unit is `unspecified-low`, which goes to `synthetic/${deepseekId}` on the `opencode` instance with `variant` `high` as primary and to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback."
+    "These per-category efforts apply inside T3 Code, where every task carries its own effort."
     "Inside T3 Code, launch each unit on its category's primary worker first, and when that worker is unavailable or its launch fails, give the unit to its category's fallback worker with that worker's own effort rule."
-    "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target`, and, for a Claude worker, its `effort` in `target.options`, instead of Compound Engineering's own delegation route."
-    "When the session lists T3 Code's delegation tools, T3 Code does not set a Gemini thinking level yet, so launch every Gemini task on the `antigravity` instance with no `target.options`; the thinking level named beside a Gemini model is the level meant for it."
-    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the `unspecified-low` category as ordered candidates, `claude` with `claude-sonnet-5-5` and then `antigravity` with `gemini-3.8-flash`, at that route's default effort, `high`."
-    "When `ce-code-review` or `ce-doc-review` runs its Antigravity pass outside T3 Code, add `CROSS_MODEL_EFFORT_OVERRIDE=medium` to that pass's start invocation and pass no model override."
+    "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target` and its effort in `target.options`, as `effort` for a Claude worker and as `variant` for an OpenCode worker, instead of Compound Engineering's own delegation route."
+    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only the `unspecified-low` category as ordered candidates, `opencode` with `synthetic/${deepseekId}`, which runs at the effort OpenCode's settings pin for it, and then `claude` with `claude-sonnet-5-5` at `high`."
   ];
 
   t3CodeHeading = "# T3 Code";
@@ -323,12 +311,11 @@ let
     "When the session lists no T3 Code delegation tools, use your harness's own subagent tool."
     "The delegation rules that follow apply only when the session lists those tools."
     "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it, and when `orchestrator_capabilities` marks a default `effort` for that model, set `effort` in `target.options` to it, even for your own model."
-    "In a Grok or OpenCode session, a subagent that edits files follows the implementation-unit rules of the Compound Engineering section."
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
     fullAccessSentence
     rejectionSentence
-    "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer and for an implementation unit in a Grok or OpenCode session."
+    "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer."
     "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
@@ -342,7 +329,7 @@ let
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
-    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task, such as a Grok cross-model peer, can write its result and never finish."
+    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
     "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting."
     takeFromSessionSentence
     "When `task_cancel` leaves that task running, keep the result, tell the user once that it still runs so they can stop it, and count its result as taken."
@@ -365,7 +352,7 @@ let
 
   # A separate contradicting sentence could defeat a pinned rule in any
   # section, so every section gets the allowlist, membership, and order checks.
-  checkedSections = key: compoundSentences: [
+  checkedSections = key: [
     {
       name = "GPG and encryption";
       heading = gpgHeading;
@@ -399,7 +386,7 @@ let
     {
       name = "Compound Engineering";
       heading = compoundEngineeringHeading;
-      sentences = compoundSentences;
+      sentences = compoundEngineeringSentences;
     }
     {
       name = "T3 Code";
@@ -408,26 +395,24 @@ let
     }
   ];
 
-  pinnedSentences =
-    compoundSentences:
-    [
-      gpgHeading
-    ]
-    ++ lib.filter (sentence: sentence != recipientSentence fakeKey) (gpgSentences fakeKey)
-    ++ [ gitHeading ]
-    ++ gitSentences
-    ++ [ pullRequestsHeading ]
-    ++ pullRequestsSentences
-    ++ [ markdownHeading ]
-    ++ markdownSentences
-    ++ [ koreanTextHeading ]
-    ++ koreanTextSentences
-    ++ [ reviewFindingsHeading ]
-    ++ reviewFindingsSentences
-    ++ [ compoundEngineeringHeading ]
-    ++ compoundSentences
-    ++ [ t3CodeHeading ]
-    ++ t3CodeSentences;
+  pinnedSentences = [
+    gpgHeading
+  ]
+  ++ lib.filter (sentence: sentence != recipientSentence fakeKey) (gpgSentences fakeKey)
+  ++ [ gitHeading ]
+  ++ gitSentences
+  ++ [ pullRequestsHeading ]
+  ++ pullRequestsSentences
+  ++ [ markdownHeading ]
+  ++ markdownSentences
+  ++ [ koreanTextHeading ]
+  ++ koreanTextSentences
+  ++ [ reviewFindingsHeading ]
+  ++ reviewFindingsSentences
+  ++ [ compoundEngineeringHeading ]
+  ++ compoundEngineeringSentences
+  ++ [ t3CodeHeading ]
+  ++ t3CodeSentences;
 
   # In file order. A heading outside this list would end the section above it,
   # so a contradicting rule under it would escape every section check.
@@ -491,6 +476,13 @@ let
     "data terms"
     "leaves out Antigravity"
     "for that pass only"
+    "never with OpenCode"
+    "Grok"
+    "gemini-4-argon"
+    "gemini-3.8-flash"
+    "thinking level"
+    "`max` for `deep`"
+    "CROSS_MODEL_EFFORT_OVERRIDE"
   ];
 
   # Fails the build, naming each sentence, unless `$file` holds it exactly
@@ -581,16 +573,43 @@ let
     fi
   '';
 
-  # The pinned sentences and checked sections of one harness's rendering.
-  rulesFor =
-    key: peers:
-    let
-      compoundSentences = compoundEngineeringSentences peers;
-    in
-    {
-      pinned = pinnedSentences compoundSentences;
-      sections = checkedSections key compoundSentences;
-    };
+  # The pinned sentences and checked sections of one entry's rendering.
+  rulesFor = key: {
+    pinned = pinnedSentences;
+    sections = checkedSections key;
+  };
+
+  # Fails the build, naming each assignment, when a model is put on an
+  # instance with a knob or effort it must not take. Synthetic's models offer
+  # no `medium`, and `claude-opus-5-5` stays at `medium` or lower. Finding no
+  # assignment fails too, so a rewording the pattern misses cannot pass.
+  assignmentRules = label: ''
+    assignments=0
+    while IFS=$'\t' read -r model instance knob value; do
+      assignments=$((assignments + 1))
+      case "$instance:$knob:$model:$value" in
+        claudeAgent:effort:claude-opus-5-5:low | claudeAgent:effort:claude-opus-5-5:medium) ;;
+        claudeAgent:effort:claude-opus-5-5:*)
+          echo ${esc "${label} runs claude-opus-5-5 above effort medium:"} "$value" >&2
+          failed=1
+          ;;
+        claudeAgent:effort:claude-*:low | claudeAgent:effort:claude-*:medium | claudeAgent:effort:claude-*:high) ;;
+        opencode:variant:synthetic/*:low | opencode:variant:synthetic/*:high | opencode:variant:synthetic/*:max) ;;
+        *)
+          echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance with $knob $value" >&2
+          failed=1
+          ;;
+      esac
+    done < <(
+      grep -oE -- '`[^`]+` on the `[^`]+` instance with `[^`]+` `[^`]+`' "$file" \
+        | sed -E 's/^`([^`]+)` on the `([^`]+)` instance with `([^`]+)` `([^`]+)`$/\1\t\2\t\3\t\4/' \
+        || true
+    )
+    if [ "$assignments" = "0" ]; then
+      echo ${esc "${label} carries no model assignment the effort rules can read"} >&2
+      failed=1
+    fi
+  '';
 
   fileRules = label: key: absentKeys: rules: ''
     if [ ! -s "$file" ]; then
@@ -631,6 +650,7 @@ let
           failed=1
         fi
       done
+      ${assignmentRules label}
       outside=$(mktemp)
       t=${esc t3CodeHeading} c=${esc compoundEngineeringHeading} awk '
         BEGIN { t = ENVIRON["t"]; c = ENVIRON["c"] }
@@ -693,6 +713,7 @@ let
     ".t3/instructions/claude-code/CLAUDE.md"
     ".codex/AGENTS.md"
     ".gemini/GEMINI.md"
+    ".grok/rules/instructions.md"
   ];
 
   assertEntry =
@@ -705,9 +726,7 @@ let
       homeFiles = user.home-files or null;
     in
     ''
-      ${lib.concatMapStrings (
-        harness: lib.concatMapStrings (target: homeFile label user target 1) harnessPaths.${harness}
-      ) harnessNames}
+      ${lib.concatMapStrings (target: homeFile label user target 1) deliveryPaths}
       ${lib.concatMapStrings (target: homeFile label user target 0) retiredPaths}
     ''
     + lib.optionalString (key == null) ''
@@ -720,14 +739,13 @@ let
     ''
     + lib.optionalString (key != null && homeFiles != null) ''
       ${lib.optionalString fake "fakeEntries=$((fakeEntries + 1))"}
-      ${lib.concatMapStrings (
-        harness:
+      ${
         let
-          expected = expectedFile harness key;
-          rules = rulesFor key harnessPeers.${harness};
-          # Every path of a harness must equal one expected file, so the
-          # sentence rules need to read only its first path.
-          firstTarget = lib.head harnessPaths.${harness};
+          expected = expectedFile key;
+          rules = rulesFor key;
+          # Every path must equal the one expected file, so the sentence
+          # rules need to read only the first.
+          firstTarget = lib.head deliveryPaths;
         in
         lib.concatMapStrings (target: ''
           file=${homeFiles}/${target}
@@ -736,17 +754,16 @@ let
             failed=1
           else
             if ! cmp -s "$file" ${expected}; then
-              echo ${esc "the ${harness} instructions at ~/${target} on ${label} are not the template with the known actions replaced by this check's literals:"} >&2
+              echo ${esc "the instructions at ~/${target} on ${label} are not the template with the known actions replaced:"} >&2
               diff ${expected} "$file" >&2 || true
               failed=1
             fi
             ${lib.optionalString (target == firstTarget) (
-              fileRules "the ${harness} instructions at ~/${target} on ${label}" key (lib.optional fake cardKey)
-                rules
+              fileRules "the instructions at ~/${target} on ${label}" key (lib.optional fake cardKey) rules
             )}
           fi
-        '') harnessPaths.${harness}
-      ) harnessNames}
+        '') deliveryPaths
+      }
 
       gitConfig=${homeFiles}/.config/git/config
       if ! grep -qxF -- ${esc "\tsigningKey = \"${key}\""} "$gitConfig" 2>/dev/null; then
@@ -761,11 +778,59 @@ let
       ''}
     '';
 
-  # Each mutant is the Claude Code rendering for the fake key with one edit
+  # Each mutant is the rendering for the fake key with one edit
   # that `fileRules` must reject, and the message that rejection must print.
   # The edit is a shell filter from the original on stdin to the mutant on
   # stdout, and it reads its line from the environment, like the rules do.
+  # Replaces `from` with `to` in the line equal to `line`.
+  replaceInLine =
+    from: to:
+    ''from=${esc from} to=${esc to} awk '$0 == ENVIRON["line"] { i = index($0, ENVIRON["from"]); if (i) $0 = substr($0, 1, i - 1) ENVIRON["to"] substr($0, i + length(ENVIRON["from"])) } { print }' '';
+  ceLineAdded = ''awk '{ print } $0 == "# Compound Engineering" { print ENVIRON["line"] }' '';
+
   selfTestMutants = [
+    {
+      name = "OpenCode peer refusal reinserted";
+      line = "- ${firstPeerSentence}";
+      edit = replaceInLine "matches yours." "matches yours, and never with OpenCode.";
+      expect = "names something the instructions no longer carry: never with OpenCode";
+    }
+    {
+      name = "Antigravity worker sentence added";
+      line = "- Give `writing` units to `gemini-5-pro` on the `antigravity` instance with `effort` `low`.";
+      edit = ceLineAdded;
+      expect = "assigns a model an instance, knob, or effort it does not take: gemini-5-pro on antigravity with effort low";
+    }
+    {
+      name = "secrets sentence removed";
+      line = "- ${secretsSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "peer isolation sentence removed";
+      line = "- ${isolationSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "deep worker raised to claude-opus-5-5 max";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "`effort` `medium` as primary" "`effort` `max` as primary";
+      expect = "runs claude-opus-5-5 above effort medium: max";
+    }
+    {
+      name = "Claude Code candidate raised to xhigh";
+      line = "- ${claudeCandidateSentence}";
+      edit = replaceInLine "`effort` `medium`" "`effort` `xhigh`";
+      expect = "runs claude-opus-5-5 above effort medium: xhigh";
+    }
+    {
+      name = "GLM candidate lowered to medium";
+      line = "- ${glmCandidateSentence}";
+      edit = replaceInLine "`variant` `max`" "`variant` `medium`";
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${glmId} on opencode with variant medium";
+    }
     {
       name = "take-from-session sentence removed";
       line = "- ${takeFromSessionSentence}";
@@ -835,8 +900,8 @@ let
   # self-test sets `selfTestFailed` instead.
   selfTest =
     let
-      expected = expectedFile "claude-code" fakeKey;
-      rules = rulesFor fakeKey harnessPeers.claude-code;
+      expected = expectedFile fakeKey;
+      rules = rulesFor fakeKey;
       # No newline after the closing parenthesis, so the redirection the
       # caller appends applies to the subshell.
       runRules = path: ''
@@ -850,7 +915,7 @@ let
     ''
       original=${expected}
       if [ ! -s "$original" ]; then
-        echo ${esc "self-test: the expected Claude Code rendering is missing or empty"} >&2
+        echo ${esc "self-test: the expected rendering is missing or empty"} >&2
         selfTestFailed=1
       else
         log=$(mktemp)
