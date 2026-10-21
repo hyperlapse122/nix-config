@@ -51,10 +51,11 @@
     harness's peer. Any other action in the template turns the check red. The
     byte comparison stays green across a prose edit of the template; the
     pinned sentences do not.
-  - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `childRunId`
-    appear only inside `# T3 Code` and `# Compound Engineering`, where every
-    sentence is pinned, so a rule elsewhere cannot restore the blocking wait
-    for a run with a person present.
+  - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `childRunId`, and
+    `t3_thread_read` appear only inside `# T3 Code` and `# Compound
+    Engineering`, where every sentence is pinned, so a rule elsewhere cannot
+    restore the blocking wait for a run with a person present or change when
+    a result is taken from a task's session.
   - the file names no removed section, harness, model, or rule, matched
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
@@ -268,9 +269,9 @@ let
     "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task."
     "Before launching, name each peer you will launch and the provider that gets the content, ${peers.first.provider} for ${peers.first.name} and ${peers.second.provider} for ${peers.second.name}; that notice authorizes the send."
     "Treat the provider and model that `task_status` reports as the peer's identity receipt, mapping `antigravity` and `gemini-*` to `gemini`, `grok` and `grok-*` to `grok`, and `claudeAgent` and `claude-*` to `claude`; findings may raise confidence only when the peer's family is known and differs from yours."
-    "Read each peer's result from its `task_status` and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
-    "When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer to the user."
-    "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and cancel a peer still running at the deadline with `task_cancel` and count it as failed."
+    "Read each peer's result from its `task_status`, or from its session when the T3 Code rules take it from there, and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
+    "When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer whose session holds no result to the user."
+    "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the smaller of 600000 and the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and at the deadline cancel a peer still running with `task_cancel` and count it as failed unless its session holds its result."
     "Outside T3 Code, run the skill's own peer route once per peer in turn, naming each peer as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
     "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`."
     "Never delegate an implementation unit to Grok or OpenCode, inside or outside T3 Code."
@@ -310,16 +311,20 @@ let
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
     "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it."
     "Each notification T3 Code delivers, whether it starts your turn or arrives with a user message, names the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call."
-    "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived."
+    "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
-    "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself."
+    "On every turn you get while a task the waiting step needs has not reached a terminal state, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read that task's session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` to the end and reading the full text of its latest assistant message with `itemId` and `textOffset`, because a task, such as a Grok cross-model peer, can write its result and never finish."
+    "When that latest assistant message is finished and holds the whole result the task prompt asked for, and no item in the session is still running, use the message as the task's result, read its `task_status` once, stop it with `task_cancel`, and say that you took its result from the session; when `task_cancel` leaves it running, keep the result and tell the user the task still runs so they can stop it."
+    "In a run with a person present, while a task the waiting step needs still runs when you end your turn, keep exactly one background command pending that waits 10 minutes, such as `sleep 600`, started through your harness's own way of running a command in the background that wakes you when it exits; when it wakes you, check the sessions as above, and start the next one while such a task still runs."
+    "When your harness has no such way, say so when you end your turn, so the user can write to you to have you check the sessions."
+    "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command to wake yourself other than the one 10-minute background wait above."
     "Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn or to fail when no blocking wait exists, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; when the results arrive, continue the same run from the step that waited."
-    "For such a skill, a completion notification and one `task_status` read are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed."
-    "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId`, then read each result with one `task_status` call."
-    "When that wait returns `timedOut: true`, read the task's `task_status` once, answer a pending question with `t3_pending_request_respond` from the task and your instructions, and wait again with the same `runId`."
-    "When a skill bounds a delegated task by time, pass the time left before that bound as `timeoutMs` on each `t3_thread_wait` for it, and when the bound passes while it still runs, cancel it with `task_cancel` and count it as failed."
-    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId`; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so read the other results, end your turn, and resume on that task's notification."
+    "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no result."
+    "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and the smaller of 600000 and the time left before any bound on that task as `timeoutMs`, then read each result with one `task_status` call."
+    "When that wait returns `timedOut: true`, read the task's `task_status` once, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check its session as above, and wait again with the same `runId` unless you took its result."
+    "When a skill bounds a delegated task by time and the bound passes while it still runs, check its session as above, and cancel it with `task_cancel` and count it as failed only when its session holds no result."
+    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so read the other results, end your turn, and resume on that task's notification."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
     "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
@@ -408,15 +413,17 @@ let
   ];
 
   # Terms of the in-turn delegated wait and the peer deadline, which apply
-  # only to a run with no person present. They may appear only inside the
-  # checked `# T3 Code` and `# Compound Engineering` sections, where every
-  # sentence is pinned, so a rule added elsewhere cannot bring the blocking
-  # wait back for a run with a person present.
+  # only to a run with no person present, and of the session check that takes
+  # a stalled task's result. They may appear only inside the checked
+  # `# T3 Code` and `# Compound Engineering` sections, where every sentence is
+  # pinned, so a rule added elsewhere cannot bring the blocking wait back for
+  # a run with a person present or change when a session result is taken.
   confinedTerms = [
     "t3_thread_wait"
     "CROSS_MODEL_HARD_SECS"
     "timeoutMs"
     "childRunId"
+    "t3_thread_read"
   ];
 
   removedTerms = [
@@ -591,7 +598,7 @@ let
       ' "$file" > "$outside"
       for term in ${lib.escapeShellArgs confinedTerms}; do
         if grep -qiF -- "$term" "$outside"; then
-          echo ${esc "${label} names an unattended-wait term outside the T3 Code and Compound Engineering sections:"} "$term" >&2
+          echo ${esc "${label} names a delegated-wait term outside the T3 Code and Compound Engineering sections:"} "$term" >&2
           failed=1
         fi
       done
