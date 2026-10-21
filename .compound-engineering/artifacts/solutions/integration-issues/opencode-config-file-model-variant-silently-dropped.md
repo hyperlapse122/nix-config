@@ -64,6 +64,8 @@ The option reached the HTTP request body as `reasoning_effort` on every path che
 
 `tests/opencode.nix` asserts the declared, merged, and created settings with the efforts written as literals and the model ids read from `synthetic-models.nix`, and turns red when the default model changes away from the source's, when a leaf is removed, or when an effort changes.
 
+The `@<effort>` alias entry that carries the text-generation effort would list its model twice in T3 Code's picker, so `home/h82/t3code.nix` hides it in `~/.t3/userdata/settings.json` through a `prefixEntries` entry for `providerModelPreferences.opencode.hiddenModels`, and `tests/t3code-traits.nix` pins that entry.
+
 ## Why This Works
 
 A model variant in OpenCode 2.0.32 is a session-level choice that the CLI and a client's picker set; the config-file default path resolves the model and does not carry the variant into the session (per this session's probes, not a read of OpenCode's source). Provider model options are part of the model's own definition, so OpenCode includes them in every request for that model whichever entry point opened the session.

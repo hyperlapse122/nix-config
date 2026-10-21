@@ -1080,6 +1080,14 @@ class PrefixEntryTests(unittest.TestCase):
         self.merge()
         self.assertEqual(self.read(), {'outer': {'keep': 1, 'plugins': [PREFIX_VALUE]}})
 
+    def test_creates_missing_parents_and_keeps_siblings(self):
+        self.seed({'model': 'x', 'outer': {'keep': 1}})
+        self.declare(PREFIX_VALUE, path=('outer', 'inner', 'plugins'))
+        self.merge()
+        self.assertEqual(
+            self.read(),
+            {'model': 'x', 'outer': {'keep': 1, 'inner': {'plugins': [PREFIX_VALUE]}}})
+
     def test_does_not_mutate_the_read_document(self):
         current = {'plugins': [PREFIX + 'v3.30.0']}
         merger.apply(current, {}, [], [], prefixes=[(['plugins'], PREFIX, PREFIX_VALUE)])

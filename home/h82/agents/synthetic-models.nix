@@ -12,6 +12,10 @@
 # - `opencodeEffort`: the reasoning effort OpenCode's settings pin for the
 #   model, which runs outside T3 Code use as-is.
 #
+# The `text-generation` role's effort also names the `<id>@<effort>` alias entry
+# OpenCode's settings declare, which home/h82/t3code.nix hides in T3 Code's
+# picker so the model is listed once.
+#
 # The DeepSeek `id` pins one dated build and moves only when the user changes
 # it after a reconcile issue reports a newer one.
 {

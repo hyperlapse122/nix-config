@@ -159,6 +159,20 @@ let
       snoozeLimitedThreads = true;
     };
     remove = [ ];
+    # T3 Code's picker lists the OpenCode text-generation alias beside the
+    # model it points at, so the alias is hidden; the prefix ends in the
+    # separator so only that model's `@<effort>` entries are replaced.
+    prefixEntries = [
+      {
+        path = [
+          "providerModelPreferences"
+          "opencode"
+          "hiddenModels"
+        ];
+        prefix = "synthetic/${textGeneration.id}@";
+        value = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+      }
+    ];
     migrateInstances = {
       from = "providers";
       to = "providerInstances";

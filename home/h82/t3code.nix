@@ -147,6 +147,21 @@ let
     };
   };
 
+  # opencode.nix declares the text-generation model twice, once as the model
+  # and once as the `@<effort>` alias that carries the effort. T3 Code's picker
+  # would list both, so the alias is hidden. The merge replaces only an entry
+  # under this model's `@` prefix, so the models the user hides stay hidden and
+  # an alias from an earlier effort is retired.
+  hiddenAlias = {
+    path = [
+      "providerModelPreferences"
+      "opencode"
+      "hiddenModels"
+    ];
+    prefix = "synthetic/${textGeneration.id}@";
+    value = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+  };
+
   clientSettings.fontFamilyCode = "JetBrains Mono";
 
   # The app and the CLI rewrite both files at runtime, so the keys are merged
@@ -164,6 +179,7 @@ let
       values,
       owned ? { },
       remove ? [ ],
+      prefixEntries ? [ ],
       migrateInstances ? null,
     }:
     {
@@ -172,6 +188,7 @@ let
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
     }
+    // lib.optionalAttrs (prefixEntries != [ ]) { inherit prefixEntries; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
@@ -182,6 +199,7 @@ let
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
+          prefixEntries = [ hiddenAlias ];
           migrateInstances = instanceMigration;
         })
       );
