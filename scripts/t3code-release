@@ -51,7 +51,6 @@ TARGET_ASSETS = {
 TAG_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)$")
 VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$")
 DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
-SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class Failure(Exception):
@@ -151,18 +150,11 @@ def parse_release(version, data):
 
 
 def pinned_release(path):
-    """Return the release dict already pinned at path, or None when unreadable."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
-
-
-def pinned_version(path):
-    """Return the version already pinned at path, or None when unreadable."""
-    current = pinned_release(path)
-    return current.get("version") if isinstance(current, dict) else None
 
 
 def main(argv=None):
@@ -188,7 +180,12 @@ def main(argv=None):
         resolved = parse_release(*newest_nightly(fetch(args.source_url)))
         writing = bool(args.output) and not args.dry_run
 
-        current_version = pinned_version(args.output) if writing else None
+        current_data = pinned_release(args.output) if args.output else None
+        current_version = (
+            current_data.get("version")
+            if writing and isinstance(current_data, dict)
+            else None
+        )
         if current_version is not None:
             try:
                 is_newer = version_key(resolved["version"]) > version_key(current_version)
@@ -201,7 +198,6 @@ def main(argv=None):
                 )
                 return 0
 
-        current_data = pinned_release(args.output) if args.output else None
         current_antigravity = (
             current_data.get("antigravity", {}) if isinstance(current_data, dict) else {}
         )

@@ -542,18 +542,13 @@
                 python tests/test_t3code_antigravity_link.py
                 touch $out
               '';
-          # KTD1: tests/t3code-antigravity-pin.py compares packages/t3code-release.json
-          # and packages/antigravity-acp-release.json with each other. It does not
-          # read the CLI binary or download archives.
           t3code-antigravity-pin =
             pkgs.runCommand "t3code-antigravity-pin" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
-                                # The check compares the two pin files and does not read the CLI.
                                 python3 -I ${./tests/t3code-antigravity-pin.py} \
                                   ${./packages/t3code-release.json} \
                                   ${./packages/antigravity-acp-release.json}
 
-                                # Fails closed when a pin file is missing
                                 if python3 -I ${./tests/t3code-antigravity-pin.py} \
                                   nonexistent.json \
                                   ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
@@ -561,7 +556,6 @@
                                   exit 1
                                 fi
 
-                                # Fails closed when a supported system is missing
                                 python3 - <<'PY'
                 import json
                 d = json.load(open('${./packages/t3code-release.json}'))
@@ -576,7 +570,6 @@
                                   exit 1
                                 fi
 
-                                # Fails closed when sha256 differs
                                 python3 - <<'PY'
                 import base64, json
                 d = json.load(open('${./packages/t3code-release.json}'))
@@ -592,7 +585,6 @@
                                   exit 1
                                 fi
 
-                                # Fails closed when the equality comparison is removed
                                 python3 - <<'PY'
                 src = open('${./tests/t3code-antigravity-pin.py}').read()
                 mutant = src.replace("if val_a != val_b:", "if False and val_a != val_b:")
