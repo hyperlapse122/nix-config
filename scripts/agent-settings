@@ -13,7 +13,7 @@ assign scalars at explicit nested paths.
 depends on which agent owns the file: each writes a JSON object that the user
 also edits through the agent's own interface.
 
-The declared document is a JSON object with up to nine fields:
+The declared document is a JSON object with up to eight fields:
 
   set       {name: scalar}          top-level keys to assign
   remove    [name]                  top-level keys to drop
@@ -35,10 +35,6 @@ The declared document is a JSON object with up to nine fields:
                                     null; other entries stay
   own       {name: any JSON}        top-level keys whose whole value is
                                     declared here
-  ownPaths  [{path: [key, ...], value: any JSON}]
-                                    nested keys whose whole value is declared
-                                    here; no other declaration may reach the
-                                    path, an ancestor, or anything under it
   migrateInstances {from: name, to: name, kinds: [name]}
                                     T3 Code's move of a retired per-kind
                                     block into provider instances, run before
@@ -47,8 +43,7 @@ The declared document is a JSON object with up to nine fields:
 `own` is for a top-level key nobody else writes -- a named entry beside the
 ones the agent or another tool maintains -- so replacing its whole value
 cannot discard another writer's data, which is the reason `set` refuses
-objects.  `ownPaths` is the same for a nested key, such as one provider's
-model map, whose siblings other writers keep.
+objects.
 
 A path is a list of keys rather than a dotted string, so a key that itself
 contains a dot is never split, and a literal top-level "a.b" key is never taken
@@ -91,8 +86,7 @@ def private_directory(path):
     path.chmod(0o700)
 
 
-FIELDS = {'set', 'remove', 'setPaths', 'removePaths', 'upsertPaths', 'prefixEntries', 'own', 'ownPaths',
-          'migrateInstances'}
+FIELDS = {'set', 'remove', 'setPaths', 'removePaths', 'upsertPaths', 'prefixEntries', 'own', 'migrateInstances'}
 
 
 def describe(path):
@@ -102,8 +96,7 @@ def describe(path):
 
 
 def declaration(declared):
-    """Parse the rendered declaration into (assign, retire, paths, removals, owned, upserts, prefixes, migration,
-    owned_paths).
+    """Parse the rendered declaration into (assign, retire, paths, removals, owned, upserts, prefixes, migration).
 
     `remove` is how a key leaves the declared set.  Dropping it from `set`
     alone would leave its last written value on every machine forever, because
@@ -148,9 +141,7 @@ def declaration(declared):
     prefixes = prefix_entries(document.get('prefixEntries', []), assign, retire, owned, paths, upserts, declared)
     removals = removal_paths(document.get('removePaths', []), assign, retire, owned, paths, upserts, prefixes, declared)
     migration = instance_migration(document.get('migrateInstances'), assign, retire, owned, declared)
-    owned_paths = owned_path_entries(document.get('ownPaths', []), assign, retire, owned, paths, upserts,
-                                     prefixes, removals, migration, declared)
-    return assign, retire, paths, removals, owned, upserts, prefixes, migration, owned_paths
+    return assign, retire, paths, removals, owned, upserts, prefixes, migration
 
 
 def check_path(path, declared):
@@ -273,26 +264,6 @@ def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, decl
     return removals
 
 
-def owned_path_entries(entries, assign, retire, owned, paths, upserts, prefixes, removals, migration,
-                       declared):
-    if not isinstance(entries, list):
-        raise ValueError('declared "ownPaths" is not a list: {}'.format(declared))
-    owned_paths = []
-    for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != {'path', 'value'}:
-            raise ValueError('declared "ownPaths" entry is not {{path, value}}: {}'.format(declared))
-        path = entry['path']
-        check_path(path, declared)
-        check_top_level(path, assign, retire, owned)
-        if migration is not None and path[0] in migration[:2]:
-            raise ValueError('declared path starts at a migrated key: {}'.format(describe(path)))
-        check_disjoint(path, assigned_paths(paths, upserts, prefixes)
-                       + [other + [key] for other, key in removals]
-                       + [other for other, _ in owned_paths])
-        owned_paths.append((path, entry['value']))
-    return owned_paths
-
-
 def instance_migration(entry, assign, retire, owned, declared):
     if entry is None:
         return None
@@ -350,7 +321,7 @@ def migrate(merged, migration):
 
 
 def apply(current, assign, retire, paths, owned=None, upserts=None, migration=None, prefixes=None,
-          removals=None, owned_paths=None):
+          removals=None):
     """Return `current` with the declaration applied, leaving `current` alone.
 
     The whole document is deep-copied and the copy edited in place.  The
@@ -364,8 +335,6 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
     merged.update(copy.deepcopy(owned or {}))
     for name in retire:
         merged.pop(name, None)
-    for path, value in owned_paths or []:
-        parent_of(merged, path)[path[-1]] = copy.deepcopy(value)
     for path, value in paths:
         node = parent_of(merged, path)
         node[path[-1]] = value
@@ -503,7 +472,7 @@ def swap(settings, text, before):
 
 
 def merge(settings, declared):
-    assign, retire, paths, removals, owned, upserts, prefixes, migration, owned_paths = declaration(declared)
+    assign, retire, paths, removals, owned, upserts, prefixes, migration = declaration(declared)
     check_directory(settings.parent)
     # Validate before creating or tightening anything, so a refusal leaves the
     # disk exactly as it found it; applying the declaration here also refuses
@@ -512,15 +481,13 @@ def merge(settings, declared):
     # own snapshot, and reusing this one would break that pairing and let a
     # concurrent write be overwritten.
     apply(read_settings(settings), assign=assign, retire=retire, paths=paths, owned=owned,
-          upserts=upserts, migration=migration, prefixes=prefixes, removals=removals,
-          owned_paths=owned_paths)
+          upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
     private_directory(settings.parent)
     for _ in range(ATTEMPTS):
         before = snapshot(settings)
         current = read_settings(settings)
         merged = apply(current, assign=assign, retire=retire, paths=paths, owned=owned,
-                       upserts=upserts, migration=migration, prefixes=prefixes, removals=removals,
-                       owned_paths=owned_paths)
+                       upserts=upserts, migration=migration, prefixes=prefixes, removals=removals)
         if merged == current and before is not None:
             try:
                 os.chmod(settings, 0o600)

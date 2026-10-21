@@ -5,8 +5,8 @@
 
   Pins the shape of home/h82/agents/synthetic-models.nix, the one source of
   every Synthetic model the repository uses: each `id` starts with `hf:` and
-  its family is the one its org maps to, no role runs at effort `medium`, which
-  these models do not offer, each lineage pattern matches its own `id` and its
+  its family is the one its org maps to, every role runs at `low`, `high`, or
+  `max`, the efforts these models offer (never `medium`), each lineage pattern matches its own `id` and its
   first capture group is a version under both Nix `builtins.match` and Python
   `re.fullmatch`, and the top-level selections name existing entries. Every
   problem is listed from the builder before it fails.
@@ -33,6 +33,15 @@ let
 
   entryNames = lib.subtractLists selections (lib.attrNames source);
   entries = lib.genAttrs entryNames (name: source.${name});
+
+  # The efforts these models offer; the shared instructions render each role's
+  # effort as an OpenCode `variant`.
+  efforts = [
+    "low"
+    "high"
+    "max"
+  ];
+  offered = "low, high, or max";
 
   versionShape = "[0-9]+([.][0-9]+)?";
 
@@ -61,9 +70,9 @@ let
       version != null && builtins.match versionShape version == null
     ) "${name}: lineage captures `${version}`, not a version"
     ++ lib.optional ((entry.roles or { }) == { }) "${name}: no roles"
-    ++ lib.mapAttrsToList (role: _: "${name}: role ${role} runs at effort medium") (
-      lib.filterAttrs (_: effort: effort == "medium") (entry.roles or { })
-    )
+    ++ lib.mapAttrsToList (
+      role: effort: "${name}: role ${role} runs at effort `${toString effort}`, not ${offered}"
+    ) (lib.filterAttrs (_: effort: !lib.elem effort efforts) (entry.roles or { }))
     ++ lib.optional (
       (entry.opencodeEffort or "medium") == "medium"
     ) "${name}: opencodeEffort is missing or medium";

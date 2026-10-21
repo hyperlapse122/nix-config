@@ -6,7 +6,8 @@
 // The stubs reproduce the shapes OpenCode 2.1.1 handed a probe plugin on a
 // live run: the model.request event, the tool context, session.get, and
 // model.list, whose settings carry the provider's apiKey beside the
-// configured reasoningEffort.
+// configured reasoningEffort. provider.list is stubbed with an apiKey too,
+// since the plugin reads it only to cut credentials out of error messages.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
@@ -18,18 +19,19 @@ const plugin = (await import(pathToFileURL(pluginPath).href)).default;
 const SESSION = "ses_fixture";
 const API_KEY = "fake-api-key-must-not-leak";
 
-const modelEntry = (providerID, id, reasoningEffort) => ({
+const modelEntry = (providerID, id, reasoningEffort, modelID = id) => ({
   id,
-  modelID: id,
+  modelID,
   providerID,
   settings: { apiKey: API_KEY, baseURL: "http://127.0.0.1:9/v1", provider: providerID, reasoningEffort },
   variants: [{ id: "high", settings: { reasoningEffort: "high" } }],
 });
 
-// A stub plugin context. `get` and `list` replace ctx.session.get and
-// ctx.model.list; the returned `fire` replays a model.request event through
-// the hook the plugin registered, and `call` runs the registered tool.
-async function load({ get, list } = {}) {
+// A stub plugin context. `get`, `list`, and `providers` replace
+// ctx.session.get, ctx.model.list, and ctx.provider.list; the returned `fire`
+// replays a model.request event through the hook the plugin registered, and
+// `call` runs the registered tool.
+async function load({ get, list, providers } = {}) {
   const hooks = new Map();
   const tools = [];
   const ctx = {
@@ -54,6 +56,13 @@ async function load({ get, list } = {}) {
           ],
         })),
     },
+    provider: {
+      list:
+        providers ??
+        (async () => {
+          throw new Error("provider.list not stubbed");
+        }),
+    },
     tool: {
       transform: async (callback) => {
         callback({ add: (definition) => tools.push(definition) });
@@ -64,8 +73,8 @@ async function load({ get, list } = {}) {
   return {
     tools,
     fire: (event) => hooks.get("model.request")?.(event),
-    call: async (sessionID = SESSION) => {
-      const result = await tools[0].execute({}, { sessionID, agent: "build", messageID: "msg_1", id: "call_1" });
+    call: async (sessionID = SESSION, context = { sessionID, agent: "build", messageID: "msg_1", id: "call_1" }) => {
+      const result = await tools[0].execute({}, context);
       return { raw: result.content, report: JSON.parse(result.content) };
     },
   };
@@ -247,4 +256,194 @@ test("a malformed event or a missing session ID never throws", async () => {
   assert.equal(report.sessionID, null);
   assert.equal(report.sources.sessionID, null);
   assert.equal(report.model, null);
+  assert.equal(report.error, "the tool context carries no session ID");
+});
+
+const primary = (id, variant, sessionID = SESSION) => ({
+  sessionID,
+  agent: "build",
+  kind: "primary",
+  model: { providerID: "synthetic", id, ...(variant === undefined ? {} : { variant }) },
+});
+
+const DEEPSEEK = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017";
+
+test("an entry whose own id matches wins over an earlier one sharing its modelID", async () => {
+  const { fire, call } = await load({
+    list: async () => ({
+      data: [
+        modelEntry("synthetic", `${DEEPSEEK}@low`, "low", DEEPSEEK),
+        modelEntry("synthetic", DEEPSEEK, "high"),
+      ],
+    }),
+  });
+  await fire(primary(DEEPSEEK, "default"));
+  const { report } = await call();
+  assert.equal(report.model, DEEPSEEK);
+  assert.equal(report.effort, "high");
+});
+
+test("with no entry of that id, the entry whose modelID matches supplies the effort", async () => {
+  const { fire, call } = await load({
+    list: async () => ({
+      data: [modelEntry("other", DEEPSEEK, "low"), modelEntry("synthetic", `${DEEPSEEK}@max`, "max", DEEPSEEK)],
+    }),
+  });
+  await fire(primary(DEEPSEEK, "default"));
+  const { report } = await call();
+  assert.equal(report.effort, "max");
+  assert.equal(report.sources.effort, "model.list");
+});
+
+test("a model.list without a data array leaves the effort null without an error", async () => {
+  const { fire, call } = await load({ list: async () => ({ data: { [DEEPSEEK]: modelEntry("synthetic", DEEPSEEK, "high") } }) });
+  await fire(primary(DEEPSEEK, "default"));
+  const { report } = await call();
+  assert.equal(report.model, DEEPSEEK);
+  assert.equal(report.effort, null);
+  assert.equal(report.error, null);
+});
+
+test("a later primary request replaces the earlier one", async () => {
+  const { fire, call } = await load();
+  await fire(primary("hf:zai-org/GLM-5.3", "max"));
+  await fire(primary("hf:moonshotai/Kimi-K3", "default"));
+  const { report } = await call();
+  assert.equal(report.model, "hf:moonshotai/Kimi-K3");
+  assert.equal(report.variant, "default");
+  assert.equal(report.effort, "high");
+});
+
+test("session.get fills a variant the record lacks when it names the same model", async () => {
+  const { fire, call } = await load({
+    get: async () => ({ model: { providerID: "synthetic", id: "hf:zai-org/GLM-5.3", variant: "high" } }),
+  });
+  await fire(primary("hf:zai-org/GLM-5.3"));
+  const { report } = await call();
+  assert.equal(report.model, "hf:zai-org/GLM-5.3");
+  assert.equal(report.variant, "high");
+  assert.deepEqual(report.sources, {
+    provider: "model.request",
+    model: "model.request",
+    variant: "session.get",
+    effort: "model.list",
+    sessionID: "tool.context",
+  });
+});
+
+test("session.get fills a model the record lacks when it names the same provider", async () => {
+  const { fire, call } = await load({
+    get: async () => ({ model: { providerID: "synthetic", id: "hf:zai-org/GLM-5.3", variant: "high" } }),
+  });
+  await fire({ sessionID: SESSION, kind: "primary", model: { providerID: "synthetic", variant: "max" } });
+  const { report } = await call();
+  assert.equal(report.model, "hf:zai-org/GLM-5.3");
+  assert.equal(report.variant, "max");
+  assert.equal(report.sources.provider, "model.request");
+  assert.equal(report.sources.model, "session.get");
+  assert.equal(report.sources.variant, "model.request");
+});
+
+test("session.get on another model supplies nothing to the record", async () => {
+  const { fire, call } = await load({
+    get: async () => ({ model: { providerID: "synthetic", id: "hf:moonshotai/Kimi-K3", variant: "low" } }),
+  });
+  await fire(primary("hf:zai-org/GLM-5.3"));
+  const { report } = await call();
+  assert.equal(report.model, "hf:zai-org/GLM-5.3");
+  assert.equal(report.variant, null);
+  assert.equal(report.sources.variant, null);
+  assert.equal(report.effort, "max");
+  assert.equal(report.error, null);
+});
+
+test("a session.get error is not reported when the record names provider and model", async () => {
+  const { fire, call } = await load({
+    get: async () => {
+      throw new Error("session.get exploded");
+    },
+  });
+  await fire(primary("hf:zai-org/GLM-5.3"));
+  const { report } = await call();
+  assert.equal(report.provider, "synthetic");
+  assert.equal(report.model, "hf:zai-org/GLM-5.3");
+  assert.equal(report.variant, null);
+  assert.equal(report.error, null);
+});
+
+test("an identical primary request does not refresh the session's place", async () => {
+  let asked = 0;
+  const { fire, call } = await load({
+    get: async () => {
+      asked += 1;
+      return {};
+    },
+  });
+  await fire(primary("hf:zai-org/GLM-5.3", "max", "ses_first"));
+  for (let index = 1; index < 256; index += 1) await fire(primary("hf:zai-org/GLM-5.3", "max", `ses_${index}`));
+  await fire(primary("hf:zai-org/GLM-5.3", "max", "ses_first"));
+  await fire(primary("hf:zai-org/GLM-5.3", "max", "ses_last"));
+  assert.equal((await call("ses_first")).report.model, null);
+  assert.equal((await call("ses_1")).report.model, "hf:zai-org/GLM-5.3");
+  assert.equal(asked, 1);
+});
+
+test("a changed primary request moves the session to the newest place", async () => {
+  const { fire, call } = await load({ get: async () => ({}) });
+  await fire(primary("hf:zai-org/GLM-5.3", "max", "ses_first"));
+  for (let index = 1; index < 256; index += 1) await fire(primary("hf:zai-org/GLM-5.3", "max", `ses_${index}`));
+  await fire(primary("hf:zai-org/GLM-5.3", "high", "ses_first"));
+  await fire(primary("hf:zai-org/GLM-5.3", "max", "ses_last"));
+  assert.equal((await call("ses_first")).report.variant, "high");
+  assert.equal((await call("ses_1")).report.model, null);
+});
+
+test("the 257th recorded session evicts the oldest", async () => {
+  const { fire, call } = await load({ get: async () => ({}) });
+  for (let index = 0; index < 257; index += 1) await fire(primary("hf:zai-org/GLM-5.3", "max", `ses_${index}`));
+  assert.equal((await call("ses_0")).report.model, null);
+  assert.equal((await call("ses_1")).report.model, "hf:zai-org/GLM-5.3");
+  assert.equal((await call("ses_256")).report.model, "hf:zai-org/GLM-5.3");
+});
+
+const PROVIDER_KEY = "fake-provider-key-must-not-leak";
+const providers = async () => ({ data: [{ id: "synthetic", settings: { apiKey: PROVIDER_KEY } }] });
+
+test("an error message never carries a configured API key", async () => {
+  const { call } = await load({
+    get: async () => {
+      throw new Error(`401 from https://api.example/v1 with key ${API_KEY}`);
+    },
+    providers,
+  });
+  const { raw, report } = await call();
+  assert.ok(!raw.includes(API_KEY), "the report must not carry the model's apiKey");
+  assert.equal(report.error, "session.get: 401 from https://api.example/v1 with key [redacted]");
+});
+
+test("a failed model.list cannot leak a key that only provider.list names", async () => {
+  const { fire, call } = await load({
+    list: async () => {
+      throw new Error(`rejected ${PROVIDER_KEY}; Authorization: Bearer abc.def-123 and syn_0123456789abcdefXYZ`);
+    },
+    providers,
+  });
+  await fire(primary("hf:zai-org/GLM-5.3", "max"));
+  const { raw, report } = await call();
+  assert.ok(!raw.includes(PROVIDER_KEY), "the report must not carry the provider's apiKey");
+  assert.ok(!raw.includes("abc.def-123"), "the report must not carry a bearer token");
+  assert.ok(!raw.includes("syn_0123456789abcdefXYZ"), "the report must not carry a token-shaped string");
+  assert.equal(report.error, "model.list: rejected [redacted]; Authorization: Bearer [redacted] and [redacted]");
+});
+
+test("an unexpected failure is reported without a configured API key", async () => {
+  const { call } = await load({ providers });
+  const context = {
+    get sessionID() {
+      throw new Error(`context exploded near ${PROVIDER_KEY} and ${API_KEY}`);
+    },
+  };
+  const { raw, report } = await call(SESSION, context);
+  assert.ok(!raw.includes(PROVIDER_KEY) && !raw.includes(API_KEY), "the report must not carry an apiKey");
+  assert.equal(report.error, "session_info: context exploded near [redacted] and [redacted]");
 });

@@ -79,7 +79,7 @@ The instructions today pin the review peers to Antigravity and Grok. They refuse
 - R15. A reviewer's finding raises confidence only when its family, read from the T3 Code `task_status` provider and model through R14, is known and differs from the host's.
 - R16. Outside T3 Code, the Compound Engineering route reports OpenCode as `unknown`, so an OpenCode review there never raises confidence; the instructions say so and the review report states it.
 - R17. The instructions drop "never with OpenCode" and the OpenCode refusal, and every harness shares one rendering when the exclusion rule makes per-harness peer data unnecessary.
-- R18. An OpenCode session names its host family from its own model ID: through `orchestrator_capabilities` and `t3_thread_configuration` inside T3 Code, and through the R20 plugin tool outside it. When neither answers, the family is `unknown` and that session's reviews raise no confidence.
+- R18. An OpenCode session names its host family from its own model ID: through the R20 plugin tool first, inside T3 Code and outside it (code review moved it first, so a GLM session in T3 Code no longer runs as `unknown` and launches the GLM peer), and only when that fails through `orchestrator_capabilities` and `t3_thread_configuration` inside T3 Code or its system prompt outside it. When neither answers, the family is `unknown` and that session's reviews raise no confidence.
 - R19. Reviewers use pinned `hf:` IDs only; when a pinned ID returns 404, that reviewer is reported as failed and no other model replaces it.
 
 **OpenCode session-info plugin**
@@ -229,10 +229,10 @@ Product Contract preservation: changed: Summary, R14, R28, R30 — document-revi
 - KTD1. **One pure data file is the Synthetic model source.** `home/h82/agents/synthetic-models.nix` replaces `home/h82/agents/opencode-model.nix` and takes no module arguments, so Home Manager modules, checks, and the workflow (`nix eval --json --file`) read the same attrset without a flake output. Each entry carries the upstream ID, the family, a lineage pattern with a captured version (KTD3), its roles with their efforts, and the effort OpenCode uses by default; top-level keys name the OpenCode default model, `small_model`, and the T3 Code text-generation model. Governs R27, R28, R36.
 - KTD2. **One rendering for every harness; the host family comes from the host's own model ID.** Claude Code, OpenCode, and Antigravity read the same file. The template reads the KTD1 data by field access only, never `index`, `range`, or `if`, because `tests/agent-instructions.nix` builds its expected file by replacing a fixed table of actions. Each host applies R14 to the model ID its harness reports: its own model for Claude Code and Antigravity, the system prompt's model section, T3 Code tools, or the R20 tool for OpenCode. Receipts map by `task_status`'s model, not its instance name, because one `opencode` instance serves GLM, Kimi, and DeepSeek. This answers R17: no per-harness value remains.
 - KTD3. **A newer build has a higher captured version, or an equal one and a later `created`.** Each lineage pattern is anchored and captures the version (DeepSeek `V<n>[.<n>]-Flash` with an optional `-<MMDD>` suffix, GLM `GLM-<n>[.<n>]`, Kimi `Kimi-K<n>[.<n>]`), so suffixed products such as `-Flash`, `-Air`, `-Code`, `-Preview`, and `-FP8` never match another lineage. A candidate with a strictly higher captured version counts as newer whatever its `created`, because R41 wins over a tie on `created`; `created` only orders equal versions, so an equal version counts as newer only when its `created` is later, and an equal or missing `created` is not newer. `syn:` IDs are ignored, and a row carrying `alias_of` never keeps a model in use present, but an `hf:` alias row whose own ID matches a lineage is a candidate. Governs R41.
-- KTD4. **`small_model` gets its own model entry at effort low, under a nested-owned `provider.synthetic.models`.** OpenCode drops a variant written in its config file and honours a model's `options.reasoningEffort`, and OpenCode 2.x feeds `small_model` only into title generation (`agents.title.model`). `small_model` points at a second entry keyed `hf:deepseek-ai/DeepSeek-V4.1-Flash-1017@low` (the source ID plus `@low`, so R14 still maps it to `deepseek`), whose `id` is the upstream ID and whose `reasoningEffort` is `low`. `scripts/agent-settings` gains an `ownPaths` tier that replaces the object at a nested path whole and refuses any other declaration at or under that path, so `provider.synthetic.models` holds exactly the source's entries while `provider.synthetic.options` and other providers survive. Governs R29, R31, R34; Q9 is the fallback.
+- KTD4. **`small_model` gets its own model entry at effort low, with only its managed leaves under `provider.synthetic.models`.** OpenCode drops a variant written in its config file and honours a model's `options.reasoningEffort`, and OpenCode 2.x feeds `small_model` only into title generation (`agents.title.model`). `small_model` points at a second entry keyed `hf:deepseek-ai/DeepSeek-V4.1-Flash-1017@low` (the source ID plus `@low`, so R14 still maps it to `deepseek`), whose `id` is the upstream ID and whose `reasoningEffort` is `low`. Code review replaced the first design, an `ownPaths` tier that owned the whole model map, because it dropped model entries and keys the user wrote: `opencode.nix` now assigns each managed leaf (every source model's `options.reasoningEffort`, and the second entry's `id` and effort) through `setPaths`, and removes the model keys the repository once wrote and the source no longer names (`syn:large:text`) through `removePaths`, so the merger's rule that user-written keys survive holds. The `ownPaths` tier was removed with its only user. The second entry's suffix is the `text-generation` role's effort, so the key follows the role, and T3 Code's text generation selects the same entry with no variant (U3). Governs R29, R31, R34; Q9 is the fallback.
 - KTD5. **The comparison is a fixture-tested Python helper; the workflow keeps the key away from `gh`.** `scripts/synthetic-models-watch` follows the release-helper pattern (`pythonHelper` in `packages/agent-tools.nix`, network through an overridable command, `pythonScriptCheck` in `flake.nix`) and runs locally through a flake app. It fetches with the header on stdin (`curl -H @-`), never in argv, retries once (R39), validates every catalog ID against `^hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` and its lineage, writes catalog values only inside code spans, and emits a JSON result, a findings fingerprint, and an issue body file. `.github/workflows/synthetic-models.yml` runs the script in a step that alone receives `SYNTHETIC_API_KEY`, then manages the issue in a later step with `GITHUB_TOKEN` and `--body-file`. Governs R35-R46.
 - KTD6. **The plugin is a v2 OpenCode plugin directory the global plugins folder autoloads.** OpenCode 2.1.1 plugins export `{ id, setup(ctx) }`, register tools through `ctx.tool.transform` with JSON Schema arguments, and need no imports, so a plain `index.js` in the store works. `setup` records each session's `{ providerID, id, variant }` from `ctx.session.hook("model.request")`; the tool looks the session up by `sessionID`, falls back to `ctx.session.get`, and returns provider, model ID, variant, configured effort, and the source of each value, with `null` for any it cannot read. Home Manager links the directory to `~/.config/opencode/plugins/session-info/`, so no settings merge or activation ordering is involved; if the live probe shows the folder does not autoload, U8 adds a prefix-scoped `plugins` entry through `home/h82/agents/agent-plugins.nix`. Governs R20.
-- KTD7. **The Grok Bot cask uninstall runs brew as the user and warns on failure.** Homebrew refuses to run as root, and `launchctl asuser` leaves the process root. The step calls `${config.homebrew.brewPrefix}/brew` through `sudo --user=<primary user> --set-home` with `NONINTERACTIVE=1`, the way nix-darwin's own Homebrew activation does, after Homebrew in `postActivation`. It checks `brew list --cask grok-bot` first, and each failure prints one line under an `if !` guard, as the Xcode and App Store steps do. Governs R4.
+- KTD7. **The Grok Bot cask uninstall runs brew as the user and warns on failure.** Homebrew refuses to run as root, and `launchctl asuser` leaves the process root. The step calls `${config.homebrew.brewPrefix}/brew` through `sudo --preserve-env=PATH --user=<primary user> --set-home` with brew's prefix on `PATH` and `NONINTERACTIVE=1`, the way nix-darwin's own Homebrew activation does, after Homebrew in `postActivation`. It checks `brew list --cask grok-bot` first and treats only an empty stderr or Homebrew's "is not installed" error as absent; any other failure prints brew's stderr on one line. It uninstalls with `--force` and never `--zap`, and each failure prints one line under an `if !` guard, as the Xcode and App Store steps do. Governs R4.
 - KTD8. **A `grok-absent` check guards the removal across user, macOS, and system-manager surfaces.** Unlike `codex-absent`, it reads more than `userEntries`: the user packages and home files of every user, the cask mapping in `modules/shared/darwin-apps.nix`, and the evaluated system-manager configuration of each Linux fixture for the AppArmor unit, by attribute evaluation without building a host closure. `tests/t3code-traits.nix` pins the `grok` instance `enabled = false` beside `codex`. Governs R3, R5.
 - KTD9. **Checks compare consumers with the model source; they do not pin model IDs as literals.** `tests/opencode.nix`, `tests/t3code-traits.nix`, and `tests/agent-instructions.nix` take model IDs from the source while instance names, efforts, and sentences stay written in the check. A new `synthetic-models` check pins the source's shape: IDs start with `hf:`, each family matches its org per R14, no role effort is `medium` (R32), and each lineage pattern matches and captures its own ID. Governs R27, R47.
 - KTD10. **The Antigravity runtime preinstall keeps its own instance list.** `antigravityInstances` in `home/h82/t3code.nix` becomes the literal `[ "antigravity" ]`, no longer derived from the text-generation instance. (session-settled: user-approved — chosen over deleting `antigravityInstances` whole: the skill links keep the manual Antigravity instance working.) Governs R7, R33.
@@ -353,24 +353,23 @@ These are bets made without a scoping confirmation, because `lfg` runs this plan
 
 **Files:**
 
-- Modify `scripts/agent-settings` and `tests/test_agent_settings.py` (the `ownPaths` tier).
+- `scripts/agent-settings` and `tests/test_agent_settings.py` end unchanged: the `ownPaths` tier this unit first added was removed in code review (KTD4).
 - Modify `home/h82/agents/opencode.nix`.
 - Modify `tests/opencode.nix`.
 
 **Approach:**
 
-1. Add `ownPaths` to `scripts/agent-settings` (KTD4).
+1. Declare only managed leaves through `setPaths` (KTD4).
 2. `model` is `synthetic/` plus the default entry's ID.
-3. `ownPaths` declares `provider.synthetic.models`: one entry per U1 model with `options.reasoningEffort` from `opencodeEffort`, plus the KTD4 `@low` entry with `id` and `reasoningEffort` `low`.
-4. `small_model` names the `@low` entry; drop the `syn:large:text` removePath and the GLM `setPaths` leaf the owned path replaces.
+3. `setPaths` assigns `provider.synthetic.models.<id>.options.reasoningEffort` from `opencodeEffort` for each U1 model, plus the KTD4 entry's `id` and `reasoningEffort`, keyed `<id>@<text-generation effort>`.
+4. `small_model` names that entry; `removePaths` keeps retiring `syn:large:text`, and a source ID that moves adds its previous key to the same list.
 
 **Patterns to follow:** the `own` and `setPaths` tiers and their tests in `scripts/agent-settings` and `tests/test_agent_settings.py`; the declaration in `home/h82/agents/opencode.nix`.
 
 **Test scenarios:**
 
-- `ownPaths` replaces the object at `provider.synthetic.models` and keeps `provider.synthetic.options` and `provider.anthropic`.
-- `ownPaths` together with a `setPaths` entry at or under the same path is refused.
-- A model key left in `opencode.json` from an earlier source is gone after the merge.
+- The merge keeps `provider.synthetic.options`, `provider.anthropic`, a model entry the user wrote, and keys the user added inside a declared entry.
+- The retired `syn:large:text` entry is gone after the merge.
 - The materialized declaration sets `model` to `synthetic/` plus the source's default ID.
 - `small_model` resolves to an entry keyed with the `hf:deepseek-ai/` prefix whose `id` is the source's DeepSeek ID and whose effort is `low`.
 - Changing the DeepSeek ID in the source changes both DeepSeek entries and `small_model` with no other edit (Covers AE6).
@@ -392,7 +391,7 @@ These are bets made without a scoping confirmation, because `lfg` runs this plan
 
 **Approach:**
 
-1. `textGenerationModelSelection` is `instanceId = "opencode"`, `model = "synthetic/"` plus the source's text-generation ID, `options = [ { id = "variant"; value = "low"; } ]`, the shape T3 Code's `createModelSelection` writes.
+1. `textGenerationModelSelection` is `instanceId = "opencode"` and `model = "synthetic/"` plus the KTD4 entry's key, `<text-generation ID>@<text-generation effort>`, with no `options` (code review replaced the first `variant` `low` option, so the effort no longer depends on a variant reaching the request; T3 Code's schema marks `options` optional and sends no variant without one).
 2. `defaultModelSelection` adds `options = [ { id = "effort"; value = "medium"; } ]`, so the host's Opus effort is declared rather than inherited (R23).
 3. Remove `textGenerationInstance`; set `antigravityInstances = [ "antigravity" ]` (KTD10).
 4. Declare `grok = { driver = "grok"; enabled = false; }` with a comment like the `codex` one.
@@ -401,7 +400,7 @@ These are bets made without a scoping confirmation, because `lfg` runs this plan
 
 **Test scenarios:**
 
-- The declared settings own `textGenerationModelSelection` with instance `opencode`, the source's DeepSeek model, and option `variant` = `low`.
+- The declared settings own `textGenerationModelSelection` with instance `opencode`, the source's DeepSeek `@<effort>` entry, and no options.
 - `defaultModelSelection` is `claudeAgent`, `claude-opus-5-5`, effort `medium`; a value of `high` or `max` fails.
 - `providerInstances.grok.enabled` is `false` and `providerInstances.antigravity.enabled` is `true`.
 - The Antigravity link activation still passes `--instance antigravity`.
@@ -523,7 +522,7 @@ These are bets made without a scoping confirmation, because `lfg` runs this plan
 - Create `modules/darwin/retired-casks.nix`; import it from `modules/darwin/profile.nix`.
 - Modify `tests/darwin-config.nix` and `tests/darwin-outputs.nix`.
 
-**Approach:** A `postActivation` step after Homebrew lists the retired casks (`grok-bot`) and, per KTD7, uninstalls each installed one with `brew uninstall --cask` without `--zap`.
+**Approach:** A `postActivation` step after Homebrew lists the retired casks (`grok-bot`) and, per KTD7, uninstalls each installed one with `brew uninstall --cask --force` without `--zap`.
 
 **Patterns to follow:** the `if !` guards and one-line messages in `modules/darwin/xcode.nix` and `modules/darwin/app-store.nix`; nix-darwin's Homebrew activation for `sudo --user` and `brewPrefix`.
 

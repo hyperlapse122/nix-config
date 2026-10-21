@@ -24,22 +24,60 @@ let
   );
 
   models = import ./synthetic-models.nix;
-  small = models.${models.small};
   # A second entry for the same upstream model, so small_model, which
-  # OpenCode 2.x uses only for title generation, runs at effort low while
-  # the main entry keeps its own. The suffix keeps the key under the
+  # OpenCode 2.x uses only for title generation, and T3 Code's text
+  # generation (home/h82/t3code.nix) run at the text-generation role's effort
+  # while the main entry keeps its own. The suffix keeps the key under the
   # model's org, which the shared instructions map to its family.
-  smallKey = "${small.id}@low";
-  providerModels =
-    lib.mapAttrs' (
-      _: entry: lib.nameValuePair entry.id { options.reasoningEffort = entry.opencodeEffort; }
-    ) (lib.filterAttrs (_: builtins.isAttrs) models)
-    // {
-      ${smallKey} = {
-        inherit (small) id;
-        options.reasoningEffort = small.roles.text-generation;
-      };
-    };
+  textKey = entry: "${entry.id}@${entry.roles.text-generation}";
+  textModels = lib.unique (
+    map (name: models.${name}) [
+      models.small
+      models.textGeneration
+    ]
+  );
+  smallKey = textKey models.${models.small};
+
+  modelsPath = [
+    "provider"
+    "synthetic"
+    "models"
+  ];
+  # Only the leaves the repository manages are assigned, so a model entry the
+  # user adds under provider.synthetic.models, or a key they add inside one of
+  # these entries, survives every rebuild.
+  modelLeaves =
+    lib.mapAttrsToList (_: entry: {
+      path = modelsPath ++ [
+        entry.id
+        "options"
+        "reasoningEffort"
+      ];
+      value = entry.opencodeEffort;
+    }) (lib.filterAttrs (_: builtins.isAttrs) models)
+    ++ lib.concatMap (entry: [
+      {
+        path = modelsPath ++ [
+          (textKey entry)
+          "id"
+        ];
+        value = entry.id;
+      }
+      {
+        path = modelsPath ++ [
+          (textKey entry)
+          "options"
+          "reasoningEffort"
+        ];
+        value = entry.roles.text-generation;
+      }
+    ]) textModels;
+  # Model keys an earlier generation of this file wrote and the source no
+  # longer names. When a source `id` moves, or the text-generation role's
+  # effort renames a textKey entry, add the previous key here, or its entry stays
+  # behind with the effort last written. syn:large:text is the retired
+  # cross-reviewer alias, declared through its `name`.
+  retiredModels = [ "syn:large:text" ];
 
   # `opencode mcp add` and `opencode plugin add` rewrite this file, so
   # activation assigns these keys and leaves everything else as OpenCode wrote
@@ -68,16 +106,11 @@ let
       # enabled_providers is an array, which set refuses; nothing else writes
       # the key, so owning it whole is the right tier.
       own.enabled_providers = [ "synthetic" ];
-      ownPaths = [
-        {
-          path = [
-            "provider"
-            "synthetic"
-            "models"
-          ];
-          value = providerModels;
-        }
-      ];
+      setPaths = modelLeaves;
+      removePaths = map (key: {
+        path = modelsPath;
+        inherit key;
+      }) retiredModels;
     }
   );
 

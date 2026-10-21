@@ -35,8 +35,9 @@
     retired `providers` block of those five instances is migrated into them
     first. It owns two model selections whole: the default, Claude Opus at
     effort medium, and text generation, the OpenCode instance with the
-    text-generation model of home/h82/agents/synthetic-models.nix at variant
-    low.
+    `<id>@<effort>` entry home/h82/agents/opencode.nix declares for the
+    text-generation model of home/h82/agents/synthetic-models.nix at its
+    text-generation role's effort, with no options, so no variant.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -144,6 +145,7 @@ let
   # The model ID comes from the one source the module reads, so a pinned
   # build moving there moves both sides; every other literal is written here.
   syntheticModels = import ../home/h82/agents/synthetic-models.nix;
+  textGeneration = syntheticModels.${syntheticModels.textGeneration};
 
   settingsExpectedBase = {
     set = {
@@ -337,15 +339,10 @@ let
           }
         ];
       };
+      # The text-generation entry opencode.nix declares, with no variant.
       textGenerationModelSelection = {
         instanceId = "opencode";
-        model = "synthetic/${syntheticModels.${syntheticModels.textGeneration}.id}";
-        options = [
-          {
-            id = "variant";
-            value = "low";
-          }
-        ];
+        model = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
       };
     };
   };
