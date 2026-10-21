@@ -11,10 +11,12 @@ symptoms:
   - "A parent re-calls t3_thread_wait every 10 minutes while a delegated child sits paused on a question nobody answers"
   - "The user cannot talk to a parent thread that holds its turn in t3_thread_wait until every delegated child finishes"
   - "Agents in T3 Code launch delegated tasks one at a time, waiting for each before launching the next"
+  - "A Grok cross-model peer writes its full result but its run never ends, so no completion notification arrives and, once the sibling peer's notification has come, nothing gives the parent another turn"
+  - "An unattended parent times out on the same task in t3_thread_wait again and again, reads only task_status, and at the peer deadline cancels a peer whose result was already in its session"
 root_cause: wrong_api
 resolution_type: documentation_update
-tags: ["t3code", "t3-thread-wait", "delegate-task", "task-status", "waiting-for-children", "has-pending-question", "child-run-id", "subagents", "parallel-delegation", "completion-notification", "end-the-turn", "agent-instructions"]
-retire_when: "T3 Code steers completion notifications into active Claude Code turns, or gives a wait that returns on result_available and on pending questions while leaving the thread open to the user; check the t3_thread_wait and task_status tool descriptions in a T3 Code session"
+tags: ["t3code", "t3-thread-wait", "delegate-task", "task-status", "waiting-for-children", "has-pending-question", "child-run-id", "subagents", "parallel-delegation", "completion-notification", "end-the-turn", "agent-instructions", "stalled-task", "t3-thread-read", "background-wait", "session-check"]
+retire_when: "T3 Code steers completion notifications into active Claude Code turns, or gives a wait that returns on result_available and on pending questions while leaving the thread open to the user, and ends a run that has written its final message; check the t3_thread_wait and task_status tool descriptions in a T3 Code session, and whether a Grok peer that writes its result still never reaches a terminal state"
 ---
 
 # T3 Code delegated waits end the turn because t3_thread_wait cannot carry them in-turn
@@ -23,12 +25,16 @@ retire_when: "T3 Code steers completion notifications into active Claude Code tu
 
 Agents in T3 Code delegated several jobs one at a time, because the shared instructions told them to use `delegate_task` but gave no way to wait for several results. The first fix, on 2026-10-19, launched every independent task in one response with `async` and waited on each child with `t3_thread_wait` inside the same turn. That wait was fragile, and it also held the turn, so the user could not talk to the parent while the children ran. The instructions now end the turn after the launch and resume on T3 Code's completion notification.
 
+That left a second gap, found on 2026-10-21: a task such as a Grok cross-model peer sometimes writes its full result and its run never reaches a terminal state, so its completion notification never comes. With a person present and the sibling peer already finished, nothing gave the parent another turn, the review step waited forever, and the user had to notice. With no person present, `t3_thread_wait` timed out on that task repeatedly and the parent read only `task_status`, which carries no result until the task is terminal. The instructions now read the task's session for the result.
+
 ## Symptoms
 
 - The parent alternates `t3_thread_wait` and `task_status` in a tight loop while a task's `workState` is `waiting_for_children`.
 - A child paused on a question or approval never gets an answer; the parent times out every 10 minutes and waits again.
 - A review pass with several reviewers holds the parent's turn for many minutes, and the user cannot interject, ask something else, or redirect the run.
 - Before the first fix, delegated reviewers and implementation units ran serially.
+- A peer's result sits in its session while `task_status` reports it as not terminal, the parent's turn has ended, and no notification, user message, or timer will start another turn.
+- An unattended parent discards, at the peer deadline, a result that was already written.
 
 ## What Didn't Work
 
@@ -47,13 +53,16 @@ The `# T3 Code` section of `home/h82/agents/instructions/instructions.md.tmpl` s
 - Each notification, whether it starts the turn or arrives with a user message, names the tasks that finished or have a question; read each finished task once with `task_status`.
 - While another task the waiting step needs is still running, end the turn again without cancelling it.
 - When a notification says a task has a question, read it with `t3_pending_request_read`, answer it with `t3_pending_request_respond` or ask the user, and end the turn again; when the user's next message answers it, forward that answer with `t3_pending_request_respond`.
-- With a person present, never wait with `t3_thread_wait`; in any run, never call `task_status` in a loop or start a sleep, timer, or background command.
-- Ending the turn to wait is allowed even where a skill forbids ending the turn or fails when no blocking wait exists, such as `lfg` before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; for such a skill a notification plus one `task_status` read is the terminal outcome, and a task past the skill's time bound on resume counts as failed.
-- With no person present, such as a headless, scheduled, or pipeline run, wait inside the turn: `t3_thread_wait` on each task's `childRunId`, one `task_status` read after a timeout, a wait without `runId` while a newer run exists, and ending the turn only when no run is left to block on.
+- On every turn the agent gets while a task the waiting step needs is not terminal (a notification, a user message, a background wait, or a `t3_thread_wait` timeout), read that task's session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` to the end and reading the latest assistant message's full text with `itemId` and `textOffset`.
+- When that message is finished, holds the whole result the task prompt asked for, and nothing in the session is still running, use it as the task's result, read `task_status` once, stop the task with `task_cancel`, and say the result came from the session; when `task_cancel` leaves the task running, keep the result and tell the user so they can stop it. A result taken from the session is the task's terminal outcome, including under a skill that forbids ending the turn.
+- With a person present, while such a task still runs when the turn ends, keep exactly one background command pending that waits 10 minutes, such as `sleep 600`, started through the harness's own way of running a command in the background that wakes the agent on exit; a wake runs the session check and starts the next wait while such a task still runs. A harness with no such facility says so when it ends the turn, so the user can write to have the sessions checked.
+- With a person present, never wait with `t3_thread_wait`; in any run, never call `task_status` in a loop or start a sleep, timer, or background command, except that one 10-minute background wait.
+- Ending the turn to wait is allowed even where a skill forbids ending the turn or fails when no blocking wait exists, such as `lfg` before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; for such a skill a notification plus one `task_status` read, or a result taken from the task's session, is the terminal outcome, and a task past the skill's time bound on resume counts as failed unless its session holds its result.
+- With no person present, such as a headless, scheduled, or pipeline run, wait inside the turn: `t3_thread_wait` on each task's `childRunId` with the smaller of 600000 and the time left before any bound as `timeoutMs`, one `task_status` read after a timeout, a session check after each timeout, a wait without `runId` while a newer run exists, and ending the turn only when no run is left to block on. When a skill's bound passes while the task still runs, check the session first and cancel the task as failed only when it holds no result.
 
-The `# Compound Engineering` section keeps the cross-model peer deadline only for a run with no person present, where the in-turn wait can enforce it through `timeoutMs`. With a person present a peer has no deadline: its result arrives by notification, and the user cancels a slow peer. An unattended run cannot drop the deadline, because a hung peer sends no notification and no person is there to cancel it.
+The `# Compound Engineering` section keeps the cross-model peer deadline only for a run with no person present, where the in-turn wait can enforce it through `timeoutMs`. With a person present a peer has no deadline: its result arrives by notification or from its session, and the user cancels a slow peer whose session holds no result. An unattended run cannot drop the deadline, because a hung peer sends no notification and no person is there to cancel it; at the deadline it checks the peer's session before it cancels the peer as failed, and a result taken from the session is the peer's artifact, with the `task_status` read as the identity receipt.
 
-The check confines `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `childRunId` to the two pinned sections, so a rule added under another heading cannot restore the blocking wait for a run with a person present.
+The check confines `t3_thread_wait`, `t3_thread_read`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `childRunId` to the two pinned sections, so a rule added under another heading cannot restore the blocking wait for a run with a person present.
 
 ## Why This Works
 
@@ -65,13 +74,19 @@ The check confines `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, and `
 - The notification text carries only task IDs, so the result is read with `task_status`.
 - A child's question (`user_input`) wakes the parent with a notification naming the pending request.
 - A child paused on an approval does not wake the parent, but the parent thread shows "Subagent needs approval". Children inherit the parent's runtime mode, so such pauses are rare.
+- A run that writes its result and never ends sends no notification at all, so the notification covers every state except this one; the session check and the wake cover it.
+
+The session check reads the `activity` view, not `messages`, because `messages` returns only user and assistant messages and hides tool calls: a task that wrote an interim message and then went on running tools would look stalled and be cancelled with its real work unwritten. The `activity` view reports each item's `status`, so a still-running item shows. The single 10-minute background wait is the one exception to the rule against starting a timer, because a check that runs only on turns the agent already has misses the main case: the sibling peer's notification arrives before the stall and no later turn comes. No stall's `task_status` state was captured, so the rule keys on "not terminal", which covers `working` and `waiting_for_children`, and the first live stall should record which one it was.
 
 ## Prevention
 
 - Before writing an agent rule that waits on T3 Code delegated work, check that it leaves the thread open to the user; a rule that blocks in a tool shuts the user out until the work ends.
 - A rule that drops a deadline or ends the turn must name who notices a hung task when no person is present; with nobody there, a missing notification stalls the run for good.
 - Map every `task_status.workState` value and `hasPendingQuestion` to the signal that reports it. A rule that re-calls a waiter must name the state that guarantees the waiter has something to block on, and "call it again" is a polling loop unless the call is bound to a specific non-terminal run.
-- The `agent-instructions` check pins the sentences but cannot show agents follow them; only a live T3 Code run with a message sent mid-delegation, a nested-work child, or a child that asks a question exercises these branches (see [Verification](../../../../docs/verification.md)).
+- A rule that waits on a notification needs a second path for a task that never sends one: a check of the task's own output on each turn, and, with a person present, one timed wake so a turn comes without any event. Bound the wake to one pending command, or a forgotten timer outlives the step.
+- Before cancelling a task on a deadline or a time bound, read what it already wrote; a deadline that discards a finished result throws work away.
+- Check a task's liveness in a view that shows tool calls and item status, not one that shows messages only.
+- The `agent-instructions` check pins the sentences but cannot show agents follow them; only a live T3 Code run with a message sent mid-delegation, a nested-work child, a child that asks a question, or a task that writes its result and never finishes exercises these branches (see [Verification](../../../../docs/verification.md)).
 
 ## Related Issues
 
