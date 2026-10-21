@@ -52,19 +52,22 @@
     byte comparison stays green across a prose edit of the template; the
     pinned sentences do not.
   - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `timeoutMs`, `childRunId`,
-    `t3_thread_read`, and `runtimeMode` appear only inside `# T3 Code` and
-    `# Compound Engineering`, where every sentence is pinned, so a rule
-    elsewhere cannot restore the blocking wait for a run with a person
-    present, change when a result is taken from a task's session, restore
-    inheritance of the thread's mode, or request a supervised mode.
+    `t3_thread_read`, `runtimeMode`, `full-access`, `full access`,
+    `approval-required`, `auto-accept-edits`, and `pendingApproval` appear
+    only inside `# T3 Code` and `# Compound Engineering`, where every
+    sentence is pinned, so a rule elsewhere cannot restore the blocking wait
+    for a run with a person present, change when a result is taken from a
+    task's session, restore inheritance of the thread's mode, request a
+    supervised mode, or change how a paused approval is handled.
   - the file names no removed section, harness, model, or rule, matched
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
     `@name@` placeholder.
   - the per-file rules fire: the Claude Code rendering for the fake key
     passes them, and each mutant in `selfTestMutants` (a removed, a negated,
-    and an out-of-section rule, for the wait, the launch mode, and the
-    confined terms) fails them with its own message, so a guard
+    an inverted, and an out-of-section rule, for the wait, the launch
+    mode, the rejected-mode relaunch, the approval note, and the confined
+    terms) fails them with its own message, so a guard
     that stops failing turns this red. See
     .compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md
 
@@ -310,7 +313,10 @@ let
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
   allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, and a wait that blocks on the task's own run stay allowed.";
-  fullAccessSentence = "Launch every delegated task, cross-model peers and implementation units included, with `runtimeMode: \"full-access\"`, so it never pauses on an approval nobody sees.";
+  fullAccessSentence = "Launch every delegated task, cross-model peers and implementation units included, with `runtimeMode: \"full-access\"`, even though `delegate_task`'s own description says to leave it unset, so the task never pauses on an approval nobody sees.";
+  rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer, but a failure of the relaunch is one.";
+  noteSentence = "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
+  oldNoteSentence = "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
 
   t3CodeSentences = [
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
@@ -321,17 +327,17 @@ let
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
     fullAccessSentence
-    "When `delegate_task` rejects that launch with an error that names the runtime mode, because your thread runs below Full Access or the target provider does not offer that mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer."
+    rejectionSentence
     "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer and for an implementation unit in a Grok or OpenCode session."
     "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
     "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another."
     "Tell tasks that share one checkout not to commit, stage, or format files beyond their own, and commit their results yourself."
-    "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch."
+    "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch, except for the relaunch without `runtimeMode` after a rejected runtime mode, which takes a new one."
     "Launch a task that needs an earlier task's result only after you have read that result."
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
-    "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it."
+    noteSentence
     "Each notification T3 Code delivers, whether it starts your turn or arrives with a user message, names the tasks that reached a terminal state or have a question; read each finished task's result with one `task_status` call."
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
@@ -346,6 +352,7 @@ let
     "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
+    "In a run with no person present, when a task's `task_status` shows `pendingApproval`, nobody can approve it, so cancel it with `task_cancel` and count it as failed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
     "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present."
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
@@ -437,7 +444,7 @@ let
 
   # Terms of the in-turn delegated wait and the peer deadline, which apply
   # only to a run with no person present, of the session check that takes
-  # a stalled task's result, and of the launch mode. They may appear only
+  # a stalled task's result, and of the launch mode and approvals. They may appear only
   # inside the checked `# T3 Code` and `# Compound Engineering` sections,
   # where every sentence is pinned, so a rule added elsewhere cannot bring the
   # blocking wait back for a run with a person present, change when a session
@@ -450,6 +457,11 @@ let
     "childRunId"
     "t3_thread_read"
     "runtimeMode"
+    "full-access"
+    "full access"
+    "approval-required"
+    "auto-accept-edits"
+    "pendingApproval"
   ];
 
   removedTerms = [
@@ -783,6 +795,24 @@ let
       line = "- Launch every review task with `runtimeMode: \"approval-required\"`.";
       edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
       expect = "names a delegation term outside the T3 Code and Compound Engineering sections: runtimeMode";
+    }
+    {
+      name = "rejection sentence inverted";
+      line = "- ${rejectionSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { sub(/ is not a failed/, " is a failed") } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "approval note made unconditional again";
+      line = "- ${noteSentence}";
+      edit = ''old=${esc "- ${oldNoteSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "full access rule added under # Git";
+      line = "- Ask for full access only when the user asks for it.";
+      edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: full access";
     }
     {
       name = "self-wake prohibition sentence removed";
