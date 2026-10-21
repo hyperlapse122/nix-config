@@ -3,23 +3,56 @@
 The helper's network call and its Nix evaluation go through overridable
 commands, so these tests feed it fixture catalogs and record what the stub
 fetch command received instead of making network calls.
+
+The models in use are the real home/h82/agents/synthetic-models.nix, never
+a copy: the flake check passes its evaluated JSON in
+SYNTHETIC_MODELS_SOURCE_JSON, and a local run evaluates it with nix.
 """
 
+import atexit
 import copy
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/synthetic-models-watch"
 FIXTURES = ROOT / "tests/fixtures/synthetic-models"
-SOURCE = FIXTURES / "source.json"
 SNAPSHOT = FIXTURES / "catalog-2026-10-21.json"
 SOURCE_FILE = "home/h82/agents/synthetic-models.nix"
+
+
+def evaluated_source():
+    """The path of the real model source as JSON."""
+    given = os.environ.get("SYNTHETIC_MODELS_SOURCE_JSON")
+    if given:
+        return Path(given)
+    fd, name = tempfile.mkstemp(suffix=".json")
+    atexit.register(os.unlink, name)
+    with os.fdopen(fd, "w") as f:
+        subprocess.run(
+            ["nix", "eval", "--json", "--file", str(ROOT / SOURCE_FILE)],
+            stdout=f, check=True, stdin=subprocess.DEVNULL,
+        )
+    return Path(name)
+
+
+SOURCE = evaluated_source()
+
+
+def load_watch():
+    """The script as a module, for its pure functions."""
+    loader = importlib.machinery.SourceFileLoader("synthetic_models_watch", str(SCRIPT))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
 URL = "https://api.synthetic.new/openai/v1/models"
 DETECTED = "2026-10-21T09:00:00Z"
 KEY = "syn-fake-key-0123456789"
@@ -43,14 +76,29 @@ outcome = outcomes[min(len(calls), len(outcomes)) - 1]
 if isinstance(outcome, int):
     if outcome == 22:
         sys.stderr.write('curl: (22) The requested URL returned error: 429\\n')
+    if outcome == 6:
+        sys.stderr.write('curl: (6) rejected header ' + calls[-1]['stdin'].strip() + '\\n')
     sys.exit(outcome)
 sys.stdout.write(outcome)
 """
 
-FAKE_EVAL = """#!/usr/bin/env python3
-import os, sys
-open(os.environ['FAKE_EVAL_LOG'], 'w').write('\\n'.join(sys.argv[1:]))
+# Stand in for `nix` and `curl` on PATH, so the default command lines the
+# script builds are the ones under test. Each records its argv.
+FAKE_NIX = """#!{python}
+import json, os, sys
+json.dump(sys.argv[1:], open(os.environ['FAKE_NIX_LOG'], 'w'))
 sys.stdout.write(open(os.environ['FAKE_EVAL_SOURCE']).read())
+"""
+
+FAKE_CURL = """#!{python}
+import json, os, sys
+json.dump({{'argv': sys.argv[1:], 'stdin': sys.stdin.read()}}, open(os.environ['FAKE_CURL_LOG'], 'w'))
+sys.stdout.write(open(os.environ['FAKE_CATALOG']).read())
+"""
+
+SLOW_NIX = """#!{python}
+import time
+time.sleep(30)
 """
 
 
@@ -164,6 +212,7 @@ class ClassificationTest(WatchTestCase):
             self.assertIn(needle, first)
         for needle in (f"`{KIMI}`", "removed", SOURCE_FILE):
             self.assertIn(needle, result["title"])
+        self.assertIn("Before you edit the source, confirm on Synthetic that the ID names the model you expect.", body)
 
     def test_an_alias_row_does_not_keep_a_removed_model_present(self):
         catalog = without(snapshot(), KIMI)
@@ -214,26 +263,90 @@ class ClassificationTest(WatchTestCase):
             row("hf:deepseek-ai/DeepSeek-V4.0-Flash-1201", later + created_of(catalog, DEEPSEEK)),
         ))
 
-    def test_an_equal_created_is_not_newer_and_a_later_one_is(self):
+    def test_a_higher_version_on_the_same_created_is_newer(self):
         catalog = snapshot()
         same = created_of(catalog, GLM)
-        self.assert_clean(with_rows(catalog, row("hf:zai-org/GLM-5.4", same)))
-        result, _ = self.drift(with_rows(catalog, row("hf:zai-org/GLM-5.4", same + 1)))
+        result, _ = self.drift(with_rows(catalog, row("hf:zai-org/GLM-5.4", same)))
         self.assertEqual(self.finding(result, "new-version", "glm")["candidates"], ["hf:zai-org/GLM-5.4"])
+
+    def test_a_higher_version_with_an_earlier_or_missing_created_is_newer(self):
+        catalog = snapshot()
+        earlier = created_of(catalog, GLM) - 86400
+        no_created = row("hf:zai-org/GLM-6", None)
+        del no_created["created"]
+        result, _ = self.drift(with_rows(catalog, row("hf:zai-org/GLM-5.4", earlier), no_created))
+        self.assertEqual(
+            self.finding(result, "new-version", "glm")["candidates"],
+            ["hf:zai-org/GLM-6", "hf:zai-org/GLM-5.4"],
+        )
+
+    def test_an_equal_version_is_newer_only_with_a_later_created(self):
+        catalog = snapshot()
+        base = created_of(catalog, DEEPSEEK)
+        candidate = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1120"
+        no_created = row(candidate, None)
+        del no_created["created"]
+        for sibling in (row(candidate, base), row(candidate, "1793000000"), no_created):
+            with self.subTest(created=sibling.get("created", "missing")):
+                self.assert_clean(with_rows(catalog, sibling))
+        result, _ = self.drift(with_rows(catalog, row(candidate, base + 1)))
+        self.assertEqual(self.finding(result, "new-version", "deepseek")["candidates"], [candidate])
+
+    def test_an_equal_version_is_not_newer_when_the_model_in_use_has_no_created(self):
+        catalog = snapshot()
+        for model in catalog["data"]:
+            if model["id"] == DEEPSEEK:
+                del model["created"]
+        self.assert_clean(with_rows(catalog, row("hf:deepseek-ai/DeepSeek-V4.1-Flash-1120", 1793000000)))
+        result, _ = self.drift(with_rows(catalog, row("hf:deepseek-ai/DeepSeek-V4.2-Flash", 1)))
+        self.assertEqual(
+            self.finding(result, "new-version", "deepseek")["candidates"], ["hf:deepseek-ai/DeepSeek-V4.2-Flash"]
+        )
 
     def test_an_equal_version_with_a_later_created_is_newer(self):
         catalog = snapshot()
         result, _ = self.drift(with_rows(catalog, row("hf:moonshotai/Kimi-K3.0", created_of(catalog, KIMI) + 1)))
         self.assertEqual(self.finding(result, "new-version", "kimi")["candidates"], ["hf:moonshotai/Kimi-K3.0"])
 
-    def test_alias_and_syn_rows_are_ignored(self):
+    def test_syn_rows_are_ignored_and_an_hf_alias_row_is_a_candidate(self):
         catalog = snapshot()
         later = created_of(catalog, GLM) + 86400
         self.assert_clean(with_rows(
             catalog,
-            row("hf:zai-org/GLM-6", later, alias_of="GLM 6"),
             row("syn:zai-org/GLM-6", later),
+            row("syn:zai-org/GLM-6", later, alias_of="GLM 6"),
+            row("hf:zai-org/GLM-6-Air", later, alias_of="GLM 6 Air"),
         ))
+        result, _ = self.drift(with_rows(catalog, row("hf:zai-org/GLM-6", later, alias_of="GLM 6")))
+        self.assertEqual([f["kind"] for f in result["findings"]], ["new-version"])
+        self.assertEqual(self.finding(result, "new-version", "glm")["candidates"], ["hf:zai-org/GLM-6"])
+
+    def test_a_removed_model_lists_its_lineage_candidates(self):
+        catalog = with_rows(
+            without(snapshot(), KIMI),
+            row("hf:moonshotai/Kimi-K3.1", 1),
+            row("hf:moonshotai/Kimi-K3.0", 2),
+            row("hf:moonshotai/Kimi-K2.9", 3),
+            row("hf:moonshotai/Kimi-K3.1-Code", 4),
+        )
+        result, body = self.drift(catalog)
+        finding = self.finding(result, "removed", "kimi")
+        self.assertEqual(finding["candidates"], ["hf:moonshotai/Kimi-K3.1", "hf:moonshotai/Kimi-K3.0"])
+        self.assertIn("candidate `hf:moonshotai/Kimi-K3.1`", body.splitlines()[0])
+
+    def test_a_row_can_be_both_a_new_version_and_changed(self):
+        catalog = snapshot()
+        for model in catalog["data"]:
+            if model["id"] == GLM:
+                model["reasoning_parameters"]["efforts"] = ["low", "high"]
+        later = created_of(catalog, GLM) + 1
+        result, body = self.drift(with_rows(catalog, row("hf:zai-org/GLM-5.4", later)))
+        self.assertEqual(sorted(f["kind"] for f in result["findings"]), ["changed", "new-version"])
+        self.assertEqual(self.finding(result, "new-version", "glm")["candidates"], ["hf:zai-org/GLM-5.4"])
+        self.assertEqual(self.finding(result, "changed", "glm")["missingEfforts"], ["max"])
+        first = body.splitlines()[0]
+        self.assertIn("has a newer build `hf:zai-org/GLM-5.4`", first)
+        self.assertIn("no longer offers effort `max`", first)
 
     def test_syn_rows_are_not_counted_as_rejected(self):
         baseline = self.assert_clean(snapshot())["rejectedCatalogEntries"]
@@ -320,15 +433,107 @@ class FingerprintTest(WatchTestCase):
         changed_low, _ = self.drift(catalog_low)
         self.assertNotEqual(changed["fingerprint"], changed_low["fingerprint"])
 
-    def test_offered_efforts_alone_do_not_change_the_fingerprint(self):
-        fingerprints = []
+    def test_offered_efforts_alone_change_the_body_digest_but_not_the_fingerprint(self):
+        results, bodies = [], []
         for efforts in (["low", "high"], ["high"]):
             catalog = snapshot()
             for model in catalog["data"]:
                 if model["id"] == GLM:
                     model["reasoning_parameters"]["efforts"] = efforts
-            fingerprints.append(self.drift(catalog)[0]["fingerprint"])
-        self.assertEqual(fingerprints[0], fingerprints[1])
+            result, body = self.drift(catalog)
+            results.append(result)
+            bodies.append(body)
+        self.assertEqual(results[0]["fingerprint"], results[1]["fingerprint"])
+        self.assertNotEqual(results[0]["bodyDigest"], results[1]["bodyDigest"])
+        for result, body in zip(results, bodies):
+            self.assertRegex(result["bodyDigest"], r"^sha256:[0-9a-f]{64}$")
+            self.assertIn(f"<!-- synthetic-models-watch body: {result['bodyDigest']} -->", body)
+
+    def test_the_detection_time_alone_keeps_the_body_digest(self):
+        first, _ = self.drift(without(snapshot(), KIMI))
+        proc = self.run_watch(without(snapshot(), KIMI), extra=["--detected-at", "2026-10-22T09:00:00Z"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        again = json.loads(self.result.read_text())
+        self.assertEqual(again["bodyDigest"], first["bodyDigest"])
+        self.assertIn("2026-10-22T09:00:00Z", self.body.read_text())
+
+
+class IssueStateTest(WatchTestCase):
+    def state(self, issue):
+        path = self.root / "issue.json"
+        path.write_text(json.dumps(issue))
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--issue-state", str(path)], capture_output=True, text=True
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def notice(self, kind):
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--notice", kind], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return proc.stdout
+
+    def test_it_reads_back_the_marks_the_body_carries(self):
+        result, body = self.drift(without(snapshot(), KIMI))
+        state = self.state({"body": body, "comments": []})
+        self.assertEqual(state, {
+            "fingerprint": result["fingerprint"],
+            "bodyDigest": result["bodyDigest"],
+            "notice": None,
+        })
+
+    def test_a_body_without_marks_has_none(self):
+        self.assertEqual(
+            self.state({"body": "Edit by hand.", "comments": []}),
+            {"fingerprint": None, "bodyDigest": None, "notice": None},
+        )
+
+    def test_the_latest_notice_wins(self):
+        comments = [
+            {"body": self.notice("unreachable")},
+            {"body": "a person's comment"},
+            {"body": self.notice("reachable")},
+            {"body": self.notice("unreachable")},
+        ]
+        self.assertEqual(self.state({"body": "", "comments": comments})["notice"], "unreachable")
+        self.assertEqual(self.state({"body": "", "comments": comments[:3]})["notice"], "reachable")
+
+    def test_the_unreachable_notice_names_the_catalog_and_the_secret(self):
+        text = self.notice("unreachable")
+        self.assertIn("cannot reach Synthetic's catalog", text)
+        self.assertIn("SYNTHETIC_API_KEY", text)
+        self.assertIn("<!-- synthetic-models-watch notice: unreachable -->", text)
+
+
+class TitleTest(unittest.TestCase):
+    def setUp(self):
+        self.watch = load_watch()
+
+    def removed(self, index, uses):
+        return {"kind": "removed", "entry": f"e{index}", "id": f"hf:org/M-{index}", "uses": uses, "candidates": []}
+
+    def test_a_short_title_keeps_the_uses(self):
+        title = self.watch.title([self.removed(1, ["reviewer"])])
+        self.assertIn("(uses `reviewer`)", title)
+
+    def test_a_long_title_drops_the_uses_first(self):
+        uses = [f"role-{n}-with-a-long-name" for n in range(8)]
+        findings = [self.removed(1, uses)]
+        full = self.watch.summary(findings[0])
+        self.assertGreater(len(full), self.watch.TITLE_LIMIT)
+        title = self.watch.title(findings)
+        self.assertLessEqual(len(title), self.watch.TITLE_LIMIT)
+        self.assertNotIn("uses", title)
+        self.assertIn("`hf:org/M-1` removed; no candidate in its lineage", title)
+
+    def test_the_source_evaluation_has_a_default_time_limit(self):
+        self.assertEqual(self.watch.DEFAULT_EVAL_TIMEOUT, 300)
+
+    def test_a_title_still_too_long_falls_back_to_a_count(self):
+        findings = [self.removed(n, []) for n in range(12)]
+        title = self.watch.title(findings)
+        self.assertEqual(title, f"Reconcile {SOURCE_FILE}: 12 Synthetic model differences")
+        self.assertLessEqual(len(title), self.watch.TITLE_LIMIT)
 
 
 class FetchTest(WatchTestCase):
@@ -394,32 +599,79 @@ class FetchTest(WatchTestCase):
             self.assertNotIn(KEY, text)
 
     def test_a_failing_fetch_with_a_key_never_prints_it(self):
-        proc = self.run_fetch([22, 22], key=KEY)
+        proc = self.run_fetch([6, 6], key=KEY)
         self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(len(self.calls()), 2)
         self.assertNotIn(KEY, proc.stdout + proc.stderr)
+        self.assertIn("attempt 2: status 6", proc.stderr)
 
+    def test_a_failing_fetch_without_a_key_reports_curl_s_reason(self):
+        proc = self.run_fetch([22, 22])
+        self.assertIn("attempt 2: status 22 (curl: (22) The requested URL returned error: 429)", proc.stderr)
 
-class SourceTest(WatchTestCase):
-    def test_the_default_source_is_evaluated_with_nix(self):
-        stub = self.root / "fake-eval"
-        stub.write_text(FAKE_EVAL)
-        stub.chmod(0o755)
-        log = self.root / "eval-log"
-        catalog = self.root / "catalog.json"
-        catalog.write_text(json.dumps(without(snapshot(), KIMI)))
+    def test_the_default_fetch_is_curl_with_a_time_limit(self):
+        stubs = self.root / "bin"
+        stubs.mkdir()
+        curl = stubs / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
+        catalog = self.root / "served.json"
+        catalog.write_text(json.dumps(snapshot()))
+        log = self.root / "curl-log.json"
         env = dict(os.environ)
+        env.pop("SYNTHETIC_MODELS_FETCH", None)
         env.update({
-            "SYNTHETIC_MODELS_EVAL": f"{sys.executable} {stub}",
-            "FAKE_EVAL_LOG": str(log),
-            "FAKE_EVAL_SOURCE": str(SOURCE),
+            "PATH": f"{stubs}:{env.get('PATH', '')}",
+            "SYNTHETIC_API_KEY": KEY,
+            "FAKE_CURL_LOG": str(log),
+            "FAKE_CATALOG": str(catalog),
         })
         proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--catalog", str(catalog), "--result", str(self.result)],
+            [sys.executable, str(SCRIPT), "--source-json", str(SOURCE), "--result", str(self.result)],
             capture_output=True, text=True, env=env,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(log.read_text().splitlines(), [SOURCE_FILE])
+        call = json.loads(log.read_text())
+        self.assertEqual(call["argv"], ["-sSfL", "--max-time", "60", "-H", "@-", URL])
+        self.assertEqual(call["stdin"], f"Authorization: Bearer {KEY}\n")
+        self.assertEqual(json.loads(self.result.read_text())["status"], "clean")
+
+
+class SourceTest(WatchTestCase):
+    def run_with_nix(self, stub_text, extra=()):
+        stubs = self.root / "bin"
+        stubs.mkdir()
+        nix = stubs / "nix"
+        nix.write_text(stub_text.format(python=sys.executable))
+        nix.chmod(0o755)
+        catalog = self.root / "catalog.json"
+        catalog.write_text(json.dumps(without(snapshot(), KIMI)))
+        env = dict(os.environ)
+        env.pop("SYNTHETIC_MODELS_EVAL", None)
+        env.update({
+            "PATH": f"{stubs}:{env.get('PATH', '')}",
+            "FAKE_NIX_LOG": str(self.root / "nix-log.json"),
+            "FAKE_EVAL_SOURCE": str(SOURCE),
+        })
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--catalog", str(catalog), "--result", str(self.result), *extra],
+            capture_output=True, text=True, env=env,
+        )
+
+    def test_the_default_source_is_evaluated_with_nix(self):
+        proc = self.run_with_nix(FAKE_NIX)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        argv = json.loads((self.root / "nix-log.json").read_text())
+        self.assertEqual(argv, ["eval", "--json", "--file", SOURCE_FILE])
         self.assertEqual(json.loads(self.result.read_text())["status"], "drift")
+
+    def test_a_hung_evaluation_times_out(self):
+        started = time.monotonic()
+        proc = self.run_with_nix(SLOW_NIX, extra=["--eval-timeout", "0.5"])
+        self.assertLess(time.monotonic() - started, 20)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(f"evaluating {SOURCE_FILE} timed out after 0.5 seconds", proc.stderr)
+        self.assertFalse(self.result.exists())
 
     def test_a_lineage_that_misses_its_own_id_is_refused(self):
         source = json.loads(SOURCE.read_text())

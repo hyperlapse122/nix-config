@@ -515,15 +515,42 @@
               );
             in
             pythonScriptCheckWith {
+              # The real source must match the snapshot, and the tests read it,
+              # never a copy that can drift.
               setup = ''
                 mkdir -p tests/fixtures
                 cp -r ${./tests/fixtures/synthetic-models} tests/fixtures/synthetic-models
-              '';
-              extra = ''
                 python scripts/synthetic-models-watch --source-json ${realSource} \
                   --catalog tests/fixtures/synthetic-models/catalog-2026-10-21.json --result result.json
+                python - <<'PY'
+                import json, sys
+                result = json.load(open("result.json"))
+                if result["status"] != "clean" or result["findings"] != []:
+                    sys.exit("synthetic-models-watch: home/h82/agents/synthetic-models.nix drifts from the "
+                             f"2026-10-21 catalog snapshot: {json.dumps(result['findings'])}")
+                PY
+                export SYNTHETIC_MODELS_SOURCE_JSON=${realSource}
               '';
             } "synthetic-models-watch" ./scripts/synthetic-models-watch ./tests/test_synthetic_models_watch.py;
+          synthetic-models-reconcile =
+            pkgs.runCommand "synthetic-models-reconcile-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.python3
+                  pkgs.jq
+                  pkgs.gawk
+                ];
+              }
+              ''
+                export PYTHONDONTWRITEBYTECODE=1
+                bash ${./tests/synthetic-models-reconcile.sh} \
+                  ${./.github/workflows/synthetic-models.yml} ${./scripts/synthetic-models-watch} \
+                  ${./tests/fixtures/synthetic-models/catalog-2026-10-21.json} \
+                  ${pkgs.writeText "synthetic-models.json" (
+                    builtins.toJSON (import ./home/h82/agents/synthetic-models.nix)
+                  )}
+                touch $out
+              '';
           t3code-antigravity-install =
             pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''

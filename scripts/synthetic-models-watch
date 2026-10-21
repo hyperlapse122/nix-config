@@ -6,21 +6,31 @@ Reads the model source home/h82/agents/synthetic-models.nix (through
 list, and classifies each model in use:
 
 - removed: its ID is missing from the catalog.
-- new-version: a catalog ID matches the model's lineage, its captured version
-  is not lower, and its `created` is later. An equal `created` is not newer.
+- new-version: a catalog ID matches the model's lineage and is newer: its
+  captured version is higher, whatever its `created`, or equal with a later
+  `created`. An equal version whose `created` is equal or missing is not
+  newer, and neither is a lower version.
 - changed: the catalog's `reasoning_parameters.efforts` lacks an effort the
   source assigns to the model.
 
-Rows carrying `alias_of` and `syn:` IDs are ignored. Every other catalog ID
-must match ^hf:<org>/<name> of [A-Za-z0-9._-]; the rest are reported only as
-a count, so no third-party text reaches the issue except inside code spans.
+`syn:` IDs are ignored. A row carrying `alias_of` never keeps a model in
+use present, but an `hf:` alias row in a model's lineage can be a newer
+candidate. Every other catalog ID must match ^hf:<org>/<name> of
+[A-Za-z0-9._-]; the rest are reported only as a count, so no third-party text
+reaches the issue except inside code spans.
 
-Writes a JSON result (status, findings, a fingerprint of the findings, and
-the issue title) and, when there is drift, an issue body whose first line
-states the whole request. A fetch that fails, or answers 429, is retried
-once after a wait; a second failure or an empty catalog exits non-zero and
-writes nothing. SYNTHETIC_API_KEY, when set and non-empty, is sent as a
-bearer header on the fetch command's stdin, never in its argv.
+Writes a JSON result (status, findings, a fingerprint of the findings, a
+digest of the issue body without its detection time, and the issue title)
+and, when there is drift, an issue body whose first line states the whole
+request. A fetch that fails, or answers 429, is retried once after a wait; a
+second failure or an empty catalog exits non-zero and writes nothing.
+SYNTHETIC_API_KEY, when set and non-empty, is sent as a bearer header on the
+fetch command's stdin, never in its argv.
+
+The script owns every marker the workflow reads back from the issue:
+`--issue-state` reads `gh issue view --json body,comments` output and prints
+the fingerprint, the body digest, and the latest catalog notice, and
+`--notice` prints the comment for a notice kind.
 """
 
 import argparse
@@ -39,9 +49,25 @@ DEFAULT_URL = "https://api.synthetic.new/openai/v1/models"
 DEFAULT_FETCH = "curl -sSfL --max-time 60"
 DEFAULT_EVAL = "nix eval --json --file"
 DEFAULT_RETRY_WAIT = 30
+DEFAULT_EVAL_TIMEOUT = 300
 KEY_VARIABLE = "SYNTHETIC_API_KEY"
 MARKER = "synthetic-models-watch fingerprint"
+DIGEST_MARKER = "synthetic-models-watch body"
+NOTICE_MARKER = "synthetic-models-watch notice"
 TITLE_LIMIT = 256
+# Captured versions are padded to this many parts when sorting candidates.
+VERSION_WIDTH = 8
+
+DIGEST_PATTERN = r"sha256:[0-9a-f]{64}"
+FINGERPRINT_LINE = re.compile(f"<!-- {MARKER}: ({DIGEST_PATTERN}) -->")
+DIGEST_LINE = re.compile(f"<!-- {DIGEST_MARKER}: ({DIGEST_PATTERN}) -->")
+NOTICE_LINE = re.compile(f"<!-- {NOTICE_MARKER}: (unreachable|reachable) -->")
+NOTICES = {
+    "unreachable": "The watch cannot reach Synthetic's catalog, so this issue may be stale. "
+    "It stays as it is until a run fetches the catalog again; check the workflow's failing run "
+    "and the `SYNTHETIC_API_KEY` Actions secret.",
+    "reachable": "The watch reaches Synthetic's catalog again, and this issue reflects its latest run.",
+}
 
 ID_PATTERN = re.compile(r"hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 EFFORT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
@@ -76,16 +102,20 @@ def read_json(path):
         raise Failure(f"cannot read {path}: {exc}") from None
 
 
-def load_source(source, source_json):
+def load_source(source, source_json, timeout):
     if source_json:
         return read_json(source_json)
-    proc = subprocess.run(
-        command_from("SYNTHETIC_MODELS_EVAL", DEFAULT_EVAL) + [source],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        env=child_env(),
-    )
+    try:
+        proc = subprocess.run(
+            command_from("SYNTHETIC_MODELS_EVAL", DEFAULT_EVAL) + [source],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=child_env(),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise Failure(f"evaluating {source} timed out after {timeout:g} seconds") from None
     if proc.returncode != 0:
         raise Failure(f"evaluating {source} failed with status {proc.returncode}: {proc.stderr.strip()}")
     try:
@@ -136,10 +166,11 @@ def version_tuple(text):
     return tuple(int(part) for part in text.split("."))
 
 
-def version_not_lower(candidate, current):
+def compare_versions(candidate, current):
+    """-1, 0, or 1 as the candidate's version is lower, equal, or higher."""
     width = max(len(candidate), len(current))
     pad = lambda v: v + (0,) * (width - len(v))
-    return pad(candidate) >= pad(current)
+    return (pad(candidate) > pad(current)) - (pad(candidate) < pad(current))
 
 
 def fetch(url, retry_wait):
@@ -174,13 +205,17 @@ def fetch(url, retry_wait):
 
 
 def catalog_rows(catalog):
-    """Return (valid rows by ID, rejected count) without alias or syn: rows."""
+    """Return (valid rows by ID, valid alias rows by ID, rejected count).
+
+    syn: rows are dropped. An alias row never keeps a model present, so it
+    goes to its own map, which only the lineage search reads.
+    """
     data = catalog.get("data") if isinstance(catalog, dict) else None
     if not isinstance(data, list):
         raise Failure("the catalog has no data list")
-    rows, rejected = {}, 0
+    rows, aliases, rejected = {}, {}, 0
     for row in data:
-        if not isinstance(row, dict) or "alias_of" in row:
+        if not isinstance(row, dict):
             continue
         model_id = row.get("id")
         if isinstance(model_id, str) and model_id.startswith("syn:"):
@@ -188,10 +223,13 @@ def catalog_rows(catalog):
         if not isinstance(model_id, str) or not ID_PATTERN.fullmatch(model_id):
             rejected += 1
             continue
-        rows[model_id] = row
+        if "alias_of" in row:
+            aliases.setdefault(model_id, row)
+        else:
+            rows[model_id] = row
     if not rows:
         raise Failure("the catalog lists no models")
-    return rows, rejected
+    return rows, aliases, rejected
 
 
 def created(row):
@@ -207,24 +245,39 @@ def efforts_of(row):
     return [e for e in efforts if isinstance(e, str) and EFFORT_PATTERN.fullmatch(e)]
 
 
-def lineage_candidates(model, rows, current_created):
-    """IDs newer than the model in its lineage, newest first."""
+def is_newer(order, when, current_created):
+    """A higher version is newer; created orders only equal versions."""
+    if order != 0:
+        return order > 0
+    return when is not None and current_created is not None and when > current_created
+
+
+def lineage_candidates(model, rows, current_created, removed=False):
+    """IDs in the model's lineage, newest first.
+
+    For a model still listed, only builds newer than it; for a removed one,
+    every build whose version is not lower, as its possible replacements.
+    """
     found = []
     for model_id, row in rows.items():
         if model_id == model["id"]:
             continue
         match = model["lineage"].fullmatch(model_id)
-        if not match or not version_not_lower(version_tuple(match.group(1)), model["version"]):
+        if not match:
             continue
+        version = version_tuple(match.group(1))
+        order = compare_versions(version, model["version"])
         when = created(row)
-        if current_created is not None and (when is None or when <= current_created):
+        if not (order >= 0 if removed else is_newer(order, when, current_created)):
             continue
-        found.append((when if when is not None else 0, version_tuple(match.group(1)), model_id))
+        padded = version + (0,) * (VERSION_WIDTH - len(version))
+        found.append((padded, when if when is not None else float("-inf"), model_id))
     return [model_id for _, _, model_id in sorted(found, reverse=True)]
 
 
-def classify(models, rows):
+def classify(models, rows, aliases):
     findings = []
+    searched = {**aliases, **rows}
     for name in sorted(models):
         model = models[name]
         row = rows.get(model["id"])
@@ -235,10 +288,10 @@ def classify(models, rows):
                 "entry": name,
                 "id": model["id"],
                 "uses": uses,
-                "candidates": lineage_candidates(model, rows, None),
+                "candidates": lineage_candidates(model, searched, None, removed=True),
             })
             continue
-        candidates = lineage_candidates(model, rows, created(row))
+        candidates = lineage_candidates(model, searched, created(row))
         if candidates:
             findings.append({
                 "kind": "new-version",
@@ -264,12 +317,20 @@ def classify(models, rows):
     return findings
 
 
+def sha256(text):
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
 def fingerprint(findings):
+    """What the drift is, without the efforts Synthetic happens to offer.
+
+    A change here edits the issue and comments on it; a change only in the
+    body (offered efforts, the rejected count) edits it silently.
+    """
     if not findings:
         return None
     stable = [{k: v for k, v in f.items() if k != "offeredEfforts"} for f in findings]
-    digest = hashlib.sha256(json.dumps(stable, sort_keys=True).encode()).hexdigest()
-    return f"sha256:{digest}"
+    return sha256(json.dumps(stable, sort_keys=True))
 
 
 def code(value):
@@ -303,13 +364,11 @@ def title(findings):
     return f"Reconcile {SOURCE_FILE}: {len(findings)} Synthetic model differences"
 
 
-def issue_body(findings, mark, rejected, detected_at):
+def body_lines(findings, rejected, detected_at):
     lines = [
         f"Edit {code(SOURCE_FILE)} for Synthetic model drift detected {detected_at}: "
         + "; ".join(summary(f) for f in findings)
         + ".",
-        "",
-        f"<!-- {MARKER}: {mark} -->",
         "",
         "## Findings",
     ]
@@ -329,11 +388,55 @@ def issue_body(findings, mark, rejected, detected_at):
         f"Change the entry's `id` or the efforts in {code(SOURCE_FILE)}, then run "
         "`nix run .#synthetic-models-watch` to confirm no drift remains. "
         "The daily workflow closes this issue on its first run that finds none.",
+        "",
+        "Synthetic's catalog, not this repository, publishes every candidate ID above. "
+        "Before you edit the source, confirm on Synthetic that the ID names the model you expect.",
     ]
     if rejected:
         noun = "entry was" if rejected == 1 else "entries were"
         lines += ["", f"{rejected} catalog {noun} ignored for an ID outside `^hf:<org>/<name>$`."]
+    return lines
+
+
+def body_digest(findings, rejected):
+    """A digest of the issue body that ignores the detection time."""
+    return sha256("\n".join(body_lines(findings, rejected, "")))
+
+
+def issue_body(findings, mark, rejected, detected_at):
+    lines = body_lines(findings, rejected, detected_at)
+    lines[1:1] = [
+        "",
+        f"<!-- {MARKER}: {mark} -->",
+        f"<!-- {DIGEST_MARKER}: {body_digest(findings, rejected)} -->",
+    ]
     return "\n".join(lines) + "\n"
+
+
+def issue_state(path):
+    """The marks the watch left on an issue: `gh issue view --json body,comments`."""
+    issue = read_json(path)
+    if not isinstance(issue, dict):
+        raise Failure(f"{path} is not an issue object")
+    body = issue.get("body") if isinstance(issue.get("body"), str) else ""
+    fingerprint_match = FINGERPRINT_LINE.search(body)
+    digest_match = DIGEST_LINE.search(body)
+    notice = None
+    comments = issue.get("comments") if isinstance(issue.get("comments"), list) else []
+    for comment in comments:
+        text = comment.get("body") if isinstance(comment, dict) else None
+        found = NOTICE_LINE.findall(text) if isinstance(text, str) else []
+        if found:
+            notice = found[-1]
+    return {
+        "fingerprint": fingerprint_match.group(1) if fingerprint_match else None,
+        "bodyDigest": digest_match.group(1) if digest_match else None,
+        "notice": notice,
+    }
+
+
+def notice_text(kind):
+    return f"{NOTICES[kind]}\n\n<!-- {NOTICE_MARKER}: {kind} -->\n"
 
 
 def write(path, text):
@@ -356,20 +459,40 @@ def main(argv=None):
         default=DEFAULT_RETRY_WAIT,
         help="Seconds to wait before the one retry (default: %(default)s)",
     )
+    parser.add_argument(
+        "--eval-timeout",
+        type=float,
+        default=DEFAULT_EVAL_TIMEOUT,
+        help="Seconds the source evaluation may take (default: %(default)s)",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--issue-state",
+        metavar="FILE",
+        help="Print the fingerprint, body digest, and latest notice from `gh issue view --json body,comments` output",
+    )
+    mode.add_argument("--notice", choices=sorted(NOTICES), help="Print the issue comment for this notice")
     args = parser.parse_args(argv)
     detected_at = args.detected_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     try:
-        models = models_in_use(load_source(args.source, args.source_json))
+        if args.notice:
+            sys.stdout.write(notice_text(args.notice))
+            return 0
+        if args.issue_state:
+            sys.stdout.write(json.dumps(issue_state(args.issue_state)) + "\n")
+            return 0
+        models = models_in_use(load_source(args.source, args.source_json, args.eval_timeout))
         catalog = read_json(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
-        rows, rejected = catalog_rows(catalog)
-        findings = classify(models, rows)
+        rows, aliases, rejected = catalog_rows(catalog)
+        findings = classify(models, rows, aliases)
         mark = fingerprint(findings)
         result = {
             "status": "drift" if findings else "clean",
             "source": SOURCE_FILE,
             "detectedAt": detected_at,
             "fingerprint": mark,
+            "bodyDigest": body_digest(findings, rejected) if findings else None,
             "title": title(findings) if findings else None,
             "findings": findings,
             "rejectedCatalogEntries": rejected,
