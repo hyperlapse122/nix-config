@@ -42,6 +42,10 @@ host appears in either rule.  Adding a new host's bootstrap material does not by
 it access to an existing file: add its recipient to the file's rule and
 re-encrypt the file with `sops updatekeys`, or split the rule per host.
 
+The `sops-recipients` check fails when the recipients stored in an encrypted
+file differ from those of the `.sops.yaml` rule that matches it, so a removed
+recipient cannot linger in a file's ciphertext.
+
 The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
 of string fields (the service usernames are public configuration and are not
 secret):
@@ -190,9 +194,11 @@ Its protection rests on the distribution's disk encryption.  A macOS host
 recovers and keeps its identity the same way, and there FileVault is the disk
 encryption that protects it.
 
-When a non-NixOS host is lost, compromised, or retired, follow
+When a host is lost, compromised, or retired, follow
 [compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
 Removing its recipient without rotating every token in `secrets/tokens.yaml`
-revokes nothing, because git history keeps the old ciphertext.  Remove the
-recipient and rotate the file's data key before writing the new tokens, or
-the new values are still encrypted to the removed host.
+revokes nothing, because git history keeps the old ciphertext.  A retired NixOS
+host also appears in `secrets/wifi.yaml` and `secrets/tailscale.yaml`, so
+those values need the same treatment.  Remove the recipient and rotate the
+file's data key before writing the new values, or the new values are still
+encrypted to the removed host.
