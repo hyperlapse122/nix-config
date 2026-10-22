@@ -94,8 +94,7 @@ let
       };
       # The pi on PATH is the packaged wrapper, whose Synthetic provider reads
       # the key file per request, so no binaryPath is needed and no key reaches
-      # this file. No launch arguments: Pi applies the text-generation model's
-      # startup thinking level when T3 Code switches to it with set_model.
+      # this file. No launch arguments.
       pi = {
         driver = "pi";
         enabled = true;
@@ -134,11 +133,10 @@ let
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
   #
-  # Text generation selects the text-generation model on the Pi instance. Its
-  # `thinking` option records the role's effort for the reader: T3 Code's Pi
-  # text generation sends set_model and never set_thinking_level, so the level
-  # that reaches Synthetic is the model's startup level, which
-  # home/h82/agents/pi.nix sets to the same effort.
+  # Text generation runs on the claudeAgent instance with Claude Haiku 5.5 at
+  # effort low, not on Pi, so the Synthetic DeepSeek model below no longer
+  # carries it. The Synthetic model stays only as the `@<effort>` alias that
+  # OpenCode's small_model names, which hiddenAlias hides.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
   textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
@@ -153,12 +151,12 @@ let
       ];
     };
     textGenerationModelSelection = {
-      instanceId = "pi";
-      model = "synthetic/${textGeneration.id}";
+      instanceId = "claudeAgent";
+      model = "claude-haiku-5-5";
       options = [
         {
-          id = "thinking";
-          value = textGeneration.roles.text-generation;
+          id = "effort";
+          value = "low";
         }
       ];
     };

@@ -121,8 +121,8 @@ let
   );
 
   # Pi starts each model at its source effort. The text-generation model starts
-  # at its text-generation role's effort instead, because T3 Code's text
-  # generation switches models with set_model and never sets a thinking level.
+  # at its text-generation role's effort instead, because a client that
+  # switches to it with set_model sets no thinking level of its own.
   startupEffort =
     name: entry:
     if name == sourceModels.textGeneration then entry.roles.text-generation else entry.defaultEffort;
@@ -158,7 +158,7 @@ in
   ];
 
   # Pi loads every directory under ~/.pi/agent/extensions that holds an
-  # index.js. T3 Code's text generation passes --no-extensions and skips it.
+  # index.js.
   home.file.".pi/agent/extensions/nix-config".source = import ../../../packages/pi-extension.nix {
     inherit pkgs syntheticKeyFile exaKeyFile;
   };
