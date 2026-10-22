@@ -28,12 +28,22 @@
     opencodeEffort = "max";
   };
 
+  glmFlash = {
+    id = "hf:zai-org/GLM-5.3-Flash";
+    family = "glm";
+    lineage = "hf:zai-org/GLM-([0-9]+([.][0-9]+)?)-Flash";
+    roles = {
+      reviewer = "high";
+    };
+    opencodeEffort = "high";
+  };
+
   kimi = {
     id = "hf:moonshotai/Kimi-K3";
     family = "kimi";
     lineage = "hf:moonshotai/Kimi-K([0-9]+([.][0-9]+)?)";
     roles = {
-      reviewer = "max";
+      reviewer = "high";
       visual-engineering-fallback = "max";
     };
     opencodeEffort = "max";
