@@ -31,7 +31,7 @@ Create `hosts/<host>/` with three files.
 }
 ```
 
-Do not import `modules/nixos/profile.nix`. `mkHost` imports it for every host, and the profile imports every NixOS module under `modules/nixos/`. It also sets the shared defaults with `lib.mkDefault`: Podman, CLI authentication, the Tokscale token and the OpenCode API key, Tailscale, and Proton VPN, the last three off on the bootstrap output. A host can override any of them.
+Do not import `modules/nixos/profile.nix`. `mkHost` imports it for every host, and the profile imports every NixOS module under `modules/nixos/`. It also sets the shared defaults with `lib.mkDefault`: Podman, CLI authentication, the Tokscale token and the OpenCode and Pi API keys (Synthetic and Exa), Tailscale, and Proton VPN, the last three off on the bootstrap output. A host can override any of them.
 
 ### Traits
 
@@ -219,7 +219,7 @@ sops updatekeys -y secrets/tokens.yaml
 unset SOPS_AGE_KEY_CMD
 ```
 
-A non-NixOS production apply decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, and `synthetic_api_key`. All five must be present in `tokens.yaml`, or the apply stops. `docker_token` is never published on a non-NixOS host, so `docker.io` pulls stay anonymous.
+A non-NixOS production apply decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, `synthetic_api_key`, and `exa_api_key`. All six must be present in `tokens.yaml`, or the apply stops. `docker_token` is never published on a non-NixOS host, so `docker.io` pulls stay anonymous.
 
 ### Create the host SSH key file
 

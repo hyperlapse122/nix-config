@@ -24,12 +24,14 @@
     is ordered so a refusal cannot strand installPackages, hands the helper the
     pinned source rather than some other path, and names the version segment
     the lock actually resolved.
-  - The OpenCode row needs no agent CLI, so this check runs it: the packaged
-    helper, with the flags the activation script hands it, against a scratch
-    home seeded with a string and a non-string user plugin entry. Only --base is moved into the scratch
-    directory, because the rendered one sits under /home/h82. The row must
+  - The OpenCode and Pi rows need no agent CLI, so this check runs them: the
+    packaged helper, with the flags the activation script hands it, against a
+    scratch home seeded with user entries (a string and a non-string plugin
+    for OpenCode, a skills path for Pi). Only --base is moved into the scratch
+    directory, because the rendered one sits under /home/h82. Each row must
     share Claude's base and run before Claude's, whose prune would otherwise
-    delete a link OpenCode still names.
+    delete a link they still name. Pi's row lists the plugin's `skills`
+    directory in ~/.pi/agent/settings.json.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
   which Nix writes, and the registry in home/h82/agents/agent-plugins.nix, which a
@@ -106,6 +108,7 @@ let
       # OpenCode's row is driven through the merger OpenCode's own settings
       # merge runs, read from that activation script.
       opencodeSettingsScript = userConfig.home.activation.opencodeSettings.data or "";
+      piSettingsScript = userConfig.home.activation.piSettings.data or "";
 
       activation = userConfig.home.activation.agentPlugins or null;
       script = if activation == null then "" else (activation.data or "");
@@ -305,6 +308,73 @@ let
             failed=1
           elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
             echo "the link opencode.json names must point at the pinned source on ${hostName}" >&2
+            failed=1
+          fi
+          rm -rf "$scratch"
+        fi
+
+        piBlock=$(blockForHarness ${esc script} ${esc pluginName} pi)
+        if [ -z "$piBlock" ]; then
+          echo "the agentPlugins activation script never syncs ${pluginName} for pi on ${hostName}" >&2
+          failed=1
+        else
+          sourceArg=$(argValue "$piBlock" source)
+          if [ "$sourceArg" != ${esc pinnedSource} ]; then
+            echo "the pi helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
+            failed=1
+          fi
+          segmentArg=$(argValue "$piBlock" segment)
+          if [ "$segmentArg" != ${
+            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
+          } ]; then
+            echo "the pi helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
+            failed=1
+          fi
+          cliArg=$(argValue "$piBlock" cli)
+          merger=$(tr '\n' ' ' <<< ${esc piSettingsScript} \
+            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+          if [ -z "$merger" ]; then
+            echo 'home.activation.piSettings invokes no packaged merger on ${hostName}' >&2
+            failed=1
+          elif [ "$cliArg" != "$merger" ]; then
+            echo "the pi helper must be handed the merger Pi's settings merge runs on ${hostName}, got: '$cliArg'" >&2
+            failed=1
+          fi
+          baseArg=$(argValue "$piBlock" base)
+          if [ "$baseArg" != "$(argValue "$claudeBlock" base)" ]; then
+            echo "the pi and claude rows must share one base on ${hostName}, got: '$baseArg'" >&2
+            failed=1
+          fi
+          flat=$(tr '\n' ' ' <<< ${esc script})
+          beforePi=''${flat%%--harness pi*}
+          beforeClaude=''${flat%%--harness claude*}
+          if [ "''${#beforePi}" -ge "''${#beforeClaude}" ]; then
+            echo 'the pi row must run before the claude row on ${hostName}' >&2
+            failed=1
+          fi
+
+          helper=$(grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-plugin-sync' <<< "$flat" | head -1 || true)
+          scratch=$(mktemp -d)
+          mkdir -p "$scratch/home/.pi/agent"
+          printf '%s\n' '{"skills": ["/home/user/skills/mine"], "theme": "dark"}' \
+            > "$scratch/home/.pi/agent/settings.json"
+          if ! HOME="$scratch/home" "$helper" --harness pi --cli "$cliArg" \
+            --source "$sourceArg" --base "$scratch/base" --segment "$segmentArg" \
+            --plugin "$(argValue "$piBlock" plugin | tr -d "'")" \
+            --marketplace "$(argValue "$piBlock" marketplace | tr -d "'")"; then
+            echo "the rendered pi invocation failed on ${hostName}" >&2
+            failed=1
+          fi
+          listed=$(jq -c '.skills' "$scratch/home/.pi/agent/settings.json" 2>/dev/null || true)
+          want=$(jq -cn --arg link "$scratch/base/$segmentArg/skills" '["/home/user/skills/mine", $link]')
+          if [ "$listed" != "$want" ]; then
+            echo "settings.json must list the user skills and the pinned skills directory on ${hostName}, got: '$listed'" >&2
+            failed=1
+          elif [ "$(jq -r '.theme' "$scratch/home/.pi/agent/settings.json")" != dark ]; then
+            echo "the pi sync must keep the other settings keys on ${hostName}" >&2
+            failed=1
+          elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
+            echo "the link settings.json names must point at the pinned source on ${hostName}" >&2
             failed=1
           fi
           rm -rf "$scratch"

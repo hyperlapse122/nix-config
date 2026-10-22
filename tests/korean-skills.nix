@@ -11,13 +11,14 @@
     OpenCode                  ~/.config/opencode/skills/<name>
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/<name>
+    Pi                        ~/.pi/agent/skills/<name>
 
   The user list is `userEntries` from `tests/lib/configurations.nix`, so the
   NixOS and non-NixOS Linux user environments are both covered, and the
   helper's guard fails the build when that list is empty.
 
   Verifies, per Home Manager user:
-  - each of the nine targets is exactly one enabled Home Manager file, found by
+  - each of the twelve targets is exactly one enabled Home Manager file, found by
     its resolved `target` rather than its attribute name, because either can
     move the file without changing its text.
   - each target exists in the materialized `home-files`, holds a SKILL.md whose
@@ -77,6 +78,7 @@ let
     ".claude/skills"
     ".config/opencode/skills"
     ".gemini/antigravity-cli/skills"
+    ".pi/agent/skills"
   ];
 
   forbiddenRoots = [

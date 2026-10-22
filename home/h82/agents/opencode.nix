@@ -5,9 +5,7 @@
   ...
 }:
 let
-  merger = "${
-    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
-  }/bin/agent-settings";
+  mergeInto = import ./merge-into.nix { inherit config pkgs lib; } ".config/opencode";
 
   # The wrapper reads /run/secrets/cli-auth/synthetic_api_key at run time.
   # Bootstrap generations have no such file, and Synthetic then serves
@@ -25,18 +23,17 @@ let
 
   models = import ./synthetic-models.nix;
   # A second entry for the same upstream model, so small_model, which
-  # OpenCode 2.x uses only for title generation, and T3 Code's text
-  # generation (home/h82/t3code.nix) run at the text-generation role's effort
-  # while the main entry keeps its own. The suffix keeps the key under the
-  # model's org, which the shared instructions map to its family.
+  # OpenCode 2.x uses only for title generation, runs at the text-generation
+  # role's effort while the main entry keeps its own. The suffix keeps the key
+  # under the model's org, which the shared instructions map to its family.
   textKey = entry: "${entry.id}@${entry.roles.text-generation}";
   textModels = lib.unique (
     map (name: models.${name}) [
-      models.small
+      models.smallModel
       models.textGeneration
     ]
   );
-  smallKey = textKey models.${models.small};
+  smallKey = textKey models.${models.smallModel};
 
   modelsPath = [
     "provider"
@@ -53,7 +50,7 @@ let
         "options"
         "reasoningEffort"
       ];
-      value = entry.opencodeEffort;
+      value = entry.defaultEffort;
     }) (lib.filterAttrs (_: builtins.isAttrs) models)
     ++ lib.concatMap (entry: [
       {
@@ -97,7 +94,7 @@ let
     builtins.toJSON {
       set = {
         "$schema" = "https://opencode.ai/config.json";
-        model = "synthetic/" + models.${models.opencodeDefault}.id;
+        model = "synthetic/" + models.${models.defaultModel}.id;
         small_model = "synthetic/" + smallKey;
         update = "disable";
         share = "disabled";
@@ -128,19 +125,8 @@ let
       };
     }
   );
-
-  mergeInto =
-    label: file: document:
-    lib.hm.dag.entryAfter [ "installPackages" ] ''
-      ${merger} \
-        --label ${lib.escapeShellArg label} \
-        --settings ${config.home.homeDirectory}/.config/opencode/${file} \
-        --declared ${document}
-    '';
 in
 {
-  my.agents.crossModelPeers = [ "opencode" ];
-
   home.packages = [ wrapper ];
 
   # OpenCode autoloads every directory under ~/.config/opencode/plugins, so

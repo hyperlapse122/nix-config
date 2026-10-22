@@ -1,5 +1,6 @@
 # Each entry:
-# - `id`: the upstream model ID, without OpenCode's `synthetic/` provider prefix.
+# - `id`: the upstream model ID, without the `synthetic/` provider prefix Pi
+#   and OpenCode add.
 # - `family`: the family the shared instructions map the ID's org to.
 # - `lineage`: an anchored regular expression, valid for both Nix
 #   `builtins.match` and Python `re.fullmatch`, that matches this ID and newer
@@ -9,8 +10,8 @@
 #   optional parts of that version or the build suffix.
 # - `roles`: each role the model fills inside T3 Code, with the effort that
 #   role runs at. These models offer no `medium` effort.
-# - `opencodeEffort`: the reasoning effort OpenCode's settings pin for the
-#   model, which runs outside T3 Code use as-is.
+# - `defaultEffort`: the reasoning effort a session outside T3 Code runs the
+#   model at as-is; OpenCode's settings pin it today.
 #
 # The DeepSeek `id` pins one dated build and moves only when the user changes
 # it after a reconcile issue reports a newer one.
@@ -25,7 +26,7 @@
       writing-fallback = "high";
       unspecified-high-fallback = "high";
     };
-    opencodeEffort = "max";
+    defaultEffort = "max";
   };
 
   glmFlash = {
@@ -35,7 +36,7 @@
     roles = {
       reviewer = "high";
     };
-    opencodeEffort = "high";
+    defaultEffort = "high";
   };
 
   kimi = {
@@ -46,7 +47,7 @@
       reviewer = "high";
       visual-engineering-fallback = "max";
     };
-    opencodeEffort = "max";
+    defaultEffort = "max";
   };
 
   deepseek = {
@@ -59,10 +60,10 @@
       scout = "high";
       text-generation = "low";
     };
-    opencodeEffort = "high";
+    defaultEffort = "high";
   };
 
-  opencodeDefault = "glm";
-  small = "deepseek";
+  defaultModel = "glm";
+  smallModel = "deepseek";
   textGeneration = "deepseek";
 }

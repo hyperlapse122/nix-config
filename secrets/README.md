@@ -42,6 +42,10 @@ host appears in either rule.  Adding a new host's bootstrap material does not by
 it access to an existing file: add its recipient to the file's rule and
 re-encrypt the file with `sops updatekeys`, or split the rule per host.
 
+The `sops-recipients` check fails when the recipients stored in an encrypted
+file differ from those of the `.sops.yaml` rule that matches it, so a removed
+recipient cannot linger in a file's ciphertext.
+
 The encrypted token document (`secrets/tokens.yaml`) is a flat YAML mapping
 of string fields (the service usernames are public configuration and are not
 secret):
@@ -53,7 +57,7 @@ jpi_token: <git.jpi.app token>
 docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
 tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
 synthetic_api_key: <Synthetic API key> # opt-in: my.cliAuth.enableSyntheticApiKey
-exa_api_key: <Exa API key>            # not yet decrypted on any host
+exa_api_key: <Exa API key>            # opt-in: my.cliAuth.enableExaApiKey
 ```
 
 The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
@@ -61,13 +65,17 @@ keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
 
-`exa_api_key` is stored ahead of the Pi web search extension that
-[#291](https://github.com/hyperlapse122/nix-config/issues/291) adds. No host
-decrypts it yet; that change publishes it beside `synthetic_api_key`.
+`exa_api_key` backs the web search and fetch tools of the Pi extension
+(`packages/pi-extension/`). Every host kind publishes it beside
+`synthetic_api_key`: a NixOS host at `/run/secrets/cli-auth/exa_api_key`, and a
+non-NixOS or macOS host at `~/.local/state/cli-auth/exa_api_key`. The shared
+profile turns `my.cliAuth.enableExaApiKey` on by default. The extension reads the
+file when a tool runs, so the key never enters Pi's environment or the
+environment of the commands its tools run.
 
 A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
-decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, and
-`synthetic_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
+decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`,
+`synthetic_api_key`, and `exa_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
@@ -190,9 +198,11 @@ Its protection rests on the distribution's disk encryption.  A macOS host
 recovers and keeps its identity the same way, and there FileVault is the disk
 encryption that protects it.
 
-When a non-NixOS host is lost, compromised, or retired, follow
+When a host is lost, compromised, or retired, follow
 [compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
 Removing its recipient without rotating every token in `secrets/tokens.yaml`
-revokes nothing, because git history keeps the old ciphertext.  Remove the
-recipient and rotate the file's data key before writing the new tokens, or
-the new values are still encrypted to the removed host.
+revokes nothing, because git history keeps the old ciphertext.  A retired NixOS
+host also appears in `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and
+`secrets/printers.yaml`, so those values need the same treatment.  Remove the recipient and rotate the
+file's data key before writing the new values, or the new values are still
+encrypted to the removed host.

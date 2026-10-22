@@ -31,6 +31,14 @@ The script owns every marker the workflow reads back from the issue:
 `--issue-state` reads `gh issue view --json body,comments` output and prints
 the fingerprint, the body digest, and the latest catalog notice, and
 `--notice` prints the comment for a notice kind.
+
+`--snapshot FILE` rewrites the committed catalog snapshot instead of
+comparing: it keeps the catalog rows whose `id` the source names, trimmed to
+the fields Pi's model config renders, in the catalog's own shape, and leaves
+FILE untouched unless the content changes. `pricing` keeps only the four
+prices Pi's config reads, each a string home/h82/agents/pi.nix can parse. It
+refuses to write, and exits non-zero, when the catalog lacks a source ID or a
+kept row is malformed.
 """
 
 import argparse
@@ -71,9 +79,22 @@ NOTICES = {
 
 ID_PATTERN = re.compile(r"hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 EFFORT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
+# The prices home/h82/agents/pi.nix reads, each an optional `$` and a JSON
+# number without a sign, which is what its perMillion hands builtins.fromJSON.
+PRICE_FIELDS = ("prompt", "completion", "input_cache_reads", "input_cache_writes")
+PRICE_PATTERN = re.compile(r"\$?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
+# The catalog fields a snapshot row keeps, with the check each must pass.
+SNAPSHOT_FIELDS = {
+    "display_name": lambda v: isinstance(v, str) and v != "",
+    "input_modalities": lambda v: isinstance(v, list) and all(isinstance(m, str) for m in v),
+    "context_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "max_output_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "pricing": lambda v: isinstance(v, dict)
+    and all(isinstance(v.get(field), str) and PRICE_PATTERN.fullmatch(v[field]) for field in PRICE_FIELDS),
+}
 # The top-level keys of the source that name an entry, in the order the
 # issue lists them among that entry's uses.
-ENTRY_POINTERS = ("opencodeDefault", "small", "textGeneration")
+ENTRY_POINTERS = ("defaultModel", "smallModel", "textGeneration")
 
 
 class Failure(Exception):
@@ -147,8 +168,8 @@ def models_in_use(source):
         if not match or match.lastindex is None:
             raise Failure(f"source entry {name}: lineage does not match and capture its own id")
         efforts = dict(roles)
-        if isinstance(entry.get("opencodeEffort"), str):
-            efforts["opencodeEffort"] = entry["opencodeEffort"]
+        if isinstance(entry.get("defaultEffort"), str):
+            efforts["defaultEffort"] = entry["defaultEffort"]
         models[name] = {
             "id": model_id,
             "lineage": pattern,
@@ -304,8 +325,8 @@ def classify(models, rows, aliases):
         missing = sorted({e for e in model["efforts"].values() if e not in offered})
         if missing:
             affected = sorted(r for r in model["roles"] if model["efforts"][r] in missing)
-            if model["efforts"].get("opencodeEffort") in missing:
-                affected.append("opencodeEffort")
+            if model["efforts"].get("defaultEffort") in missing:
+                affected.append("defaultEffort")
             findings.append({
                 "kind": "changed",
                 "entry": name,
@@ -315,6 +336,42 @@ def classify(models, rows, aliases):
                 "offeredEfforts": offered,
             })
     return findings
+
+
+def snapshot_row(row):
+    """The trimmed row for one catalog entry, or a Failure naming the bad field."""
+    model_id = row["id"]
+    kept = {"id": model_id}
+    for field, valid in SNAPSHOT_FIELDS.items():
+        if field not in row or not valid(row[field]):
+            raise Failure(f"catalog entry {model_id} has no valid {field}")
+        kept[field] = row[field]
+    kept["pricing"] = {field: row["pricing"][field] for field in PRICE_FIELDS}
+    params = row.get("reasoning_parameters")
+    efforts = params.get("efforts") if isinstance(params, dict) else None
+    if not isinstance(efforts, list) or not all(isinstance(e, str) and EFFORT_PATTERN.fullmatch(e) for e in efforts):
+        raise Failure(f"catalog entry {model_id} has efforts that are not a list of strings")
+    kept["reasoning_parameters"] = {"efforts": efforts}
+    return kept
+
+
+def catalog_snapshot(models, rows):
+    """The snapshot text for the models in use; refuses a missing ID."""
+    missing = sorted(m["id"] for m in models.values() if m["id"] not in rows)
+    if missing:
+        raise Failure(f"the catalog lacks {', '.join(missing)}")
+    data = [snapshot_row(rows[model_id]) for model_id in sorted(m["id"] for m in models.values())]
+    return json.dumps({"data": data}, indent=2) + "\n"
+
+
+def write_if_changed(path, text):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            if f.read() == text:
+                return
+    except FileNotFoundError:
+        pass
+    write(path, text)
 
 
 def sha256(text):
@@ -465,6 +522,11 @@ def main(argv=None):
         default=DEFAULT_EVAL_TIMEOUT,
         help="Seconds the source evaluation may take (default: %(default)s)",
     )
+    parser.add_argument(
+        "--snapshot",
+        metavar="FILE",
+        help="Rewrite this catalog snapshot for the models in use instead of comparing",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--issue-state",
@@ -485,6 +547,9 @@ def main(argv=None):
         models = models_in_use(load_source(args.source, args.source_json, args.eval_timeout))
         catalog = read_json(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
         rows, aliases, rejected = catalog_rows(catalog)
+        if args.snapshot:
+            write_if_changed(args.snapshot, catalog_snapshot(models, rows))
+            return 0
         findings = classify(models, rows, aliases)
         mark = fingerprint(findings)
         result = {

@@ -8,14 +8,19 @@
   its family is the one its org maps to, every role runs at `low`, `high`, or
   `max`, the efforts these models offer (never `medium`), each lineage pattern matches its own `id` and its
   first capture group is a version under both Nix `builtins.match` and Python
-  `re.fullmatch`, and the top-level selections name existing entries. Every
-  problem is listed from the builder before it fails.
+  `re.fullmatch`, and the top-level selections name existing entries. It also
+  reads the committed catalog snapshot, home/h82/agents/synthetic-catalog.json,
+  and fails on a source `id` the snapshot lacks and on a role effort or default
+  effort the snapshot does not list for that model. Every problem is listed
+  from the builder before it fails.
 */
 { pkgs }:
 let
   inherit (pkgs) lib;
 
   source = import ../home/h82/agents/synthetic-models.nix;
+  snapshot = builtins.fromJSON (builtins.readFile ../home/h82/agents/synthetic-catalog.json);
+  snapshotRows = lib.listToAttrs (map (row: lib.nameValuePair row.id row) snapshot.data);
 
   # Org to family, as the shared instructions map a model ID.
   orgFamilies = {
@@ -26,8 +31,8 @@ let
   };
 
   selections = [
-    "opencodeDefault"
-    "small"
+    "defaultModel"
+    "smallModel"
     "textGeneration"
   ];
 
@@ -52,6 +57,36 @@ let
     in
     if groups == null || groups == [ ] then null else builtins.head groups;
 
+  # The efforts the snapshot lists for an entry, or null when it lacks the id.
+  snapshotEfforts =
+    entry:
+    let
+      row = snapshotRows.${entry.id or ""} or null;
+    in
+    if row == null then null else row.reasoning_parameters.efforts or [ ];
+
+  snapshotProblems =
+    name: entry:
+    let
+      listed = snapshotEfforts entry;
+      used =
+        (lib.mapAttrsToList (role: effort: {
+          what = "role ${role}";
+          inherit effort;
+        }) (entry.roles or { }))
+        ++ lib.optional (entry ? defaultEffort) {
+          what = "defaultEffort";
+          effort = entry.defaultEffort;
+        };
+    in
+    if listed == null then
+      [ "${name}: id `${entry.id or ""}` is missing from home/h82/agents/synthetic-catalog.json" ]
+    else
+      map (
+        use:
+        "${name}: ${use.what} runs at effort `${toString use.effort}`, which the snapshot does not list (${lib.concatStringsSep ", " listed})"
+      ) (lib.filter (use: !lib.elem use.effort listed) used);
+
   entryProblems =
     name: entry:
     let
@@ -74,12 +109,13 @@ let
       role: effort: "${name}: role ${role} runs at effort `${toString effort}`, not ${offered}"
     ) (lib.filterAttrs (_: effort: !lib.elem effort efforts) (entry.roles or { }))
     ++ lib.optional (
-      (entry.opencodeEffort or "medium") == "medium"
-    ) "${name}: opencodeEffort is missing or medium";
+      (entry.defaultEffort or "medium") == "medium"
+    ) "${name}: defaultEffort is missing or medium";
 
   problems =
     lib.optional (entries == { }) "no model entries"
     ++ lib.concatLists (lib.mapAttrsToList entryProblems entries)
+    ++ lib.concatLists (lib.mapAttrsToList snapshotProblems entries)
     ++ map (selection: "${selection} does not name a model entry") (
       lib.filter (selection: !(entries ? ${source.${selection} or ""})) selections
     );

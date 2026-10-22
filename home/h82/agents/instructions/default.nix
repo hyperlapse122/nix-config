@@ -13,15 +13,30 @@ let
     builtins.toJSON (hostFacts.of config.my // { inherit models; })
   );
 
-  instructions = pkgs.runCommand "agent-instructions.md" { nativeBuildInputs = [ renderer ]; } ''
-    text-template ${./instructions.md.tmpl} ${context} > $out
+  render =
+    name: template:
+    pkgs.runCommand name { nativeBuildInputs = [ renderer ]; } ''
+      text-template ${template} ${context} > $out
+    '';
+
+  # Pi reads the shared body alone, because the ACP section tells an agent
+  # how to start Pi. Every other harness reads the body, a blank line, and
+  # that section.
+  shared = render "agent-instructions-shared.md" ./instructions.md.tmpl;
+  acp = render "agent-instructions-acp.md" ./acp.md.tmpl;
+  instructions = pkgs.runCommand "agent-instructions.md" { } ''
+    { cat ${shared}; echo; cat ${acp}; } > $out
   '';
 in
 {
-  # One rendering for every harness, as a plain store link no harness
-  # rewrites. OpenCode loads it from its global AGENTS.md, and the
-  # Antigravity CLI reads ~/.gemini/config.
+  # Plain store links no harness rewrites. OpenCode loads its copy from its
+  # global AGENTS.md, the Antigravity CLI reads ~/.gemini/config, and Pi
+  # reads ~/.pi/agent/AGENTS.md.
   home.file = {
+    agent-instructions-pi = {
+      target = ".pi/agent/AGENTS.md";
+      source = shared;
+    };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
       source = instructions;

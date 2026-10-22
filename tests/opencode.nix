@@ -5,7 +5,7 @@
 
   Asserts that every configuration `tests/lib/configurations.nix` yields gives
   h82 the OpenCode wrapper and the declared config merge, and that only the
-  production configurations decrypt the Synthetic API key. Which side a
+  production configurations decrypt the Synthetic and Exa API keys. Which side a
   configuration is on comes from the helper's `bootstrap` field, never from
   the sops manifest under test. It reads what the generations materialize --
   home-path, the rendered activation script and the sops manifests -- rather
@@ -42,8 +42,8 @@
     and every other key inside a declared entry stay, the retired
     syn:large:text entry goes, and the provider's options and other providers
     stay; service.json disables OpenCode's shared background server. The
-    small_model entry is also the one T3 Code's text generation selects, so
-    the check fails while the source's `small` and `textGeneration` would
+    small_model entry is also the one T3 Code hides in its OpenCode picker, so
+    the check fails while the source's `smallModel` and `textGeneration` would
     name different entries.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json.
@@ -51,11 +51,15 @@
     the installed wrapper's `opencode service stop`, so a server started
     before the service was disabled does not keep running.
   - a production configuration's sops manifest carries
-    cli-auth/synthetic_api_key owned by h82 with mode 0400, its gh/glab
-    publisher does not read that key, and a bootstrap configuration's
-    manifests carry no Synthetic secret at all. Neither does one production
-    configuration re-evaluated with my.cliAuth.enableSyntheticApiKey forced
-    off.
+    cli-auth/synthetic_api_key and cli-auth/exa_api_key, each owned by h82
+    with mode 0400, its gh/glab publisher reads neither key, and a bootstrap
+    configuration's manifests carry no Synthetic or Exa secret at all. One
+    production configuration re-evaluated with
+    my.cliAuth.enableSyntheticApiKey forced off carries no Synthetic secret
+    and still the Exa one, and one with my.cliAuth.enableExaApiKey forced off
+    carries no Exa secret and still the Synthetic one, so each option, not
+    only the bootstrap split, gates its own key. Pi's web tools read the Exa
+    key; this check holds it because it already reads the manifests.
 
   The wrapper's run-time behaviour is covered by the opencode-wrapper check,
   and the installed version and switches by the opencode check. This check
@@ -80,16 +84,17 @@ let
   models = import ../home/h82/agents/synthetic-models.nix;
   # JSON string literals, for splicing into the JSON text below.
   json = value: builtins.toJSON value;
-  defaultModel = json ("synthetic/" + models.${models.opencodeDefault}.id);
+  defaultModel = json ("synthetic/" + models.${models.defaultModel}.id);
   glm = json models.glm.id;
   glmFlash = json models.glmFlash.id;
   kimi = json models.kimi.id;
   deepseek = json models.deepseek.id;
-  # The text-generation effort names the entry small_model and T3 Code's text
-  # generation select, so both follow the source's role. Each selection must
-  # find its own entry, so the two are read separately; today they share one.
-  smallEffort = models.${models.small}.roles.text-generation;
-  smallKey = "${models.${models.small}.id}@${smallEffort}";
+  # The text-generation effort names the entry small_model selects and T3 Code
+  # hides in its OpenCode picker, so both follow the source's role. Each
+  # selection must find its own entry, so the two are read separately; today
+  # they share one.
+  smallEffort = models.${models.smallModel}.roles.text-generation;
+  smallKey = "${models.${models.smallModel}.id}@${smallEffort}";
   textEffort = models.${models.textGeneration}.roles.text-generation;
   textKey = "${models.${models.textGeneration}.id}@${textEffort}";
   deepseekSmall = json smallKey;
@@ -372,9 +377,9 @@ let
     entry:
     let
       hostName = entry.name;
-      # A production configuration decrypts the key unless the option is
-      # forced off; the forced-off entries prove the option still gates it.
-      decryptsKey = !entry.bootstrap && !(entry.keyForcedOff or false);
+      # A production configuration decrypts each key unless its option is
+      # forced off; the forced-off entries prove each option still gates it.
+      forcedOff = entry.forcedOff or null;
       hm = entry.user;
       homePath = hm.home.path or null;
 
@@ -454,46 +459,75 @@ let
       if [ -z "$manifests" ]; then
         fail ${host'}": found no sops manifest"
       fi
-      syntheticSecrets=$(python3 - $manifests <<'PY'
-      import json, sys
-      for path in sys.argv[1:]:
-          for secret in json.load(open(path)).get("secrets", []):
-              if "synthetic" in secret.get("name", "") or "synthetic" in secret.get("key", ""):
-                  print(secret.get("name"), secret.get("key"), secret.get("owner"), secret.get("mode"))
-      PY
-      )
-      ${
-        if decryptsKey then
-          ''
-            if [ "$syntheticSecrets" != "cli-auth/synthetic_api_key synthetic_api_key h82 0400" ]; then
-              fail ${host'}": expected cli-auth/synthetic_api_key owned by h82 with mode 0400, got: '$syntheticSecrets'"
-            fi
-            publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
-            if [ -z "$publisher" ]; then
-              fail ${host'}": sops-install-secrets no longer runs publish-cli-auth"
-            elif grep -q synthetic_api_key "$publisher"; then
-              fail ${host'}": publish-cli-auth must not read the Synthetic API key"
-            fi
-          ''
-        else
-          ''
-            if [ -n "$syntheticSecrets" ]; then
-              fail ${host'}": a bootstrap configuration, or one with my.cliAuth.enableSyntheticApiKey off, must not decrypt a Synthetic secret, got: '$syntheticSecrets'"
-            fi
-          ''
-      }
+      publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
+      ${lib.concatMapStringsSep "\n" (
+        secret:
+        let
+          decrypts = !entry.bootstrap && forcedOff != secret.option;
+        in
+        ''
+          secrets=$(python3 - ${secret.match} $manifests <<'PY'
+          import json, sys
+          match = sys.argv[1]
+          for path in sys.argv[2:]:
+              for found in json.load(open(path)).get("secrets", []):
+                  if match in found.get("name", "") or match in found.get("key", ""):
+                      print(found.get("name"), found.get("key"), found.get("owner"), found.get("mode"))
+          PY
+          )
+          ${
+            if decrypts then
+              ''
+                if [ "$secrets" != "cli-auth/${secret.file} ${secret.file} h82 0400" ]; then
+                  fail ${host'}": expected cli-auth/${secret.file} owned by h82 with mode 0400, got: '$secrets'"
+                fi
+                if [ -z "$publisher" ]; then
+                  fail ${host'}": sops-install-secrets no longer runs publish-cli-auth"
+                elif grep -q ${secret.file} "$publisher"; then
+                  fail ${host'}": publish-cli-auth must not read the ${secret.label} API key"
+                fi
+              ''
+            else
+              ''
+                if [ -n "$secrets" ]; then
+                  fail ${host'}": a bootstrap configuration, or one with ${secret.option} off, must not decrypt the ${secret.label} secret, got: '$secrets'"
+                fi
+              ''
+          }
+        ''
+      ) apiKeySecrets}
     '';
 
-  # One production configuration re-evaluated with the key option forced off,
-  # so the check proves the option, not only the bootstrap split, gates the
-  # secret.
-  keyForcedOff = map (
-    entry:
-    configurations.withTraitForcedOff "my.cliAuth.enableSyntheticApiKey" entry
-    // {
-      keyForcedOff = true;
+  # The API keys a production configuration decrypts, each with the option
+  # that gates it.
+  apiKeySecrets = [
+    {
+      label = "Synthetic";
+      match = "synthetic";
+      file = "synthetic_api_key";
+      option = "my.cliAuth.enableSyntheticApiKey";
     }
-  ) (lib.take 1 configurations.production);
+    {
+      label = "Exa";
+      match = "exa_api";
+      file = "exa_api_key";
+      option = "my.cliAuth.enableExaApiKey";
+    }
+  ];
+
+  # One production configuration re-evaluated with each key option forced
+  # off, so the check proves the option, not only the bootstrap split, gates
+  # that secret and leaves the other.
+  keyForcedOff = lib.concatMap (
+    secret:
+    map (
+      entry:
+      configurations.withTraitForcedOff secret.option entry
+      // {
+        forcedOff = secret.option;
+      }
+    ) (lib.take 1 configurations.production)
+  ) apiKeySecrets;
 
   compareJson = pkgs.writeText "compare-json.py" ''
     import json, os, stat, sys
@@ -504,8 +538,8 @@ let
 in
 pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   ${configurations.guard}
-  ${lib.optionalString (keyForcedOff == [ ]) ''
-    echo "no production configuration to re-evaluate with my.cliAuth.enableSyntheticApiKey off" >&2
+  ${lib.optionalString (lib.length keyForcedOff != lib.length apiKeySecrets) ''
+    echo "no production configuration to re-evaluate with each API key option off" >&2
     exit 1
   ''}
   failed=0
@@ -516,7 +550,7 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
   compareJson=${compareJson}
   declare -A merged
   ${lib.optionalString (!textSelectionShared) ''
-    fail ${esc "small and textGeneration in synthetic-models.nix name different entries (${smallKey}, ${textKey}); this check expects one shared text-generation entry, so extend it"}
+    fail ${esc "smallModel and textGeneration in synthetic-models.nix name different entries (${smallKey}, ${textKey}); this check expects one shared text-generation entry, so extend it"}
   ''}
 
   ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}

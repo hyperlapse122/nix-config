@@ -36,6 +36,23 @@ jobs:
           extra_nix_config: |
             system-features = nixos-test benchmark big-parallel kvm
 
+      # Its own step, so only this command's environment holds the optional
+      # SYNTHETIC_API_KEY secret, which the script sends as a bearer header on
+      # the fetch command's stdin, as synthetic-models.yml does. A catalog
+      # that lacks a model the source names, or an unreachable one, keeps the
+      # current snapshot and lets the updates below through; the model-watch
+      # issue reports the drift. The update step's change check sees the
+      # refreshed file.
+      - name: Refresh the Synthetic catalog snapshot
+        env:
+          SYNTHETIC_API_KEY: ${{ secrets.SYNTHETIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          if ! nix run .#synthetic-models-watch -- --snapshot home/h82/agents/synthetic-catalog.json; then
+            echo "::warning title=Synthetic catalog snapshot skipped::synthetic-models-watch --snapshot failed; keeping the current home/h82/agents/synthetic-catalog.json."
+            git checkout -- home/h82/agents/synthetic-catalog.json
+          fi
+
       - name: Update flake inputs, agent plugins, and packages
         id: update
         run: |
@@ -109,7 +126,27 @@ jobs:
             git checkout -- packages/opencode-release.json
           fi
 
-          # 11. Update the Antigravity ACP runtime on PATH. Google publishes
+          # 11. Update Pi. A release can be published before every platform
+          # tarball or its SHA256SUMS line, so a failure keeps the current pin
+          # and lets the other updates through, as OpenCode's does.
+          if ! nix run .#pi-release -- --output packages/pi-release.json; then
+            echo "::warning title=Pi update skipped::pi-release failed; keeping the current pin in packages/pi-release.json."
+            git checkout -- packages/pi-release.json
+          fi
+
+          # 12. Update Pi's ACP adapter and client. Each pin moves with its
+          # regenerated lock file, so a failure restores both and lets the
+          # other updates through, as Pi's does.
+          for npm_package in pi-acp acpx; do
+            if ! nix run .#npm-release -- --package "$npm_package" \
+              --output "packages/$npm_package-release.json" \
+              --lock "packages/$npm_package/package-lock.json"; then
+              echo "::warning title=$npm_package update skipped::npm-release failed; keeping the current pin in packages/$npm_package-release.json."
+              git checkout -- "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json"
+            fi
+          done
+
+          # 13. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.
@@ -194,6 +231,25 @@ jobs:
             git add packages/opencode-release.json
             git commit -m "chore(packages): bump opencode to $NEW_VER"
           fi
+
+          if [ -n "$(git status --porcelain home/h82/agents/synthetic-catalog.json)" ]; then
+            git add home/h82/agents/synthetic-catalog.json
+            git commit -m "chore(agents): refresh the synthetic catalog snapshot"
+          fi
+
+          if [ -n "$(git status --porcelain packages/pi-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/pi-release.json)
+            git add packages/pi-release.json
+            git commit -m "chore(packages): bump pi to $NEW_VER"
+          fi
+
+          for npm_package in pi-acp acpx; do
+            if [ -n "$(git status --porcelain "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json")" ]; then
+              NEW_VER=$(jq -r .version "packages/$npm_package-release.json")
+              git add "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json"
+              git commit -m "chore(packages): bump $npm_package to $NEW_VER"
+            fi
+          done
 
           # The ACP updater writes the PATH pin and the antigravity section of
           # t3code-release.json as one identity. Commit those two files
