@@ -53,12 +53,17 @@ jpi_token: <git.jpi.app token>
 docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
 tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
 synthetic_api_key: <Synthetic API key> # opt-in: my.cliAuth.enableSyntheticApiKey
+exa_api_key: <Exa API key>            # not yet decrypted on any host
 ```
 
 The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
 keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
+
+`exa_api_key` is stored ahead of the Pi web search extension that
+[#291](https://github.com/hyperlapse122/nix-config/issues/291) adds. No host
+decrypts it yet; that change publishes it beside `synthetic_api_key`.
 
 A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
 decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, and
