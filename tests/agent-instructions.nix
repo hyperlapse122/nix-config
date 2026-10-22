@@ -4,8 +4,8 @@
     import ./tests/agent-instructions.nix { inherit pkgs self fixtures; }
 
   Asserts that the shared agent instructions, two Go templates rendered over
-  the host facts and the Synthetic model source, reach every installed
-  harness for user `h82` on every host this flake declares. Pi reads the
+  the host facts, reach every installed harness for user `h82` on every host
+  this flake declares. Pi reads the
   shared rendering of instructions.md.tmpl alone; every other harness reads
   it, a blank line, and the `# Pi over ACP` section from acp.md.tmpl:
 
@@ -102,8 +102,10 @@
     later-turn summary, skill outcome, or no-run rule, a `latestTerminalSummary`
     rule under `# Git`; a retired peer rule, a removed peer safeguard, a
     removed, negated, or reworded scout rule, a removed, negated, or moved
-    shared-checkout default, worktree trigger, or worktree fallback clause, an
-    added worktree rule for every task, a removed or negated session_info-first
+    shared-checkout default, worktree trigger, or worktree fallback clause, a
+    removed, negated, or duplicated ce-work no-edit or fail-twice sentence, a
+    ce-work exception without `explicitly`, a launch-failure or rejection
+    sentence with a category's fallback worker again, an added worktree rule for every task, a removed or negated session_info-first
     or Pi model-ID fallback rule, a review-findings sentence added, reordered,
     removed, or negated, an effort or instance the assignment rule forbids,
     each category, scout, and unassigned-subagent sentence at another effort
@@ -377,6 +379,9 @@ let
   lowSentence = "Every other unit is `unspecified-low`, which goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `high`.";
   unitLaunchSentence = "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target` and its `effort` in `target.options`, instead of Compound Engineering's own delegation route.";
   outsideRouteSentence = "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only `claude` with `claude-sonnet-5-5` at `high` as its candidate.";
+  workEngineSentence = "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
+  workNoEditSentence = "When the session lists T3 Code's delegation tools and you run `ce-work`, edit no file yourself: delegate every implementation unit, and keep merging task branches, running the formatter, committing, and running checks, unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
+  workFailTwiceSentence = "The other exception is a unit whose `delegate_task` launch fails twice: you do that unit yourself and say so in your report, as the launch-failure rule in the T3 Code section directs.";
   scoutDefinitionSentence = "When the session lists T3 Code's delegation tools, the scouts of `ce-plan` are its repository, learnings, framework-docs, best-practices, and web researchers, in its first research pass or in deepening, and no other subagent is a scout.";
   scoutHaikuClause = "a scout goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium`";
   scoutHandoffClause = ", and when it returns no findings, you do its research yourself and say so";
@@ -418,7 +423,7 @@ let
     "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the smaller of 600000 and the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and at the deadline treat a peer still running as the T3 Code rules treat a task whose bound has passed: take a whole result from its session, and otherwise cancel it with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per harness in turn, naming that harness as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
     codexRouteSentence
-    "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`."
+    workEngineSentence
     "In `ce-work`, classify each implementation unit into `quick`, `writing`, `visual-engineering`, `unspecified-low`, `unspecified-high`, or `deep`, splitting independent mechanical or small edits into `quick` or `unspecified-low` units while keeping cohesive hard work whose shared reasoning would suffer if split as one `unspecified-high` or `deep` unit."
     quickSentence
     writingSentence
@@ -432,6 +437,8 @@ let
     "These per-category efforts apply inside T3 Code, where every task carries its own effort."
     unitLaunchSentence
     outsideRouteSentence
+    workNoEditSentence
+    workFailTwiceSentence
     scoutDefinitionSentence
     scoutAssignmentSentence
     scoutSafeguardSentence
@@ -479,12 +486,12 @@ let
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
   allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, a wait that blocks on the task's own run, and a foreground wait inside the turn on a command you run stay allowed.";
   fullAccessSentence = "Launch every delegated task, cross-model peers and implementation units included, with `runtimeMode: \"full-access\"`, even though `delegate_task`'s own description says to leave it unset, so the task never pauses on an approval nobody sees.";
-  rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer, but a failure of the relaunch is one.";
+  rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below and a failed cross-model peer, but a failure of the relaunch is one.";
   noteSentence = "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
   oldNoteSentence = "When you end your turn while tasks still run, name them, and say that a task paused on an approval shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
   worktreeFallbackRewriteCase = " or must rewrite files beyond its own";
   worktreeFallbackClause = "; a worktree launch of a task other than a cross-model peer that still fails after that relaunch is skipped and reported with the reason when the task needed the committed state${worktreeFallbackRewriteCase}, and runs in your checkout once every other task there has finished only when it got its worktree for parallel edits of one file";
-  launchFailureSentence = "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer${worktreeFallbackClause}.";
+  launchFailureSentence = "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, do the work yourself instead of using your harness's own subagent tool, unless these instructions forbid it, as they do for a cross-model peer${worktreeFallbackClause}.";
   sharedCheckoutDefaultPeerClause = "; a cross-model peer is the one task that always gets a worktree, as the peer rule above says";
   sharedCheckoutDefaultSentence = "Launch every delegated task other than a cross-model peer in the checkout you work in, with no `isolation` argument, and give a task its own worktree only in the three cases below${sharedCheckoutDefaultPeerClause}.";
   parallelEditsSentence = "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another.";
@@ -1768,6 +1775,42 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "ce-work worker sentence loses explicitly";
+      line = "- ${workEngineSentence}";
+      edit = replaceInLine "config explicitly sets" "config sets";
+      expect = pinFailure workEngineSentence;
+    }
+    {
+      name = "ce-work no-edit exception loses explicitly";
+      line = "- ${workNoEditSentence}";
+      edit = replaceInLine "config explicitly sets" "config sets";
+      expect = pinFailure workNoEditSentence;
+    }
+    {
+      name = "ce-work no-edit sentence duplicated";
+      line = "- ${workNoEditSentence}";
+      edit = ''awk '{ print } $0 == ENVIRON["line"] { print }' '';
+      expect = pinFailure workNoEditSentence;
+    }
+    {
+      name = "launch-failure sentence loses its do-the-work clause";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine "do the work yourself " "";
+      expect = pinFailure launchFailureSentence;
+    }
+    {
+      name = "launch-failure sentence names a category's fallback worker again";
+      line = "- ${launchFailureSentence}";
+      edit = replaceInLine "when that fails too, do the work yourself" "when that fails too, take the next fallback these instructions name, such as a category's fallback worker, and when none is left, do the work yourself";
+      expect = pinFailure launchFailureSentence;
+    }
+    {
+      name = "rejection sentence names a category's fallback worker again";
+      line = "- ${rejectionSentence}";
+      edit = replaceInLine "including the launch-failure retry below and" "including the launch-failure retry below, a category's fallback worker, and";
+      expect = pinFailure rejectionSentence;
+    }
+    {
       name = "launch-failure sentence loses its worktree fallback clause";
       line = "- ${launchFailureSentence}";
       edit = replaceInLine worktreeFallbackClause "";
@@ -1853,6 +1896,8 @@ let
   ++ removedAndNegated "unspecified-low category sentence" lowSentence
   ++ removedAndNegated "unit launch sentence" unitLaunchSentence
   ++ removedAndNegated "outside-T3 worker candidate sentence" outsideRouteSentence
+  ++ removedAndNegated "ce-work no-edit sentence" workNoEditSentence
+  ++ removedAndNegated "ce-work fail-twice exception sentence" workFailTwiceSentence
   ++ removedAndNegated "review findings-schema sentence" reviewSchemaSentence
   ++ removedAndNegatedIn "T3 Code" "unassigned-model sentence" unassignedModelSentence
   ++ lib.concatMap (sentence: removedAndNegatedIn "Pi over ACP" "ACP sentence" sentence) acpSentences

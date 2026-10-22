@@ -7,11 +7,8 @@
 let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
-  models = import ../synthetic-models.nix;
 
-  context = pkgs.writeText "agent-instructions.json" (
-    builtins.toJSON (hostFacts.of config.my // { inherit models; })
-  );
+  context = pkgs.writeText "agent-instructions.json" (builtins.toJSON (hostFacts.of config.my));
 
   render =
     name: template:
