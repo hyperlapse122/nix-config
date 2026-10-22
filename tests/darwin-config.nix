@@ -287,6 +287,11 @@ let
       kakaoTalkId = "869223134";
       masExe = plain (lib.getExe entry.host.pkgs.mas);
       postActivation = plain config.system.activationScripts.postActivation.text;
+      # A store path's hash can spell "zap" by chance, so the zap check reads
+      # the script with every /nix/store hash cut out.
+      postActivationWithoutHashes = lib.concatStrings (
+        lib.filter lib.isString (builtins.split "/nix/store/[0-9a-z]{32}" postActivation)
+      );
       homeManagerCall = "Activating home-manager configuration";
       beforeHomeManager = lib.head (lib.splitString homeManagerCall postActivation);
       rootLines = map lib.trim (lib.splitString "\n" beforeHomeManager);
@@ -661,7 +666,7 @@ let
         "${entry.name}: the grok-bot cask must be uninstalled with --force when installed, a brew list failure other than not-installed must print brew's stderr, with one line per outcome and no exit on failure"
       )
       (check (
-        !lib.hasInfix "zap" postActivation
+        !lib.hasInfix "zap" postActivationWithoutHashes
       ) "${entry.name}: no activation step may zap a cask, since --zap deletes the app's user data")
       (check (
         let
