@@ -25,58 +25,50 @@
 
 let
   inherit (pkgs) lib;
-  source = builtins.fromJSON (builtins.readFile ./acpx-release.json);
+  npmRelease = import ./npm-release-package.nix {
+    inherit pkgs;
+    pname = "acpx";
+    release = ./acpx-release.json;
+    lockDirectory = ./acpx;
+  };
 in
-pkgs.buildNpmPackage {
-  pname = "acpx";
-  inherit (source) version;
-  src = pkgs.fetchurl { inherit (source) url hash; };
-  # The dependency cache comes from the committed lock file alone, the way
-  # prefetch-npm-deps hashed it.
-  npmDeps = pkgs.fetchNpmDeps {
-    name = "acpx-${source.version}-npm-deps";
-    src = ./acpx;
-    hash = source.npmDepsHash;
-  };
-  # acpx needs Node 22.13 or newer.
-  nodejs = pkgs.nodejs_24;
+pkgs.buildNpmPackage (
+  npmRelease.attrs
+  // {
+    # acpx needs Node 22.13 or newer.
+    nodejs = pkgs.nodejs_24;
 
-  nativeBuildInputs = [ pkgs.jq ];
-  postPatch = ''
-    cp ${./acpx/package-lock.json} package-lock.json
-    jq 'del(.devDependencies)' package.json > package.json.tmp
-    mv package.json.tmp package.json
+    postPatch = npmRelease.attrs.postPatch + ''
 
-    registry=(dist/agent-registry-*.js)
-    if [ "''${#registry[@]}" -ne 1 ] || [ ! -f "''${registry[0]}" ]; then
-      echo "acpx: expected one dist/agent-registry-*.js, found: ''${registry[*]}" >&2
-      exit 1
-    fi
-    substituteInPlace "''${registry[0]}" \
-      --replace-fail 'argv: ["npx", `pi-acp@''${ACP_ADAPTER_PACKAGE_RANGES.pi}`],' \
-        'argv: ["${piAcp}/bin/pi-acp"],' \
-      --replace-fail 'installedArgv: ["pi-acp"],' \
-        'installedArgv: ["${piAcp}/bin/pi-acp"],' \
-      --replace-fail 'requiredCommands: ["pi"],' "" \
-      --replace-fail 'const AGENT_DEFINITIONS = {' \
-        'const AGENT_DEFINITIONS = { "pi-readonly": { name: "Pi (read-only tools)", argv: ["${piAcp}/bin/pi-acp-readonly"] },'
-    substituteInPlace dist/cli.js \
-      --replace-fail 'readConfigFile(projectPath),' '{ config: void 0, exists: false },'
-  '';
-  dontNpmBuild = true;
-  npmFlags = [ "--ignore-scripts" ];
+      registry=(dist/agent-registry-*.js)
+      if [ "''${#registry[@]}" -ne 1 ] || [ ! -f "''${registry[0]}" ]; then
+        echo "acpx: expected one dist/agent-registry-*.js, found: ''${registry[*]}" >&2
+        exit 1
+      fi
+      substituteInPlace "''${registry[0]}" \
+        --replace-fail 'argv: ["npx", `pi-acp@''${ACP_ADAPTER_PACKAGE_RANGES.pi}`],' \
+          'argv: ["${piAcp}/bin/pi-acp"],' \
+        --replace-fail 'installedArgv: ["pi-acp"],' \
+          'installedArgv: ["${piAcp}/bin/pi-acp"],' \
+        --replace-fail 'requiredCommands: ["pi"],' "" \
+        --replace-fail 'const AGENT_DEFINITIONS = {' \
+          'const AGENT_DEFINITIONS = { "pi-readonly": { name: "Pi (read-only tools)", argv: ["${piAcp}/bin/pi-acp-readonly"] },'
+      substituteInPlace dist/cli.js \
+        --replace-fail 'readConfigFile(projectPath),' '{ config: void 0, exists: false },'
+    '';
 
-  doInstallCheck = true;
-  nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
-  versionCheckProgramArg = "--version";
+    doInstallCheck = true;
+    nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
+    versionCheckProgramArg = "--version";
 
-  passthru = { inherit piAcp; };
+    passthru = { inherit piAcp; };
 
-  meta = {
-    description = "Headless command-line client for the Agent Client Protocol";
-    homepage = "https://github.com/openclaw/acpx";
-    license = lib.licenses.mit;
-    inherit (piAcp.meta) platforms;
-    mainProgram = "acpx";
-  };
-}
+    meta = {
+      description = "Headless command-line client for the Agent Client Protocol";
+      homepage = "https://github.com/openclaw/acpx";
+      license = lib.licenses.mit;
+      inherit (piAcp.meta) platforms;
+      mainProgram = "acpx";
+    };
+  }
+)

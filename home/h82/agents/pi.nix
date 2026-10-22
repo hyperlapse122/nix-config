@@ -5,26 +5,15 @@
   ...
 }:
 let
-  merger = "${
-    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
-  }/bin/agent-settings";
+  mergeInto = import ./merge-into.nix { inherit config pkgs lib; } ".pi/agent";
 
-  # The wrapper and the key helper read the key files at run time. Bootstrap
-  # generations have no such files, and Synthetic then serves nothing.
-  pi = import ../../../packages/pi.nix (
-    {
-      inherit pkgs;
-    }
-    # A non-NixOS host, Linux or macOS, keeps its decrypted tokens in the
-    # user's state directory instead (home/h82/security/non-nixos-secrets.nix).
-    // lib.optionalAttrs (config.my.kind != "nixos") {
-      syntheticKeyFile = "${config.my.secrets.stateDir}/synthetic_api_key";
-      exaKeyFile = "${config.my.secrets.stateDir}/exa_api_key";
-    }
-  );
+  keyDirectory =
+    if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
+  syntheticKeyFile = "${keyDirectory}/synthetic_api_key";
+  exaKeyFile = "${keyDirectory}/exa_api_key";
 
-  # The ACP adapter and client run this host's wrapper, so a session started
-  # over ACP reads the same key files.
+  pi = import ../../../packages/pi.nix { inherit pkgs syntheticKeyFile exaKeyFile; };
+
   piAcp = import ../../../packages/pi-acp.nix { inherit pkgs pi; };
   acpx = import ../../../packages/acpx.nix { inherit pkgs piAcp; };
 
@@ -94,10 +83,8 @@ let
     "synthetic"
   ];
 
-  # Only the provider's scalars and each source model are asserted, so a
-  # provider or model the user adds to models.json, and a key they add beside
-  # these, survive every rebuild. The apiKey is a `!` command: Pi runs the
-  # packaged helper for every request, so no key reaches this file.
+  # The apiKey is a `!` command: Pi runs the packaged helper for every
+  # request, so no key reaches this file.
   declaredModels = pkgs.writeText "pi-declared-models.json" (
     builtins.toJSON {
       setPaths =
@@ -128,7 +115,7 @@ let
     if name == sourceModels.textGeneration then entry.roles.text-generation else entry.defaultEffort;
 
   # defaultProjectTrust never: a checkout Pi works in must not be able to supply
-  # extensions or packages that run code (R22).
+  # extensions or packages that run code.
   declaredSettings = pkgs.writeText "pi-declared-settings.json" (
     builtins.toJSON {
       set = {
@@ -145,15 +132,6 @@ let
       }) entries;
     }
   );
-
-  mergeInto =
-    label: file: document:
-    lib.hm.dag.entryAfter [ "installPackages" ] ''
-      ${merger} \
-        --label ${lib.escapeShellArg label} \
-        --settings ${config.home.homeDirectory}/.pi/agent/${file} \
-        --declared ${document}
-    '';
 in
 {
   home.packages = [
@@ -165,8 +143,7 @@ in
   # Pi loads every directory under ~/.pi/agent/extensions that holds an
   # index.js. T3 Code's text generation passes --no-extensions and skips it.
   home.file.".pi/agent/extensions/nix-config".source = import ../../../packages/pi-extension.nix {
-    inherit pkgs;
-    inherit (pi) syntheticKeyFile exaKeyFile;
+    inherit pkgs syntheticKeyFile exaKeyFile;
   };
 
   # Unguarded and after installPackages for the reasons given on

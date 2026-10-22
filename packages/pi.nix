@@ -63,11 +63,6 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  # Neither script reads the Exa key. Pi's extension, packaged separately,
-  # bakes both key-file paths in and takes them from here, so it uses the
-  # paths this package checked.
-  passthru = { inherit syntheticKeyFile exaKeyFile; };
-
   doInstallCheck = true;
   nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
   versionCheckKeepEnvironment = [ "HOME" ];

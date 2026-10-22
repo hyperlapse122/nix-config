@@ -278,8 +278,6 @@ let
         bad "serve-html on PATH is not the packaged helper"
       fi
 
-      # The OpenCode config merge runs after writeBoundary and targets the
-      # user's ~/.config/opencode/opencode.json.
       opencodeSettings=$(step opencodeSettings); opencodeSettings=''${opencodeSettings:-0}
       if [ "$opencodeSettings" = 0 ] || [ "$opencodeSettings" -le "$boundary" ]; then
         bad "the activation script has no opencodeSettings step after writeBoundary"

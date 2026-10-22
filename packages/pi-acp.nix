@@ -25,29 +25,15 @@
 
 let
   inherit (pkgs) lib;
-  source = builtins.fromJSON (builtins.readFile ./pi-acp-release.json);
-
-  adapter = pkgs.buildNpmPackage {
+  npmRelease = import ./npm-release-package.nix {
+    inherit pkgs;
     pname = "pi-acp-adapter";
-    inherit (source) version;
-    src = pkgs.fetchurl { inherit (source) url hash; };
-    # The dependency cache comes from the committed lock file alone, the way
-    # prefetch-npm-deps hashed it.
-    npmDeps = pkgs.fetchNpmDeps {
-      name = "pi-acp-adapter-${source.version}-npm-deps";
-      src = ./pi-acp;
-      hash = source.npmDepsHash;
-    };
-
-    nativeBuildInputs = [ pkgs.jq ];
-    postPatch = ''
-      cp ${./pi-acp/package-lock.json} package-lock.json
-      jq 'del(.devDependencies)' package.json > package.json.tmp
-      mv package.json.tmp package.json
-    '';
-    dontNpmBuild = true;
-    npmFlags = [ "--ignore-scripts" ];
+    release = ./pi-acp-release.json;
+    lockDirectory = ./pi-acp;
   };
+  inherit (npmRelease) source;
+
+  adapter = pkgs.buildNpmPackage npmRelease.attrs;
 in
 pkgs.runCommand "pi-acp-${source.version}"
   {

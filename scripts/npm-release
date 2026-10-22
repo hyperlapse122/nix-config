@@ -39,9 +39,7 @@ TARBALL_PREFIX = DEFAULT_SOURCE_URL + "/"
 
 NAME_PATTERN = re.compile(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
-# One sha512 SRI: a 64-byte digest is always 86 base64 characters plus "==".
 INTEGRITY_PATTERN = re.compile(r"sha512-[A-Za-z0-9+/]{86}==")
-# One sha256 SRI: a 32-byte digest is always 43 base64 characters plus "=".
 DEPS_HASH_PATTERN = re.compile(r"sha256-[A-Za-z0-9+/]{43}=")
 
 

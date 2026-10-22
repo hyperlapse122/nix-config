@@ -77,8 +77,6 @@ NOTICES = {
 
 ID_PATTERN = re.compile(r"hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 EFFORT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
-# The top-level keys of the source that name an entry, in the order the
-# issue lists them among that entry's uses.
 # The catalog fields a snapshot row keeps, with the check each must pass.
 SNAPSHOT_FIELDS = {
     "display_name": lambda v: isinstance(v, str) and v != "",
@@ -87,6 +85,8 @@ SNAPSHOT_FIELDS = {
     "max_output_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "pricing": lambda v: isinstance(v, dict),
 }
+# The top-level keys of the source that name an entry, in the order the
+# issue lists them among that entry's uses.
 ENTRY_POINTERS = ("defaultModel", "smallModel", "textGeneration")
 
 

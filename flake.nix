@@ -1598,7 +1598,6 @@
               syntheticKeyFile = "/var/empty/pi-test/synthetic_api_key";
               exaKeyFile = "/var/empty/pi-test/exa_api_key";
               packaged = import ./packages/pi.nix { inherit pkgs syntheticKeyFile exaKeyFile; };
-              # Both paths land inside single quotes in a script or a string literal.
               unsafePaths = [
                 {
                   label = "a relative path";
@@ -1663,7 +1662,6 @@
             '';
           pi-acp =
             let
-              # Records what pi-acp hands Pi, then exits before answering.
               recordingPi = pkgs.writeShellScriptBin "pi" ''
                 printf '%s\n' "$@" > "$PI_STUB_LOG/argv"
                 env > "$PI_STUB_LOG/env"

@@ -2,11 +2,6 @@
 # Runs the pinned Pi with the switches that keep it from asking pi.dev for a
 # newer version or sending telemetry. The Nix package replaces the @...@
 # constant. Builtins only, so the wrapper needs nothing on PATH.
-#
-# Unlike the opencode wrapper, this one exports no API key: the Synthetic
-# provider's apiKey runs the packaged pi-synthetic-key helper per request, and
-# the Exa extension reads its own key file, so neither key nor key-file path
-# reaches the environment of the commands Pi's tools run.
 set -euo pipefail
 
 PI='@PI@'

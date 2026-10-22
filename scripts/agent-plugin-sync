@@ -323,7 +323,6 @@ class OpenCode(Harness):
     label = 'OpenCode plugins'
     list_key = 'plugins'
     required = 'index.js'
-    # Appended to the version link to form the listed entry.
     entry_suffix = ''
 
     def settings(self):

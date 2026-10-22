@@ -15,10 +15,6 @@ if [[ -n ${SYNTHETIC_API_KEY:-} ]]; then
   exit 0
 fi
 
-# Anything wrong with the file means no key, and Synthetic then refuses every
-# request: the file is absent on bootstrap generations, and saying nothing
-# about it keeps every run quiet. A missing, unreadable, or directory path
-# fails the read, which leaves key empty.
 key=
 { IFS= read -r -d '' -N 16384 key <"$KEY_FILE"; } 2>/dev/null || true
 key=${key%"${key##*[![:space:]]}"}

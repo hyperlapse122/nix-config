@@ -63,15 +63,12 @@ const failure = (tool, message) => ({
 });
 
 // Posts `body` to Exa's `path` and returns the parsed results, or a failure.
-// Before any request it refuses a body that carries the Exa or Synthetic key
-// verbatim, so a steered model cannot send either key out through a query or
-// a URL.
 const exa = async (tool, path, body, signal) => {
-  const key = await exaKey();
+  const [key, synthetic] = await Promise.all([exaKey(), syntheticKey()]);
   if (key === null) {
     return { failure: failure(tool, `no Exa API key: EXA_API_KEY is unset and ${EXA_KEY_FILE} holds none`) };
   }
-  const secrets = [key, await syntheticKey()].filter((secret) => typeof secret === "string" && secret.length > 0);
+  const secrets = [key, synthetic].filter((secret) => typeof secret === "string" && secret.length > 0);
   if (strings(body).some((value) => secrets.some((secret) => value.includes(secret)))) {
     return { failure: failure(tool, "the request carries an API key; refused without sending it") };
   }
@@ -124,9 +121,7 @@ export default function (pi) {
       let thinkingLevel = null;
       try {
         thinkingLevel = pi.getThinkingLevel() ?? null;
-      } catch {
-        // Reported as null.
-      }
+      } catch {}
       const report = {
         provider: typeof model?.provider === "string" ? model.provider : null,
         model: typeof model?.id === "string" ? model.id : null,

@@ -1,7 +1,6 @@
 # The repository's Pi extension as a directory with a root index.js, the
 # entrypoint Pi looks for in an extension directory, with the host's key-file
-# paths in place of the placeholders. Callers pass the paths packages/pi.nix
-# checked and exposes, so both read the same files.
+# paths in place of the placeholders.
 {
   pkgs,
   syntheticKeyFile,

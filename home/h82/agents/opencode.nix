@@ -5,9 +5,7 @@
   ...
 }:
 let
-  merger = "${
-    (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
-  }/bin/agent-settings";
+  mergeInto = import ./merge-into.nix { inherit config pkgs lib; } ".config/opencode";
 
   # The wrapper reads /run/secrets/cli-auth/synthetic_api_key at run time.
   # Bootstrap generations have no such file, and Synthetic then serves
@@ -127,15 +125,6 @@ let
       };
     }
   );
-
-  mergeInto =
-    label: file: document:
-    lib.hm.dag.entryAfter [ "installPackages" ] ''
-      ${merger} \
-        --label ${lib.escapeShellArg label} \
-        --settings ${config.home.homeDirectory}/.config/opencode/${file} \
-        --declared ${document}
-    '';
 in
 {
   home.packages = [ wrapper ];
