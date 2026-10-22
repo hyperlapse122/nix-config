@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-21T13:42:58Z"
+    cursor: "2026-10-22T11:15:25Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -122,53 +122,244 @@ items:
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/256"
     updatedAt: "2026-10-19T04:12:42Z"
+  "gh-issues:hyperlapse122/nix-config#284":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Rebuild agent routing: remove Grok, back up Antigravity manually, split Claude Code and OpenCode review and worker roles."
+    fix_ref: "#286"
+    verified_merge_sha: "12c766bf0a8f6482ecb547542a57b01fd9ed8c54"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#286"
+    closeout_decision: "PR #286 closingIssuesReferences; merged to main"
+    existing_ack: false
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#284"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/284"
+    updatedAt: "2026-10-21T13:43:39Z"
   "gh-issues:hyperlapse122/nix-config#285":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
-    body: "Route ce-plan scouts to Synthetic models. Deferred from #284: send the repository, learnings, and framework research scouts that ce-plan launches to Synthetic models on T3 Code's opencode instance."
+    body: "Route ce-plan scouts to Synthetic models. Deferred from #284: send ce-plan's research scouts to Synthetic models on T3 Code's opencode instance."
+    fix_ref: "#292"
+    verified_merge_sha: "21a22b1c787136b271642f66259adf39c606ab11"
+    verified_at: "2026-10-22T11:33:30Z"
     author_class: "teammate"
-    claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    claimed_fix_ref: "#292"
+    closeout_decision: "PR #292 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#285"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/285"
-    updatedAt: "2026-10-21T13:16:34Z"
+    updatedAt: "2026-10-21T22:57:55Z"
   "gh-issues:hyperlapse122/nix-config#287":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
-    body: "Skip worktrees for delegated tasks unless a task needs one. Change the shared agent instructions so delegated tasks share the parent checkout by default and use worktree isolation only when a task needs a separate checkout."
+    body: "Skip worktrees for delegated tasks unless a task needs one."
+    fix_ref: "#292"
+    verified_merge_sha: "21a22b1c787136b271642f66259adf39c606ab11"
+    verified_at: "2026-10-22T11:33:30Z"
     author_class: "teammate"
-    claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    claimed_fix_ref: "#292"
+    closeout_decision: "PR #292 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#287"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/287"
-    updatedAt: "2026-10-21T13:25:54Z"
+    updatedAt: "2026-10-21T22:57:56Z"
   "gh-issues:hyperlapse122/nix-config#288":
     source: "gh-issues"
-    status: "acknowledged"
+    status: "closed"
     sensitive: false
-    body: "Merge the duplicate OpenCode DeepSeek model entries. DeepSeek V4.1 Flash 1017 appears twice in T3 Code's model picker because of the alias entry in opencode.nix; merge them while keeping the text-generation and title-generation effort settings."
+    body: "Merge the duplicate OpenCode DeepSeek model entries in T3 Code's model picker, keeping text and title generation effort."
+    fix_ref: "#292"
+    verified_merge_sha: "21a22b1c787136b271642f66259adf39c606ab11"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#292"
+    closeout_decision: "PR #292 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#288"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/288"
+    updatedAt: "2026-10-21T22:57:56Z"
+  "gh-issues:hyperlapse122/nix-config#289":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Replace OpenCode with Pi for Synthetic models."
     author_class: "teammate"
     claimed_fix_ref: null
     existing_ack: false
     existing_closeout: false
-    id: "hyperlapse122/nix-config#288"
+    id: "hyperlapse122/nix-config#289"
     media: []
-    origin: "https://github.com/hyperlapse122/nix-config/issues/288"
-    updatedAt: "2026-10-21T13:42:58Z"
+    origin: "https://github.com/hyperlapse122/nix-config/issues/289"
+    updatedAt: "2026-10-21T14:39:59Z"
+  "gh-issues:hyperlapse122/nix-config#290":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Turn model-reconcile issues into PRs on Synthetic's infinite alias."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#290"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/290"
+    updatedAt: "2026-10-21T14:33:56Z"
+  "gh-issues:hyperlapse122/nix-config#291":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Attach a web search service for Pi research scouts."
+    fix_ref: "#306"
+    verified_merge_sha: "17f6057b775b14f2b1249b2ee1ae13254f26b474"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#306"
+    closeout_decision: "PR #306 closingIssuesReferences; merged to main"
+    existing_ack: false
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#291"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/291"
+    updatedAt: "2026-10-22T07:00:42Z"
+  "gh-issues:hyperlapse122/nix-config#296":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Remove the retired ThinkPad's age recipient from SOPS files."
+    fix_ref: "#305"
+    verified_merge_sha: "cf3698841bfbaf57066e36e1adc7ca92b094854f"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#305"
+    closeout_decision: "PR #305 closingIssuesReferences; merged to main"
+    existing_ack: false
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#296"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/296"
+    updatedAt: "2026-10-22T06:00:18Z"
+  "gh-issues:hyperlapse122/nix-config#298":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Render the scout rule per harness instead of a prose condition."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#298"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/298"
+    updatedAt: "2026-10-22T02:03:01Z"
+  "gh-issues:hyperlapse122/nix-config#299":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Measure and cut the wall time of delegated reviewer and worker roles."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#299"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/299"
+    updatedAt: "2026-10-22T02:14:07Z"
+  "gh-issues:hyperlapse122/nix-config#301":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Pick up delegated results that arrive after a child's first turn."
+    fix_ref: "#304"
+    verified_merge_sha: "3c30b238640e8362b9731904abfccd3c1b83c83c"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#304"
+    closeout_decision: "PR #304 closingIssuesReferences; merged to main"
+    existing_ack: false
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#301"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/301"
+    updatedAt: "2026-10-22T05:56:13Z"
+  "gh-issues:hyperlapse122/nix-config#302":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Add pi-subagents, rpiv-ask-user-question, and rpiv-todo to Pi."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#302"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/302"
+    updatedAt: "2026-10-22T05:52:07Z"
+  "gh-issues:hyperlapse122/nix-config#303":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Wait for slow commands instead of rerunning them (screenshot shows a pytest run moved to the background after a timeout)."
+    fix_ref: "#307"
+    verified_merge_sha: "009a315b39c35ec083bdd93b665ef3ef3afb90af"
+    verified_at: "2026-10-22T11:33:30Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#307"
+    closeout_decision: "PR #307 closingIssuesReferences; merged to main"
+    existing_ack: false
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#303"
+    media: [{"kind": "image", "name": "pytest run moved to background after timeout (screenshot)", "url": "https://github.com/user-attachments/assets/c6f01c50-ff90-46d0-a9fe-4289d47ffba3"}]
+    media_attempts: 1
+    media_finding: "Agent stopped a backgrounded pytest run and reran it in the foreground instead of waiting; fixed on main by PR #307."
+    origin: "https://github.com/hyperlapse122/nix-config/issues/303"
+    updatedAt: "2026-10-22T08:28:03Z"
+  "gh-issues:hyperlapse122/nix-config#308":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Route delegated work to Claude and review to a Codex peer."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#308"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/308"
+    updatedAt: "2026-10-22T11:15:25Z"
+  "gh-issues:hyperlapse122/nix-config#309":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Delegate some roles to Codex when its usage allows; follow-up waiting on #308 and a usage measurement."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#309"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/309"
+    updatedAt: "2026-10-22T11:15:24Z"
 last_run:
-  timestamp: "2026-10-21T13:52:03Z"
+  timestamp: "2026-10-22T11:35:15Z"
   outcome: "completed"
-  writer: "sweep-macbook-t3-2359782f-2026-10-21"
+  writer: "sweep-MS-7D91-t3-b18c0f25-2026-10-22"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 3
-      closed: 6
-      ingested: 3
-      media_analyzed: 0
+      acknowledged: 12
+      closed: 8
+      in_plan: 7
+      ingested: 12
+      media_analyzed: 1
