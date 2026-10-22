@@ -83,7 +83,8 @@
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
     relaunch, the approval note, and the confined terms; a removed or negated
     foreground rule for delegated tasks and later-turn notice, a reverted
-    later-turn summary rule; a retired peer rule,
+    later-turn summary, skill outcome, or no-run rule, a `latestTerminalSummary`
+    rule under `# Git`; a retired peer rule,
     a removed peer safeguard, a removed, negated, or reworded scout rule,
     a removed, negated, or moved shared-checkout default, worktree trigger, or
     worktree fallback clause, an added worktree rule for every task,
@@ -429,10 +430,21 @@ let
   rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
   committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
-  foregroundSentence = "Tell each delegated task to run its commands in the foreground and not to end its turn until it has written its final report, because the last message of that turn is its result; a background command, a background wait, and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it.";
-  terminalResultSentence = "When that `task_status` is terminal and shows `hasPendingChildRuns` false, use its result as usual, reading `latestTerminalSummary` in place of `summary` when it is not null, because it holds a later turn's result; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
+  foregroundSentence = "Tell each delegated task to run the commands its report depends on in the foreground, raising a slow command's timeout as far as its harness allows and waiting inside the turn for one that outlasts it, and not to end its turn until it has written its final report, because the last message of that turn is its result; ending the turn while such a command still runs in the background and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it, while a server it keeps running for its own work, such as a dev server for a browser check, may stay in the background.";
+  terminalResultSentence = "When that `task_status` is terminal and shows `hasPendingChildRuns` false, use its result as usual, reading `latestTerminalSummary` in place of `summary` when it is not null, because it holds a later turn's result; when that result only promises a later report, read its session as above and use a finished message there that holds the whole result, and otherwise count the task failed and say that it ended without its report; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
   oldTerminalResultSentence = "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
-  laterTurnNoticeSentence = "T3 Code sends no notification when a later turn of a terminal task ends, so in a run with a person present, when you end your turn while a task the waiting step needs is terminal with `hasPendingChildRuns` true, name it and tell the user that no notification will come for its later turn, so they write to you once that turn has finished.";
+  laterTurnNoticeSentence = "T3 Code sends no notification when a later turn of a terminal task ends, so in a run with a person present, when you end your turn while a task the waiting step needs is terminal with `hasPendingChildRuns` true, name it and tell the user that no notification will come for its later turn, so they write to you once that turn has finished, or stop the task when its thread shows no progress.";
+  skillOutcomeSentence = "For such a skill, a completion notification and one `task_status` read that shows `hasPendingChildRuns` false, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result.";
+  oldSkillOutcomeSentence = "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result.";
+  noRunSentence = "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, the task shows `waiting_for_children` with `hasPendingChildRuns` false, or a wait without `runId` returns at once without `timedOut` while the task is still terminal with `hasPendingChildRuns` true, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present.";
+  oldNoRunSentence = "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present.";
+  laterTurnDocTerms = [
+    "run the commands its report depends on in the foreground, raising a slow command's timeout"
+    "read from `latestTerminalSummary` instead of `summary`"
+    "only promises a later report"
+    "no notification will come for its later turn"
+    "a wait without `runId` that returns at once without `timedOut`"
+  ];
   sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   t3CodeSentences = [
@@ -462,7 +474,7 @@ let
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
-    "On every turn you get while a task the waiting step needs has not reached a terminal state, or shows `hasPendingChildRuns` true, and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
+    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
     terminalResultSentence
     laterTurnNoticeSentence
     takeFromSessionSentence
@@ -470,12 +482,12 @@ let
     prohibitionSentence
     allowedWaitsSentence
     "Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn or to fail when no blocking wait exists, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; when the results arrive, continue the same run from the step that waited."
-    "For such a skill, a completion notification and one `task_status` read that shows `hasPendingChildRuns` false, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
+    skillOutcomeSentence
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
     "In a run with no person present, when a task's `task_status` shows `pendingApproval`, nobody can approve it, so cancel it with `task_cancel` and count it as failed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
-    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present."
+    noRunSentence
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
     "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
@@ -568,7 +580,7 @@ let
   # inside the checked `# T3 Code` and `# Compound Engineering` sections,
   # where every sentence is pinned, so a rule added elsewhere cannot bring the
   # blocking wait back for a run with a person present, change when a session
-  # result is taken, restore inheritance of the thread's mode, or request a
+  # result is taken or which summary is the result, restore inheritance of the thread's mode, or request a
   # supervised mode.
   confinedTerms = [
     "t3_thread_wait"
@@ -583,6 +595,8 @@ let
     "approval-required"
     "auto-accept-edits"
     "pendingApproval"
+    "latestTerminalSummary"
+    "hasPendingChildRuns"
   ];
 
   removedTerms = [
@@ -1109,6 +1123,24 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "latestTerminalSummary rule added under # Git";
+      line = "- A terminal task's result is its `summary`; never read `latestTerminalSummary`.";
+      edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: latestTerminalSummary";
+    }
+    {
+      name = "skill outcome rule reverted";
+      line = "- ${skillOutcomeSentence}";
+      edit = ''old=${esc "- ${oldSkillOutcomeSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "no-run rule reverted";
+      line = "- ${noRunSentence}";
+      edit = ''old=${esc "- ${oldNoRunSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
       name = "later-turn notice sentence removed";
       line = "- ${laterTurnNoticeSentence}";
       edit = ''awk '$0 != ENVIRON["line"]' '';
@@ -1427,6 +1459,15 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   ''}
 
   ${repoCopyRules}
+
+  # The provisioning guide explains the later-turn rules in prose, so it
+  # must keep naming each one when the pinned sentences change.
+  for term in ${lib.escapeShellArgs laterTurnDocTerms}; do
+    if ! grep -qF -- "$term" ${../docs/provisioning.md}; then
+      echo "docs/provisioning.md no longer describes a later-turn rule: $term" >&2
+      failed=1
+    fi
+  done
 
   selfTestFailed=0
   ${selfTest}
