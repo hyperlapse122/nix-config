@@ -81,7 +81,9 @@
   - the per-file rules fire: the rendering for the fake key passes them, and
     each mutant in `selfTestMutants` (a removed, a negated, an inverted, and
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
-    relaunch, the approval note, and the confined terms; a retired peer rule,
+    relaunch, the approval note, and the confined terms; a removed or negated
+    foreground rule for delegated tasks and later-turn notice, a reverted
+    later-turn summary rule; a retired peer rule,
     a removed peer safeguard, a removed, negated, or reworded scout rule,
     a removed, negated, or moved shared-checkout default, worktree trigger, or
     worktree fallback clause, an added worktree rule for every task,
@@ -427,6 +429,10 @@ let
   rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
   committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
+  foregroundSentence = "Tell each delegated task to run its commands in the foreground and not to end its turn until it has written its final report, because the last message of that turn is its result; a background command, a background wait, and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it.";
+  terminalResultSentence = "When that `task_status` is terminal and shows `hasPendingChildRuns` false, use its result as usual, reading `latestTerminalSummary` in place of `summary` when it is not null, because it holds a later turn's result; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
+  oldTerminalResultSentence = "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
+  laterTurnNoticeSentence = "T3 Code sends no notification when a later turn of a terminal task ends, so in a run with a person present, when you end your turn while a task the waiting step needs is terminal with `hasPendingChildRuns` true, name it and tell the user that no notification will come for its later turn, so they write to you once that turn has finished.";
   sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   t3CodeSentences = [
@@ -436,6 +442,7 @@ let
     "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it, and when `orchestrator_capabilities` marks a default `effort` for that model, set `effort` in `target.options` to it, even for your own model."
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
+    foregroundSentence
     fullAccessSentence
     rejectionSentence
     launchFailureSentence
@@ -455,14 +462,15 @@ let
     "While another task the waiting step needs is still running, end your turn again without cancelling it, and continue that step once every result it needs has arrived through a notification or from the task's session."
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
-    "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
-    "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting."
+    "On every turn you get while a task the waiting step needs has not reached a terminal state, or shows `hasPendingChildRuns` true, and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
+    terminalResultSentence
+    laterTurnNoticeSentence
     takeFromSessionSentence
     "When `task_cancel` leaves that task running, keep the result, tell the user once that it still runs so they can stop it, and count its result as taken."
     prohibitionSentence
     allowedWaitsSentence
     "Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn or to fail when no blocking wait exists, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; when the results arrive, continue the same run from the step that waited."
-    "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
+    "For such a skill, a completion notification and one `task_status` read that shows `hasPendingChildRuns` false, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
     "In a run with no person present, when a task's `task_status` shows `pendingApproval`, nobody can approve it, so cancel it with `task_cancel` and count it as failed."
@@ -1079,6 +1087,36 @@ let
     {
       name = "self-wake prohibition sentence negated";
       line = "- ${prohibitionSentence} ${allowedWaitsSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "foreground sentence removed";
+      line = "- ${foregroundSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "foreground sentence negated";
+      line = "- ${foregroundSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn summary rule reverted";
+      line = "- ${terminalResultSentence}";
+      edit = ''old=${esc "- ${oldTerminalResultSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn notice sentence removed";
+      line = "- ${laterTurnNoticeSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn notice sentence negated";
+      line = "- ${laterTurnNoticeSentence}";
       edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
