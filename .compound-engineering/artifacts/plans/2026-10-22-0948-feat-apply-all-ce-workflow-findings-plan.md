@@ -54,7 +54,7 @@ Paths to skill files are relative to the installed Compound Engineering plugin's
 - **Cover every review, verification, and check step inside a CE workflow, not PR comments.** (session-settled: user-directed — chosen over also covering PR comments handled by `ce-resolve-pr-feedback` and `ce-babysit-pr`, and over only closing the filters callers apply to the three review skills.) Governs R1, R3.
 - **A verdict that picks among options is not a finding.** (session-settled: user-approved — proposed in the scoping synthesis: an adoption grade or a rejected candidate is the answer the workflow was asked for, not a defect in its output.) Governs R2.
 - **Close three reasons: out of scope, reworded no-impact or mitigation, and an unasked conflict with a user decision.** (session-settled: user-directed — chosen over also closing "no fix is possible in this repository".) Governs R4, R5, R6.
-- **Allow "no fix in this repository" as a fourth reason, with no added condition.** (session-settled: user-directed — chosen over making it an explicit exception that requires the remaining risk documented, and over requiring a mitigation that counts as applied.) Governs R9.
+- **Allow "no fix in this repository" as a further reason, with no added condition.** (session-settled: user-directed — chosen over making it an explicit exception that requires the remaining risk documented, and over requiring a mitigation that counts as applied.) Governs R9.
 - **Extend the existing section and add reason tags.** (session-settled: user-directed — chosen over a per-skill override list, which drifts with frequent CE releases, and over a closed list without a tag for "no fix in this repository".) Governs R8, R10.
 - **A run with no person present lists a user-decision conflict with the `awaits your decision` tag.** (session-settled: user-approved — proposed in the scoping synthesis: such a run cannot ask.) Governs R7.
 - **Change only the shared instructions, their render check, and the repository's `AGENTS.md` and `CONCEPTS.md`; patch no plugin file and add no hook.** Carried from the 2026-10-12 plan, where the user chose it because plugin patches break on automated CE bumps and a hook works in one harness only.
@@ -71,12 +71,12 @@ Paths to skill files are relative to the installed Compound Engineering plugin's
 
 - R4. A fix that reaches outside the diff or the change's scope, such as existing behavior or helpers the change did not touch, is made in the same change.
 - R5. A rewording of the already forbidden "low impact" and "no current instance", such as "hides nothing visible", "mitigated, not removed", or "the current configuration never triggers it", is not a reason to leave a finding.
-- R6. A finding whose fix would reverse a decision the user made, including a brainstorm Scope Boundary or a `session-settled` entry, is asked in every run with a person present, autonomous runs such as `lfg` included, and is applied or dropped by the answer.
+- R6. A finding whose fix would reverse a decision the user made, including a brainstorm Scope Boundary or a `session-settled` entry, is asked in every run with a person present, autonomous runs such as `lfg` included, and is applied or dropped by the answer; a dropped fix is listed with the `declined by you` tag.
 - R7. In a run with no person present, that finding is listed with the `awaits your decision` tag instead.
 
 **Unapplied entries**
 
-- R8. Each entry under `Unapplied review findings` starts with exactly one tag from the closed list `verified wrong`, `weakens a safety check`, `awaits your decision`, `no fix in this repository`, followed by its evidence or reason.
+- R8. Each entry under `Unapplied review findings` starts with exactly one tag from the closed list `verified wrong`, `weakens a safety check`, `declined by you`, `awaits your decision`, `no fix in this repository`, followed by its evidence or reason.
 - R9. `no fix in this repository` is a new reason: the agent uses it when no change in the repository can fix the finding, with no further condition.
 - R10. A finding whose entry cannot carry one of those tags is applied, not listed.
 
@@ -114,7 +114,7 @@ Paths to skill files are relative to the installed Compound Engineering plugin's
 - `tests/agent-instructions.nix` `removedTerms` — terms no rendered file may carry.
 - `.compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md` and `.compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md` — required reading before changing the check.
 
-Product Contract preservation: clarified, no scope change: the deferred question about the repository `AGENTS.md` copy is resolved as KTD4 and removed from Outstanding Questions; R9 and its Key Decision name the no-fix tag as a new reason; R11 keeps the current rule's ask-before-reversing clause, per R6; R12 names the guarded sentences; the change-scope Key Decision and the Means line name every file the units touch.
+Product Contract preservation: changed: R6, R8 — code review found that a fix the user declines when asked had no allowed reason, so it added the `declined by you` tag; also clarified, no scope change: the deferred question about the repository `AGENTS.md` copy is resolved as KTD4 and removed from Outstanding Questions; R9 and its Key Decision name the no-fix tag as a new reason; R11 keeps the current rule's ask-before-reversing clause, per R6; R12 names the guarded sentences; the change-scope Key Decision and the Means line name every file the units touch.
 
 ---
 
@@ -123,9 +123,9 @@ Product Contract preservation: clarified, no scope change: the deferred question
 ### Key Technical Decisions
 
 - KTD1. **Keep `# Review findings` one paragraph in the shared part of the template, and keep the current sentence order: coverage, override, forbidden reasons, cost, exceptions, outlet, user decisions, review-only, report.** The render check compares the section to `reviewFindingsSentences` in order, so each new sentence takes the slot of the concern it extends. Implements R1-R11.
-- KTD2. **Write the tags as backticked lowercase literals, exactly `verified wrong`, `weakens a safety check`, `awaits your decision`, and `no fix in this repository`, in one sentence that says each `Unapplied review findings` entry starts with one of them.** An agent writing a PR body matches the literal, and a reader scans for it. Implements R8-R10.
-- KTD3. **Pin every new or changed sentence in `reviewFindingsSentences`, and add the old lead fragment, "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report", to `removedTerms`.** `onlyPinnedSentences`, `requireSentences`, and `sentencesInOrder` already fail on a missing, negated, extra, or reordered sentence in this section, so the guard needs no new mechanism or self-test mutant, and the `docs/provisioning.md` mutant count stays 66. The `removedTerms` entry fails a rendering that brings the three-skill rule back anywhere in the file. Implements R12.
-- KTD4. **Align the repository `AGENTS.md` copy and the `CONCEPTS.md` **Review finding** entry in the same change.** Both state the rule for readers who may not load the global file; leaving them on the narrower three-skill wording and the old exception list would give two live versions of one rule. No check reads them, so they carry the meaning, not the exact sentences. Resolves the brainstorm's deferred question.
+- KTD2. **Write the tags as backticked lowercase literals, exactly `verified wrong`, `weakens a safety check`, `declined by you`, `awaits your decision`, and `no fix in this repository`, in one sentence that says each `Unapplied review findings` entry starts with one of them.** An agent writing a PR body matches the literal, and a reader scans for it. Implements R8-R10.
+- KTD3. **Pin every new or changed sentence in `reviewFindingsSentences`, add the old lead fragment, "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report", to `removedTerms`, and add four self-test mutants for the section.** `onlyPinnedSentences`, `requireSentences`, and `sentencesInOrder` fail on a missing, negated, extra, or reordered sentence only while the section's `checkedSections` entry exists, so the mutants (a narrowing sentence added, the tag sentence moved, removed, and negated) prove that entry still fires, and the `docs/provisioning.md` mutant count becomes 70. The `removedTerms` entry still fails a rendering that brings the three-skill rule back if that entry is ever dropped. Implements R12.
+- KTD4. **Align the repository `AGENTS.md` copy and the `CONCEPTS.md` **Review finding** entry in the same change, and check both.** Both state the rule for readers who may not load the global file. `AGENTS.md` carries every pinned template sentence, and the check fails when one is missing where a sentence starts or a retired three-skill lead returns; the glossary entry must keep the Compound Engineering scope and the five tags. Resolves the brainstorm's deferred question.
 
 ### Assumptions
 
@@ -151,7 +151,7 @@ U1 and U2 land together, because the check fails against the rewritten template 
   2. Add the verdict exclusion per R2 right after it.
   3. Extend the override sentence per R3 so it names the dispositions: a dismissal, rejection, low-value skip, deferral, log-and-continue, `Deferred to Planning` question, apply bar, or confidence threshold, `lfg`'s included.
   4. Keep the forbidden-reason sentence and add its rewordings per R5; add one sentence per R4 that a fix reaching outside the diff or the change's scope is made in the same change.
-  5. Keep the cost sentence; rewrite the exception sentence so it allows exactly the four cases R8 tags, in the same order as the tag literals in step 6: verified wrong with quoted evidence, every fix weakens a safety check, a user-decision conflict in a run with no person present per R7, and no change in the repository can fix it per R9.
+  5. Keep the cost sentence; rewrite the exception sentence so it allows exactly the five cases R8 tags, in the same order as the tag literals in step 6: verified wrong with quoted evidence, every fix weakens a safety check, the user declined the fix when asked, a user-decision conflict in a run with no person present per R7, and no change in the repository can fix it per R9.
   6. Replace the outlet sentence with the tag sentence per R8-R10 and KTD2; keep the "omit that section when there are none" clause.
   7. Extend the user-decision sentence per R6 and R7: a fix that would reverse a user decision, a brainstorm Scope Boundary or `session-settled` entry included, is asked in every run with a person present, autonomous runs included, and listed as `awaits your decision` in a run with no person present.
   8. Keep the review-only and report sentences per R11.
@@ -188,9 +188,9 @@ U1 and U2 land together, because the check fails against the rewritten template 
 - **Files:** `AGENTS.md`, `CONCEPTS.md`.
 - **Approach:**
   1. In `AGENTS.md`'s "Always apply all review findings" paragraph, widen the coverage sentence per R1 and R2, add the out-of-scope and reworded-reason closures per R4 and R5, and require the tags per R8.
-  2. In `CONCEPTS.md`'s **Review finding** entry, replace the exception list with the four tagged reasons and state that a user-decision conflict is asked when a person is present, per R6 and R7.
+  2. In `CONCEPTS.md`'s **Review finding** entry, replace the exception list with the five tagged reasons and state that a user-decision conflict is asked when a person is present, per R6 and R7.
 - **Test expectation:** none -- prose that no check reads; Markdown lint covers formatting.
-- **Verification:** Neither file names only the three review skills as the rule's scope, and both list the same four reasons as the template.
+- **Verification:** Neither file names only the three review skills as the rule's scope, and both list the same five reasons as the template.
 
 ---
 
