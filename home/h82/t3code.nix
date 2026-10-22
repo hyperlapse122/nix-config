@@ -130,6 +130,7 @@ let
   # pinned to it in OpenCode's settings, with no variant: T3 Code sends none
   # then, so the effort does not depend on a variant reaching the request.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
+  textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
     defaultModelSelection = {
       instanceId = "claudeAgent";
@@ -143,8 +144,23 @@ let
     };
     textGenerationModelSelection = {
       instanceId = "opencode";
-      model = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
+      model = textGenerationAlias;
     };
+  };
+
+  # opencode.nix declares the text-generation model twice, once as the model
+  # and once as the `@<effort>` alias that carries the effort. T3 Code's picker
+  # would list both, so the alias is hidden. The merge replaces only an entry
+  # under this model's `@` prefix, so the models the user hides stay hidden and
+  # an alias from an earlier effort is retired.
+  hiddenAlias = {
+    path = [
+      "providerModelPreferences"
+      "opencode"
+      "hiddenModels"
+    ];
+    prefix = "synthetic/${textGeneration.id}@";
+    value = textGenerationAlias;
   };
 
   clientSettings.fontFamilyCode = "JetBrains Mono";
@@ -164,6 +180,7 @@ let
       values,
       owned ? { },
       remove ? [ ],
+      prefixEntries ? [ ],
       migrateInstances ? null,
     }:
     {
@@ -172,6 +189,7 @@ let
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
     }
+    // lib.optionalAttrs (prefixEntries != [ ]) { inherit prefixEntries; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
@@ -182,6 +200,7 @@ let
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
+          prefixEntries = [ hiddenAlias ];
           migrateInstances = instanceMigration;
         })
       );

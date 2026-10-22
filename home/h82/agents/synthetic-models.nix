@@ -56,6 +56,7 @@
     roles = {
       unspecified-low = "high";
       quick = "low";
+      scout = "high";
       text-generation = "low";
     };
     opencodeEffort = "high";
