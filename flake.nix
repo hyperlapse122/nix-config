@@ -1359,6 +1359,7 @@
             '';
           bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
           linux-host-secrets = import ./tests/linux-host-secrets.nix { inherit pkgs self; };
+          sops-recipients = import ./tests/sops-recipients.nix { inherit pkgs self; };
           update-dependencies-push-order =
             pkgs.runCommand "update-dependencies-push-order-tests" { nativeBuildInputs = [ pkgs.git ]; }
               ''
