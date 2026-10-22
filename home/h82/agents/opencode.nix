@@ -32,11 +32,11 @@ let
   textKey = entry: "${entry.id}@${entry.roles.text-generation}";
   textModels = lib.unique (
     map (name: models.${name}) [
-      models.small
+      models.smallModel
       models.textGeneration
     ]
   );
-  smallKey = textKey models.${models.small};
+  smallKey = textKey models.${models.smallModel};
 
   modelsPath = [
     "provider"
@@ -53,7 +53,7 @@ let
         "options"
         "reasoningEffort"
       ];
-      value = entry.opencodeEffort;
+      value = entry.defaultEffort;
     }) (lib.filterAttrs (_: builtins.isAttrs) models)
     ++ lib.concatMap (entry: [
       {
@@ -97,7 +97,7 @@ let
     builtins.toJSON {
       set = {
         "$schema" = "https://opencode.ai/config.json";
-        model = "synthetic/" + models.${models.opencodeDefault}.id;
+        model = "synthetic/" + models.${models.defaultModel}.id;
         small_model = "synthetic/" + smallKey;
         update = "disable";
         share = "disabled";

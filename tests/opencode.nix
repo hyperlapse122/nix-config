@@ -43,7 +43,7 @@
     syn:large:text entry goes, and the provider's options and other providers
     stay; service.json disables OpenCode's shared background server. The
     small_model entry is also the one T3 Code's text generation selects, so
-    the check fails while the source's `small` and `textGeneration` would
+    the check fails while the source's `smallModel` and `textGeneration` would
     name different entries.
   - no Home Manager file targets .config/opencode/opencode.json or
     .config/opencode/service.json.
@@ -80,7 +80,7 @@ let
   models = import ../home/h82/agents/synthetic-models.nix;
   # JSON string literals, for splicing into the JSON text below.
   json = value: builtins.toJSON value;
-  defaultModel = json ("synthetic/" + models.${models.opencodeDefault}.id);
+  defaultModel = json ("synthetic/" + models.${models.defaultModel}.id);
   glm = json models.glm.id;
   glmFlash = json models.glmFlash.id;
   kimi = json models.kimi.id;
@@ -88,8 +88,8 @@ let
   # The text-generation effort names the entry small_model and T3 Code's text
   # generation select, so both follow the source's role. Each selection must
   # find its own entry, so the two are read separately; today they share one.
-  smallEffort = models.${models.small}.roles.text-generation;
-  smallKey = "${models.${models.small}.id}@${smallEffort}";
+  smallEffort = models.${models.smallModel}.roles.text-generation;
+  smallKey = "${models.${models.smallModel}.id}@${smallEffort}";
   textEffort = models.${models.textGeneration}.roles.text-generation;
   textKey = "${models.${models.textGeneration}.id}@${textEffort}";
   deepseekSmall = json smallKey;
@@ -516,7 +516,7 @@ pkgs.runCommand "opencode-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]
   compareJson=${compareJson}
   declare -A merged
   ${lib.optionalString (!textSelectionShared) ''
-    fail ${esc "small and textGeneration in synthetic-models.nix name different entries (${smallKey}, ${textKey}); this check expects one shared text-generation entry, so extend it"}
+    fail ${esc "smallModel and textGeneration in synthetic-models.nix name different entries (${smallKey}, ${textKey}); this check expects one shared text-generation entry, so extend it"}
   ''}
 
   ${lib.concatMapStringsSep "\n" assertEntry (configurations.entries ++ keyForcedOff)}
