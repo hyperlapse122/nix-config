@@ -287,7 +287,7 @@ let
 
   reviewFindingsHeading = "# Review findings";
 
-  # In section order: `sentencesInOrder` compares the section to this list.
+  # In section order: the structure pass compares the section to this list.
   reviewFindingsSentences = [
     "Apply every finding that a review, verification, or check step of any Compound Engineering skill reports about the work the workflow produces or changes, such as `ce-code-review`, `ce-simplify-code`, and `ce-doc-review`, in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks."
     "A verdict that chooses among alternatives, such as an adoption grade, a judgment between competing solutions, or a candidate verdict, is not a finding."
@@ -790,122 +790,312 @@ let
     "moonshotai"
   ];
 
-  # Prints each removed word the file at "$1" names outside a store path.
-  removedWordsFunction = ''
-    removedWordsIn() {
-      local stripped word
-      stripped=$(mktemp)
-      sed -E 's#/nix/store/[0-9a-z]{32}-[^[:space:]`"]*##g' "$1" > "$stripped"
-      for word in ${lib.escapeShellArgs removedWords}; do
-        if grep -qiwF -- "$word" "$stripped"; then
-          echo "$word"
-        fi
-      done
+  # Writes `items` to the store, one per line, for the awk programs below to
+  # read, so the build script names a file instead of repeating the list in
+  # every block. An item holding a newline would read back as two.
+  listFile =
+    name: items:
+    assert lib.assertMsg (lib.all (
+      item: !(lib.hasInfix "\n" item)
+    ) items) "${name} holds an item with a newline";
+    pkgs.writeText name (lib.concatMapStrings (item: "${item}\n") items);
+
+  removedTermsList = listFile "agent-instructions-removed-terms" removedTerms;
+  removedWordsList = listFile "agent-instructions-removed-words" removedWords;
+  confinedTermsList = listFile "agent-instructions-confined-terms" confinedTerms;
+  modelIdsList = listFile "agent-instructions-model-ids" modelIds;
+
+  # The awk programs run once per rendered file and once per self-test
+  # mutant, so each rule family is one pass over the file, never one process
+  # per sentence or term. Every input reaches a program through a file or the
+  # environment, never `awk -v`, which processes escape sequences and turns a
+  # pinned `\~` into `~`. A program that cannot read its list or spec exits 2
+  # and prints why, so a missing input fails the build instead of passing
+  # every file.
+
+  # Fails the build, naming each sentence of the list, unless the file holds
+  # it exactly once and that occurrence starts where a sentence starts: at the
+  # start of a line, after a list marker, or after the previous sentence's
+  # full stop. A substring match would accept the sentence inside its own
+  # negation ("Do not Apply every..."). The message is printed before each
+  # sentence, in list order.
+  requireSentencesProgram = pkgs.writeText "agent-instructions-require-sentences.awk" ''
+    BEGIN {
+      message = ENVIRON["ai_message"]
+      list = ENVIRON["ai_list"]
+      while ((r = getline sentence < list) > 0) sentences[++count] = sentence
+      if (r < 0 || count == 0) {
+        print "require-sentences: cannot read a sentence list from " list > "/dev/stderr"
+        bad = 1
+        exit 2
+      }
+      close(list)
+    }
+    {
+      for (k = 1; k <= count; k++) {
+        s = sentences[k]
+        line = $0
+        while ((i = index(line, s)) > 0) {
+          pre = substr(line, 1, i - 1)
+          n[k]++
+          if (pre == "" || pre ~ /^ *- $/ || pre ~ /\. $/) anchored[k]++
+          line = substr(line, i + length(s))
+        }
+      }
+    }
+    END {
+      if (bad) exit 2
+      for (k = 1; k <= count; k++) {
+        if (!(n[k] == 1 && anchored[k] == 1)) {
+          print message " " sentences[k] > "/dev/stderr"
+          failed = 1
+        }
+      }
+      exit failed
     }
   '';
 
-  # Fails the build, naming each sentence, unless `$file` holds it exactly
-  # once and that occurrence starts where a sentence starts: at the start of
-  # a line, after a list marker, or after the previous sentence's full stop.
-  # A substring match would accept the sentence inside its own negation
-  # ("Do not Apply every..."). The sentence reaches awk through the
-  # environment, because `awk -v` processes escape sequences and turns a
-  # pinned `\~` into `~`.
-  requireSentences = message: sentences: ''
-    for sentence in ${lib.escapeShellArgs sentences}; do
-      if ! s="$sentence" awk '
-        BEGIN { s = ENVIRON["s"] }
-        {
-          line = $0
-          while ((i = index(line, s)) > 0) {
-            pre = substr(line, 1, i - 1)
-            n++
-            if (pre == "" || pre ~ /^ *- $/ || pre ~ /\. $/) anchored++
-            line = substr(line, i + length(s))
+  # Fails the build, naming each term of the list that the file holds, once
+  # and in list order. `ai_fold` matches without regard to case; `ai_word`
+  # matches whole words only, like `grep -w`, so "Kimiko" is no "Kimi";
+  # `ai_strip` drops store paths first, which may spell a word in their hash
+  # or name. `ai_bare` prints the bare terms to standard output and never
+  # fails, for the word matcher's own self-test cases.
+  termsProgram = pkgs.writeText "agent-instructions-terms.awk" ''
+    function hasWord(line, term,    from, pos, before, after) {
+      from = 1
+      while ((pos = index(substr(line, from), term)) > 0) {
+        pos += from - 1
+        before = (pos > 1) ? substr(line, pos - 1, 1) : ""
+        after = substr(line, pos + length(term), 1)
+        if (before !~ /[[:alnum:]_]/ && after !~ /[[:alnum:]_]/) return 1
+        from = pos + 1
+      }
+      return 0
+    }
+    BEGIN {
+      message = ENVIRON["ai_message"]
+      list = ENVIRON["ai_list"]
+      fold = ENVIRON["ai_fold"] != ""
+      word = ENVIRON["ai_word"] != ""
+      strip = ENVIRON["ai_strip"] != ""
+      bare = ENVIRON["ai_bare"] != ""
+      while ((r = getline term < list) > 0) {
+        count++
+        terms[count] = term
+        keys[count] = fold ? tolower(term) : term
+      }
+      if (r < 0) {
+        print "terms: cannot read a term list from " list > "/dev/stderr"
+        bad = 1
+        exit 2
+      }
+      close(list)
+    }
+    {
+      line = $0
+      if (strip) gsub(/\/nix\/store\/[0-9a-z]{32}-[^[:space:]`"]*/, "", line)
+      if (fold) line = tolower(line)
+      for (k = 1; k <= count; k++) {
+        if (hit[k]) continue
+        if (word ? hasWord(line, keys[k]) : index(line, keys[k]) > 0) hit[k] = 1
+      }
+    }
+    END {
+      if (bad) exit 2
+      for (k = 1; k <= count; k++) {
+        if (!hit[k]) continue
+        if (bare) {
+          print terms[k]
+        } else {
+          print message " " terms[k] > "/dev/stderr"
+          failed = 1
+        }
+      }
+      exit failed
+    }
+  '';
+
+  # Prints each removed word the file at "$1" names outside a store path.
+  removedWordsFunction = ''
+    removedWordsIn() {
+      ai_list=${removedWordsList} ai_fold=1 ai_word=1 ai_strip=1 ai_bare=1 awk -f ${termsProgram} "$1"
+    }
+  '';
+
+  # The spec of one rendering's structure: a section line (`S`, heading, name)
+  # followed by its pinned sentences in section order (`P`), then the expected
+  # top-level headings in file order (`H`), tab separated.
+  specFile =
+    sections: headings:
+    let
+      fields = lib.concatMap (section: [
+        section.heading
+        section.name
+      ]) sections;
+      items = lib.concatMap (section: section.sentences) sections ++ headings ++ fields;
+    in
+    assert lib.assertMsg (lib.all (
+      item: !(lib.hasInfix "\n" item) && !(lib.hasInfix "\t" item)
+    ) items) "a section field, sentence, or heading holds a newline or a tab";
+    pkgs.writeText "agent-instructions-spec" (
+      lib.concatMapStrings (
+        section:
+        "S\t${section.heading}\t${section.name}\n"
+        + lib.concatMapStrings (sentence: "P\t${sentence}\n") section.sentences
+      ) sections
+      + lib.concatMapStrings (heading: "H\t${heading}\n") headings
+    );
+
+  # Checks, in one pass over the file, what a required-sentence check cannot
+  # see. Each section is read as a stream of sentences, list markers dropped
+  # and split after each full stop (a pinned sentence must not hold a full
+  # stop followed by a space, such as "e.g. "), and must be exactly its pinned
+  # sentences in order. Three messages say how it fails, each followed by the
+  # sentence: an unpinned sentence, in file order, such as a separate sentence
+  # that reverses a pinned rule; a pinned sentence missing from the section, in
+  # list order, such as one moved into another section; and a stream that is
+  # not the pinned list in order, such as a duplicate, which also prints the
+  # diff. A missing section heading fails with the first message. The
+  # top-level `# ` headings must be exactly the expected list, in order, and
+  # no text may precede the first, because no section check sees text above
+  # it.
+  structureProgram = pkgs.writeText "agent-instructions-structure.awk" ''
+    BEGIN {
+      label = ENVIRON["ai_label"]
+      scratch = ENVIRON["ai_scratch"]
+      spec = ENVIRON["ai_spec"]
+      while ((r = getline rec < spec) > 0) {
+        kind = substr(rec, 1, 1)
+        rest = substr(rec, 3)
+        if (kind == "S") {
+          split(rest, f, "\t")
+          sections++
+          heading[sections] = f[1]
+          name[sections] = f[2]
+          sectionOf[f[1]] = sections
+          np[sections] = 0
+          na[sections] = 0
+        } else if (kind == "P" && sections > 0) {
+          np[sections]++
+          pin[sections, np[sections]] = rest
+          pinned[sections, rest] = 1
+        } else if (kind == "H") {
+          nw++
+          want[nw] = rest
+        } else {
+          r = -1
+          break
+        }
+      }
+      if (r < 0 || sections == 0 || nw == 0) {
+        print "structure: cannot read a section spec from " spec > "/dev/stderr"
+        bad = 1
+        exit 2
+      }
+      close(spec)
+    }
+    /^# / {
+      seenHeading = 1
+      nact++
+      act[nact] = $0
+      cur = ($0 in sectionOf) ? sectionOf[$0] : 0
+      if (cur) found[cur] = 1
+      next
+    }
+    {
+      if (!seenHeading && NF) preface = 1
+      if (cur) {
+        line = $0
+        sub(/^ *- /, "", line)
+        gsub(/\. /, ".\n", line)
+        parts = split(line, piece, "\n")
+        for (j = 1; j <= parts; j++) {
+          if (piece[j] == "") continue
+          na[cur]++
+          actual[cur, na[cur]] = piece[j]
+          present[cur, piece[j]] = 1
+        }
+      }
+    }
+    END {
+      if (bad) exit 2
+      expectedFile = scratch "/expected"
+      actualFile = scratch "/actual"
+      for (s = 1; s <= sections; s++) {
+        unpinned = label " carries an unpinned " name[s] " sentence:"
+        moved = label " moves a " name[s] " sentence out of its section:"
+        reordered = label " reorders or duplicates a " name[s] " sentence:"
+        if (!found[s]) {
+          print unpinned " section missing: " heading[s] > "/dev/stderr"
+          failed = 1
+        }
+        for (j = 1; j <= na[s]; j++) {
+          if (!((s, actual[s, j]) in pinned)) {
+            print unpinned " " actual[s, j] > "/dev/stderr"
+            failed = 1
           }
         }
-        END { exit !(n == 1 && anchored == 1) }
-      ' "$file"; then
-        echo ${esc message} "$sentence" >&2
-        failed=1
-      fi
-    done
+        for (j = 1; j <= np[s]; j++) {
+          if (!((s, pin[s, j]) in present)) {
+            print moved " " pin[s, j] > "/dev/stderr"
+            failed = 1
+          }
+        }
+        same = (na[s] == np[s])
+        for (j = 1; same && j <= np[s]; j++) if (actual[s, j] != pin[s, j]) same = 0
+        if (!same) {
+          print reordered > "/dev/stderr"
+          printf "" > expectedFile
+          for (j = 1; j <= np[s]; j++) print pin[s, j] > expectedFile
+          close(expectedFile)
+          printf "" > actualFile
+          for (j = 1; j <= na[s]; j++) print actual[s, j] > actualFile
+          close(actualFile)
+          system("diff " expectedFile " " actualFile " >&2")
+          failed = 1
+        }
+      }
+      same = (nact == nw)
+      for (j = 1; same && j <= nw; j++) if (act[j] != want[j]) same = 0
+      if (!same) {
+        print label " carries top-level headings other than the expected list:" > "/dev/stderr"
+        printf "" > expectedFile
+        for (j = 1; j <= nw; j++) print want[j] > expectedFile
+        close(expectedFile)
+        printf "" > actualFile
+        for (j = 1; j <= nact; j++) print act[j] > actualFile
+        close(actualFile)
+        system("diff " expectedFile " " actualFile " >&2")
+        failed = 1
+      }
+      if (preface) {
+        print label " carries text before its first top-level heading" > "/dev/stderr"
+        failed = 1
+      }
+      exit failed
+    }
   '';
 
-  # Prints the section under `heading` one sentence per line, list markers
-  # dropped, splitting after each full stop. A pinned sentence must not hold
-  # a full stop followed by a space, such as "e.g. ".
-  sectionSentences = heading: ''
-    h=${esc heading} awk '
-      BEGIN { h = ENVIRON["h"] }
-      $0 == h { inside = 1; next }
-      /^# / { inside = 0 }
-      inside { sub(/^ *- /, ""); gsub(/\. /, ".\n"); print }
-    ' "$file"'';
-
-  # Fails the build, naming each sentence, when the section under `heading`
-  # carries a sentence that is not one of `sentences`. A required-sentence
-  # check cannot see a separate sentence that reverses a pinned rule.
-  onlyPinnedSentences = message: heading: sentences: ''
-    if ! grep -qxF -- ${esc heading} "$file"; then
-      echo ${esc "${message} section missing:"} ${esc heading} >&2
-      failed=1
-    fi
-    allowed=$(mktemp)
-    printf '%s\n' ${lib.escapeShellArgs sentences} > "$allowed"
-    while IFS= read -r sentence; do
-      if ! grep -qxF -- "$sentence" "$allowed"; then
-        echo ${esc message} "$sentence" >&2
-        failed=1
-      fi
-    done < <(
-      ${sectionSentences heading} | grep -E -- . || true
-    )
-  '';
-
-  # Fails the build, naming each sentence, when the section under `heading`
-  # lacks it. `requireSentences` reads the whole file, so a pinned sentence
-  # moved into another section would still pass it.
-  sentencesInSection = message: heading: sentences: ''
-    present=$(mktemp)
-    ${sectionSentences heading} > "$present"
-    for sentence in ${lib.escapeShellArgs sentences}; do
-      if ! grep -qxF -- "$sentence" "$present"; then
-        echo ${esc message} "$sentence" >&2
-        failed=1
-      fi
-    done
-  '';
-
-  # Fails the build when the section under `heading`, read top to bottom, is
-  # not exactly `sentences` in that order. Membership checks pass a
-  # duplicated sentence, or one moved away from the sentence it leans on.
-  sentencesInOrder = message: heading: sentences: ''
-    expected=$(mktemp)
-    actual=$(mktemp)
-    printf '%s\n' ${lib.escapeShellArgs sentences} > "$expected"
-    ${sectionSentences heading} | grep -E -- . > "$actual" || true
-    if ! cmp -s "$expected" "$actual"; then
-      echo ${esc message} >&2
-      diff "$expected" "$actual" >&2 || true
-      failed=1
-    fi
-  '';
-
-  # The pinned sentences, checked sections, top-level headings, and
-  # forbidden terms of one entry's rendering: the full copy every harness but
-  # Pi reads, and Pi's shared-only copy.
-  rulesFor = key: {
-    pinned = pinnedSentences ++ acpPinnedSentences;
-    sections = checkedSections key ++ [ acpSection ];
-    headings = topLevelHeadings ++ [ acpHeading ];
-    forbidden = [ ];
-  };
+  # The pinned sentences, section spec, and forbidden terms of one entry's
+  # rendering: the full copy every harness but Pi reads, and Pi's shared-only
+  # copy. The sentence list ends with the recipient sentence for `key`.
+  rulesFor =
+    key:
+    let
+      sections = checkedSections key ++ [ acpSection ];
+    in
+    {
+      pinned = listFile "agent-instructions-pinned" (
+        pinnedSentences ++ acpPinnedSentences ++ [ (recipientSentence key) ]
+      );
+      spec = specFile sections (topLevelHeadings ++ [ acpHeading ]);
+      forbidden = null;
+    };
   piRulesFor = key: {
-    pinned = pinnedSentences;
-    sections = checkedSections key;
-    headings = topLevelHeadings;
-    forbidden = acpOnlyTerms;
+    pinned = listFile "agent-instructions-pinned-pi" (pinnedSentences ++ [ (recipientSentence key) ]);
+    spec = specFile (checkedSections key) topLevelHeadings;
+    forbidden = listFile "agent-instructions-acp-only-terms" acpOnlyTerms;
   };
 
   # Fails the build, naming each assignment, when a model is put on an
@@ -951,62 +1141,25 @@ let
     fi
   '';
 
-  fileRules = label: key: absentKeys: rules: ''
+  fileRules = label: absentKeys: rules: ''
     if [ ! -s "$file" ]; then
       echo ${esc "${label} is missing or empty"} >&2
       failed=1
     else
-      ${requireSentences "${label} does not hold this sentence exactly once, where a sentence starts:" (
-        rules.pinned ++ [ (recipientSentence key) ]
-      )}
-      ${lib.concatMapStrings (section: ''
-        ${onlyPinnedSentences "${label} carries an unpinned ${section.name} sentence:" section.heading
-          section.sentences
-        }
-        ${sentencesInSection "${label} moves a ${section.name} sentence out of its section:" section.heading
-          section.sentences
-        }
-        ${sentencesInOrder "${label} reorders or duplicates a ${section.name} sentence:" section.heading
-          section.sentences
-        }
-      '') rules.sections}
-      expected=$(mktemp)
-      actual=$(mktemp)
-      printf '%s\n' ${lib.escapeShellArgs rules.headings} > "$expected"
-      grep -E -- '^# ' "$file" > "$actual" || true
-      if ! cmp -s "$expected" "$actual"; then
-        echo ${esc "${label} carries top-level headings other than the expected list:"} >&2
-        diff "$expected" "$actual" >&2 || true
-        failed=1
-      fi
-      # No section check sees text above the first heading.
-      if awk '/^# / { exit } NF { found = 1 } END { exit !found }' "$file"; then
-        echo ${esc "${label} carries text before its first top-level heading"} >&2
-        failed=1
-      fi
-      for term in ${lib.escapeShellArgs rules.forbidden}; do
-        if grep -qiF -- "$term" "$file"; then
-          echo ${esc "${label} carries text of the ACP section, which Pi's copy must not hold:"} "$term" >&2
-          failed=1
-        fi
-      done
-      for term in ${lib.escapeShellArgs removedTerms}; do
-        if grep -qiF -- "$term" "$file"; then
-          echo ${esc "${label} names something the instructions no longer carry:"} "$term" >&2
-          failed=1
-        fi
-      done
-      for word in $(removedWordsIn "$file"); do
-        echo ${esc "${label} names something the instructions no longer carry:"} "$word" >&2
-        failed=1
-      done
-      for id in ${lib.escapeShellArgs modelIds}; do
-        if grep -qF -- "$id" "$file"; then
-          echo ${esc "${label} names a Synthetic model:"} "$id" >&2
-          failed=1
-        fi
-      done
-      outsideSynthetic=$(mktemp)
+      ai_message=${esc "${label} does not hold this sentence exactly once, where a sentence starts:"} \
+        ai_list=${rules.pinned} awk -f ${requireSentencesProgram} "$file" || failed=1
+      ai_label=${esc label} ai_spec=${rules.spec} ai_scratch="$scratch" awk -f ${structureProgram} "$file" || failed=1
+      ${lib.optionalString (rules.forbidden != null) ''
+        ai_message=${esc "${label} carries text of the ACP section, which Pi's copy must not hold:"} \
+          ai_list=${rules.forbidden} ai_fold=1 awk -f ${termsProgram} "$file" || failed=1
+      ''}
+      ai_message=${esc "${label} names something the instructions no longer carry:"} \
+        ai_list=${removedTermsList} ai_fold=1 awk -f ${termsProgram} "$file" || failed=1
+      ai_message=${esc "${label} names something the instructions no longer carry:"} \
+        ai_list=${removedWordsList} ai_fold=1 ai_word=1 ai_strip=1 awk -f ${termsProgram} "$file" || failed=1
+      ai_message=${esc "${label} names a Synthetic model:"} \
+        ai_list=${modelIdsList} awk -f ${termsProgram} "$file" || failed=1
+      outsideSynthetic="$scratch/outside-synthetic"
       h=${esc acpHeading} m=${esc "- ${familyMapSentence}"} awk '
         BEGIN { h = ENVIRON["h"]; m = ENVIRON["m"] }
         /^# / { inside = ($0 == h) }
@@ -1017,18 +1170,14 @@ let
         failed=1
       fi
       ${assignmentRules label}
-      outside=$(mktemp)
+      outside="$scratch/outside-confined"
       t=${esc t3CodeHeading} c=${esc compoundEngineeringHeading} awk '
         BEGIN { t = ENVIRON["t"]; c = ENVIRON["c"] }
         /^# / { inside = ($0 == t || $0 == c) }
         !inside { print }
       ' "$file" > "$outside"
-      for term in ${lib.escapeShellArgs confinedTerms}; do
-        if grep -qiF -- "$term" "$outside"; then
-          echo ${esc "${label} names a delegation term outside the T3 Code and Compound Engineering sections:"} "$term" >&2
-          failed=1
-        fi
-      done
+      ai_message=${esc "${label} names a delegation term outside the T3 Code and Compound Engineering sections:"} \
+        ai_list=${confinedTermsList} ai_fold=1 awk -f ${termsProgram} "$outside" || failed=1
       for key in ${lib.escapeShellArgs absentKeys}; do
         if grep -qF -- "$key" "$file"; then
           echo ${esc "${label} names a key other than the host's my.user.gpgKey:"} "$key" >&2
@@ -1125,7 +1274,7 @@ let
                 diff ${expected} "$file" >&2 || true
                 failed=1
               fi
-              ${fileRules "the instructions at ~/${target} on ${label}" key (lib.optional fake cardKey) rules}
+              ${fileRules "the instructions at ~/${target} on ${label}" (lib.optional fake cardKey) rules}
             fi
           ''
         ) deliveryPaths
@@ -2010,6 +2159,43 @@ let
     }
   ];
 
+  # The mutants above prove each rule family fires through its message, but
+  # several rules overlap, so a program whose exit status stopped reporting
+  # failure would still turn every mutant red through another rule. These
+  # cases run the required-sentence and term programs on a probe of their own
+  # and judge the exit status alone.
+  programCases = ''
+    list="$scratch/program-list"
+    probe="$scratch/program-probe"
+    printf '%s\n' 'Apply it.' > "$list"
+    printf '%s\n' '- Apply it. Then stop.' > "$probe"
+    if ! ai_message=probe ai_list="$list" awk -f ${requireSentencesProgram} "$probe" 2>/dev/null; then
+      echo ${esc "self-test: the required-sentence program rejects a sentence that starts a list item"} >&2
+      selfTestFailed=1
+    fi
+    for probeText in '- Do not Apply it.' '- Apply it. Apply it.' '- Then stop.'; do
+      printf '%s\n' "$probeText" > "$probe"
+      if ai_message=probe ai_list="$list" awk -f ${requireSentencesProgram} "$probe" 2>/dev/null; then
+        echo ${esc "self-test: the required-sentence program accepts a negated, doubled, or missing sentence:"} "$probeText" >&2
+        selfTestFailed=1
+      fi
+    done
+    printf '%s\n' 'Model routing' > "$list"
+    printf '%s\n' 'see model routing' > "$probe"
+    if ai_message=probe ai_list="$list" ai_fold=1 awk -f ${termsProgram} "$probe" 2>/dev/null; then
+      echo ${esc "self-test: the term program misses a term in other case"} >&2
+      selfTestFailed=1
+    fi
+    if ! ai_message=probe ai_list="$list" awk -f ${termsProgram} "$probe" 2>/dev/null; then
+      echo ${esc "self-test: the term program matches a term without regard to case when it was not asked to"} >&2
+      selfTestFailed=1
+    fi
+    if ai_message=probe ai_list="$scratch/no-such-list" awk -f ${termsProgram} "$probe" 2>/dev/null; then
+      echo ${esc "self-test: the term program passes when it cannot read its list"} >&2
+      selfTestFailed=1
+    fi
+  '';
+
   # Proves the per-file rules fire: the unmutated rendering must pass them and
   # every mutant must fail them with its expected message. Each run happens in
   # a subshell with its own `file` and `failed`, and its messages go to a log,
@@ -2033,7 +2219,7 @@ let
         (
           file=${path}
           failed=0
-          ${fileRules "the self-test rendering" fakeKey [ cardKey ] copies.${copy}.rules}
+          ${fileRules "the self-test rendering" [ cardKey ] copies.${copy}.rules}
           [ "$failed" = "0" ]
         )'';
     in
@@ -2080,13 +2266,15 @@ let
         echo ${esc "self-test: the removed-word matcher misjudges ${case.name}"} >&2
         selfTestFailed=1
       fi
-    '') removedWordCases;
+    '') removedWordCases
+    + programCases;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 in
 pkgs.runCommand "agent-instructions-tests" { } ''
   ${configurations.userGuard}
   failed=0
+  scratch=$(mktemp -d)
   fakeEntries=0
 
   ${removedWordsFunction}
