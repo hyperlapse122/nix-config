@@ -43,12 +43,28 @@ def lookup(repo, path):
 
 
 def revision(entry):
-    """The revision-details numbers in field order, such as (37, 2, 12)."""
-    details = entry.get("revision-details", {})
-    return tuple(
-        int(value)
-        for _, value in sorted(details.items(), key=lambda item: int(item[0].rsplit(":", 1)[1]))
-    )
+    details = entry.get("revision-details")
+    if not isinstance(details, dict) or not details:
+        return None
+    try:
+        ordered = sorted(details.items(), key=lambda item: int(item[0].rsplit(":", 1)[1]))
+        return tuple(name for name, _ in ordered), tuple(int(value) for _, value in ordered)
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def ordered_revisions(entry, theirs):
+    """Both revisions when they order one against the other, else None.
+
+    Two revisions order only when both carry the same revision-details
+    fields; otherwise (6, 0) would read as newer than (6,), and a field the
+    conversion gained or lost would skip as a release instead of failing as
+    drift in the field-by-field comparison.
+    """
+    ours, upstream = revision(entry), revision(theirs)
+    if ours is None or upstream is None or ours[0] != upstream[0]:
+        return None
+    return ours[1], upstream[1]
 
 
 def show(numbers):
@@ -68,14 +84,15 @@ def main(pin_path, upstream_path):
         if theirs is None:
             print(f"skip {label}: not in nixpkgs repo.json")
             continue
-        ours_revision, their_revision = revision(entry), revision(theirs)
-        if ours_revision > their_revision:
+        revisions = ordered_revisions(entry, theirs)
+        ours_revision, their_revision = revisions or (None, None)
+        if revisions and ours_revision > their_revision:
             print(
                 f"skip {label}: revision {show(ours_revision)} not in nixpkgs repo.json"
                 f" (it has {show(their_revision)})"
             )
             continue
-        if ours_revision < their_revision:
+        if revisions and ours_revision < their_revision:
             failures.append(
                 f"{label} revision {show(ours_revision)} is older than nixpkgs' {show(their_revision)}"
             )
