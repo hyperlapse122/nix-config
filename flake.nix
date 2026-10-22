@@ -44,7 +44,7 @@
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
     compound-engineering-plugin = {
-      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.31.0";
+      url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v3.31.1";
       flake = false;
     };
     korean-skills = {
@@ -669,6 +669,9 @@
           android-sdk-repo-parity =
             pkgs.runCommand "android-sdk-repo-parity" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
+                export PYTHONDONTWRITEBYTECODE=1
+                export ANDROID_SDK_REPO_PARITY=${./tests/android-sdk-repo-parity.py}
+                python ${./tests/test_android_sdk_repo_parity.py}
                 python ${./tests/android-sdk-repo-parity.py} \
                   ${./packages/android-sdk-repo.json} \
                   ${pkgs.path}/pkgs/development/mobile/androidenv/repo.json

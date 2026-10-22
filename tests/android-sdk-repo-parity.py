@@ -12,7 +12,9 @@ two files was written from a different upstream archive.
 The same holds for the pinned system images, which both files key
 api -> tag -> abi. A package or image the pin carries but nixpkgs does not
 yet list is skipped, since the pin can track a release before nixpkgs picks
-it up. The declared build-tools
+it up. An image key carries no revision, so a newer image revision than
+nixpkgs lists counts as not listed yet; an older one fails, since the pin
+then lags the nixpkgs it builds against. The declared build-tools
 and platforms stay in nixpkgs' repo.json for years, so at least one package
 must be comparable; none would leave the check asserting nothing.
 """
@@ -40,6 +42,35 @@ def lookup(repo, path):
     return repo
 
 
+def revision(entry):
+    details = entry.get("revision-details")
+    if not isinstance(details, dict) or not details:
+        return None
+    try:
+        ordered = sorted(details.items(), key=lambda item: int(item[0].rsplit(":", 1)[1]))
+        return tuple(name for name, _ in ordered), tuple(int(value) for _, value in ordered)
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def ordered_revisions(entry, theirs):
+    """Both revisions when they order one against the other, else None.
+
+    Two revisions order only when both carry the same revision-details
+    fields; otherwise (6, 0) would read as newer than (6,), and a field the
+    conversion gained or lost would skip as a release instead of failing as
+    drift in the field-by-field comparison.
+    """
+    ours, upstream = revision(entry), revision(theirs)
+    if ours is None or upstream is None or ours[0] != upstream[0]:
+        return None
+    return ours[1], upstream[1]
+
+
+def show(numbers):
+    return ".".join(map(str, numbers))
+
+
 def main(pin_path, upstream_path):
     with open(pin_path, encoding="utf-8") as f:
         pin = json.load(f)
@@ -52,6 +83,19 @@ def main(pin_path, upstream_path):
         theirs = lookup(upstream, path)
         if theirs is None:
             print(f"skip {label}: not in nixpkgs repo.json")
+            continue
+        revisions = ordered_revisions(entry, theirs)
+        ours_revision, their_revision = revisions or (None, None)
+        if revisions and ours_revision > their_revision:
+            print(
+                f"skip {label}: revision {show(ours_revision)} not in nixpkgs repo.json"
+                f" (it has {show(their_revision)})"
+            )
+            continue
+        if revisions and ours_revision < their_revision:
+            failures.append(
+                f"{label} revision {show(ours_revision)} is older than nixpkgs' {show(their_revision)}"
+            )
             continue
         theirs = {k: v for k, v in theirs.items() if k != "last-available-day"}
         compared.append(label)
