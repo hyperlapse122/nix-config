@@ -3,12 +3,14 @@
 # environment, and the pi-synthetic-key helper against key files.
 #
 #   pi.sh WRAPPER HELPER        the sources, placeholders rendered here
-#   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE
-#                               a built copy, checked for its constants
+#   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE
+#                               a built copy, checked for its constants, then
+#                               run like the sources with Pi and both key
+#                               files retargeted into a scratch directory
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s WRAPPER HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE\n' "${0##*/}" >&2
+  printf 'usage: %s WRAPPER HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -16,10 +18,11 @@ absolute() { printf '%s/%s' "$(cd -- "$(dirname -- "$1")" && pwd -P)" "$(basenam
 
 mode=source
 if [[ ${1:-} == --packaged ]]; then
-  [[ $# -eq 3 && -d $2 && -n $3 ]] || usage
+  [[ $# -eq 4 && -d $2 && -n $3 && -n $4 ]] || usage
   mode=packaged
   bindir=$2
   want_key_file=$3
+  want_exa_file=$4
 else
   [[ $# -eq 2 && -f $1 && -f $2 ]] || usage
   wrapper_src=$(absolute "$1")
@@ -32,7 +35,8 @@ pass() { printf 'pi: ok (%s) - %s\n' "$mode" "$*"; }
 # --- packaging ---------------------------------------------------------------
 
 # The packaged wrapper execs the real Pi, so it is checked for what the build
-# substituted; the source run below covers its behaviour.
+# substituted here, and the run below drives a copy whose Pi and key-file
+# paths point into the scratch directory.
 if [[ $mode == packaged ]]; then
   store=${NIX_STORE:-/nix/store}
   for name in pi pi-synthetic-key; do
@@ -52,8 +56,6 @@ if [[ $mode == packaged ]]; then
   [[ $(env -i SYNTHETIC_API_KEY=caller-key "$bindir/pi-synthetic-key") == caller-key ]] ||
     fail 'the helper did not print the caller key'
   pass 'the constants are substituted and point at Pi and the key file'
-  printf 'pi: all checks passed (%s)\n' "$mode"
-  exit 0
 fi
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/pi-tests.XXXXXX")
@@ -72,10 +74,25 @@ home=$scratch/home
 stub=$scratch/pi-stub
 mkdir -p "$home"
 
+# Both scripts get every placeholder, or in a built copy every constant, the
+# build could substitute: a wrapper changed to read a key file reads the
+# scratch one holding a key, and the checks below see it.
 wrapper=$scratch/pi
-sed -e "s|@PI@|$stub|" -e "1s|.*|#!$bash_bin|" "$wrapper_src" >"$wrapper"
 helper=$scratch/pi-synthetic-key
-sed -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|" -e "1s|.*|#!$bash_bin|" "$helper_src" >"$helper"
+if [[ $mode == packaged ]]; then
+  for name in pi pi-synthetic-key; do
+    sed -e "s|^PI='.*'\$|PI='$stub'|" -e "s|$want_key_file|$synthetic_file|g" \
+      -e "s|$want_exa_file|$exa_file|g" -e "s|$bindir/|$scratch/|g" \
+      "$bindir/$name" >"$scratch/$name"
+  done
+  grep -qxF "PI='$stub'" "$wrapper" || fail 'could not point the packaged wrapper copy at the stub'
+else
+  for name in wrapper helper; do
+    src_var=${name}_src
+    sed -e "s|@PI@|$stub|" -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|g" \
+      -e "s|@EXA_KEY_FILE@|$exa_file|g" -e "1s|.*|#!$bash_bin|" "${!src_var}" >"${!name}"
+  done
+fi
 chmod +x "$wrapper" "$helper"
 
 cat >"$stub" <<STUB
@@ -189,8 +206,8 @@ for needle in "$synthetic_key" "$exa_key" "$synthetic_file" "$exa_file" "$scratc
     fail "'$needle' reached Pi's environment, argv, or the wrapper's output"
   fi
 done
-# The source wrapper is never told the key-file paths, so a variable naming
-# any key or key file is caught by its name or its value as well.
+# A variable naming any key or key file is caught by its name or its value
+# as well, whatever path or name a changed wrapper would use.
 while IFS= read -r -d '' entry; do
   name=${entry%%=*} value=${entry#*=}
   if [[ $name == *KEY* || $value == *_api_key* ]]; then fail "Pi's environment holds $name='$value'"; fi
@@ -198,6 +215,21 @@ done <"$rec/env"
 if grep -raqF -e "$synthetic_key" -e "$exa_key" "$home"; then fail "a key was written under $home"; fi
 [[ $(fingerprint) == "$before" ]] || fail 'a key file changed'
 pass 'with both key files present, Pi sees neither key nor a variable naming a key file, and neither file changes'
+
+# A key the caller exported is the documented way to test another account:
+# it passes through to Pi unchanged, and the helper Pi runs with that
+# environment prints it instead of the file key.
+run SYNTHETIC_API_KEY=caller-synthetic-key EXA_API_KEY=caller-exa-key --mode rpc
+[[ $(recorded SYNTHETIC_API_KEY) == caller-synthetic-key ]] ||
+  fail "an exported SYNTHETIC_API_KEY reached Pi as '$(recorded SYNTHETIC_API_KEY || echo unset)'"
+[[ $(recorded EXA_API_KEY) == caller-exa-key ]] ||
+  fail "an exported EXA_API_KEY reached Pi as '$(recorded EXA_API_KEY || echo unset)'"
+for needle in "$synthetic_key" "$exa_key" "$synthetic_file" "$exa_file"; do
+  if grep -aqF -- "$needle" "$rec/env"; then fail "'$needle' reached Pi's environment beside an exported key"; fi
+done
+helper SYNTHETIC_API_KEY="$(recorded SYNTHETIC_API_KEY)"
+[[ $out == caller-synthetic-key ]] || fail "the helper under Pi's environment printed '$out', want the exported key"
+pass 'an exported key reaches Pi unchanged and wins in the helper, and no file key joins it'
 
 chmod u+w "$synthetic_file" "$exa_file"
 rm -f -- "$synthetic_file" "$exa_file"

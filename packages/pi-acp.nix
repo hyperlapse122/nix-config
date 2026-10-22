@@ -5,10 +5,12 @@
 
   - bin/pi-acp runs the pi wrapper.
   - bin/pi-acp-readonly runs libexec/pi-readonly, which adds
-    `--exclude-tools bash,edit,write`. Neither pi-acp nor its client can stop
-    Pi's own tools, so this is what keeps a review peer from writing or running
-    commands. A `--tools` allowlist would also drop the tools extensions
-    register, so the three built-ins are removed by name.
+    `--exclude-tools bash,edit,write,web_fetch --no-mcp`. Neither pi-acp nor
+    its client can stop Pi's own tools, so this is what keeps a review peer
+    from writing, running commands, or fetching a URL it was steered to, and
+    keeps an MCP server the user added from handing it a write tool. A
+    `--tools` allowlist would also drop the tools extensions register, so the
+    tools are removed by name and session_info and web_search stay.
 
   Both unset SYNTHETIC_API_KEY and EXA_API_KEY, so a key the calling session
   exported never reaches the commands Pi's tools run; Pi reads its keys from
@@ -56,7 +58,7 @@ pkgs.runCommand "pi-acp-${source.version}"
     mkdir -p $out/libexec
     cat > $out/libexec/pi-readonly <<EOF
     #!${pkgs.runtimeShell}
-    exec ${pi}/bin/pi --exclude-tools bash,edit,write "\$@"
+    exec ${pi}/bin/pi --exclude-tools bash,edit,write,web_fetch --no-mcp "\$@"
     EOF
     chmod 555 $out/libexec/pi-readonly
 

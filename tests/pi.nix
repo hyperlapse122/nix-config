@@ -31,9 +31,14 @@
     - settings.json declaring the synthetic provider, the source's default
       model, defaultProjectTrust never, and each model's startup level, with
       DeepSeek at its text-generation effort.
+    - the retired-model list, empty today, as one removeEntries entry over
+      providers.synthetic.models by id and one removePaths entry per ID
+      under modelThinkingLevels.
   - running that exact merger over those documents keeps a hand-added model
     and a second provider in models.json, reasserts the declared entries, is
-    idempotent, creates a missing file, and writes mode 0600 (AE4).
+    idempotent, creates a missing file, and writes mode 0600 (AE4), and,
+    with a fixture ID added to a copy of each declaration, drops that ID's
+    model entry and thinking level while a hand-added model's stay.
   - no Home Manager file targets .pi/agent/models.json or .pi/agent/settings.json,
     because Pi rewrites both.
 

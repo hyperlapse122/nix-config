@@ -16,6 +16,10 @@ sha512 digest, a tarball outside registry.npmjs.org, a tarball that does not
 match its integrity, and a lock file entry that npm would fetch from anywhere
 but the registry. Leaves both files alone when the resolved version is not
 strictly newer than the one already pinned, so a downgrade never reaches them.
+
+npm and prefetch-npm-deps each get NPM_RELEASE_TIMEOUT seconds, 600 by
+default, so a registry call that hangs fails the run instead of holding the
+update job until its own timeout.
 """
 
 import argparse
@@ -35,6 +39,7 @@ DEFAULT_SOURCE_URL = "https://registry.npmjs.org"
 DEFAULT_FETCH = "curl -sfL --max-time 60"
 DEFAULT_NPM = "npm"
 DEFAULT_PREFETCH = "prefetch-npm-deps"
+DEFAULT_STEP_TIMEOUT = 600
 TARBALL_PREFIX = DEFAULT_SOURCE_URL + "/"
 
 NAME_PATTERN = re.compile(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$")
@@ -52,6 +57,26 @@ def command_from_env(variable, default):
     if not command:
         raise Failure(f"{variable} is empty")
     return command
+
+
+def step_timeout():
+    raw = os.environ.get("NPM_RELEASE_TIMEOUT", str(DEFAULT_STEP_TIMEOUT))
+    try:
+        seconds = float(raw)
+    except ValueError:
+        raise Failure(f"NPM_RELEASE_TIMEOUT is not a number of seconds: {raw!r}") from None
+    if not seconds > 0:
+        raise Failure(f"NPM_RELEASE_TIMEOUT must be positive: {raw!r}")
+    return seconds
+
+
+def run_step(label, command, timeout, **kwargs):
+    """Run one lock-file step, failing cleanly when it outlives `timeout`."""
+    try:
+        return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=timeout, **kwargs)
+    except subprocess.TimeoutExpired:
+        raise Failure(f"{label} timed out after {timeout:g} seconds") from None
 
 
 def fetch(url):
@@ -142,10 +167,12 @@ def lock_and_hash(base, manifest):
     """Return the lock file text npm writes for manifest and its npmDepsHash."""
     npm = command_from_env("NPM_RELEASE_NPM", DEFAULT_NPM)
     prefetch = command_from_env("NPM_RELEASE_PREFETCH", DEFAULT_PREFETCH)
+    timeout = step_timeout()
     with tempfile.TemporaryDirectory(prefix="npm-release-") as work:
         with open(os.path.join(work, "package.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
-        proc = subprocess.run(
+        proc = run_step(
+            "npm install --package-lock-only",
             npm
             + [
                 "install",
@@ -155,10 +182,8 @@ def lock_and_hash(base, manifest):
                 "--no-fund",
                 f"--registry={base}/",
             ],
+            timeout,
             cwd=work,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
         )
         if proc.returncode != 0:
             raise Failure(f"npm could not write a lock file (status {proc.returncode}): {proc.stderr.strip()}")
@@ -170,12 +195,7 @@ def lock_and_hash(base, manifest):
         except (OSError, json.JSONDecodeError) as exc:
             raise Failure(f"npm wrote no readable package-lock.json: {exc}") from None
         check_lock(lock)
-        proc = subprocess.run(
-            prefetch + [lock_path],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-        )
+        proc = run_step("prefetch-npm-deps", prefetch + [lock_path], timeout)
         if proc.returncode != 0:
             raise Failure(f"prefetch-npm-deps failed with status {proc.returncode}: {proc.stderr.strip()}")
         deps_hash = proc.stdout.strip()

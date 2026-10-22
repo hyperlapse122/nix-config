@@ -6,6 +6,8 @@ through overridable commands, so these tests feed it fixtures instead.
 
 import base64
 import hashlib
+import importlib.machinery
+import importlib.util
 import io
 import json
 import os
@@ -13,10 +15,15 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/npm-release"
+loader = importlib.machinery.SourceFileLoader("npm_release", str(SCRIPT))
+release = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(release)
 
 BASE = "https://registry.npmjs.org"
 NAME = "pi-acp"
@@ -103,7 +110,8 @@ else:
 # Records its argv and the package.json it was run beside, then writes the
 # fixture lock file the way `npm install --package-lock-only` would.
 FAKE_NPM = """#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
+time.sleep(float(os.environ.get('FAKE_NPM_SLEEP', '0')))
 with open('package.json') as f:
     manifest = json.load(f)
 with open(os.environ['FAKE_NPM_LOG'], 'w') as f:
@@ -116,7 +124,8 @@ with open('package-lock.json', 'w') as f:
 """
 
 FAKE_PREFETCH = """#!/usr/bin/env python3
-import os, sys
+import os, sys, time
+time.sleep(float(os.environ.get('FAKE_PREFETCH_SLEEP', '0')))
 with open(sys.argv[1]) as f:
     open(os.environ['FAKE_PREFETCH_LOG'], 'w').write(f.read())
 print(os.environ['FAKE_DEPS_HASH'])
@@ -281,6 +290,25 @@ class NpmReleaseTestCase(unittest.TestCase):
 
     def test_refuses_a_prefetch_output_that_is_not_a_hash(self):
         self.assert_refused("prefetch-npm-deps printed no sha256 hash", deps_hash="error: boom")
+
+    def test_a_hung_npm_or_prefetch_times_out_and_changes_nothing(self):
+        for label, variable in (("npm install --package-lock-only", "FAKE_NPM_SLEEP"),
+                                ("prefetch-npm-deps", "FAKE_PREFETCH_SLEEP")):
+            with self.subTest(label):
+                started = time.monotonic()
+                self.assert_refused(f"{label} timed out after 1 seconds",
+                                    env_extra={variable: "60", "NPM_RELEASE_TIMEOUT": "1"})
+                self.assertLess(time.monotonic() - started, 30)
+
+    def test_the_default_step_timeout_is_ten_minutes(self):
+        self.assertEqual(release.DEFAULT_STEP_TIMEOUT, 600)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(release.step_timeout(), 600)
+
+    def test_refuses_a_timeout_that_is_not_a_positive_number(self):
+        for raw in ("soon", "0", "-5", "nan"):
+            with self.subTest(raw):
+                self.assert_refused("NPM_RELEASE_TIMEOUT", env_extra={"NPM_RELEASE_TIMEOUT": raw})
 
     def test_fetch_error_fails_naming_the_url(self):
         self.assert_refused(f"{latest_url()} failed with status 22", routes={})

@@ -50,6 +50,10 @@ LEVEL_MAPS = {
 # The effort each model starts at: its default, except the text-generation
 # model, which starts at the text-generation role's effort.
 STARTUP = {GLM: 'max', GLM_FLASH: 'high', KIMI: 'max', DEEPSEEK: 'low'}
+# The IDs home/h82/agents/pi.nix retires, none today. A fixture ID is added
+# to a copy of each declaration below, so the removal is exercised anyway.
+RETIRED = []
+FIXTURE_RETIRED = 'hf:retired-org/Retired-Fixture-1'
 
 models = load(models_path)
 settings = load(settings_path)
@@ -70,8 +74,13 @@ check(
     'provider scalars are {}, expected api, apiKey, baseUrl, name only'.format(sorted(scalars)),
 )
 check(
-    len(models.get('setPaths', [])) == len(scalars) and set(models) == {'setPaths', 'upsertPaths'},
-    'the models declaration carries something besides the provider scalars and model upserts',
+    len(models.get('setPaths', [])) == len(scalars) and set(models) == {'setPaths', 'upsertPaths', 'removeEntries'},
+    'the models declaration carries something besides the provider scalars, model upserts, and retired models',
+)
+check(
+    models.get('removeEntries') == [{'path': ['providers', 'synthetic', 'models'], 'key': 'id', 'values': RETIRED}],
+    'the models declaration retires {}, expected the id entries {} under providers.synthetic.models'.format(
+        models.get('removeEntries'), RETIRED),
 )
 
 # Nothing in the document may hold a key: the only credential-shaped field is
@@ -130,7 +139,11 @@ check(
 levels = {tuple(entry['path']): entry['value'] for entry in settings.get('setPaths', [])}
 expected_levels = {('modelThinkingLevels', 'synthetic/' + model_id): effort for model_id, effort in STARTUP.items()}
 check(levels == expected_levels, 'modelThinkingLevels leaves are {}, expected {}'.format(levels, expected_levels))
-check(set(settings) == {'set', 'setPaths'}, 'the settings declaration carries fields besides set and setPaths')
+check(
+    settings.get('removePaths') == [{'path': ['modelThinkingLevels'], 'key': 'synthetic/' + model_id} for model_id in RETIRED],
+    'the settings declaration retires {}, expected the thinking levels of {}'.format(settings.get('removePaths'), RETIRED),
+)
+check(set(settings) == {'set', 'setPaths', 'removePaths'}, 'the settings declaration carries fields besides set, setPaths, and removePaths')
 
 # --- merging ----------------------------------------------------------------
 
@@ -219,6 +232,40 @@ check(
     'merged settings.json is {}'.format(merged_settings),
 )
 check(mode(seeded_settings) == 0o600, 'merged settings.json is mode {:o}'.format(mode(seeded_settings)))
+
+# A retired ID leaves both files. The declarations retire none today, so a
+# copy of each retires a fixture ID the way pi.nix would list it, and the
+# seeded files hold that ID's entry and thinking level beside a hand-added
+# model's.
+retired_models = dict(models)
+retired_models['removeEntries'] = [dict(entry, values=entry.get('values', []) + [FIXTURE_RETIRED])
+                                   for entry in models.get('removeEntries', [])]
+retired_settings = dict(settings)
+retired_settings['removePaths'] = settings.get('removePaths', []) + [
+    {'path': ['modelThinkingLevels'], 'key': 'synthetic/' + FIXTURE_RETIRED}]
+retired_paths = {}
+for name, document in (('models', retired_models), ('settings', retired_settings)):
+    retired_paths[name] = os.path.join(workdir, 'retired-declared-{}.json'.format(name))
+    with open(retired_paths[name], 'w') as handle:
+        json.dump(document, handle)
+
+retired_target = os.path.join(workdir, 'retired-models.json')
+with open(retired_target, 'w') as handle:
+    json.dump({'providers': {'synthetic': {'models': [
+        {'id': FIXTURE_RETIRED, 'name': 'old build'}, hand_added]}}}, handle)
+merge(retired_target, retired_paths['models'], 'Pi models')
+kept = [entry.get('id') for entry in load(retired_target)['providers']['synthetic'].get('models', [])]
+check(FIXTURE_RETIRED not in kept, 'a retired model ID stayed in models.json: {}'.format(kept))
+check(hand_added['id'] in kept and sorted(set(kept) - {hand_added['id']}) == sorted(LEVEL_MAPS),
+      'retiring a model changed the other entries: {}'.format(kept))
+
+retired_settings_target = os.path.join(workdir, 'retired-settings.json')
+with open(retired_settings_target, 'w') as handle:
+    json.dump({'modelThinkingLevels': {'synthetic/' + FIXTURE_RETIRED: 'max', 'synthetic/hf:example/Hand-Added': 'low'}}, handle)
+merge(retired_settings_target, retired_paths['settings'], 'Pi settings')
+thinking = load(retired_settings_target).get('modelThinkingLevels', {})
+check('synthetic/' + FIXTURE_RETIRED not in thinking, 'a retired model kept its thinking level: {}'.format(thinking))
+check(thinking.get('synthetic/hf:example/Hand-Added') == 'low', 'retiring a model dropped a hand-added thinking level')
 
 for message in failures:
     print(message)

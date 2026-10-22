@@ -14,7 +14,9 @@
     index.js equal to packages/pi-extension/index.js with only the two
     placeholders replaced by the paths it was given, and imports nothing but
     node:fs/promises: Pi runs it from the store, where no package resolves.
-  - the fixture tests pass under node --test against the repository source.
+  - the fixture tests pass under node --test against the repository source,
+    including the key-file table they run against both the extension and
+    scripts/pi-synthetic-key, so the two copies of the key rules cannot drift.
   - per user, exactly one enabled Home Manager file targets
     .pi/agent/extensions/nix-config, found by its resolved `target`, and the
     materialized `home-files` holds that directory with exactly the one
@@ -134,7 +136,7 @@ pkgs.runCommand "pi-extension-tests" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
   fi
 
   cp ${./pi-extension.test.mjs} test.mjs
-  if ! HOME=$TMPDIR EXTENSION=${source} node --test test.mjs >&2; then
+  if ! HOME=$TMPDIR EXTENSION=${source} KEY_HELPER=${../scripts/pi-synthetic-key} node --test test.mjs >&2; then
     echo 'the Pi extension fixture tests failed' >&2
     failed=1
   fi

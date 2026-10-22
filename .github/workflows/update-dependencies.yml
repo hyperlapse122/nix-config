@@ -36,6 +36,23 @@ jobs:
           extra_nix_config: |
             system-features = nixos-test benchmark big-parallel kvm
 
+      # Its own step, so only this command's environment holds the optional
+      # SYNTHETIC_API_KEY secret, which the script sends as a bearer header on
+      # the fetch command's stdin, as synthetic-models.yml does. A catalog
+      # that lacks a model the source names, or an unreachable one, keeps the
+      # current snapshot and lets the updates below through; the model-watch
+      # issue reports the drift. The update step's change check sees the
+      # refreshed file.
+      - name: Refresh the Synthetic catalog snapshot
+        env:
+          SYNTHETIC_API_KEY: ${{ secrets.SYNTHETIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          if ! nix run .#synthetic-models-watch -- --snapshot home/h82/agents/synthetic-catalog.json; then
+            echo "::warning title=Synthetic catalog snapshot skipped::synthetic-models-watch --snapshot failed; keeping the current home/h82/agents/synthetic-catalog.json."
+            git checkout -- home/h82/agents/synthetic-catalog.json
+          fi
+
       - name: Update flake inputs, agent plugins, and packages
         id: update
         run: |
@@ -109,16 +126,7 @@ jobs:
             git checkout -- packages/opencode-release.json
           fi
 
-          # Refresh the Synthetic catalog snapshot Pi's model config renders
-          # from. A catalog that lacks a model the source names, or an
-          # unreachable one, keeps the current snapshot and lets the other
-          # updates through; the model-watch issue reports the drift.
-          if ! nix run .#synthetic-models-watch -- --snapshot home/h82/agents/synthetic-catalog.json; then
-            echo "::warning title=Synthetic catalog snapshot skipped::synthetic-models-watch --snapshot failed; keeping the current home/h82/agents/synthetic-catalog.json."
-            git checkout -- home/h82/agents/synthetic-catalog.json
-          fi
-
-          # 10b. Update Pi. A release can be published before every platform
+          # 11. Update Pi. A release can be published before every platform
           # tarball or its SHA256SUMS line, so a failure keeps the current pin
           # and lets the other updates through, as OpenCode's does.
           if ! nix run .#pi-release -- --output packages/pi-release.json; then
@@ -126,7 +134,7 @@ jobs:
             git checkout -- packages/pi-release.json
           fi
 
-          # 10c. Update Pi's ACP adapter and client. Each pin moves with its
+          # 12. Update Pi's ACP adapter and client. Each pin moves with its
           # regenerated lock file, so a failure restores both and lets the
           # other updates through, as Pi's does.
           for npm_package in pi-acp acpx; do
@@ -138,7 +146,7 @@ jobs:
             fi
           done
 
-          # 11. Update the Antigravity ACP runtime on PATH. Google publishes
+          # 13. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.

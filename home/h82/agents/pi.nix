@@ -83,6 +83,12 @@ let
     "synthetic"
   ];
 
+  # Model IDs an earlier generation of this file declared and the source no
+  # longer names. When a source `id` moves to a newer build, add the previous
+  # one here, or its models.json entry and its modelThinkingLevels key stay
+  # behind with the values last written.
+  retiredModels = [ ];
+
   # The apiKey is a `!` command: Pi runs the packaged helper for every
   # request, so no key reaches this file.
   declaredModels = pkgs.writeText "pi-declared-models.json" (
@@ -104,6 +110,13 @@ let
         key = "id";
         value = modelEntry entry;
       }) entries;
+      removeEntries = [
+        {
+          path = providerPath ++ [ "models" ];
+          key = "id";
+          values = retiredModels;
+        }
+      ];
     }
   );
 
@@ -130,6 +143,10 @@ let
         ];
         value = startupEffort name entry;
       }) entries;
+      removePaths = map (id: {
+        path = [ "modelThinkingLevels" ];
+        key = "synthetic/${id}";
+      }) retiredModels;
     }
   );
 in

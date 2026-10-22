@@ -1657,7 +1657,7 @@
               chmod +x scripts/pi scripts/pi-synthetic-key
               patchShebangs scripts
               bash tests/pi.sh scripts/pi scripts/pi-synthetic-key
-              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile}
+              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile}
               touch $out
             '';
           pi-acp =

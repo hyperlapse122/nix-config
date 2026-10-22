@@ -762,7 +762,10 @@ class CatalogSnapshotTest(WatchTestCase):
                 "input_modalities": upstream["input_modalities"],
                 "context_length": upstream["context_length"],
                 "max_output_length": upstream["max_output_length"],
-                "pricing": upstream["pricing"],
+                "pricing": {
+                    field: upstream["pricing"][field]
+                    for field in ("prompt", "completion", "input_cache_reads", "input_cache_writes")
+                },
             })
         self.assertEqual(
             next(m for m in written["data"] if m["id"] == GLM)["reasoning_parameters"]["efforts"],
@@ -792,6 +795,40 @@ class CatalogSnapshotTest(WatchTestCase):
                 self.assertNotEqual(proc.returncode, 0)
                 self.assertIn(GLM, proc.stderr)
                 self.assertEqual(self.out.read_text(), self.SENTINEL)
+
+    def test_pricing_that_pi_cannot_parse_exits_non_zero_and_leaves_the_file(self):
+        cases = {
+            "no input_cache_writes": lambda p: p.pop("input_cache_writes"),
+            "a numeric prompt": lambda p: p.update(prompt=0.0000006),
+            "a price with a currency word": lambda p: p.update(completion="USD 0.1"),
+            "a negative price": lambda p: p.update(input_cache_reads="-$0.1"),
+            "a doubled dollar sign": lambda p: p.update(prompt="$$0.1"),
+            "an empty price": lambda p: p.update(input_cache_writes=""),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                catalog = snapshot()
+                mutate(next(m for m in catalog["data"] if m["id"] == GLM)["pricing"])
+                proc = self.run_snapshot(catalog)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(GLM, proc.stderr)
+                self.assertIn("pricing", proc.stderr)
+                self.assertEqual(self.out.read_text(), self.SENTINEL)
+        catalog = snapshot()
+        next(m for m in catalog["data"] if m["id"] == GLM)["pricing"] = "free"
+        proc = self.run_snapshot(catalog)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self.out.read_text(), self.SENTINEL)
+
+    def test_pricing_keeps_only_the_four_prices_and_accepts_every_shape_pi_parses(self):
+        catalog = snapshot()
+        pricing = next(m for m in catalog["data"] if m["id"] == GLM)["pricing"]
+        pricing.update(prompt="0", completion="$1.5e-6", input_cache_reads="$0.00000003", extra="$9")
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        written = next(m for m in json.loads(self.out.read_text())["data"] if m["id"] == GLM)
+        self.assertEqual(sorted(written["pricing"]), sorted(["prompt", "completion", "input_cache_reads", "input_cache_writes"]))
+        self.assertEqual(written["pricing"]["completion"], "$1.5e-6")
 
 
 if __name__ == "__main__":

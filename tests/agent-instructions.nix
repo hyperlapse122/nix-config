@@ -100,7 +100,9 @@
     assignment rule forbids, a worker sent back to the `opencode` instance,
     each Pi peer candidate at `medium`, each ACP sentence removed or
     negated, a review peer sent to the `pi` agent, an ACP worker at
-    `medium`, a scout added to the ACP section, the ACP heading dropped, the
+    `medium`, the ACP `quick` rule collapsed into the `unspecified-low`
+    effort or rule, an ACP fallback given another category's effort or
+    model, a fallback category dropped, a scout added to the ACP section, the ACP heading dropped, the
     ACP section or an `acpx` rule leaked into Pi's copy, each
     host family's default-peer sentence removed, negated, or swapped to
     another candidate, a default of three peers, and the left-out named peer
@@ -435,11 +437,17 @@ let
   acpCommandSentence = "Run each one as a one-shot session: `acpx --cwd <dir> --format quiet --timeout <seconds> <agent> exec --config-option model=synthetic/<id> --config-option thought_level=<effort> --file <prompt-file>`, where `<agent>` is the agent the rules below name, `synthetic/<id>` and `<effort>` are the model and the `thinking` effort these rules give the peer or worker, and `<prompt-file>` holds the whole prompt.";
   acpTimeoutSentence = "Set `--cwd` to the checkout the work concerns, write the prompt file outside it, and set `--timeout` to 1200 seconds, or to the time left when a skill bounds the step more tightly.";
   acpResultSentence = "With `--format quiet`, standard output holds only the final assistant text, which is the result; exit status 3 means the run timed out, and any other nonzero status means it failed.";
-  acpPeerAgentSentence = "Run a review peer on the `pi-readonly` agent, which keeps Pi's `session_info`, `web_search`, and `web_fetch` tools but has no `bash`, `edit`, or `write` tool, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the prompt file, marked as untrusted data.";
+  acpPeerAgentSentence = "Run a review peer on the `pi-readonly` agent, which keeps Pi's `session_info` and `web_search` tools but has no `bash`, `edit`, `write`, or `web_fetch` tool and no MCP server, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the prompt file, marked as untrusted data.";
   acpReceiptSentence = "Tell each review peer to call `session_info` first and start its answer with the `model` field it returns, map that model to a family by the rule above as the peer's identity receipt, and fold the answer into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt.";
   acpFailureSentence = "Run every peer these rules pick in its own session, and when one fails or times out, finish with the others and report which peer failed and why.";
   acpWorkerAgentSentence = "Run a `ce-work` worker on the `pi` agent, which keeps Pi's `bash`, `edit`, and `write` tools, with `--cwd` set to the checkout the unit edits.";
-  acpWorkerSentence = "Give each `ce-work` unit you would delegate to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `${role "deepseek" "unspecified-low"}` first, and hand it to Compound Engineering's own route only when that run fails.";
+  acpQuickSentence = "Give each `quick` unit to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `${role "deepseek" "quick"}` first, and hand it to Compound Engineering's own route only when that run fails.";
+  acpLowSentence = "Give each `unspecified-low` unit to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `${role "deepseek" "unspecified-low"}` first, and hand it to Compound Engineering's own route only when that run fails.";
+  acpFallbackSentence = "Give each `writing`, `visual-engineering`, `deep`, or `unspecified-high` unit to Compound Engineering's own route first, and when that run fails, run the unit on its category's Pi fallback below.";
+  acpWritingSentence = "The `writing` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "writing-fallback"}`.";
+  acpVisualSentence = "The `visual-engineering` fallback is `synthetic/${kimiId}` on the `pi` agent with `thought_level` `${role "kimi" "visual-engineering-fallback"}`.";
+  acpDeepSentence = "The `deep` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "deep-fallback"}`.";
+  acpHighSentence = "The `unspecified-high` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "unspecified-high-fallback"}`.";
 
   # In section order. The section names no scout: scouts run only as T3 Code
   # delegated tasks.
@@ -452,7 +460,13 @@ let
     acpReceiptSentence
     acpFailureSentence
     acpWorkerAgentSentence
-    acpWorkerSentence
+    acpQuickSentence
+    acpLowSentence
+    acpFallbackSentence
+    acpWritingSentence
+    acpVisualSentence
+    acpDeepSentence
+    acpHighSentence
   ];
 
   # Text only the ACP section carries, matched without regard to case, which
@@ -1398,9 +1412,39 @@ let
     }
     {
       name = "ACP worker lowered to medium";
-      line = "- ${acpWorkerSentence}";
+      line = "- ${acpLowSentence}";
       edit = replaceInLine "`thought_level` `${role "deepseek" "unspecified-low"}`" "`thought_level` `medium`";
       expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${deepseekId} on pi with thought_level medium";
+    }
+    {
+      name = "ACP quick unit collapsed to the unspecified-low effort";
+      line = "- ${acpQuickSentence}";
+      edit = replaceInLine "`thought_level` `${role "deepseek" "quick"}`" "`thought_level` `${role "deepseek" "unspecified-low"}`";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpQuickSentence}";
+    }
+    {
+      name = "ACP quick and unspecified-low units collapsed into one rule";
+      line = "- ${acpQuickSentence}";
+      edit = replaceInLine "Give each `quick` unit" "Give each `quick` or `unspecified-low` unit";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpQuickSentence}";
+    }
+    {
+      name = "ACP deep fallback collapsed to the writing fallback's effort";
+      line = "- ${acpDeepSentence}";
+      edit = replaceInLine "`thought_level` `${role "glm" "deep-fallback"}`" "`thought_level` `${role "glm" "writing-fallback"}`";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpDeepSentence}";
+    }
+    {
+      name = "ACP visual-engineering fallback sent to GLM";
+      line = "- ${acpVisualSentence}";
+      edit = replaceInLine "`synthetic/${kimiId}`" "`synthetic/${glmId}`";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpVisualSentence}";
+    }
+    {
+      name = "ACP fallback category dropped from the lead rule";
+      line = "- ${acpFallbackSentence}";
+      edit = replaceInLine "`writing`, `visual-engineering`, `deep`, or `unspecified-high`" "`writing`, `deep`, or `unspecified-high`";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpFallbackSentence}";
     }
     {
       name = "scout sent over ACP";

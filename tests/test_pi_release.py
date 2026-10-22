@@ -200,6 +200,48 @@ class PiReleaseTestCase(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(self.output.read_text())["version"], "1.10.0")
 
+    def test_refuses_a_latest_release_that_is_not_json_or_not_an_object(self):
+        for body, message in (
+            ("<html>rate limited</html>", "is not JSON"),
+            ("", "is not JSON"),
+            ("[]", "is not a JSON object"),
+            ('"v1.4.0"', "is not a JSON object"),
+            ("null", "is not a JSON object"),
+        ):
+            with self.subTest(body=body):
+                (self.served / "latest").write_text(body)
+                self.assert_refused(f"response from {SOURCE_URL} {message}")
+
+    def test_refuses_an_empty_fetch_command(self):
+        self.serve(release(), sums())
+        self.output.write_text("sentinel\n")
+        for command in ("", "   "):
+            with self.subTest(command=command):
+                env = dict(os.environ, PI_RELEASE_FETCH=command, FAKE_DIR=str(self.served))
+                proc = subprocess.run(
+                    [sys.executable, str(SCRIPT), "--source-url", SOURCE_URL, "--output", str(self.output)],
+                    env=env, capture_output=True, text=True,
+                )
+                self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                self.assertIn("PI_RELEASE_FETCH is empty", proc.stderr)
+                self.assertEqual(self.output.read_text(), "sentinel\n")
+
+    def test_a_pin_whose_version_does_not_parse_is_replaced(self):
+        self.serve(release(), sums())
+        for existing in (
+            '{"version": "1.x", "platforms": {}}\n',
+            '{"version": "nightly"}\n',
+            '{"version": 3}\n',
+            '{"version": ["1", "4"]}\n',
+            "not json\n",
+        ):
+            with self.subTest(existing=existing):
+                self.output.write_text(existing)
+                proc = self.run_release(["--output", str(self.output)])
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("updated", proc.stdout)
+                self.assertEqual(json.loads(self.output.read_text())["version"], "1.4.0")
+
     def test_fetch_error_names_the_url(self):
         proc = self.run_release()
         self.assertEqual(proc.returncode, 1)

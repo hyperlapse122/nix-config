@@ -94,10 +94,10 @@ case $mode in
         fail "$agent passed a --tools allowlist"
       fi
       if [ "$agent" = pi-readonly ]; then
-        [ "$(head -n 2 "$PI_STUB_LOG/argv" | paste -sd ' ')" = "--exclude-tools bash,edit,write" ] ||
-          fail "pi-readonly did not exclude bash, edit, and write: $(paste -sd ' ' "$PI_STUB_LOG/argv")"
-      elif grep -qxF -- '--exclude-tools' "$PI_STUB_LOG/argv"; then
-        fail "pi excluded tools: $(paste -sd ' ' "$PI_STUB_LOG/argv")"
+        [ "$(head -n 3 "$PI_STUB_LOG/argv" | paste -sd ' ')" = "--exclude-tools bash,edit,write,web_fetch --no-mcp" ] ||
+          fail "pi-readonly did not exclude bash, edit, write, and web_fetch and turn MCP off: $(paste -sd ' ' "$PI_STUB_LOG/argv")"
+      elif grep -qxE -- '--exclude-tools|--no-mcp' "$PI_STUB_LOG/argv"; then
+        fail "pi excluded tools or turned MCP off: $(paste -sd ' ' "$PI_STUB_LOG/argv")"
       fi
     done
     ;;

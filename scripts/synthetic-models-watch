@@ -35,8 +35,10 @@ the fingerprint, the body digest, and the latest catalog notice, and
 `--snapshot FILE` rewrites the committed catalog snapshot instead of
 comparing: it keeps the catalog rows whose `id` the source names, trimmed to
 the fields Pi's model config renders, in the catalog's own shape, and leaves
-FILE untouched unless the content changes. It refuses to write, and exits
-non-zero, when the catalog lacks a source ID or a kept row is malformed.
+FILE untouched unless the content changes. `pricing` keeps only the four
+prices Pi's config reads, each a string home/h82/agents/pi.nix can parse. It
+refuses to write, and exits non-zero, when the catalog lacks a source ID or a
+kept row is malformed.
 """
 
 import argparse
@@ -77,13 +79,18 @@ NOTICES = {
 
 ID_PATTERN = re.compile(r"hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 EFFORT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
+# The prices home/h82/agents/pi.nix reads, each an optional `$` and a JSON
+# number without a sign, which is what its perMillion hands builtins.fromJSON.
+PRICE_FIELDS = ("prompt", "completion", "input_cache_reads", "input_cache_writes")
+PRICE_PATTERN = re.compile(r"\$?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 # The catalog fields a snapshot row keeps, with the check each must pass.
 SNAPSHOT_FIELDS = {
     "display_name": lambda v: isinstance(v, str) and v != "",
     "input_modalities": lambda v: isinstance(v, list) and all(isinstance(m, str) for m in v),
     "context_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "max_output_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "pricing": lambda v: isinstance(v, dict),
+    "pricing": lambda v: isinstance(v, dict)
+    and all(isinstance(v.get(field), str) and PRICE_PATTERN.fullmatch(v[field]) for field in PRICE_FIELDS),
 }
 # The top-level keys of the source that name an entry, in the order the
 # issue lists them among that entry's uses.
@@ -339,6 +346,7 @@ def snapshot_row(row):
         if field not in row or not valid(row[field]):
             raise Failure(f"catalog entry {model_id} has no valid {field}")
         kept[field] = row[field]
+    kept["pricing"] = {field: row["pricing"][field] for field in PRICE_FIELDS}
     params = row.get("reasoning_parameters")
     efforts = params.get("efforts") if isinstance(params, dict) else None
     if not isinstance(efforts, list) or not all(isinstance(e, str) and EFFORT_PATTERN.fullmatch(e) for e in efforts):
