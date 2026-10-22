@@ -45,7 +45,7 @@ Injecting `--model <id>#max` from the `opencode` wrapper was rejected rather tha
 
 ## Solution
 
-Pin the effort on the model, not on the session. `home/h82/agents/opencode.nix` declares a `setPaths` leaf per model, such as `provider.synthetic.models."hf:zai-org/GLM-5.3".options.reasoningEffort = "max"`, merged into `~/.config/opencode/opencode.json`, and sets `model` to the plain id, `synthetic/hf:zai-org/GLM-5.3`. Both come from `home/h82/agents/synthetic-models.nix`, the one source of every Synthetic model id and its `opencodeEffort`. The merged result for the default model as the check asserts it:
+Pin the effort on the model, not on the session. `home/h82/agents/opencode.nix` declares a `setPaths` leaf per model, such as `provider.synthetic.models."hf:zai-org/GLM-5.3".options.reasoningEffort = "max"`, merged into `~/.config/opencode/opencode.json`, and sets `model` to the plain id, `synthetic/hf:zai-org/GLM-5.3`. Both come from `home/h82/agents/synthetic-models.nix`, the one source of every Synthetic model id and its `defaultEffort`. The merged result for the default model as the check asserts it:
 
 ```json
 {

@@ -155,6 +155,11 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         opencode-release = agentTools.opencodeRelease;
         opencode = import ./packages/opencode.nix { inherit pkgs; };
+        pi-release = agentTools.piRelease;
+        pi = import ./packages/pi.nix { inherit pkgs; };
+        npm-release = agentTools.npmRelease;
+        pi-acp = import ./packages/pi-acp.nix { inherit pkgs; };
+        acpx = import ./packages/acpx.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -464,6 +469,7 @@
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
+          pi-sources = pinnedSources "pi-sources" ./packages/pi-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -499,6 +505,8 @@
           opencode-release =
             pythonScriptCheck "opencode-release" ./scripts/opencode-release
               ./tests/test_opencode_release.py;
+          pi-release = pythonScriptCheck "pi-release" ./scripts/pi-release ./tests/test_pi_release.py;
+          npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           antigravity-cli-release =
             pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
               ./tests/test_antigravity_cli_release.py;
@@ -1446,7 +1454,15 @@
             touch $out
           '';
           opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
+          pi-settings = import ./tests/pi.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           opencode-session-info = import ./tests/opencode-session-info.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          pi-extension = import ./tests/pi-extension.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
@@ -1581,6 +1597,98 @@
                 fi
                 touch $out
               '';
+          pi-wrapper =
+            let
+              syntheticKeyFile = "/var/empty/pi-test/synthetic_api_key";
+              exaKeyFile = "/var/empty/pi-test/exa_api_key";
+              packaged = import ./packages/pi.nix { inherit pkgs syntheticKeyFile exaKeyFile; };
+              unsafePaths = [
+                {
+                  label = "a relative path";
+                  path = "run/secrets/cli-auth/key";
+                }
+                {
+                  label = "a quote in the path";
+                  path = "/run/secrets/bad'path";
+                }
+                {
+                  label = "a space in the path";
+                  path = "/run/secrets/bad path";
+                }
+              ];
+              guardCases =
+                lib.concatMap
+                  (
+                    param:
+                    map (case: {
+                      label = "${case.label} as ${param}";
+                      args.${param} = case.path;
+                      accept = false;
+                    }) unsafePaths
+                  )
+                  [
+                    "syntheticKeyFile"
+                    "exaKeyFile"
+                  ]
+                ++ [
+                  {
+                    label = "plain absolute key paths";
+                    args = {
+                      syntheticKeyFile = "/home/test-user/.local/state/cli-auth/synthetic_api_key";
+                      exaKeyFile = "/home/test-user/.local/state/cli-auth/exa_api_key";
+                    };
+                    accept = true;
+                  }
+                ];
+              guardChecks = lib.concatMapStrings (
+                case:
+                let
+                  evaluated = builtins.tryEval (import ./packages/pi.nix ({ inherit pkgs; } // case.args)).drvPath;
+                in
+                lib.optionalString (evaluated.success != case.accept) ''
+                  echo ${lib.escapeShellArg "packages/pi.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"} >&2
+                  exit 1
+                ''
+              ) guardCases;
+            in
+            pkgs.runCommand "pi-wrapper-tests" { } ''
+              export HOME=$TMPDIR
+              ${guardChecks}
+              mkdir -p scripts tests
+              cp ${./scripts/pi} scripts/pi
+              cp ${./scripts/pi-synthetic-key} scripts/pi-synthetic-key
+              cp ${./tests/pi.sh} tests/pi.sh
+              chmod +x scripts/pi scripts/pi-synthetic-key
+              patchShebangs scripts
+              bash tests/pi.sh scripts/pi scripts/pi-synthetic-key
+              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile}
+              touch $out
+            '';
+          pi-acp =
+            let
+              recordingPi = pkgs.writeShellScriptBin "pi" ''
+                printf '%s\n' "$@" > "$PI_STUB_LOG/argv"
+                env > "$PI_STUB_LOG/env"
+                exit 1
+              '';
+              exitingPi = pkgs.writeShellScriptBin "pi" "exit 0";
+              acpxOver =
+                pi:
+                import ./packages/acpx.nix {
+                  inherit pkgs;
+                  piAcp = import ./packages/pi-acp.nix { inherit pkgs pi; };
+                };
+              recording = acpxOver recordingPi;
+              packaged = import ./packages/acpx.nix { inherit pkgs; };
+              packagedPi = packaged.piAcp.pi;
+            in
+            pkgs.runCommand "pi-acp-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              bash ${./tests/pi-acp.sh} stub ${recording} \
+                ${recordingPi}/bin/pi ${recording.piAcp}/libexec/pi-readonly
+              bash ${./tests/pi-acp.sh} real ${packaged} ${packagedPi}
+              bash ${./tests/pi-acp.sh} mutant ${acpxOver exitingPi} ${packagedPi}
+              touch $out
+            '';
           lint-staged-markdown =
             let
               miseToml = builtins.fromTOML (builtins.readFile ./mise.toml);

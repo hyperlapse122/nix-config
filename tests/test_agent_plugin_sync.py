@@ -865,5 +865,104 @@ class OpenCodeRetireTestCase(OpenCodeCase):
         self.assertTrue(self.base.exists())
 
 
+USER_SKILLS = '/home/user/skills/mine'
+
+
+class PiCase(FakeCliCase):
+    harness = 'pi'
+    fake = MERGER_CLI.format(merger=str(MERGER))
+
+    def setUp(self):
+        super().setUp()
+        self.home = self.root / 'home'
+        self.home.mkdir()
+        self.settings = self.home / '.pi/agent/settings.json'
+
+    def make_source(self, version, skills=True):
+        src = self.root / '{}-source'.format(hashlib.sha256(version.encode()).hexdigest()[:32])
+        src.mkdir()
+        if skills:
+            (src / 'skills').mkdir()
+            (src / 'skills' / 'ce-plan').mkdir()
+        return src
+
+    def invoke(self, args, env=None):
+        merged = {'HOME': str(self.home)}
+        merged.update(env or {})
+        return super().invoke(args, merged)
+
+    def seed(self, document):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(document))
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def run_retire(self, extra=None):
+        return self.invoke([
+            '--retire', '--harness', 'pi', '--cli', str(self.cli),
+            '--base', str(self.base),
+            '--plugin', 'compound-engineering',
+            '--marketplace', 'compound-engineering-plugin',
+        ] + (extra or []))
+
+
+class PiSyncTestCase(PiCase):
+    def test_sync_lists_the_pinned_skills_directory_and_keeps_user_entries(self):
+        self.seed({'skills': [USER_SKILLS], 'theme': 'dark'})
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        link = self.base / 'v3.28.0'
+        self.assertEqual(self.read(), {
+            'skills': [USER_SKILLS, str(link / 'skills')],
+            'theme': 'dark',
+        })
+        self.assertEqual(os.readlink(link), str(self.source))
+
+    def test_fresh_home_creates_the_list(self):
+        result = self.run_sync()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read(), {'skills': [str(self.base / 'v3.28.0' / 'skills')]})
+
+    def test_second_sync_is_a_no_op(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        before = self.settings.stat().st_mtime_ns
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.assertEqual(self.read(), {'skills': [str(self.base / 'v3.28.0' / 'skills')]})
+        self.assertEqual(self.settings.stat().st_mtime_ns, before)
+
+    def test_bump_replaces_only_the_plugin_entry(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        document = self.read()
+        document['skills'].insert(0, USER_SKILLS)
+        self.seed(document)
+        newer = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=newer)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read(), {
+            'skills': [USER_SKILLS, str(self.base / 'v3.29.0' / 'skills')],
+        })
+
+    def test_a_source_without_skills_is_refused_before_linking(self):
+        bare = self.make_source('v3.29.0', skills=False)
+        result = self.run_sync(segment='v3.29.0', source=bare)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('skills', result.stderr)
+        self.assertFalse(self.base.exists())
+        self.assertFalse(self.settings.exists())
+
+
+class PiRetireTestCase(PiCase):
+    def test_retire_removes_only_the_plugin_entry_and_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        document = self.read()
+        document['skills'].insert(0, USER_SKILLS)
+        self.seed(document)
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read(), {'skills': [USER_SKILLS]})
+        self.assertFalse(self.base.exists())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -35,6 +35,19 @@
 #   commit contains both files. A T3-only change stays its own commit.
 # - A failing antigravity-acp-release keeps a T3 version bump already in
 #   t3code-release.json and restores only that file's antigravity section.
+# - The update step runs pi-release, and a failing pi-release warns, keeps
+#   the pin, and lets the other updates through. It runs npm-release for
+#   pi-acp and then acpx, each with its pin and lock file, and a failure for
+#   one restores both of that package's files, warns naming it, and still
+#   updates the other.
+# - The catalog snapshot runs in its own step, the only step that receives
+#   the SYNTHETIC_API_KEY secret, and a failing refresh warns, restores the
+#   committed snapshot, and lets the job go on.
+# - The push step commits each changed pin on its own: the snapshot as
+#   `chore(agents): refresh the synthetic catalog snapshot`, the Pi pin as
+#   `chore(packages): bump pi to <version>`, and each of pi-acp and acpx as
+#   `chore(packages): bump <package> to <version>` with its pin and lock file
+#   together, and nothing else.
 
 set -euo pipefail
 
@@ -111,9 +124,18 @@ setup_clone() {
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
   printf '{"version": "2.0.31", "platforms": {}}\n' >"$clone/packages/opencode-release.json"
   printf '{"version": "1.4.1", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
+  printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/pi-release.json"
+  mkdir -p "$clone/packages/pi-acp" "$clone/packages/acpx" "$clone/home/h82/agents"
+  printf '{"version": "0.0.33"}\n' >"$clone/packages/pi-acp-release.json"
+  printf '{"lockfileVersion": 3, "name": "pi-acp"}\n' >"$clone/packages/pi-acp/package-lock.json"
+  printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
+  printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
+  printf '{"data": []}\n' >"$clone/home/h82/agents/synthetic-catalog.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json packages/opencode-release.json \
-    packages/antigravity-acp-release.json
+    packages/antigravity-acp-release.json packages/pi-release.json packages/pi-acp-release.json \
+    packages/pi-acp/package-lock.json packages/acpx-release.json packages/acpx/package-lock.json \
+    home/h82/agents/synthetic-catalog.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -574,3 +596,143 @@ jq -e '.version == "0.0.47-nightly.20261021.1" and .antigravity == {"x86_64-linu
 [[ -z $("$git_bin" -C "$clone" status --porcelain packages/antigravity-acp-release.json) ]] ||
   fail 'a failing antigravity-acp-release left the PATH pin changed while restoring the t3 section'
 pass 'a failing antigravity-acp-release keeps a T3 version bump and restores the antigravity section'
+
+# --- Pi, its ACP packages, and the catalog snapshot -------------------------
+
+# run_part <name> <script> <stub>: runs <script> in a fresh clone with
+# `set -euo pipefail` and a `nix` on PATH whose body is <stub>, then a marker
+# line that must still run.
+run_part() {
+  local name=$1 script=$2 stub=$3 origin clone
+  read -r origin clone <<<"$(setup_clone "$name")"
+  mkdir -p "$scratch/$name-bin"
+  printf '#!%s\n%s\n' "$BASH" "$stub" >"$scratch/$name-bin/nix"
+  chmod +x "$scratch/$name-bin/nix"
+  (
+    cd "$clone"
+    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
+$script
+echo after-part"
+  ) >"$scratch/$name-step.log" 2>&1 ||
+    fail "the $name part aborted its step: $(tail -n 5 "$scratch/$name-step.log")"
+  grep -qx after-part "$scratch/$name-step.log" ||
+    fail "the step stopped after the $name part"
+  printf '%s\n' "$clone"
+}
+
+grep -Eq '^[^#]*nix run \.#pi-release -- --output packages/pi-release\.json' <<<"$update_script" ||
+  fail 'the update step no longer runs pi-release against packages/pi-release.json'
+pi_script=$(awk '/^# [0-9]+\. Update Pi\./ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $pi_script ]] || fail "could not find the Pi part of the update step in $workflow"
+pi_stub='if [[ ${FAIL:-0} == 1 ]]; then
+  printf "{\"version\": \"partial" >packages/pi-release.json
+  echo "pi-release: release v1.5.0 has no pi-linux-arm64.tar.gz" >&2
+  exit 1
+fi
+printf "{\"version\": \"1.5.0\", \"platforms\": {}}\n" >packages/pi-release.json'
+
+clone=$(FAIL=1 run_part pi-fails "$pi_script" "$pi_stub")
+grep -q '^::warning' "$scratch/pi-fails-step.log" ||
+  fail "a failing pi-release emitted no ::warning:: annotation: $(cat "$scratch/pi-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/pi-release.json) ]] ||
+  fail 'a failing pi-release left packages/pi-release.json changed'
+clone=$(run_part pi-succeeds "$pi_script" "$pi_stub")
+grep -q '"1.5.0"' "$clone/packages/pi-release.json" || fail 'a succeeding pi-release did not update the pin'
+if grep -q '^::warning' "$scratch/pi-succeeds-step.log"; then fail 'a succeeding pi-release still emitted a warning'; fi
+pass 'pi-release runs against packages/pi-release.json; a failure warns and keeps the pin, a success updates it'
+
+npm_script=$(awk '/^# [0-9]+\. Update Pi.s ACP adapter and client/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $npm_script ]] || fail "could not find the Pi ACP part of the update step in $workflow"
+# The stub records each package it was asked for, checks the paths it was
+# given, and fails for the packages FAIL names after leaving both files
+# half-written.
+npm_stub='package= output= lock=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --package) package=$2; shift ;;
+    --output) output=$2; shift ;;
+    --lock) lock=$2; shift ;;
+  esac
+  shift
+done
+echo "$package" >>npm-calls.log
+[[ $output == "packages/$package-release.json" && $lock == "packages/$package/package-lock.json" ]] || {
+  echo "npm-release got --output $output --lock $lock for $package" >&2
+  exit 9
+}
+if [[ " ${FAIL:-} " == *" $package "* ]]; then
+  printf "{\"version\": \"partial" >"$output"
+  printf "partial" >"$lock"
+  echo "npm-release: npm could not write a lock file" >&2
+  exit 1
+fi
+printf "{\"version\": \"9.9.9\"}\n" >"$output"
+printf "{\"lockfileVersion\": 3, \"new\": true}\n" >"$lock"'
+
+clone=$(FAIL=pi-acp run_part npm-one-fails "$npm_script" "$npm_stub")
+[[ $(paste -sd ' ' "$clone/npm-calls.log") == "pi-acp acpx" ]] ||
+  fail "the update step ran npm-release for $(paste -sd ' ' "$clone/npm-calls.log"), not pi-acp then acpx"
+grep -q '^::warning title=pi-acp update skipped' "$scratch/npm-one-fails-step.log" ||
+  fail "a failing npm-release for pi-acp emitted no warning naming it: $(cat "$scratch/npm-one-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/pi-acp-release.json packages/pi-acp/package-lock.json) ]] ||
+  fail 'a failing npm-release for pi-acp left its pin or lock file changed'
+grep -q '"9.9.9"' "$clone/packages/acpx-release.json" && grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
+  fail 'a failing pi-acp update kept acpx from updating its pin and lock file'
+clone=$(FAIL='pi-acp acpx' run_part npm-both-fail "$npm_script" "$npm_stub")
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages) ]] ||
+  fail "failing npm-release runs left changes: $("$git_bin" -C "$clone" status --porcelain packages)"
+[[ $(grep -c '^::warning' "$scratch/npm-both-fail-step.log") == 2 ]] ||
+  fail 'two failing npm-release runs did not each warn'
+pass 'npm-release runs for pi-acp and acpx; a failure restores that package'\''s pin and lock file and lets the other update'
+
+snapshot_block=$(step_block 'Refresh the Synthetic catalog snapshot')
+[[ -n $snapshot_block ]] || fail "could not find the catalog snapshot step in $workflow"
+grep -Eq '^[[:space:]]+SYNTHETIC_API_KEY: \$\{\{ secrets\.SYNTHETIC_API_KEY \}\}$' <<<"$snapshot_block" ||
+  fail 'the catalog snapshot step does not receive the SYNTHETIC_API_KEY secret'
+[[ $(grep -c 'secrets\.SYNTHETIC_API_KEY' "$workflow") == 1 ]] ||
+  fail 'a step other than the catalog snapshot step receives the SYNTHETIC_API_KEY secret'
+snapshot_script=$(step_run 'Refresh the Synthetic catalog snapshot')
+grep -Eq '^[^#]*nix run \.#synthetic-models-watch -- --snapshot home/h82/agents/synthetic-catalog\.json' <<<"$snapshot_script" ||
+  fail 'the catalog snapshot step no longer refreshes home/h82/agents/synthetic-catalog.json'
+snapshot_stub='if [[ ${FAIL:-0} == 1 ]]; then
+  printf "{\"data\": [" >home/h82/agents/synthetic-catalog.json
+  echo "synthetic-models-watch: the catalog lacks hf:moonshotai/Kimi-K3" >&2
+  exit 1
+fi
+printf "{\"data\": [{\"id\": \"hf:new/Model\"}]}\n" >home/h82/agents/synthetic-catalog.json'
+clone=$(FAIL=1 run_part snapshot-fails "$snapshot_script" "$snapshot_stub")
+grep -q '^::warning' "$scratch/snapshot-fails-step.log" ||
+  fail "a failing snapshot refresh emitted no ::warning:: annotation"
+[[ -z $("$git_bin" -C "$clone" status --porcelain home) ]] ||
+  fail 'a failing snapshot refresh left home/h82/agents/synthetic-catalog.json changed'
+clone=$(run_part snapshot-succeeds "$snapshot_script" "$snapshot_stub")
+grep -q 'hf:new/Model' "$clone/home/h82/agents/synthetic-catalog.json" ||
+  fail 'a succeeding snapshot refresh did not write the snapshot'
+pass 'the snapshot step alone gets the secret; a failure warns and restores the snapshot, a success writes it'
+
+# Every pin this section adds changed at once: the push step must make one
+# commit per pin, each holding only its own files.
+read -r origin clone <<<"$(setup_clone pi-push)"
+base_sha=$("$git_bin" -C "$clone" rev-parse HEAD)
+printf '{"data": [{"id": "hf:new/Model"}]}\n' >"$clone/home/h82/agents/synthetic-catalog.json"
+printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/pi-release.json"
+printf '{"version": "0.0.34"}\n' >"$clone/packages/pi-acp-release.json"
+printf '{"lockfileVersion": 3, "name": "pi-acp", "new": true}\n' >"$clone/packages/pi-acp/package-lock.json"
+printf '{"version": "0.21.0"}\n' >"$clone/packages/acpx-release.json"
+printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >"$clone/packages/acpx/package-lock.json"
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/pi-push-step.log" 2>&1 ||
+  fail "the push step failed on the Pi pins: $(tail -n 5 "$scratch/pi-push-step.log")"
+commits=$("$git_bin" --git-dir "$origin" log --reverse --format='%H %s' "$base_sha..main")
+[[ $(wc -l <<<"$commits") == 4 ]] || fail "the Pi pins should land as four commits, found: $commits"
+for expected in \
+  'chore(agents): refresh the synthetic catalog snapshot|home/h82/agents/synthetic-catalog.json' \
+  'chore(packages): bump pi to 1.5.0|packages/pi-release.json' \
+  'chore(packages): bump pi-acp to 0.0.34|packages/pi-acp-release.json packages/pi-acp/package-lock.json' \
+  'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json'; do
+  subject=${expected%%|*} want=${expected#*|}
+  sha=$(awk -v s="$subject" '{ sha = $1; sub(/^[^ ]+ /, "") } $0 == s { print sha }' <<<"$commits")
+  [[ -n $sha ]] || fail "no commit '$subject' among: $commits"
+  files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$sha" | sort | paste -sd ' ')
+  [[ $files == "$want" ]] || fail "'$subject' carries $files, want $want"
+done
+pass 'the snapshot, Pi, pi-acp, and acpx changes each land as their own commit with only their files'

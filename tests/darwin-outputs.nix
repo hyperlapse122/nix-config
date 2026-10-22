@@ -240,6 +240,18 @@ let
         bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
       fi
 
+      # Pi's Synthetic provider runs the packaged key helper, which reads the
+      # key host-secrets publishes into the state directory.
+      pi=$(readlink -f "$gen/home-path/bin/pi" || true)
+      piKey=$(readlink -f "$gen/home-path/bin/pi-synthetic-key" || true)
+      if [ -z "$pi" ] || [ ! -f "$pi" ]; then
+        bad "no pi on PATH"
+      elif [ -z "$piKey" ] || [ ! -f "$piKey" ]; then
+        bad "no pi-synthetic-key beside pi"
+      elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$piKey"; then
+        bad "Pi's key helper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
+      fi
+
       # Compound Engineering's Antigravity route takes the helper from the
       # directory agy_acp_server.par is found in. The macOS .par finds its CA
       # bundle itself, so the wrapper sets no SSL_CERT_FILE. It seeds
@@ -266,8 +278,6 @@ let
         bad "serve-html on PATH is not the packaged helper"
       fi
 
-      # The OpenCode config merge runs after writeBoundary and targets the
-      # user's ~/.config/opencode/opencode.json.
       opencodeSettings=$(step opencodeSettings); opencodeSettings=''${opencodeSettings:-0}
       if [ "$opencodeSettings" = 0 ] || [ "$opencodeSettings" -le "$boundary" ]; then
         bad "the activation script has no opencodeSettings step after writeBoundary"

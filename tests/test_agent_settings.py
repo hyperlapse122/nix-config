@@ -662,7 +662,7 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, _, owned, upserts, _, _ = merger.declaration(self.declared)
+        assign, retire, paths, _, owned, upserts, _, _, _ = merger.declaration(self.declared)
         merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
@@ -1300,6 +1300,173 @@ class RemovePathTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul', 'live': 'keep'})
+
+
+# A provider's model list as Pi keeps it: entries by `id`, one the
+# declaration retires, one it keeps, one the user added, and non-object
+# entries a removal must leave alone.
+DROP_EXISTING = {
+    'providers': {
+        'synthetic': {
+            'baseUrl': 'https://example.invalid/v1',
+            'models': [
+                {'id': 'hf:org/Retired-1', 'name': 'old build'},
+                {'id': 'hf:org/Current-2', 'name': 'current'},
+                {'id': 'hf:user/Hand-Added', 'name': 'mine'},
+                {'id': 'hf:org/Retired-1', 'name': 'a duplicate'},
+                'a bare string',
+                {'name': 'no id'},
+            ],
+        },
+        'other': {'models': [{'id': 'hf:org/Retired-1'}]},
+    },
+    'defaultProvider': 'synthetic',
+}
+DROP_PATH = ['providers', 'synthetic', 'models']
+
+
+class RemoveEntryTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.pi/agent/models.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare([{'path': DROP_PATH, 'key': 'id', 'values': ['hf:org/Retired-1']}])
+
+    def declare(self, drops, **fields):
+        document = {'removeEntries': drops}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else DROP_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def assert_refused(self, document):
+        self.declared.write_text(json.dumps(document))
+        before = self.settings.read_bytes()
+        with self.assertRaises(ValueError):
+            self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_every_matching_entry_goes_and_the_rest_stay_in_order(self):
+        self.seed()
+        self.merge()
+        result = self.read()
+        self.assertEqual(result['providers']['synthetic']['models'], [
+            {'id': 'hf:org/Current-2', 'name': 'current'},
+            {'id': 'hf:user/Hand-Added', 'name': 'mine'},
+            'a bare string',
+            {'name': 'no id'},
+        ])
+        self.assertEqual(result['providers']['other'], DROP_EXISTING['providers']['other'])
+        self.assertEqual(result['providers']['synthetic']['baseUrl'], 'https://example.invalid/v1')
+        self.assertEqual(result['defaultProvider'], 'synthetic')
+
+    def test_several_values_and_an_empty_list(self):
+        self.seed()
+        self.declare([{'path': DROP_PATH, 'key': 'id', 'values': ['hf:org/Retired-1', 'hf:org/Current-2']}])
+        self.merge()
+        self.assertEqual([m['id'] for m in self.read()['providers']['synthetic']['models'] if isinstance(m, dict) and 'id' in m],
+                         ['hf:user/Hand-Added'])
+        self.seed()
+        self.declare([{'path': DROP_PATH, 'key': 'id', 'values': []}])
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_values_match_by_equality_not_by_prefix_or_type(self):
+        self.seed({'list': [{'id': 'hf:org/Retired-10'}, {'id': 1}, {'id': '1'}, {'id': True}]})
+        self.declare([{'path': ['list'], 'key': 'id', 'values': ['hf:org/Retired-1', '1']}])
+        self.merge()
+        self.assertEqual(self.read()['list'], [{'id': 'hf:org/Retired-10'}, {'id': 1}, {'id': True}])
+        self.declare([{'path': ['list'], 'key': 'id', 'values': [1]}])
+        self.merge()
+        self.assertEqual(self.read()['list'], [{'id': 'hf:org/Retired-10'}, {'id': True}])
+
+    def test_an_absent_or_non_list_path_is_a_no_op(self):
+        for data in ({'providers': {'synthetic': {'models': {'id': 'hf:org/Retired-1'}}}},
+                     {'providers': {'synthetic': 'flat'}},
+                     {'unrelated': 1}):
+            with self.subTest(data=data):
+                self.seed(data)
+                self.merge()
+                self.assertEqual(self.read(), data)
+
+    def test_a_missing_file_creates_nothing(self):
+        self.merge()
+        self.assertEqual(self.read(), {})
+
+    def test_second_run_does_not_rewrite_the_file(self):
+        self.seed()
+        self.merge()
+        before = self.settings.stat()
+        self.merge()
+        after = self.settings.stat()
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
+
+    def test_an_upsert_of_another_entry_in_the_same_list_runs_beside_it(self):
+        self.seed()
+        self.declare([{'path': DROP_PATH, 'key': 'id', 'values': ['hf:org/Retired-1']}],
+                     upsertPaths=[{'path': DROP_PATH, 'key': 'id', 'value': {'id': 'hf:org/New-3', 'name': 'new'}}])
+        self.merge()
+        ids = [m.get('id') for m in self.read()['providers']['synthetic']['models'] if isinstance(m, dict)]
+        self.assertEqual(ids, ['hf:org/Current-2', 'hf:user/Hand-Added', None, 'hf:org/New-3'])
+
+    def test_refuses_malformed_declarations(self):
+        self.seed()
+        entry = {'path': DROP_PATH, 'key': 'id', 'values': ['x']}
+        for document in (
+            {'removeEntries': entry},
+            {'removeEntries': [{'path': DROP_PATH, 'key': 'id'}]},
+            {'removeEntries': [dict(entry, extra=1)]},
+            {'removeEntries': [dict(entry, path=[])]},
+            {'removeEntries': [dict(entry, path='providers')]},
+            {'removeEntries': [dict(entry, key=3)]},
+            {'removeEntries': [dict(entry, values='x')]},
+            {'removeEntries': [dict(entry, values=[{'id': 'x'}])]},
+            {'removeEntries': [dict(entry, values=[['x']])]},
+        ):
+            with self.subTest(document=document):
+                self.assert_refused(document)
+
+    def test_refuses_a_removal_another_declaration_would_fight(self):
+        self.seed()
+        entry = {'path': DROP_PATH, 'key': 'id', 'values': ['hf:org/Retired-1']}
+        for field in (
+            {'set': {'providers': 1}},
+            {'remove': ['providers']},
+            {'own': {'providers': {}}},
+            {'setPaths': [{'path': ['providers', 'synthetic', 'models'], 'value': 1}]},
+            {'setPaths': [{'path': ['providers', 'synthetic'], 'value': 1}]},
+            {'removePaths': [{'path': ['providers', 'synthetic'], 'key': 'models'}]},
+            {'prefixEntries': [{'path': DROP_PATH, 'prefix': 'p', 'value': None}]},
+            # An upsert of the entry the removal drops, or one keyed by
+            # another field, would undo it or race it.
+            {'upsertPaths': [{'path': DROP_PATH, 'key': 'id', 'value': {'id': 'hf:org/Retired-1'}}]},
+            {'upsertPaths': [{'path': DROP_PATH, 'key': 'name', 'value': {'name': 'x'}}]},
+            {'removeEntries': [entry, dict(entry, values=['other'])]},
+        ):
+            with self.subTest(field=field):
+                document = {'removeEntries': [entry]}
+                document.update(field)
+                self.assert_refused(document)
+
+    def test_process_drops_the_named_entries(self):
+        self.seed()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), '--settings', str(self.settings),
+             '--declared', str(self.declared), '--label', 'Pi'],
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('hf:org/Retired-1', json.dumps(self.read()['providers']['synthetic']))
 
 
 if __name__ == '__main__':

@@ -230,7 +230,7 @@ class ClassificationTest(WatchTestCase):
         finding = self.finding(result, "new-version", "deepseek")
         self.assertEqual(finding["id"], DEEPSEEK)
         self.assertEqual(finding["candidates"], [candidate])
-        self.assertEqual(finding["uses"], ["quick", "scout", "text-generation", "unspecified-low", "small", "textGeneration"])
+        self.assertEqual(finding["uses"], ["quick", "scout", "text-generation", "unspecified-low", "smallModel", "textGeneration"])
         first = body.splitlines()[0]
         for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`quick`", "`unspecified-low`", DETECTED):
             self.assertIn(needle, first)
@@ -294,7 +294,7 @@ class ClassificationTest(WatchTestCase):
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "changed", "glmFlash")
         self.assertEqual(finding["missingEfforts"], ["high"])
-        self.assertEqual(finding["uses"], ["reviewer", "opencodeEffort"])
+        self.assertEqual(finding["uses"], ["reviewer", "defaultEffort"])
 
     def test_a_higher_version_on_the_same_created_is_newer(self):
         catalog = snapshot()
@@ -395,7 +395,7 @@ class ClassificationTest(WatchTestCase):
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "changed", "glm")
         self.assertEqual(finding["missingEfforts"], ["max"])
-        self.assertEqual(finding["uses"], ["deep-fallback", "reviewer", "opencodeEffort"])
+        self.assertEqual(finding["uses"], ["deep-fallback", "reviewer", "defaultEffort"])
         first = body.splitlines()[0]
         for needle in (f"`{GLM}`", "`max`", "`reviewer`", "`deep-fallback`", DETECTED):
             self.assertIn(needle, first)
@@ -725,6 +725,110 @@ class SourceTest(WatchTestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)["status"], "clean")
+
+
+class CatalogSnapshotTest(WatchTestCase):
+    """--snapshot rewrites the committed catalog snapshot from the catalog."""
+
+    SENTINEL = "untouched\n"
+
+    def setUp(self):
+        super().setUp()
+        self.out = self.root / "synthetic-catalog.json"
+        self.out.write_text(self.SENTINEL)
+
+    def run_snapshot(self, catalog):
+        path = self.root / "catalog.json"
+        path.write_text(catalog if isinstance(catalog, str) else json.dumps(catalog))
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--source-json", str(SOURCE), "--catalog", str(path),
+             "--snapshot", str(self.out)],
+            capture_output=True, text=True,
+        )
+
+    def test_it_writes_exactly_the_four_source_ids_with_their_fields(self):
+        catalog = snapshot()
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        written = json.loads(self.out.read_text())
+        by_id = {m["id"]: m for m in catalog["data"] if "alias_of" not in m}
+        self.assertEqual(sorted(m["id"] for m in written["data"]), sorted([GLM, GLM_FLASH, KIMI, DEEPSEEK]))
+        for entry in written["data"]:
+            upstream = by_id[entry["id"]]
+            self.assertEqual(entry, {
+                "id": upstream["id"],
+                "display_name": upstream["display_name"],
+                "reasoning_parameters": {"efforts": upstream["reasoning_parameters"]["efforts"]},
+                "input_modalities": upstream["input_modalities"],
+                "context_length": upstream["context_length"],
+                "max_output_length": upstream["max_output_length"],
+                "pricing": {
+                    field: upstream["pricing"][field]
+                    for field in ("prompt", "completion", "input_cache_reads", "input_cache_writes")
+                },
+            })
+        self.assertEqual(
+            next(m for m in written["data"] if m["id"] == GLM)["reasoning_parameters"]["efforts"],
+            ["low", "high", "max"],
+        )
+
+    def test_a_second_run_leaves_the_file_as_it_is(self):
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        first = self.out.read_text()
+        os.utime(self.out, (1, 1))
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        self.assertEqual(self.out.read_text(), first)
+        self.assertEqual(self.out.stat().st_mtime, 1)
+
+    def test_a_catalog_missing_a_source_id_exits_non_zero_and_leaves_the_file(self):
+        proc = self.run_snapshot(without(snapshot(), KIMI))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(KIMI, proc.stderr)
+        self.assertEqual(self.out.read_text(), self.SENTINEL)
+
+    def test_efforts_that_are_not_a_list_of_strings_exit_non_zero(self):
+        for bad in ("max", ["low", 3], {"low": True}):
+            with self.subTest(efforts=bad):
+                catalog = snapshot()
+                next(m for m in catalog["data"] if m["id"] == GLM)["reasoning_parameters"]["efforts"] = bad
+                proc = self.run_snapshot(catalog)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(GLM, proc.stderr)
+                self.assertEqual(self.out.read_text(), self.SENTINEL)
+
+    def test_pricing_that_pi_cannot_parse_exits_non_zero_and_leaves_the_file(self):
+        cases = {
+            "no input_cache_writes": lambda p: p.pop("input_cache_writes"),
+            "a numeric prompt": lambda p: p.update(prompt=0.0000006),
+            "a price with a currency word": lambda p: p.update(completion="USD 0.1"),
+            "a negative price": lambda p: p.update(input_cache_reads="-$0.1"),
+            "a doubled dollar sign": lambda p: p.update(prompt="$$0.1"),
+            "an empty price": lambda p: p.update(input_cache_writes=""),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                catalog = snapshot()
+                mutate(next(m for m in catalog["data"] if m["id"] == GLM)["pricing"])
+                proc = self.run_snapshot(catalog)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn(GLM, proc.stderr)
+                self.assertIn("pricing", proc.stderr)
+                self.assertEqual(self.out.read_text(), self.SENTINEL)
+        catalog = snapshot()
+        next(m for m in catalog["data"] if m["id"] == GLM)["pricing"] = "free"
+        proc = self.run_snapshot(catalog)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self.out.read_text(), self.SENTINEL)
+
+    def test_pricing_keeps_only_the_four_prices_and_accepts_every_shape_pi_parses(self):
+        catalog = snapshot()
+        pricing = next(m for m in catalog["data"] if m["id"] == GLM)["pricing"]
+        pricing.update(prompt="0", completion="$1.5e-6", input_cache_reads="$0.00000003", extra="$9")
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        written = next(m for m in json.loads(self.out.read_text())["data"] if m["id"] == GLM)
+        self.assertEqual(sorted(written["pricing"]), sorted(["prompt", "completion", "input_cache_reads", "input_cache_writes"]))
+        self.assertEqual(written["pricing"]["completion"], "$1.5e-6")
 
 
 if __name__ == "__main__":

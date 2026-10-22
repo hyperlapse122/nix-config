@@ -8,6 +8,7 @@
     ./instructions
     ./korean-skills.nix
     ./opencode.nix
+    ./pi.nix
     ./tokscale.nix
   ];
 }

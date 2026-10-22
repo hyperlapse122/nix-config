@@ -62,6 +62,33 @@ let
   # check can drive it with fixtures.
   opencodeRelease = pythonHelper "opencode-release" ../scripts/opencode-release;
 
+  # Resolves the latest Pi release and its per-platform tarball digests from
+  # the GitHub releases API and the release's SHA256SUMS. Its network calls go
+  # through an overridable command so the sandboxed repository check can drive
+  # it with fixtures.
+  piRelease = pythonHelper "pi-release" ../scripts/pi-release;
+
+  # Resolves the latest release of an npm package that ships no lock file,
+  # such as pi-acp and acpx, and regenerates its lock file and npmDepsHash.
+  # Its network call goes through an overridable command so the sandboxed
+  # repository check can drive it with fixtures; npm and prefetch-npm-deps
+  # come from the store so the update workflow's runner needs neither.
+  npmRelease = pkgs.symlinkJoin {
+    name = "npm-release";
+    paths = [ (pythonHelper "npm-release" ../scripts/npm-release) ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/npm-release \
+        --prefix PATH : ${
+          pkgs.lib.makeBinPath [
+            pkgs.nodejs
+            pkgs.prefetch-npm-deps
+          ]
+        }
+    '';
+    meta.mainProgram = "npm-release";
+  };
+
   # Resolves the latest Antigravity CLI release and its per-platform digests
   # from Google's release feed. Its network calls go through an overridable
   # command so the sandboxed repository check can drive it with fixtures.
@@ -108,6 +135,8 @@ in
     claudeCodeRelease
     miseRelease
     opencodeRelease
+    piRelease
+    npmRelease
     antigravityCliRelease
     antigravityAcpRelease
     t3codeRelease

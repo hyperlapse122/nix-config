@@ -57,7 +57,7 @@ jpi_token: <git.jpi.app token>
 docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
 tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
 synthetic_api_key: <Synthetic API key> # opt-in: my.cliAuth.enableSyntheticApiKey
-exa_api_key: <Exa API key>            # not yet decrypted on any host
+exa_api_key: <Exa API key>            # opt-in: my.cliAuth.enableExaApiKey
 ```
 
 The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
@@ -65,13 +65,17 @@ keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
 
-`exa_api_key` is stored ahead of the Pi web search extension that
-[#291](https://github.com/hyperlapse122/nix-config/issues/291) adds. No host
-decrypts it yet; that change publishes it beside `synthetic_api_key`.
+`exa_api_key` backs the web search and fetch tools of the Pi extension
+(`packages/pi-extension/`). Every host kind publishes it beside
+`synthetic_api_key`: a NixOS host at `/run/secrets/cli-auth/exa_api_key`, and a
+non-NixOS or macOS host at `~/.local/state/cli-auth/exa_api_key`. The shared
+profile turns `my.cliAuth.enableExaApiKey` on by default. The extension reads the
+file when a tool runs, so the key never enters Pi's environment or the
+environment of the commands its tools run.
 
 A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
-decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, and
-`synthetic_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
+decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`,
+`synthetic_api_key`, and `exa_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.

@@ -48,8 +48,8 @@ let
   # cleanup that drops default-valued settings must keep it, or the instance
   # would go back to following T3 Code's default. App state (onboarding marks,
   # folded panels, favorites, and every provider instance field not declared
-  # here) stays the app's. T3 Code leaves its built-in Antigravity and OpenCode
-  # instances off until they are enabled, so neither shows up on its own.
+  # here) stays the app's. T3 Code leaves its built-in Antigravity, OpenCode,
+  # and Pi instances off until they are enabled, so none shows up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -91,6 +91,14 @@ let
         driver = "opencode";
         enabled = true;
       };
+      # The pi on PATH is the packaged wrapper, whose Synthetic provider reads
+      # the key file per request, so no binaryPath is needed and no key reaches
+      # this file. No launch arguments: Pi applies the text-generation model's
+      # startup thinking level when T3 Code switches to it with set_model.
+      pi = {
+        driver = "pi";
+        enabled = true;
+      };
     };
     snoozeLimitedThreads = true;
     sourceControlWritingStyle.mode = "conventional_commits";
@@ -125,10 +133,11 @@ let
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
   #
-  # Text generation selects the second entry home/h82/agents/opencode.nix
-  # declares for the text-generation model, keyed by the role's effort and
-  # pinned to it in OpenCode's settings, with no variant: T3 Code sends none
-  # then, so the effort does not depend on a variant reaching the request.
+  # Text generation selects the text-generation model on the Pi instance. Its
+  # `thinking` option records the role's effort for the reader: T3 Code's Pi
+  # text generation sends set_model and never set_thinking_level, so the level
+  # that reaches Synthetic is the model's startup level, which
+  # home/h82/agents/pi.nix sets to the same effort.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
   textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
@@ -143,16 +152,23 @@ let
       ];
     };
     textGenerationModelSelection = {
-      instanceId = "opencode";
-      model = textGenerationAlias;
+      instanceId = "pi";
+      model = "synthetic/${textGeneration.id}";
+      options = [
+        {
+          id = "thinking";
+          value = textGeneration.roles.text-generation;
+        }
+      ];
     };
   };
 
   # opencode.nix declares the text-generation model twice, once as the model
-  # and once as the `@<effort>` alias that carries the effort. T3 Code's picker
-  # would list both, so the alias is hidden. The merge replaces only an entry
-  # under this model's `@` prefix, so the models the user hides stay hidden and
-  # an alias from an earlier effort is retired.
+  # and once as the `@<effort>` alias that carries the effort. Text generation
+  # no longer selects the alias, but small_model still names it, and T3 Code's
+  # OpenCode picker would list both entries, so the alias stays hidden. The
+  # merge replaces only an entry under this model's `@` prefix, so the models
+  # the user hides stay hidden and an alias from an earlier effort is retired.
   hiddenAlias = {
     path = [
       "providerModelPreferences"
