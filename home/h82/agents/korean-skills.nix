@@ -36,11 +36,13 @@ let
   # ~/.claude/skills. OpenCode ignores that directory under the wrapper's
   # OPENCODE_DISABLE_CLAUDE_CODE=true. The Antigravity CLI and T3 Code's
   # Antigravity instances read ~/.gemini/antigravity-cli/skills; not
-  # ~/.gemini/config/skills, which the CLI lists twice.
+  # ~/.gemini/config/skills, which the CLI lists twice. Pi reads
+  # ~/.pi/agent/skills.
   roots = [
     ".claude/skills"
     ".config/opencode/skills"
     ".gemini/antigravity-cli/skills"
+    ".pi/agent/skills"
   ];
 in
 {

@@ -41,6 +41,7 @@ let
         claude = [ ];
         antigravity = [ ];
         opencode = [ ];
+        pi = [ ];
       };
     };
   };
@@ -51,6 +52,10 @@ let
     {
       name = "compound-engineering";
       harness = "opencode";
+    }
+    {
+      name = "compound-engineering";
+      harness = "pi";
     }
     {
       name = "compound-engineering";
@@ -67,7 +72,9 @@ let
   # home.sessionVariables, so Claude Code's declared tier is exported around
   # it; agy's update overrides travel inside its wrapper instead. OpenCode
   # has no plugin command that takes a path, so its "CLI" is the merger that
-  # writes the link into ~/.config/opencode/opencode.json.
+  # writes the link into ~/.config/opencode/opencode.json. Pi's is the same
+  # merger, which writes the plugin's skills directory into the `skills` list
+  # of ~/.pi/agent/settings.json.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
@@ -78,6 +85,10 @@ let
       env = "";
     };
     opencode = {
+      cli = "${agentTools.agentSettings}/bin/agent-settings";
+      env = "";
+    };
+    pi = {
       cli = "${agentTools.agentSettings}/bin/agent-settings";
       env = "";
     };

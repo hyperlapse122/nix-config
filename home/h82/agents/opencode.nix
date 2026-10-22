@@ -138,8 +138,6 @@ let
     '';
 in
 {
-  my.agents.crossModelPeers = [ "opencode" ];
-
   home.packages = [ wrapper ];
 
   # OpenCode autoloads every directory under ~/.config/opencode/plugins, so

@@ -4,12 +4,14 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one. --harness picks the
-agent (claude, antigravity or opencode); each has its own adapter for
+agent (claude, antigravity, opencode or pi); each has its own adapter for
 commands, listings and manifest paths. antigravity has no marketplace: its
 adapter validates and installs the plugin directory, and reads the installed
 version back from disk. opencode has no plugin command that takes a path: its
 --cli is the agent-settings merger, which writes the link path into the
-`plugins` list of ~/.config/opencode/opencode.json.
+`plugins` list of ~/.config/opencode/opencode.json. pi works the same way
+for skills: the merger writes <link>/skills into the `skills` list of
+~/.pi/agent/settings.json.
 
 With --retire it does the reverse for a plugin the repository no longer
 declares: unregister it and delete its version-keyed base directory.
@@ -318,6 +320,12 @@ class OpenCode(Harness):
     confirmed their own source.
     """
 
+    label = 'OpenCode plugins'
+    list_key = 'plugins'
+    required = 'index.js'
+    # Appended to the version link to form the listed entry.
+    entry_suffix = ''
+
     def settings(self):
         return Path.home() / '.config' / 'opencode' / 'opencode.json'
 
@@ -325,33 +333,37 @@ class OpenCode(Harness):
         if value is None and not dry_run and not self.settings().exists():
             return
         document = {'prefixEntries': [
-            {'path': ['plugins'], 'prefix': '{}/'.format(base), 'value': value},
+            {'path': [self.list_key], 'prefix': '{}/'.format(base), 'value': value},
         ]}
         with tempfile.TemporaryDirectory(prefix='agent-plugin-sync-') as scratch:
             declared = Path(scratch) / 'declared.json'
             declared.write_text(json.dumps(document))
-            require([self.cli, '--label', 'OpenCode plugins', '--settings', str(self.settings()),
+            require([self.cli, '--label', self.label, '--settings', str(self.settings()),
                      '--declared', str(declared)], dry_run, 'plugins merge')
 
     def listed(self):
         try:
-            plugins = json.loads(self.settings().read_text()).get('plugins')
+            entries = json.loads(self.settings().read_text()).get(self.list_key)
         except (OSError, ValueError, AttributeError):
             return []
-        return plugins if isinstance(plugins, list) else []
+        return entries if isinstance(entries, list) else []
+
+    def check_source(self, source):
+        # OpenCode skips a plugin directory without a root index.js
+        # without saying so, which would look like a converged run.
+        entry = source / self.required
+        if not entry.is_file():
+            raise Failure('pinned source is missing {}'.format(entry))
 
     def sync(self, args):
         try:
-            # OpenCode skips a plugin directory without a root index.js
-            # without saying so, which would look like a converged run.
-            entry = args.source / 'index.js'
-            if not entry.is_file():
-                raise Failure('pinned source is missing {}'.format(entry))
+            self.check_source(args.source)
             destination = link_version(args.base, args.segment, args.source, args.dry_run)
-            self.write_entry(args.base, str(destination), args.dry_run)
-            if not args.dry_run and str(destination) not in self.listed():
+            entry = str(destination) + self.entry_suffix
+            self.write_entry(args.base, entry, args.dry_run)
+            if not args.dry_run and entry not in self.listed():
                 raise Failure('{} does not list {} after the merge'.format(
-                    self.settings(), destination))
+                    self.settings(), entry))
             return 0
         except (Failure, OSError) as exc:
             print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
@@ -367,7 +379,28 @@ class OpenCode(Harness):
             return 1
 
 
-HARNESSES = {'claude': Claude, 'antigravity': Antigravity, 'opencode': OpenCode}
+class Pi(OpenCode):
+    """Pi reads extra skill directories from the `skills` list in settings.json.
+
+    Pi has no plugin, subagent or command format, so only the plugin's skills
+    directory is listed. The list is shared with the user, and the merge works
+    as it does for OpenCode.
+    """
+
+    label = 'Pi skills'
+    list_key = 'skills'
+    required = 'skills'
+    entry_suffix = '/skills'
+
+    def settings(self):
+        return Path.home() / '.pi' / 'agent' / 'settings.json'
+
+    def check_source(self, source):
+        if not (source / self.required).is_dir():
+            raise Failure('pinned source is missing {}'.format(source / self.required))
+
+
+HARNESSES = {'claude': Claude, 'antigravity': Antigravity, 'opencode': OpenCode, 'pi': Pi}
 
 
 def find(entries, value, key='name'):
