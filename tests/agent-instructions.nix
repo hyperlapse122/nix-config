@@ -87,11 +87,20 @@
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
     `@name@` placeholder.
+  - docs/provisioning.md keeps naming each later-turn and slow-command rule,
+    each slow-command phrase carrying its affirmative verb so a rewrite that
+    negates the rule drops the phrase.
+  - the background wait sentence's example loop keeps waiting on an output
+    file without Claude Code's `[exited with code` line and ends once the
+    line lands, and the packaged Claude Code, OpenCode, and Antigravity CLI
+    binaries still carry the strings behind the slow-command rules' harness
+    facts, so a harness update that drops one turns this red.
   - the per-file rules fire: the rendering for the fake key passes them, and
     each mutant in `selfTestMutants` (a removed, a negated, an inverted, and
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
     relaunch, the approval note, and the confined terms; a removed or negated
-    foreground rule for delegated tasks and later-turn notice, a reverted
+    foreground rule, slow-command timeout, background wait, no-rerun, or
+    over-limit rule for delegated tasks, or later-turn notice, a reverted
     later-turn summary, skill outcome, or no-run rule, a `latestTerminalSummary`
     rule under `# Git`; a retired peer rule,
     a removed peer safeguard, a removed, negated, or reworded scout rule,
@@ -488,7 +497,7 @@ let
   # The self-test below mutates these sentences, so they are named once.
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
-  allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, and a wait that blocks on the task's own run stay allowed.";
+  allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, a wait that blocks on the task's own run, and a foreground wait inside the turn on a command you run stay allowed.";
   fullAccessSentence = "Launch every delegated task, cross-model peers and implementation units included, with `runtimeMode: \"full-access\"`, even though `delegate_task`'s own description says to leave it unset, so the task never pauses on an approval nobody sees.";
   rejectionSentence = "When `delegate_task` rejects that launch with an error about the requested runtime mode, such as one saying the target provider does not offer it or that it ranks above your thread's mode, relaunch the task once without `runtimeMode`, so it inherits your thread's mode, under a new `clientRequestId`; that rejection itself is not a failed or unavailable launch under any rule in these instructions, including the launch-failure retry below, a category's fallback worker, and a failed cross-model peer, but a failure of the relaunch is one.";
   noteSentence = "When you end your turn while tasks still run, name them, and when one of them runs without `runtimeMode: \"full-access\"`, also say that such a task can pause on an approval, which shows \"Subagent needs approval\" in its thread and waits for the user, because T3 Code sends no notification for it.";
@@ -504,6 +513,10 @@ let
   committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
   foregroundSentence = "Tell each delegated task to run the commands its report depends on in the foreground, raising a slow command's timeout as far as its harness allows and waiting inside the turn for one that outlasts it, and not to end its turn until it has written its final report, because the last message of that turn is its result; ending the turn while such a command still runs in the background and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it, while a server it keeps running for its own work, such as a dev server for a browser check, may stay in the background.";
+  slowCommandTimeoutSentence = "Tell each delegated task to give a command that can take more than a minute, such as a test suite, a build, or a flake check, a timeout that covers its expected run before it starts the command, where its shell tool takes one and up to the tool's limit, such as 600000 ms for Claude Code's Bash tool, whose 120000 ms default moves a longer command to the background.";
+  backgroundWaitSentence = "Tell it that when its harness moves a command it waits on to the background, it waits for that command inside the turn with blocking foreground calls, each within the tool's limit, until the harness's record of that one command shows it finished, and then reads the command's output and exit status from that record, such as with a Claude Code Bash loop like `until grep -q '^\\[exited with code' <output-file>; do sleep 5; done` on the output file the Bash tool named, under a `timeout` below 600000 ms and repeated as needed, never with a match on a process name, which can catch another task's run, because Claude Code's `Monitor` and background notifications do not hold the turn, whatever its tool descriptions advise.";
+  noRerunSentence = "Tell it never to stop and rerun a background command it waits on, whether its harness moved the command there or it started the command there on purpose, because a missing or short timeout does not make the command wrong, and to stop one only when it was the wrong command, when it is still running at twice the time it expected, or when a time limit its task prompt sets arrives, and then to report what it has; a command its harness killed at the timeout it reruns once with a timeout that covers the run, with none where its tool allows that, or, when no timeout can cover it, in the background on purpose as below.";
+  overLimitSentence = "Tell it to start a command it expects to outlast its shell tool's foreground limit in the background on purpose instead of in the foreground, through the tool's own background option, such as `run_in_background` on Claude Code's Bash tool, rather than a shell `&` that the harness can kill when the call returns, and to wait for it the same way, never ending its turn while the command runs; a server it keeps running for its own work is not such a command.";
   terminalResultSentence = "When that `task_status` is terminal and shows `hasPendingChildRuns` false, use its result as usual, reading `latestTerminalSummary` in place of `summary` when it is not null, because it holds a later turn's result; when that result only promises a later report, read its session as above and use a finished message there that holds the whole result, and otherwise count the task failed and say that it ended without its report; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
   oldTerminalResultSentence = "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
   laterTurnNoticeSentence = "T3 Code sends no notification when a later turn of a terminal task ends, so in a run with a person present, when you end your turn while a task the waiting step needs is terminal with `hasPendingChildRuns` true, name it and tell the user that no notification will come for its later turn, so they write to you once that turn has finished, or stop the task when its thread shows no progress.";
@@ -518,6 +531,64 @@ let
     "no notification will come for its later turn"
     "a wait without `runId` that returns at once without `timedOut`"
   ];
+  slowCommandDocTerms = [
+    "It tells each delegated task to give a command that can take more than a minute"
+    "the task waits for it inside the turn with blocking foreground calls"
+    "The task is told never to stop and rerun a background command it waits on"
+    "starts in the background on purpose instead of in the foreground"
+  ];
+  # The binaries the slow-command rules describe, each with strings that
+  # carry a fact the rules rest on, so a harness update that drops one
+  # turns this red until someone rereads the harness.
+  harnessFacts = [
+    {
+      name = "Claude Code";
+      attr = "claude-code";
+      file = "bin/.claude-wrapped";
+      markers = [
+        "[exited with code"
+        "moved to the background"
+        "run_in_background"
+        "Foreground `sleep` is blocked"
+      ];
+    }
+    {
+      name = "OpenCode";
+      attr = "opencode";
+      file = "libexec/opencode/opencode";
+      markers = [
+        "Set to 0 to disable the timeout"
+        "status:\"timeout\""
+      ];
+    }
+    {
+      name = "Antigravity CLI";
+      attr = "antigravity-cli";
+      file = "libexec/antigravity-cli/agy";
+      markers = [
+        "WaitMsBeforeAsync"
+        "Get the status of a previously executed terminal command"
+      ];
+    }
+  ];
+  harnessFactRules = lib.concatMapStrings (
+    h:
+    let
+      package = self.packages.${pkgs.stdenv.hostPlatform.system}.${h.attr} or null;
+    in
+    if package == null then
+      ''
+        echo ${esc "no ${h.name} package to read the slow-command harness facts from"} >&2
+        failed=1
+      ''
+    else
+      lib.concatMapStrings (marker: ''
+        if ! grep -qaF -- ${esc marker} ${package}/${h.file}; then
+          echo ${esc "${h.name} no longer carries a fact the slow-command rules rest on: ${marker}"} >&2
+          failed=1
+        fi
+      '') h.markers
+  ) harnessFacts;
   sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   t3CodeSentences = [
@@ -528,6 +599,10 @@ let
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
     foregroundSentence
+    slowCommandTimeoutSentence
+    backgroundWaitSentence
+    noRerunSentence
+    overLimitSentence
     fullAccessSentence
     rejectionSentence
     launchFailureSentence
@@ -1224,6 +1299,54 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "slow-command timeout sentence removed";
+      line = "- ${slowCommandTimeoutSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "slow-command timeout sentence negated";
+      line = "- ${slowCommandTimeoutSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "background wait sentence removed";
+      line = "- ${backgroundWaitSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "background wait sentence negated";
+      line = "- ${backgroundWaitSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "no-rerun sentence removed";
+      line = "- ${noRerunSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "no-rerun sentence negated";
+      line = "- ${noRerunSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "over-limit sentence removed";
+      line = "- ${overLimitSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "over-limit sentence negated";
+      line = "- ${overLimitSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
       name = "later-turn summary rule reverted";
       line = "- ${terminalResultSentence}";
       edit = ''old=${esc "- ${oldTerminalResultSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
@@ -1676,6 +1799,37 @@ pkgs.runCommand "agent-instructions-tests" { } ''
       failed=1
     fi
   done
+
+  # It also explains the slow-command rules, so it must keep naming each one.
+  for term in ${lib.escapeShellArgs slowCommandDocTerms}; do
+    if ! grep -qF -- "$term" ${../docs/provisioning.md}; then
+      echo "docs/provisioning.md no longer describes a slow-command rule: $term" >&2
+      failed=1
+    fi
+  done
+
+  # The background wait sentence's example loop must hold the turn until
+  # Claude Code's exit line lands in the output file, and end once it does.
+  loop=$(printf '%s' ${esc backgroundWaitSentence} | sed -n 's/.*loop like `\([^`]*\)`.*/\1/p')
+  if [ -z "$loop" ]; then
+    echo "the background wait sentence names no example loop" >&2
+    failed=1
+  else
+    outputFile=$(mktemp)
+    loop=''${loop//<output-file>/$outputFile}
+    printf 'suite passed\n' > "$outputFile"
+    if timeout 3 sh -c "$loop"; then
+      echo "the example wait loop ends before the exit line appears: $loop" >&2
+      failed=1
+    fi
+    printf '\n[exited with code 0]\n' >> "$outputFile"
+    if ! timeout 10 sh -c "$loop"; then
+      echo "the example wait loop does not end at Claude Code's exit line: $loop" >&2
+      failed=1
+    fi
+  fi
+
+  ${harnessFactRules}
 
   selfTestFailed=0
   ${selfTest}
