@@ -109,6 +109,29 @@ let
 
   plain = builtins.unsafeDiscardStringContext;
 
+  # A store path's hash or name can spell "zap" by chance, so the zap check
+  # reads the whole activation script with every store path replaced by a
+  # fixed word.
+  withoutStorePaths =
+    text:
+    lib.concatStrings (
+      map (part: if lib.isString part then part else "/nix/store/STOREPATH") (
+        builtins.split "/nix/store/[0-9a-z]{32}-[-+._?=A-Za-z0-9]+" (plain text)
+      )
+    );
+
+  # The zap check's own regression cases, so a widened cut cannot hide a real
+  # --zap and a narrowed one cannot let a store path fail the check again.
+  assertZapFilter = lib.concatStrings [
+    (check (
+      !lib.hasInfix "zap" (withoutStorePaths "/nix/store/r8m1ldyh1jglwgqzapjizark25g4l97w-activate")
+    ) "zap check: a store hash that spells zap must not count as a zap")
+    (check (
+      !lib.hasInfix "zap" (withoutStorePaths "/nix/store/r8m1ldyh1jglwgqqapjizark25g4l97w-zapper/bin/x")
+    ) "zap check: a store path name that holds zap must not count as a zap")
+    (check (lib.hasInfix "zap" (withoutStorePaths "/nix/store/r8m1ldyh1jglwgqqapjizark25g4l97w-brew/bin/brew uninstall --cask --zap foo")) "zap check: a real --zap after a store path must still count as a zap")
+  ];
+
   namesOf = packages: lib.unique (map (p: p.pname or (lib.getName p)) packages);
 
   androidPin = import ./lib/android-pin.nix { inherit lib; };
@@ -287,11 +310,7 @@ let
       kakaoTalkId = "869223134";
       masExe = plain (lib.getExe entry.host.pkgs.mas);
       postActivation = plain config.system.activationScripts.postActivation.text;
-      # A store path's hash can spell "zap" by chance, so the zap check reads
-      # the script with every /nix/store hash cut out.
-      postActivationWithoutHashes = lib.concatStrings (
-        lib.filter lib.isString (builtins.split "/nix/store/[0-9a-z]{32}" postActivation)
-      );
+      activationWithoutStorePaths = withoutStorePaths config.system.activationScripts.script.text;
       homeManagerCall = "Activating home-manager configuration";
       beforeHomeManager = lib.head (lib.splitString homeManagerCall postActivation);
       rootLines = map lib.trim (lib.splitString "\n" beforeHomeManager);
@@ -666,7 +685,7 @@ let
         "${entry.name}: the grok-bot cask must be uninstalled with --force when installed, a brew list failure other than not-installed must print brew's stderr, with one line per outcome and no exit on failure"
       )
       (check (
-        !lib.hasInfix "zap" postActivationWithoutHashes
+        !lib.hasInfix "zap" activationWithoutStorePaths
       ) "${entry.name}: no activation step may zap a cask, since --zap deletes the app's user data")
       (check (
         let
@@ -815,6 +834,7 @@ pkgs.runCommand "darwin-config" { } ''
     fail "tests/fixtures/hosts holds no macOS fixture host"
   )}
   ${assertDiscovery}
+  ${assertZapFilter}
   ${assertMapping}
   ${lib.concatMapStrings assertEntry darwinFixtures}
   ${assertNoDevicesElsewhere}
