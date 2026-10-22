@@ -669,6 +669,9 @@
           android-sdk-repo-parity =
             pkgs.runCommand "android-sdk-repo-parity" { nativeBuildInputs = [ pkgs.python3 ]; }
               ''
+                export PYTHONDONTWRITEBYTECODE=1
+                export ANDROID_SDK_REPO_PARITY=${./tests/android-sdk-repo-parity.py}
+                python ${./tests/test_android_sdk_repo_parity.py}
                 python ${./tests/android-sdk-repo-parity.py} \
                   ${./packages/android-sdk-repo.json} \
                   ${pkgs.path}/pkgs/development/mobile/androidenv/repo.json
