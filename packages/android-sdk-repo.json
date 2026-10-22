@@ -109,9 +109,9 @@
             {
               "arch": "all",
               "os": "all",
-              "sha1": "e007fb23024c59bffdf944b95c61143bc38101ce",
-              "size": 2194282378,
-              "url": "https://dl.google.com/android/repository/sys-img/google_apis/arm64-v8a-37.0_r06.zip"
+              "sha1": "7a8bfff584798fe87caa4d4883f6ade4658a185b",
+              "size": 2104098168,
+              "url": "https://dl.google.com/android/repository/sys-img/google_apis/arm64-v8a-37.0_r08.zip"
             }
           ],
           "dependencies": {
@@ -120,9 +120,9 @@
                 "path": "emulator"
               },
               "min-revision:0": {
-                "major:0": "36",
+                "major:0": "37",
                 "micro:2": "11",
-                "minor:1": "5"
+                "minor:1": "2"
               }
             }
           },
@@ -132,10 +132,10 @@
           "path": "system-images/android-37.0/google_apis/arm64-v8a",
           "revision": "37.0-google_apis-arm64-v8a",
           "revision-details": {
-            "major:0": "6"
+            "major:0": "8"
           },
           "type-details": {
-            "abi:6": "arm64-v8a",
+            "abi:5": "arm64-v8a",
             "api-level:0": "37.0",
             "base-extension:2": "true",
             "element-attributes": {
@@ -146,11 +146,7 @@
               "display:1": "Google APIs",
               "id:0": "google_apis"
             },
-            "tag:4": {
-              "display:1": "AI Glasses Compatible",
-              "id:0": "ai_glasses_compatible"
-            },
-            "vendor:5": {
+            "vendor:4": {
               "display:1": "Google Inc.",
               "id:0": "google"
             }
@@ -161,9 +157,9 @@
             {
               "arch": "all",
               "os": "all",
-              "sha1": "629e507fd5b737c2c836b12b52c81cd0e3b12399",
-              "size": 2234615040,
-              "url": "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-37.0_r06.zip"
+              "sha1": "a266cfbcf4d6c769b166c0af4d68eff0e4f4a5e3",
+              "size": 2143899425,
+              "url": "https://dl.google.com/android/repository/sys-img/google_apis/x86_64-37.0_r08.zip"
             }
           ],
           "dependencies": {
@@ -172,9 +168,9 @@
                 "path": "emulator"
               },
               "min-revision:0": {
-                "major:0": "36",
+                "major:0": "37",
                 "micro:2": "11",
-                "minor:1": "5"
+                "minor:1": "2"
               }
             }
           },
@@ -184,10 +180,10 @@
           "path": "system-images/android-37.0/google_apis/x86_64",
           "revision": "37.0-google_apis-x86_64",
           "revision-details": {
-            "major:0": "6"
+            "major:0": "8"
           },
           "type-details": {
-            "abi:6": "x86_64",
+            "abi:5": "x86_64",
             "api-level:0": "37.0",
             "base-extension:2": "true",
             "element-attributes": {
@@ -198,11 +194,7 @@
               "display:1": "Google APIs",
               "id:0": "google_apis"
             },
-            "tag:4": {
-              "display:1": "AI Glasses Compatible",
-              "id:0": "ai_glasses_compatible"
-            },
-            "vendor:5": {
+            "vendor:4": {
               "display:1": "Google Inc.",
               "id:0": "google"
             }

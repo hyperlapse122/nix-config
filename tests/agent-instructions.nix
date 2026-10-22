@@ -90,7 +90,10 @@
   - the per-file rules fire: the rendering for the fake key passes them, and
     each mutant in `selfTestMutants` (a removed, a negated, an inverted, and
     an out-of-section rule, for the wait, the launch mode, the rejected-mode
-    relaunch, the approval note, and the confined terms; a retired peer rule,
+    relaunch, the approval note, and the confined terms; a removed or negated
+    foreground rule for delegated tasks and later-turn notice, a reverted
+    later-turn summary, skill outcome, or no-run rule, a `latestTerminalSummary`
+    rule under `# Git`; a retired peer rule,
     a removed peer safeguard, a removed, negated, or reworded scout rule,
     a removed, negated, or moved shared-checkout default, worktree trigger, or
     worktree fallback clause, an added worktree rule for every task,
@@ -375,7 +378,9 @@ let
   scoutHandoffClause = ", and when that relaunch fails too, or returns no findings, you do its research yourself and say so";
   scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval,${scoutRelaunchClause}${scoutHandoffClause}";
   scoutFallbackClause = "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
-  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `thinking` for a Pi worker and `effort` for a Claude worker: a scout goes to `synthetic/${deepseekId}` on the `pi` instance with `thinking` `${role "deepseek" "scout"}` as primary and to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
+  scoutHaikuClause = "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as primary";
+  scoutClaudeCodeCondition = " when your harness is Claude Code and otherwise to ";
+  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `thinking` for a Pi worker and `effort` for a Claude worker: a scout goes to ${scoutHaikuClause}${scoutClaudeCodeCondition}`synthetic/${deepseekId}` on the `pi` instance with `thinking` `${role "deepseek" "scout"}` as primary, and in either case to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
   scoutUntrackedClause = ", and an untracked file only when the task prompt names it";
   scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, no gitignored file${scoutUntrackedClause}, and before launching, name each scout and the provider that gets its prompt, Synthetic for Pi and Anthropic for Claude Code; that notice authorizes the send.";
 
@@ -498,6 +503,21 @@ let
   rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
   committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
+  foregroundSentence = "Tell each delegated task to run the commands its report depends on in the foreground, raising a slow command's timeout as far as its harness allows and waiting inside the turn for one that outlasts it, and not to end its turn until it has written its final report, because the last message of that turn is its result; ending the turn while such a command still runs in the background and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it, while a server it keeps running for its own work, such as a dev server for a browser check, may stay in the background.";
+  terminalResultSentence = "When that `task_status` is terminal and shows `hasPendingChildRuns` false, use its result as usual, reading `latestTerminalSummary` in place of `summary` when it is not null, because it holds a later turn's result; when that result only promises a later report, read its session as above and use a finished message there that holds the whole result, and otherwise count the task failed and say that it ended without its report; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
+  oldTerminalResultSentence = "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting.";
+  laterTurnNoticeSentence = "T3 Code sends no notification when a later turn of a terminal task ends, so in a run with a person present, when you end your turn while a task the waiting step needs is terminal with `hasPendingChildRuns` true, name it and tell the user that no notification will come for its later turn, so they write to you once that turn has finished, or stop the task when its thread shows no progress.";
+  skillOutcomeSentence = "For such a skill, a completion notification and one `task_status` read that shows `hasPendingChildRuns` false, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result.";
+  oldSkillOutcomeSentence = "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result.";
+  noRunSentence = "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, the task shows `waiting_for_children` with `hasPendingChildRuns` false, or a wait without `runId` returns at once without `timedOut` while the task is still terminal with `hasPendingChildRuns` true, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present.";
+  oldNoRunSentence = "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present.";
+  laterTurnDocTerms = [
+    "run the commands its report depends on in the foreground, raising a slow command's timeout"
+    "read from `latestTerminalSummary` instead of `summary`"
+    "only promises a later report"
+    "no notification will come for its later turn"
+    "a wait without `runId` that returns at once without `timedOut`"
+  ];
   sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   t3CodeSentences = [
@@ -507,6 +527,7 @@ let
     "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it, and when `orchestrator_capabilities` marks a default `effort` for that model, set `effort` in `target.options` to it, even for your own model."
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
+    foregroundSentence
     fullAccessSentence
     rejectionSentence
     launchFailureSentence
@@ -527,18 +548,19 @@ let
     "When a notification says a delegated task has a question, read it with `t3_pending_request_read`, then answer it with `t3_pending_request_respond` or ask the user, and end your turn again."
     "When the user writes while delegated tasks are running, send any answer they give to a pending question to its task with `t3_pending_request_respond`, answer the rest, keep the tasks and the waiting step, and end your turn again unless they redirect the work."
     "On every turn you get while a task the waiting step needs has not reached a terminal state and you have not taken its result, whether a notification, a user message, a background wait, or a `t3_thread_wait` timeout started it, read its `task_status` once, then read its session with `t3_thread_read` on its `childThreadId` in the `activity` view, paging with `afterPosition` until no `nextPosition` remains, and read its latest assistant message by `itemId`, repeating with `textOffset` set to `nextTextOffset` until `nextTextOffset` is null, because a task can write its result and never finish."
-    "When that `task_status` is terminal, use its result as usual; when it shows a pending question or `hasPendingChildRuns` true, keep waiting."
+    terminalResultSentence
+    laterTurnNoticeSentence
     takeFromSessionSentence
     "When `task_cancel` leaves that task running, keep the result, tell the user once that it still runs so they can stop it, and count its result as taken."
     prohibitionSentence
     allowedWaitsSentence
     "Ending your turn to wait for a delegated task is allowed even where a skill says not to end the turn or to fail when no blocking wait exists, such as `lfg`'s rule not to end the turn before `<promise>DONE</promise>` or `ce-code-review`'s reviewer collection; when the results arrive, continue the same run from the step that waited."
-    "For such a skill, a completion notification and one `task_status` read, or a result taken from the task's session, are the task's terminal outcome, and a task the skill bounds by time counts as failed when you resume after that bound has passed and its session holds no whole result."
+    skillOutcomeSentence
     "In a run with no person present, such as a headless, scheduled, or pipeline run, wait inside the turn instead: once every task is launched, call `t3_thread_wait` on each task's `childThreadId` with its `childRunId` as `runId` and, as `timeoutMs`, the smaller of 600000 and the time left before any bound on that task, then read each result with one `task_status` call; when no time is left before that bound, skip the wait and apply the bound rule below."
     "When that wait returns `timedOut: true`, answer a pending question with `t3_pending_request_respond` from the task and your instructions, check the task as above, and wait again with the same `runId` unless you took its result or its bound has passed."
     "In a run with no person present, when a task's `task_status` shows `pendingApproval`, nobody can approve it, so cancel it with `task_cancel` and count it as failed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
-    "When `task_status` shows `workState` `working` or `hasPendingChildRuns` true, call `t3_thread_wait` on that thread again without `runId` and with `timeoutMs` as above; when `childRunId` is null, or the task shows `waiting_for_children` with `hasPendingChildRuns` false, there is no run to block on, so check it as above, take a finished message that holds the whole result, count the task failed only when the bound has already passed at that check and the session holds no whole result, and otherwise end your turn with no timer and no further check, and name the tasks when a person is present."
+    noRunSentence
     "When the session lists T3 Code's pull request tools, such as `watch_pull_request`, use them to watch a request you babysit instead of your own background wait."
     "When the session lists T3 Code's preview tools, such as `preview_open`, show any local HTML file you open for the user in a T3 Code browser tab instead of running `xdg-open` or `open`: run `serve-html <file>`, open a new tab with `preview_open` and `reuseExistingTab` set to false so the user's own tab stays as it is, then call `preview_navigate` with that tab's `tabId` and the line `serve-html` printed as `target`."
     "Pass `--root <dir>` to `serve-html` when the page loads sibling files from a report directory."
@@ -639,7 +661,7 @@ let
   # inside the checked `# T3 Code` and `# Compound Engineering` sections,
   # where every sentence is pinned, so a rule added elsewhere cannot bring the
   # blocking wait back for a run with a person present, change when a session
-  # result is taken, restore inheritance of the thread's mode, or request a
+  # result is taken or which summary is the result, restore inheritance of the thread's mode, or request a
   # supervised mode.
   confinedTerms = [
     "t3_thread_wait"
@@ -654,6 +676,8 @@ let
     "approval-required"
     "auto-accept-edits"
     "pendingApproval"
+    "latestTerminalSummary"
+    "hasPendingChildRuns"
   ];
 
   removedTerms = [
@@ -1188,6 +1212,54 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
+      name = "foreground sentence removed";
+      line = "- ${foregroundSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "foreground sentence negated";
+      line = "- ${foregroundSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn summary rule reverted";
+      line = "- ${terminalResultSentence}";
+      edit = ''old=${esc "- ${oldTerminalResultSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "latestTerminalSummary rule added under # Git";
+      line = "- A terminal task's result is its `summary`; never read `latestTerminalSummary`.";
+      edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: latestTerminalSummary";
+    }
+    {
+      name = "skill outcome rule reverted";
+      line = "- ${skillOutcomeSentence}";
+      edit = ''old=${esc "- ${oldSkillOutcomeSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "no-run rule reverted";
+      line = "- ${noRunSentence}";
+      edit = ''old=${esc "- ${oldNoRunSentence}"} awk '$0 == ENVIRON["line"] { $0 = ENVIRON["old"] } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn notice sentence removed";
+      line = "- ${laterTurnNoticeSentence}";
+      edit = ''awk '$0 != ENVIRON["line"]' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "later-turn notice sentence negated";
+      line = "- ${laterTurnNoticeSentence}";
+      edit = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
       name = "scout definition sentence removed";
       line = "- ${scoutDefinitionSentence}";
       edit = ''awk '$0 != ENVIRON["line"]' '';
@@ -1254,6 +1326,24 @@ let
         if role "deepseek" "scout" == "max" then "high" else "max"
       }`";
       expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Claude Code branch goes back to DeepSeek";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "${scoutHaikuClause}${scoutClaudeCodeCondition}" "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Haiku primary loses its harness condition";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine " when your harness is Claude Code" "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Haiku primary raised to effort max";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutHaikuClause "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `max` as primary";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-haiku-5-5 on claudeAgent with effort max";
     }
     {
       name = "scout safeguard sentence removed";
@@ -1577,6 +1667,15 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   ''}
 
   ${repoCopyRules}
+
+  # The provisioning guide explains the later-turn rules in prose, so it
+  # must keep naming each one when the pinned sentences change.
+  for term in ${lib.escapeShellArgs laterTurnDocTerms}; do
+    if ! grep -qF -- "$term" ${../docs/provisioning.md}; then
+      echo "docs/provisioning.md no longer describes a later-turn rule: $term" >&2
+      failed=1
+    fi
+  done
 
   selfTestFailed=0
   ${selfTest}
