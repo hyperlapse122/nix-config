@@ -157,6 +157,9 @@
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         pi-release = agentTools.piRelease;
         pi = import ./packages/pi.nix { inherit pkgs; };
+        npm-release = agentTools.npmRelease;
+        pi-acp = import ./packages/pi-acp.nix { inherit pkgs; };
+        acpx = import ./packages/acpx.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -503,6 +506,7 @@
             pythonScriptCheck "opencode-release" ./scripts/opencode-release
               ./tests/test_opencode_release.py;
           pi-release = pythonScriptCheck "pi-release" ./scripts/pi-release ./tests/test_pi_release.py;
+          npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           antigravity-cli-release =
             pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
               ./tests/test_antigravity_cli_release.py;
@@ -1651,6 +1655,32 @@
               patchShebangs scripts
               bash tests/pi.sh scripts/pi scripts/pi-synthetic-key
               bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile}
+              touch $out
+            '';
+          pi-acp =
+            let
+              # Records what pi-acp hands Pi, then exits before answering.
+              recordingPi = pkgs.writeShellScriptBin "pi" ''
+                printf '%s\n' "$@" > "$PI_STUB_LOG/argv"
+                env > "$PI_STUB_LOG/env"
+                exit 1
+              '';
+              exitingPi = pkgs.writeShellScriptBin "pi" "exit 0";
+              acpxOver =
+                pi:
+                import ./packages/acpx.nix {
+                  inherit pkgs;
+                  piAcp = import ./packages/pi-acp.nix { inherit pkgs pi; };
+                };
+              recording = acpxOver recordingPi;
+              packaged = import ./packages/acpx.nix { inherit pkgs; };
+              packagedPi = packaged.piAcp.pi;
+            in
+            pkgs.runCommand "pi-acp-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
+              bash ${./tests/pi-acp.sh} stub ${recording} \
+                ${recordingPi}/bin/pi ${recording.piAcp}/libexec/pi-readonly
+              bash ${./tests/pi-acp.sh} real ${packaged} ${packagedPi}
+              bash ${./tests/pi-acp.sh} mutant ${acpxOver exitingPi} ${packagedPi}
               touch $out
             '';
           lint-staged-markdown =
