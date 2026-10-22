@@ -31,6 +31,10 @@
   - every section holds only its pinned sentences, each once and in order,
     so a separate sentence that reverses a pinned rule fails wherever it is
     added.
+  - the repository's AGENTS.md holds every pinned review-findings sentence
+    where a sentence starts and neither retired three-skill lead, and the
+    review finding entry in CONCEPTS.md names the Compound Engineering scope
+    and the five reason tags, so neither copy drifts back unseen.
   - the file's top-level `# ` headings are exactly the expected list, in
     order, and no text precedes the first, so a rule under a new heading or
     above every heading cannot escape the section checks.
@@ -81,7 +85,8 @@
     a removed peer safeguard, a removed, negated, or reworded scout rule,
     a removed, negated, or moved shared-checkout default, worktree trigger, or
     worktree fallback clause, an added worktree rule for every task,
-    a negated session_info-first rule, an OpenCode
+    a negated session_info-first rule, a review-findings sentence added,
+    reordered, removed, or negated, an OpenCode
     variant that differs from its source role, an effort or instance the
     assignment rule forbids, each OpenCode peer candidate at `medium`, each
     host family's default-peer sentence removed, negated, or swapped to
@@ -267,16 +272,58 @@ let
 
   # In section order: `sentencesInOrder` compares the section to this list.
   reviewFindingsSentences = [
-    "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks."
-    "A skill's own apply bar, confidence threshold, or list, including `lfg`'s, does not narrow this rule."
-    "\"By design\", \"no current instance\", \"low impact\", and \"the fix has a trade-off\" are not reasons to leave a finding."
+    "Apply every finding that a review, verification, or check step of any Compound Engineering skill reports about the work the workflow produces or changes, such as `ce-code-review`, `ce-simplify-code`, and `ce-doc-review`, in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks."
+    "A verdict that chooses among alternatives, such as an adoption grade, a judgment between competing solutions, or a candidate verdict, is not a finding."
+    "No skill's own disposition narrows this rule: a dismissal, rejection, low-value skip, deferral, log-and-continue, `Deferred to Planning` question, apply bar, confidence threshold, or list, including `lfg`'s, does not leave a finding unapplied."
+    "\"By design\", \"no current instance\", \"low impact\", and \"the fix has a trade-off\" are not reasons to leave a finding, and neither is a rewording of them, such as \"hides nothing visible\", \"mitigated, not removed\", or \"the current configuration never triggers it\"."
+    "A fix that reaches outside the diff or the change's scope, such as existing behavior or helpers the change did not touch, is made in the same change."
     "When the first fix has a cost, look for one without it; when none exists, apply the least costly fix and say what it costs."
-    "Leave a finding unapplied only when you verified it is wrong, quoting the evidence, or every fix for it would weaken a safety check, and report it with that reason."
-    "List only those findings under an `Unapplied review findings` heading in the pull request body, and omit that section when there are none."
-    "When a fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it, but ask before reversing a decision the user made."
+    "Leave a finding unapplied only in these cases: you verified it is wrong, quoting the evidence; every fix for it would weaken a safety check; the user declined its fix when asked; its fix would reverse a decision the user made and no person is present to ask; or no change in this repository can fix it."
+    "List only those findings under an `Unapplied review findings` heading in the pull request body, start each entry with exactly one of the tags `verified wrong`, `weakens a safety check`, `declined by you`, `awaits your decision`, or `no fix in this repository` followed by its evidence or reason, apply a finding whose entry cannot take one of those tags instead of listing it, and omit that section when there are none."
+    "A fix that would reverse a decision the user made, a brainstorm Scope Boundary or `session-settled` entry included, is asked in every run with a person present, autonomous runs included, and listed as `awaits your decision` in a run with no person present."
+    "When any other fix needs a user decision, such as a product or scope change, ask in an interactive run; in an autonomous run, apply the recommended fix and report it."
     "When the user asked only for a review, report the findings and ask once whether to apply them all."
     "Report what you applied in the pull request body and the final report."
   ];
+
+  # The section is one paragraph, so its mutants edit this one line.
+  reviewFindingsLine = lib.concatStringsSep " " reviewFindingsSentences;
+  reviewFindingsExceptionSentence = lib.elemAt reviewFindingsSentences 6;
+  reviewFindingsTagSentence = lib.elemAt reviewFindingsSentences 7;
+
+  # The repository's own copy of the rule in AGENTS.md carries every pinned
+  # sentence, and the glossary entry in CONCEPTS.md carries the scope and the
+  # tags, so neither copy can drift back to the narrower rule unseen.
+  repoAgentsFile = ../AGENTS.md;
+  repoConceptsFile = ../CONCEPTS.md;
+  retiredReviewLeads = [
+    "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report"
+    "This covers every finding from `ce-code-review`, `ce-simplify-code`, and `ce-doc-review`"
+  ];
+  conceptsReviewFindingPhrases = [
+    "**Review finding** — any item a review, verification, or check step of a Compound Engineering workflow reports"
+    "verified wrong, weakens a safety check, declined by you, awaits your decision, or no fix in this repository."
+  ];
+  repoCopyRules = ''
+    ${lib.concatMapStrings (sentence: ''
+      if ! s=${esc sentence} awk 'index($0, ENVIRON["s"]) == 1 || index($0, ". " ENVIRON["s"]) { found = 1 } END { exit !found }' ${repoAgentsFile}; then
+        echo ${esc "AGENTS.md does not hold this review-findings sentence where a sentence starts: ${sentence}"} >&2
+        failed=1
+      fi
+    '') reviewFindingsSentences}
+    ${lib.concatMapStrings (term: ''
+      if grep -qiF -- ${esc term} ${repoAgentsFile}; then
+        echo ${esc "AGENTS.md carries the retired review-findings lead: ${term}"} >&2
+        failed=1
+      fi
+    '') retiredReviewLeads}
+    ${lib.concatMapStrings (phrase: ''
+      if ! grep -qF -- ${esc phrase} ${repoConceptsFile}; then
+        echo ${esc "CONCEPTS.md's review finding entry lacks: ${phrase}"} >&2
+        failed=1
+      fi
+    '') conceptsReviewFindingPhrases}
+  '';
 
   compoundEngineeringHeading = "# Compound Engineering";
 
@@ -562,6 +609,7 @@ let
     "thinking level"
     "`max` for `deep`"
     "CROSS_MODEL_EFFORT_OVERRIDE"
+    "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report"
   ];
 
   # Fails the build, naming each sentence, unless `$file` holds it exactly
@@ -1208,6 +1256,30 @@ let
       edit = ''awk '{ print } $0 == "# T3 Code" { print ENVIRON["line"] }' '';
       expect = "carries an unpinned T3 Code sentence:";
     }
+    {
+      name = "review-findings narrowing sentence added";
+      line = "Only findings from `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` apply.";
+      edit = ''awk '{ print } $0 == "# Review findings" { print ENVIRON["line"] }' '';
+      expect = "carries an unpinned review-findings sentence: Only findings from";
+    }
+    {
+      name = "review-findings tag sentence moved above the exception sentence";
+      line = reviewFindingsLine;
+      edit = replaceInLine "${reviewFindingsExceptionSentence} ${reviewFindingsTagSentence}" "${reviewFindingsTagSentence} ${reviewFindingsExceptionSentence}";
+      expect = "reorders or duplicates a review-findings sentence:";
+    }
+    {
+      name = "review-findings tag sentence removed";
+      line = reviewFindingsLine;
+      edit = replaceInLine "${reviewFindingsTagSentence} " "";
+      expect = "moves a review-findings sentence out of its section: ${reviewFindingsTagSentence}";
+    }
+    {
+      name = "review-findings tag sentence negated";
+      line = reviewFindingsLine;
+      edit = replaceInLine "List only those findings" "Do not list only those findings";
+      expect = "does not hold this sentence exactly once, where a sentence starts: ${reviewFindingsTagSentence}";
+    }
   ]
   ++ removedAndNegated "claude host sentence" claudeHostSentence
   ++ removedAndNegated "glm host sentence" glmHostSentence
@@ -1295,6 +1367,8 @@ pkgs.runCommand "agent-instructions-tests" { } ''
       failed=1
     fi
   ''}
+
+  ${repoCopyRules}
 
   selfTestFailed=0
   ${selfTest}
