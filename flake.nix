@@ -1446,6 +1446,10 @@
             touch $out
           '';
           opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
+          pi-settings = import ./tests/pi.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           opencode-session-info = import ./tests/opencode-session-info.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
