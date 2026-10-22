@@ -198,7 +198,7 @@ When a host is lost, compromised, or retired, follow
 [compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
 Removing its recipient without rotating every token in `secrets/tokens.yaml`
 revokes nothing, because git history keeps the old ciphertext.  A retired NixOS
-host also appears in `secrets/wifi.yaml` and `secrets/tailscale.yaml`, so
-those values need the same treatment.  Remove the recipient and rotate the
+host also appears in `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and
+`secrets/printers.yaml`, so those values need the same treatment.  Remove the recipient and rotate the
 file's data key before writing the new values, or the new values are still
 encrypted to the removed host.

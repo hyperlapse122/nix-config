@@ -13,12 +13,15 @@
   - a file encrypted to one recipient beyond its rule fails, at the top level
     and in a nested directory;
   - a file missing a recipient its rule names fails;
-  - a file whose sops block gains a pgp key group while its age recipients
+  - a file whose sops block gains any non-age key group while its age recipients
     still match fails;
   - a file encrypted to the second of two overlapping rules fails, because the
     first rule wins;
-  - a file matching no rule, a file without a sops block, and a tree with no
-    encrypted file each fail.
+  - a rule whose age list has a space after each comma passes;
+  - a file matching no rule, a file without a sops block, a secrets/*.yml
+    file no rule names, a file whose sops block holds no age key at all, a
+    first matching rule written as key_groups, and a tree with no encrypted
+    file each fail.
 */
 { pkgs, self }:
 pkgs.runCommand "sops-recipients-tests"
@@ -62,6 +65,7 @@ pkgs.runCommand "sops-recipients-tests"
         age: $a
     "
       case $1 in
+        comma-space) rules=''${rules//$a,$b/$a, $b} ;;
         extra-recipient) tokens="$a,$b,$extra" ;;
         nested-extra-recipient) ssh="$a,$extra" ;;
         missing-recipient) tokens=$a ;;
@@ -81,10 +85,25 @@ pkgs.runCommand "sops-recipients-tests"
       encrypt "$tokens" "$tree/secrets/tokens.yaml"
       encrypt "$wifi" "$tree/secrets/wifi.yaml"
       case $1 in
-        pgp-group)
-          yq -i '.sops.pgp = [{"fp": "FAKEFINGERPRINT", "created_at": "2026-01-01T00:00:00Z", "enc": "fake"}]' "$tree/secrets/tokens.yaml"
+        *-group)
+          GROUP=''${1%-group} yq -i '.sops[strenv(GROUP)] = [{"fp": "FAKEFINGERPRINT", "created_at": "2026-01-01T00:00:00Z", "enc": "fake"}]' "$tree/secrets/tokens.yaml"
+          ;;
+        pgp-only-file)
+          yq -i 'del(.sops.age) | .sops.pgp = [{"fp": "FAKEFINGERPRINT", "created_at": "2026-01-01T00:00:00Z", "enc": "fake"}]' "$tree/secrets/tokens.yaml"
+          ;;
+        key-groups-rule)
+          printf '%s' "creation_rules:
+      - path_regex: secrets/hosts/fakehost/ssh\\.yaml$
+        age: $a
+      - path_regex: secrets/tokens\\.yaml$
+        key_groups:
+          - age: [$a, $b]
+      - path_regex: secrets/wifi\\.yaml$
+        age: $a
+    " >"$tree/.sops.yaml"
           ;;
         no-rule) encrypt "$a" "$tree/secrets/orphan.yaml" ;;
+        yml-file) encrypt "$a" "$tree/secrets/orphan.yml" ;;
         no-sops-block) cp plain.yaml "$tree/secrets/plain.yaml" ;;
         no-encrypted-file) rm -r "$tree/secrets" && mkdir "$tree/secrets" ;;
       esac
@@ -92,6 +111,7 @@ pkgs.runCommand "sops-recipients-tests"
     }
 
     bash "$check" "$(make_tree valid)" || { echo 'a well-formed tree failed' >&2; exit 1; }
+    bash "$check" "$(make_tree comma-space)" || { echo 'a rule with spaces after its commas failed' >&2; exit 1; }
     bash "$check" "$(make_tree overlap-first-rule)" || { echo 'a file following the first of two overlapping rules failed' >&2; exit 1; }
 
     # Each mutation must fail for its own reason, not for a neighbouring rule.
@@ -111,9 +131,14 @@ pkgs.runCommand "sops-recipients-tests"
     expect_failure extra-recipient "secrets/tokens.yaml: encrypted to $extra, which its .sops.yaml rule does not name"
     expect_failure nested-extra-recipient "secrets/hosts/fakehost/ssh.yaml: encrypted to $extra, which its .sops.yaml rule does not name"
     expect_failure missing-recipient "secrets/tokens.yaml: not encrypted to $b, which its .sops.yaml rule names"
-    expect_failure pgp-group 'secrets/tokens.yaml: lists a pgp key group'
+    for group in pgp kms gcp_kms azure_kv hc_vault key_groups; do
+      expect_failure "$group-group" "secrets/tokens.yaml: lists a $group key group"
+    done
     expect_failure overlap-second-rule "secrets/wifi.yaml: encrypted to $b, which its .sops.yaml rule does not name"
+    expect_failure pgp-only-file 'secrets/tokens.yaml: lists a pgp key group'
+    expect_failure key-groups-rule 'secrets/tokens.yaml: its .sops.yaml rule uses key_groups'
     expect_failure no-rule 'secrets/orphan.yaml: matches no creation rule'
+    expect_failure yml-file 'secrets/orphan.yml: matches no creation rule'
     expect_failure no-sops-block 'secrets/plain.yaml: has no sops block'
     expect_failure no-encrypted-file 'found no encrypted secrets/**/*.yaml'
 

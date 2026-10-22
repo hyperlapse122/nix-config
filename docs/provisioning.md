@@ -159,7 +159,7 @@ Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_ke
 Follow these steps when a non-NixOS host, a macOS host, or a NixOS host is lost, compromised, or retired. A non-NixOS or macOS host keeps its identity and SSH key as plaintext on its disk. A NixOS host keeps its identity on its LUKS-protected disk, which a lost or sold machine puts out of your control. Either way, treat everything that host could decrypt as exposed.
 
 1. Revoke its SSH public key on GitHub and remove it from every server's `authorized_keys`.
-2. Remove the host's recipient from the rule of every shared file that lists it in `.sops.yaml`. Which files those are depends on the host kind. A non-NixOS or macOS host appears only in `secrets/tokens.yaml`, because `linux-host-secrets` keeps its recipient out of the other two. A NixOS host appears in `secrets/tokens.yaml`, `secrets/wifi.yaml`, and `secrets/tailscale.yaml`. From the repository root, on any machine with the checkout and a YubiKey, re-encrypt each of those files to the remaining recipients, then replace its data key. The key command decrypts every host's bootstrap identity with GPG, and the card may prompt for its PIN:
+2. Remove the host's recipient from the rule of every shared file that lists it in `.sops.yaml`. Which files those are depends on the host kind. A non-NixOS or macOS host appears only in `secrets/tokens.yaml`, because `linux-host-secrets` keeps its recipient out of the other two. A NixOS host appears in `secrets/tokens.yaml`, `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and `secrets/printers.yaml`. From the repository root, on any machine with the checkout and a YubiKey, re-encrypt each of those files to the remaining recipients, then replace its data key. The key command decrypts every host's bootstrap identity with GPG, and the card may prompt for its PIN:
 
    ```sh
    nix develop
@@ -168,9 +168,9 @@ Follow these steps when a non-NixOS host, a macOS host, or a NixOS host is lost,
    sops rotate -i secrets/tokens.yaml
    ```
 
-   For a NixOS host, repeat the `sops updatekeys -y` and `sops rotate -i` pair for `secrets/wifi.yaml` and `secrets/tailscale.yaml` before you clear the key command. The `sops-recipients` check fails if any file's recipients still differ from its rule.
+   For a NixOS host, repeat the `sops updatekeys -y` and `sops rotate -i` pair for `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and `secrets/printers.yaml` before you clear the key command. The `sops-recipients` check fails if any file's recipients still differ from its rule.
 
-3. Rotate every token in `secrets/tokens.yaml` at its service. For a NixOS host, also rotate the Wi-Fi PSKs in `secrets/wifi.yaml` at their access points and the key in `secrets/tailscale.yaml` at Tailscale. Write each new value into its file in the same shell without passing it as an argument: save it to a mode 0600 file outside the checkout, pipe it in as a JSON string, and delete the file. Then clear the key command:
+3. Rotate every token in `secrets/tokens.yaml` at its service. For a NixOS host, also rotate the Wi-Fi PSKs in `secrets/wifi.yaml` at their access points the key in `secrets/tailscale.yaml` at Tailscale, and any credential in `secrets/printers.yaml` at the printers. Write each new value into its file in the same shell without passing it as an argument: save it to a mode 0600 file outside the checkout, pipe it in as a JSON string, and delete the file. Then clear the key command:
 
    ```sh
    python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \

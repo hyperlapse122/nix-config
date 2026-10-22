@@ -38,7 +38,7 @@ Commit `e857618` removed the ThinkPad host and its recipient from `.sops.yaml` b
 - R2. Each of the three files has a new data key, so ciphertext produced after this change shares no data key with the history that the ThinkPad identity could read.
 - R3. The decrypted values of the three files are unchanged and are never printed, passed as arguments, or written to a file outside SOPS.
 - R4. A flake check fails when any `secrets/**/*.yaml` is encrypted to a recipient its `.sops.yaml` rule does not name, or omits one the rule names.
-- R5. The check also fails when a `secrets/**/*.yaml` matches no rule, carries no SOPS metadata, or lists any key group other than age (`pgp`, `kms`, `gcp_kms`, `azure_kv`, `hc_vault`), and when it finds no encrypted file at all.
+- R5. The check also fails when a `secrets/**/*.yaml` matches no rule, carries no SOPS metadata, lists any key group other than age (`pgp`, `kms`, `gcp_kms`, `azure_kv`, `hc_vault`, `key_groups`), or is governed by a rule written as `key_groups`, and when it finds no encrypted file at all. The walk covers `*.yaml`, `*.yml` and `*.json` files under `secrets/`, skips dot-files, and tolerates spaces after the commas of a rule's age list.
 - R6. The decommission procedure in `docs/provisioning.md` names, per host kind, every shared file that can list a retired host, and the secrets documentation names the new check.
 
 ### Key Decisions
