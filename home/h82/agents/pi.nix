@@ -23,6 +23,11 @@ let
     }
   );
 
+  # The ACP adapter and client run this host's wrapper, so a session started
+  # over ACP reads the same key files.
+  piAcp = import ../../../packages/pi-acp.nix { inherit pkgs pi; };
+  acpx = import ../../../packages/acpx.nix { inherit pkgs piAcp; };
+
   sourceModels = import ./synthetic-models.nix;
   entries = lib.filterAttrs (_: builtins.isAttrs) sourceModels;
   catalog = (builtins.fromJSON (builtins.readFile ./synthetic-catalog.json)).data;
@@ -151,7 +156,11 @@ let
     '';
 in
 {
-  home.packages = [ pi ];
+  home.packages = [
+    pi
+    piAcp
+    acpx
+  ];
 
   # Pi loads every directory under ~/.pi/agent/extensions that holds an
   # index.js. T3 Code's text generation passes --no-extensions and skips it.
