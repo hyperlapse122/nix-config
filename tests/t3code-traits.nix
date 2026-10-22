@@ -28,10 +28,11 @@
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, OpenCode, and Pi instances, the disabled Grok
-    instance, the Claude instance's launch arguments emptied, which retires the --add-dir an
-    earlier generation wrote, no environment entry upserted, and the built-in
-    Codex instance declared disabled, since Codex is no longer installed; the
+    enabled Antigravity, Claude, Codex, OpenCode, and Pi instances, the
+    disabled Grok instance, the Claude instance's launch arguments emptied,
+    which retires the --add-dir an earlier generation wrote, no environment
+    entry upserted, and the Codex instance's launch arguments emptied, which
+    retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
     first. The Pi instance declares no binaryPath and no launch arguments. It
     owns two model selections whole: the default, Claude Opus at effort
@@ -263,7 +264,7 @@ let
           "codex"
           "enabled"
         ];
-        value = false;
+        value = true;
       }
       {
         path = [

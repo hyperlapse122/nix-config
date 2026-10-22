@@ -23,7 +23,11 @@ let
 
   pythonHelper = name: src: helperWith name src pkgs.python3;
 
-  agentSettings = pythonHelper "agent-settings" ../scripts/agent-settings;
+  # tomlkit is what lets the TOML mode rewrite a file such as Codex's
+  # config.toml without dropping the comments and tables it does not own. The
+  # flake check runs the source copy of the tests under this same interpreter.
+  agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
+  agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
 
   # Runs from home activation, where PATH carries neither home.packages nor
   # the login shell's session variables, so the module hands it the agent CLI
@@ -133,6 +137,7 @@ in
 {
   inherit
     agentSettings
+    agentSettingsPython
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease

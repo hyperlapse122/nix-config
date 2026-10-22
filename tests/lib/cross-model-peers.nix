@@ -16,6 +16,7 @@ packages:
 let
   tokens = {
     claude-code = "claude";
+    codex = "codex";
   };
   pnames = map (p: p.pname or (lib.getName p)) packages;
 in

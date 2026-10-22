@@ -1,11 +1,11 @@
 /*
   T3 Code nightly, one artifact per trait: my.t3.cli.enable installs the
   headless `t3` CLI and my.t3.desktop.enable the desktop app. Its Claude
-  sessions run the flake's own claude with its user-level settings, so nothing
-  here adds a copy of it. The T3 Code settings that
-  differ from the pinned nightly's defaults are merged into its own settings
-  files on activation, and the Antigravity runtime it requires is installed
-  where T3 Code looks for it.
+  and Codex sessions run the flake's own claude and codex with their
+  user-level settings, so nothing here adds a copy of either. The T3 Code
+  settings that differ from the pinned nightly's defaults are merged into its
+  own settings files on activation, and the Antigravity runtime it requires is
+  installed where T3 Code looks for it.
 
   The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
   it fails the assertion below rather than a build.
@@ -44,8 +44,8 @@ let
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
   # declared provider instance states `enabled`, even where it equals the
-  # default: claudeAgent's does, since T3 Code turns that instance on. A
-  # cleanup that drops default-valued settings must keep it, or the instance
+  # default: claudeAgent's and codex's do, since T3 Code turns those instances
+  # on. A cleanup that drops default-valued settings must keep it, or the instance
   # would go back to following T3 Code's default. App state (onboarding marks,
   # folded panels, favorites, and every provider instance field not declared
   # here) stays the app's. T3 Code leaves its built-in Antigravity, OpenCode,
@@ -71,13 +71,14 @@ let
         enabled = true;
         config.launchArgs = "";
       };
-      # T3 Code enables its built-in Codex instance unless one is declared.
-      # The merge can retire only top-level keys, so the launch arguments an
-      # earlier generation wrote, which carried the old instructions, are
-      # overwritten with nothing.
+      # The codex on PATH is the packaged wrapper, so no binaryPath is needed.
+      # Codex reads the instructions from ~/.codex/AGENTS.md. The merge can
+      # retire only top-level keys, so the launch arguments an earlier
+      # generation wrote, which carried the old instructions, are overwritten
+      # with nothing.
       codex = {
         driver = "codex";
-        enabled = false;
+        enabled = true;
         config.launchArgs = "";
       };
       # T3 Code enables its built-in Grok instance unless one is declared.

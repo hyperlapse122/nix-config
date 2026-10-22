@@ -18,8 +18,8 @@
     group at interactive priority, a login agent exports the socket to GUI
     apps, and the minikube login agent exists in production only;
   - the session and a login agent at load set CROSS_MODEL_PEERS to the
-    peers the installed packages call for (tests/lib/cross-model-peers.nix)
-    and CROSS_MODEL_MAX_PEERS to 2;
+    peers the installed packages call for (tests/lib/cross-model-peers.nix),
+    codex among them, and CROSS_MODEL_MAX_PEERS to 2;
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -172,6 +172,7 @@ let
       grep -Fxq 'export CROSS_MODEL_PEERS="${peers}"' "$vars" \
         || bad "the session does not set CROSS_MODEL_PEERS to ${peers}"
       grep -Fxq 'export CROSS_MODEL_MAX_PEERS="2"' "$vars" || bad "the session does not set CROSS_MODEL_MAX_PEERS to 2"
+      case ",${peers}," in *,codex,*) ;; *) bad "CROSS_MODEL_PEERS (${peers}) does not allow codex, which the profile installs" ;; esac
       peeragent=$(agent cross-model-peers)
       case $peeragent in
         *'launchctlsetenvCROSS_MODEL_PEERS${peers}/bin/launchctlsetenvCROSS_MODEL_MAX_PEERS2'*'<key>RunAtLoad</key><true/>'*) ;;

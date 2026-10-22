@@ -11,6 +11,7 @@
 
     Pi                ~/.pi/agent/AGENTS.md, shared rendering only
     Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
+    Codex             ~/.codex/AGENTS.md, which T3 Code's Codex sessions read
     OpenCode          ~/.config/opencode/AGENTS.md, which every run loads
     Antigravity CLI   ~/.gemini/config/AGENTS.md
 
@@ -18,12 +19,11 @@
 
   Verifies, per Home Manager user:
   - exactly one enabled Home Manager file resolves to each delivery path, and
-    none to the retired ~/.t3/instructions/claude-code/CLAUDE.md, Codex's
-    ~/.codex/AGENTS.md, Gemini's ~/.gemini/GEMINI.md, or the retired
-    ~/.grok/rules/instructions.md, none of which is installed. The lookup
-    compares each entry's resolved `target` rather than its attribute name,
-    and reads `enable`, because either can move the file without changing its
-    text.
+    none to the retired ~/.t3/instructions/claude-code/CLAUDE.md, Gemini's
+    ~/.gemini/GEMINI.md, or the retired ~/.grok/rules/instructions.md, none
+    of which is installed. The lookup compares each entry's resolved `target`
+    rather than its attribute name, and reads `enable`, because either can
+    move the file without changing its text.
   - each delivery path exists in the materialized `home-files` and equals its
     expected file byte for byte, and every path passes the per-file rules
     for its copy. See
@@ -173,6 +173,7 @@ let
   piPath = ".pi/agent/AGENTS.md";
   acpPaths = [
     ".claude/CLAUDE.md"
+    ".codex/AGENTS.md"
     ".config/opencode/AGENTS.md"
     ".gemini/config/AGENTS.md"
   ];
@@ -775,7 +776,6 @@ let
     "gemini-3.8-flash-high"
     "Pick the model by harness"
     "another harness"
-    "Codex"
     "Zen"
     "Model routing"
     "receives the reviewed content"
@@ -1041,7 +1041,6 @@ let
 
   retiredPaths = [
     ".t3/instructions/claude-code/CLAUDE.md"
-    ".codex/AGENTS.md"
     ".gemini/GEMINI.md"
     ".grok/rules/instructions.md"
   ];

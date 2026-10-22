@@ -17,7 +17,7 @@ in
     type = lib.types.listOf lib.types.str;
     default = [ ];
     description = ''
-      Compound Engineering review route tokens (claude) that
+      Compound Engineering review route tokens (claude, codex) that
       CROSS_MODEL_PEERS allows. Each agent module adds the token of the
       harness it installs. Compound Engineering has no route for Pi or
       OpenCode, so Synthetic peers run over ACP and add no token.

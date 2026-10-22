@@ -20,6 +20,9 @@
     rather than the 1Password agent;
   - activation merges the declared OpenCode config into
     ~/.config/opencode/opencode.json after installPackages;
+  - Codex is installed, allowed as a Compound Engineering peer, reads
+    ~/.codex/AGENTS.md, and its settings merge targets ~/.codex/config.toml
+    after installPackages;
   - on fixtures of the builder's own architecture, the Tokscale and OpenCode
     wrappers and the registry credential helper read the tokens host-secrets
     publishes, not /run/secrets, which a non-NixOS host does not have;
@@ -153,6 +156,20 @@ let
           )
         )
         "${entry.name}: activation must merge the OpenCode config into ~/.config/opencode/opencode.json after installPackages"
+      )
+      (check (
+        lib.elem "codex" pnames
+        && lib.elem "codex" hm.my.agents.crossModelPeers
+        && lib.any (file: file.target == ".codex/AGENTS.md") (enabledTargets hm.home.file)
+      ) "${entry.name}: Codex must be installed, allowed as a peer, and read ~/.codex/AGENTS.md")
+      (check
+        (
+          lib.elem "installPackages" (activation.codexSettings.after or [ ])
+          && lib.hasInfix "--settings ${hm.home.homeDirectory}/.codex/config.toml" (
+            builtins.unsafeDiscardStringContext (activation.codexSettings.data or "")
+          )
+        )
+        "${entry.name}: activation must merge the declared Codex settings into ~/.codex/config.toml after installPackages"
       )
       (check (desktopFiles == [ ])
         "${entry.name}: desktop configuration reached a non-NixOS host: ${lib.concatStringsSep ", " desktopFiles}"

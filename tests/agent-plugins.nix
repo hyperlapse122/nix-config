@@ -99,6 +99,11 @@ let
           expectedCli = claudeCli;
         }
         {
+          name = "codex";
+          pname = "codex";
+          expectedCli = packagePath "codex" "codex";
+        }
+        {
           name = "antigravity";
           pname = "antigravity-cli";
           expectedCli = packagePath "antigravity-cli" "agy";
@@ -205,13 +210,8 @@ let
           failed=1
         fi
 
-        if grep -qF -- '--harness codex' <<< ${esc script}; then
-          echo 'the agentPlugins activation script still syncs a plugin for codex on ${hostName}' >&2
-          failed=1
-        fi
-
-        # Each harness's invocation is read separately: with a Claude and an
-        # Antigravity row for the same plugin, a block chosen by plugin name
+        # Each harness's invocation is read separately: with a Claude, a Codex
+        # and an Antigravity row for the same plugin, a block chosen by plugin name
         # alone would check whichever came first and let the other drift.
         ${lib.concatMapStrings (harness: ''
           block=$(blockForHarness ${esc script} ${esc pluginName} ${esc harness.name})

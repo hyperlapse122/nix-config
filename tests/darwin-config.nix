@@ -35,6 +35,9 @@
     auth.json, and link `docker` to Podman; production adds the minikube
     login agent and bootstrap has none. No OrbStack cask, credHelpers merge,
     or Docker Hub index alias remains.
+  - Codex: the pinned package is installed, the Codex settings merge runs
+    with `--format toml` on ~/.codex/config.toml after installPackages, and
+    `codex` is among the Compound Engineering peers.
   - Compound Engineering peers: a login agent enabled at load runs
     `/bin/sh -c` with exactly two `/bin/launchctl setenv` lines, which set
     CROSS_MODEL_PEERS, joined with `,` alone, to the set of peers the
@@ -303,6 +306,7 @@ let
       sshText = plain user.my.ssh.configFile.drvAttrs.text;
       pinentry = user.services.gpg-agent.pinentry.package;
       vscodiumData = plain (activation.vscodiumSettings.data or "");
+      codexData = plain (activation.codexSettings.data or "");
       marker = config.environment.etc."nix-config-host".text or "";
       production = !entry.bootstrap;
       primaryUser = config.system.primaryUser;
@@ -443,7 +447,16 @@ let
       (check (routingTable ? "docker.io" && !(routingTable ? "https://index.docker.io/v1/"))
         "${entry.name}: the credential helper must route docker.io and no longer the Docker Hub index alias"
       )
-      (check (codex == null) "${entry.name}: codex was removed and must not be installed")
+      (check (codex != null) "${entry.name}: codex must be installed")
+      (check (lib.elem "codex" peers) "${entry.name}: codex is installed, so CROSS_MODEL_PEERS must allow it")
+      (check
+        (
+          lib.elem "installPackages" (activation.codexSettings.after or [ ])
+          && lib.hasInfix "--format toml" codexData
+          && lib.hasInfix "--settings ${config.my.user.home}/.codex/config.toml" codexData
+        )
+        "${entry.name}: activation must merge the declared Codex settings into ~/.codex/config.toml as TOML after installPackages"
+      )
       (lib.concatMapStrings (
         cask:
         check (

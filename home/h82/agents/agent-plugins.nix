@@ -12,6 +12,7 @@ let
   # Single source of truth with home/h82/default.nix's package list, so each
   # command's --cli flag can never drift onto a different agent build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
+  codex = import ../../../packages/codex.nix { inherit pkgs; };
   antigravityCli = import ../../../packages/antigravity-cli.nix { inherit pkgs; };
 
   # Neutral source registry: what a plugin is and where it comes from, with no
@@ -39,6 +40,7 @@ let
       # because one harness can misclassify a tree another accepts.
       exclude = {
         claude = [ ];
+        codex = [ ];
         antigravity = [ ];
         opencode = [ ];
         pi = [ ];
@@ -63,6 +65,10 @@ let
     }
     {
       name = "compound-engineering";
+      harness = "codex";
+    }
+    {
+      name = "compound-engineering";
       harness = "antigravity";
     }
   ];
@@ -70,15 +76,19 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; agy's update overrides travel inside its wrapper instead. OpenCode
-  # has no plugin command that takes a path, so its "CLI" is the merger that
-  # writes the link into ~/.config/opencode/opencode.json. Pi's is the same
-  # merger, which writes the plugin's skills directory into the `skills` list
-  # of ~/.pi/agent/settings.json.
+  # it; Codex's and agy's update overrides travel inside their wrappers
+  # instead. OpenCode has no plugin command that takes a path, so its "CLI" is
+  # the merger that writes the link into ~/.config/opencode/opencode.json.
+  # Pi's is the same merger, which writes the plugin's skills directory into
+  # the `skills` list of ~/.pi/agent/settings.json.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
       env = claudeEnv;
+    };
+    codex = {
+      cli = "${codex}/bin/codex";
+      env = "";
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";
