@@ -118,6 +118,14 @@ jobs:
             git checkout -- home/h82/agents/synthetic-catalog.json
           fi
 
+          # 10b. Update Pi. A release can be published before every platform
+          # tarball or its SHA256SUMS line, so a failure keeps the current pin
+          # and lets the other updates through, as OpenCode's does.
+          if ! nix run .#pi-release -- --output packages/pi-release.json; then
+            echo "::warning title=Pi update skipped::pi-release failed; keeping the current pin in packages/pi-release.json."
+            git checkout -- packages/pi-release.json
+          fi
+
           # 11. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
@@ -207,6 +215,12 @@ jobs:
           if [ -n "$(git status --porcelain home/h82/agents/synthetic-catalog.json)" ]; then
             git add home/h82/agents/synthetic-catalog.json
             git commit -m "chore(agents): refresh the synthetic catalog snapshot"
+          fi
+
+          if [ -n "$(git status --porcelain packages/pi-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/pi-release.json)
+            git add packages/pi-release.json
+            git commit -m "chore(packages): bump pi to $NEW_VER"
           fi
 
           # The ACP updater writes the PATH pin and the antigravity section of

@@ -84,6 +84,11 @@ in
       default = false;
       description = "Decrypt synthetic_api_key from secrets/tokens.yaml for the opencode wrapper, which reads it at run time.";
     };
+    enableExaApiKey = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Decrypt exa_api_key from secrets/tokens.yaml for Pi's Exa web tools, which read it at run time.";
+    };
   };
   config = lib.mkMerge [
     {
@@ -139,6 +144,7 @@ in
                   ++ lib.optional cfg.enableDockerToken "docker_token"
                   ++ lib.optional cfg.enableTokscaleToken "tokscale_token"
                   ++ lib.optional cfg.enableSyntheticApiKey "synthetic_api_key"
+                  ++ lib.optional cfg.enableExaApiKey "exa_api_key"
                 ))
                 (name: {
                   key = lib.removePrefix "cli-auth/" name;

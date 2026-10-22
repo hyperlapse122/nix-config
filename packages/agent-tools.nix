@@ -62,6 +62,12 @@ let
   # check can drive it with fixtures.
   opencodeRelease = pythonHelper "opencode-release" ../scripts/opencode-release;
 
+  # Resolves the latest Pi release and its per-platform tarball digests from
+  # the GitHub releases API and the release's SHA256SUMS. Its network calls go
+  # through an overridable command so the sandboxed repository check can drive
+  # it with fixtures.
+  piRelease = pythonHelper "pi-release" ../scripts/pi-release;
+
   # Resolves the latest Antigravity CLI release and its per-platform digests
   # from Google's release feed. Its network calls go through an overridable
   # command so the sandboxed repository check can drive it with fixtures.
@@ -108,6 +114,7 @@ in
     claudeCodeRelease
     miseRelease
     opencodeRelease
+    piRelease
     antigravityCliRelease
     antigravityAcpRelease
     t3codeRelease
