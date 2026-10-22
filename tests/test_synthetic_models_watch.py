@@ -201,25 +201,28 @@ class ClassificationTest(WatchTestCase):
     def test_the_snapshot_yields_no_difference(self):
         self.assert_clean(snapshot())
 
-    def test_missing_kimi_is_removed_with_its_roles(self):
-        result, body = self.drift(without(snapshot(), KIMI))
+    def test_a_model_the_source_no_longer_names_is_not_drift(self):
+        self.assert_clean(without(snapshot(), KIMI))
+
+    def test_missing_deepseek_is_removed_with_its_role_and_pointers(self):
+        result, body = self.drift(without(snapshot(), DEEPSEEK))
         self.assertEqual(len(result["findings"]), 1, result["findings"])
-        finding = self.finding(result, "removed", "kimi")
-        self.assertEqual(finding["id"], KIMI)
-        self.assertEqual(finding["uses"], ["reviewer", "visual-engineering-fallback"])
+        finding = self.finding(result, "removed", "deepseek")
+        self.assertEqual(finding["id"], DEEPSEEK)
+        self.assertEqual(finding["uses"], ["text-generation", "smallModel", "textGeneration"])
         first = body.splitlines()[0]
-        for needle in (f"`{KIMI}`", "removed", "`reviewer`", "`visual-engineering-fallback`",
+        for needle in (f"`{DEEPSEEK}`", "removed", "`text-generation`", "`smallModel`", "`textGeneration`",
                        f"`{SOURCE_FILE}`", DETECTED):
             self.assertIn(needle, first)
-        for needle in (f"`{KIMI}`", "removed", SOURCE_FILE):
+        for needle in (f"`{DEEPSEEK}`", "removed", SOURCE_FILE):
             self.assertIn(needle, result["title"])
         self.assertIn("Before you edit the source, confirm on Synthetic that the ID names the model you expect.", body)
 
     def test_an_alias_row_does_not_keep_a_removed_model_present(self):
-        catalog = without(snapshot(), KIMI)
-        catalog = with_rows(catalog, row(KIMI, 1785110400, alias_of="Kimi K3"))
+        catalog = without(snapshot(), GLM_FLASH)
+        catalog = with_rows(catalog, row(GLM_FLASH, 1787702400, alias_of="GLM 5.3 Flash"))
         result, _ = self.drift(catalog)
-        self.finding(result, "removed", "kimi")
+        self.finding(result, "removed", "glmFlash")
 
     def test_a_later_deepseek_build_is_a_new_version(self):
         catalog = snapshot()
@@ -230,9 +233,9 @@ class ClassificationTest(WatchTestCase):
         finding = self.finding(result, "new-version", "deepseek")
         self.assertEqual(finding["id"], DEEPSEEK)
         self.assertEqual(finding["candidates"], [candidate])
-        self.assertEqual(finding["uses"], ["quick", "scout", "text-generation", "unspecified-low", "smallModel", "textGeneration"])
+        self.assertEqual(finding["uses"], ["text-generation", "smallModel", "textGeneration"])
         first = body.splitlines()[0]
-        for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`quick`", "`unspecified-low`", DETECTED):
+        for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`text-generation`", "`smallModel`", DETECTED):
             self.assertIn(needle, first)
         self.assertIn(f"`{candidate}`", result["title"])
 
@@ -253,15 +256,13 @@ class ClassificationTest(WatchTestCase):
 
     def test_suffixed_products_and_lower_versions_are_not_newer(self):
         catalog = snapshot()
-        later = max(created_of(catalog, GLM), created_of(catalog, KIMI)) + 86400
+        later = created_of(catalog, GLM) + 86400
         self.assert_clean(with_rows(
             catalog,
             row("hf:zai-org/GLM-5.3-Flash-Lite", later),
             row("hf:zai-org/GLM-5.3-Air", later),
             row("hf:zai-org/GLM-4.7-Flash", later),
-            row("hf:moonshotai/Kimi-K2.7-Code", later),
             row("hf:zai-org/GLM-4.7", later),
-            row("hf:moonshotai/Kimi-K2.9", later),
             row("hf:deepseek-ai/DeepSeek-V4.0-Flash-1201", later + created_of(catalog, DEEPSEEK)),
         ))
 
@@ -277,15 +278,16 @@ class ClassificationTest(WatchTestCase):
             self.finding(result, "new-version", "glmFlash")["candidates"], ["hf:zai-org/GLM-5.4-Flash"]
         )
 
-    def test_missing_glm_flash_is_removed_with_its_reviewer_role_and_no_older_replacement(self):
-        result, _ = self.drift(without(snapshot(), GLM_FLASH))
+    def test_missing_glm_flash_is_removed_with_no_uses_and_no_older_replacement(self):
+        result, body = self.drift(without(snapshot(), GLM_FLASH))
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "removed", "glmFlash")
         self.assertEqual(finding["id"], GLM_FLASH)
-        self.assertEqual(finding["uses"], ["reviewer"])
+        self.assertEqual(finding["uses"], [])
         self.assertEqual(finding["candidates"], [])
+        self.assertIn("(uses none)", body.splitlines()[0])
 
-    def test_glm_flash_without_high_is_changed_for_its_reviewer_role_and_opencode_effort(self):
+    def test_glm_flash_without_high_is_changed_for_its_default_effort_only(self):
         catalog = snapshot()
         for model in catalog["data"]:
             if model["id"] == GLM_FLASH:
@@ -294,7 +296,7 @@ class ClassificationTest(WatchTestCase):
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "changed", "glmFlash")
         self.assertEqual(finding["missingEfforts"], ["high"])
-        self.assertEqual(finding["uses"], ["reviewer", "defaultEffort"])
+        self.assertEqual(finding["uses"], ["defaultEffort"])
 
     def test_a_higher_version_on_the_same_created_is_newer(self):
         catalog = snapshot()
@@ -336,11 +338,6 @@ class ClassificationTest(WatchTestCase):
             self.finding(result, "new-version", "deepseek")["candidates"], ["hf:deepseek-ai/DeepSeek-V4.2-Flash"]
         )
 
-    def test_an_equal_version_with_a_later_created_is_newer(self):
-        catalog = snapshot()
-        result, _ = self.drift(with_rows(catalog, row("hf:moonshotai/Kimi-K3.0", created_of(catalog, KIMI) + 1)))
-        self.assertEqual(self.finding(result, "new-version", "kimi")["candidates"], ["hf:moonshotai/Kimi-K3.0"])
-
     def test_syn_rows_are_ignored_and_an_hf_alias_row_is_a_candidate(self):
         catalog = snapshot()
         later = created_of(catalog, GLM) + 86400
@@ -356,16 +353,16 @@ class ClassificationTest(WatchTestCase):
 
     def test_a_removed_model_lists_its_lineage_candidates(self):
         catalog = with_rows(
-            without(snapshot(), KIMI),
-            row("hf:moonshotai/Kimi-K3.1", 1),
-            row("hf:moonshotai/Kimi-K3.0", 2),
-            row("hf:moonshotai/Kimi-K2.9", 3),
-            row("hf:moonshotai/Kimi-K3.1-Code", 4),
+            without(snapshot(), GLM_FLASH),
+            row("hf:zai-org/GLM-5.5-Flash", 1),
+            row("hf:zai-org/GLM-5.4-Flash", 2),
+            row("hf:zai-org/GLM-5.2-Flash", 3),
+            row("hf:zai-org/GLM-5.5-Flash-Code", 4),
         )
         result, body = self.drift(catalog)
-        finding = self.finding(result, "removed", "kimi")
-        self.assertEqual(finding["candidates"], ["hf:moonshotai/Kimi-K3.1", "hf:moonshotai/Kimi-K3.0"])
-        self.assertIn("candidate `hf:moonshotai/Kimi-K3.1`", body.splitlines()[0])
+        finding = self.finding(result, "removed", "glmFlash")
+        self.assertEqual(finding["candidates"], ["hf:zai-org/GLM-5.5-Flash", "hf:zai-org/GLM-5.4-Flash"])
+        self.assertIn("candidate `hf:zai-org/GLM-5.5-Flash`", body.splitlines()[0])
 
     def test_a_row_can_be_both_a_new_version_and_changed(self):
         catalog = snapshot()
@@ -386,7 +383,7 @@ class ClassificationTest(WatchTestCase):
         result = self.assert_clean(with_rows(snapshot(), row("syn:large:text", 1)))
         self.assertEqual(result["rejectedCatalogEntries"], baseline)
 
-    def test_glm_without_max_is_changed_for_its_max_roles_only(self):
+    def test_glm_without_max_is_changed_for_its_default_effort_only(self):
         catalog = snapshot()
         for model in catalog["data"]:
             if model["id"] == GLM:
@@ -395,23 +392,33 @@ class ClassificationTest(WatchTestCase):
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "changed", "glm")
         self.assertEqual(finding["missingEfforts"], ["max"])
-        self.assertEqual(finding["uses"], ["deep-fallback", "reviewer", "defaultEffort"])
+        self.assertEqual(finding["uses"], ["defaultEffort"])
         first = body.splitlines()[0]
-        for needle in (f"`{GLM}`", "`max`", "`reviewer`", "`deep-fallback`", DETECTED):
+        for needle in (f"`{GLM}`", "`max`", "`defaultEffort`", DETECTED):
             self.assertIn(needle, first)
-        for role in ("writing-fallback", "unspecified-high-fallback"):
-            self.assertNotIn(role, first)
+
+    def test_deepseek_without_low_is_changed_for_its_text_generation_role_only(self):
+        catalog = snapshot()
+        for model in catalog["data"]:
+            if model["id"] == DEEPSEEK:
+                model["reasoning_parameters"]["efforts"] = ["high", "max"]
+        result, body = self.drift(catalog)
+        self.assertEqual(len(result["findings"]), 1, result["findings"])
+        finding = self.finding(result, "changed", "deepseek")
+        self.assertEqual(finding["missingEfforts"], ["low"])
+        self.assertEqual(finding["uses"], ["text-generation"])
+        self.assertNotIn("defaultEffort", body.splitlines()[0])
 
     def test_a_model_with_no_reasoning_parameters_is_changed_for_every_effort(self):
         catalog = snapshot()
         for model in catalog["data"]:
-            if model["id"] == KIMI:
+            if model["id"] == DEEPSEEK:
                 del model["reasoning_parameters"]
         result, _ = self.drift(catalog)
-        self.assertEqual(self.finding(result, "changed", "kimi")["missingEfforts"], ["high", "max"])
+        self.assertEqual(self.finding(result, "changed", "deepseek")["missingEfforts"], ["high", "low"])
 
     def test_unsafe_catalog_ids_are_reported_only_as_a_count(self):
-        catalog = without(snapshot(), KIMI)
+        catalog = without(snapshot(), GLM_FLASH)
         later = created_of(catalog, GLM) + 86400
         unsafe = [
             "hf:zai-org/GLM-6`](https://evil.invalid)",
@@ -431,40 +438,40 @@ class ClassificationTest(WatchTestCase):
         self.assertIn(f"{baseline + len(unsafe)} catalog entries", body)
 
     def test_every_catalog_value_in_the_body_sits_in_a_code_span(self):
-        catalog = without(snapshot(), KIMI)
+        catalog = without(snapshot(), GLM_FLASH)
         later = created_of(catalog, DEEPSEEK) + 1
         catalog = with_rows(catalog, row("hf:deepseek-ai/DeepSeek-V4.1-Flash-1120", later))
         _, body = self.drift(catalog)
         outside = "".join(part for index, part in enumerate(body.split("`")) if index % 2 == 0)
-        for value in (KIMI, DEEPSEEK, "hf:deepseek-ai/DeepSeek-V4.1-Flash-1120", "hf:"):
+        for value in (GLM_FLASH, DEEPSEEK, "hf:deepseek-ai/DeepSeek-V4.1-Flash-1120", "hf:"):
             self.assertNotIn(value, outside)
 
 
 class FingerprintTest(WatchTestCase):
     def test_same_findings_keep_the_fingerprint_and_new_ones_change_it(self):
-        first, body = self.drift(without(snapshot(), KIMI))
+        first, body = self.drift(without(snapshot(), GLM_FLASH))
         self.assertRegex(first["fingerprint"], r"^sha256:[0-9a-f]{64}$")
         self.assertIn(f"<!-- synthetic-models-watch fingerprint: {first['fingerprint']} -->", body)
 
-        proc = self.run_watch(without(snapshot(), KIMI), extra=["--detected-at", "2026-10-22T09:00:00Z"])
+        proc = self.run_watch(without(snapshot(), GLM_FLASH), extra=["--detected-at", "2026-10-22T09:00:00Z"])
         self.assertEqual(proc.returncode, 0, proc.stderr)
         again = json.loads(self.result.read_text())
         self.assertEqual(again["fingerprint"], first["fingerprint"])
 
-        other, _ = self.drift(without(without(snapshot(), KIMI), GLM))
+        other, _ = self.drift(without(without(snapshot(), GLM_FLASH), GLM))
         self.assertNotEqual(other["fingerprint"], first["fingerprint"])
 
         catalog = snapshot()
         for model in catalog["data"]:
-            if model["id"] == GLM:
-                model["reasoning_parameters"]["efforts"] = ["low", "high"]
+            if model["id"] == DEEPSEEK:
+                model["reasoning_parameters"]["efforts"] = ["high", "max"]
         changed, _ = self.drift(catalog)
-        catalog_low = snapshot()
-        for model in catalog_low["data"]:
-            if model["id"] == GLM:
-                model["reasoning_parameters"]["efforts"] = ["max"]
-        changed_low, _ = self.drift(catalog_low)
-        self.assertNotEqual(changed["fingerprint"], changed_low["fingerprint"])
+        catalog_other = snapshot()
+        for model in catalog_other["data"]:
+            if model["id"] == DEEPSEEK:
+                model["reasoning_parameters"]["efforts"] = ["low", "max"]
+        changed_other, _ = self.drift(catalog_other)
+        self.assertNotEqual(changed["fingerprint"], changed_other["fingerprint"])
 
     def test_offered_efforts_alone_change_the_body_digest_but_not_the_fingerprint(self):
         results, bodies = [], []
@@ -483,12 +490,20 @@ class FingerprintTest(WatchTestCase):
             self.assertIn(f"<!-- synthetic-models-watch body: {result['bodyDigest']} -->", body)
 
     def test_the_detection_time_alone_keeps_the_body_digest(self):
-        first, _ = self.drift(without(snapshot(), KIMI))
-        proc = self.run_watch(without(snapshot(), KIMI), extra=["--detected-at", "2026-10-22T09:00:00Z"])
+        first, _ = self.drift(without(snapshot(), GLM_FLASH))
+        proc = self.run_watch(without(snapshot(), GLM_FLASH), extra=["--detected-at", "2026-10-22T09:00:00Z"])
         self.assertEqual(proc.returncode, 0, proc.stderr)
         again = json.loads(self.result.read_text())
         self.assertEqual(again["bodyDigest"], first["bodyDigest"])
         self.assertIn("2026-10-22T09:00:00Z", self.body.read_text())
+
+
+class VersionTest(unittest.TestCase):
+    def test_a_shorter_version_is_padded_before_it_is_compared(self):
+        watch = load_watch()
+        self.assertEqual(watch.compare_versions((3,), (3, 0)), 0)
+        self.assertEqual(watch.compare_versions((3, 1), (3,)), 1)
+        self.assertEqual(watch.compare_versions((2, 9), (3,)), -1)
 
 
 class IssueStateTest(WatchTestCase):
@@ -507,7 +522,7 @@ class IssueStateTest(WatchTestCase):
         return proc.stdout
 
     def test_it_reads_back_the_marks_the_body_carries(self):
-        result, body = self.drift(without(snapshot(), KIMI))
+        result, body = self.drift(without(snapshot(), GLM_FLASH))
         state = self.state({"body": body, "comments": []})
         self.assertEqual(state, {
             "fingerprint": result["fingerprint"],
@@ -546,8 +561,8 @@ class TitleTest(unittest.TestCase):
         return {"kind": "removed", "entry": f"e{index}", "id": f"hf:org/M-{index}", "uses": uses, "candidates": []}
 
     def test_a_short_title_keeps_the_uses(self):
-        title = self.watch.title([self.removed(1, ["reviewer"])])
-        self.assertIn("(uses `reviewer`)", title)
+        title = self.watch.title([self.removed(1, ["text-generation"])])
+        self.assertIn("(uses `text-generation`)", title)
 
     def test_a_long_title_drops_the_uses_first(self):
         uses = [f"role-{n}-with-a-long-name" for n in range(8)]
@@ -586,7 +601,7 @@ class FetchTest(WatchTestCase):
         self.assertEqual(len(self.calls()), 2)
 
     def test_one_failure_is_retried(self):
-        proc = self.run_fetch([22, json.dumps(without(snapshot(), KIMI))])
+        proc = self.run_fetch([22, json.dumps(without(snapshot(), GLM_FLASH))])
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(len(self.calls()), 2)
         self.assertEqual(json.loads(self.result.read_text())["status"], "drift")
@@ -619,7 +634,7 @@ class FetchTest(WatchTestCase):
         self.assertNotIn("-H", call["argv"])
 
     def test_the_key_travels_on_stdin_only(self):
-        proc = self.run_fetch([22, json.dumps(without(snapshot(), KIMI))], key=KEY)
+        proc = self.run_fetch([22, json.dumps(without(snapshot(), GLM_FLASH))], key=KEY)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         calls = self.calls()
         self.assertEqual(len(calls), 2)
@@ -678,7 +693,7 @@ class SourceTest(WatchTestCase):
         nix.write_text(stub_text.format(python=sys.executable))
         nix.chmod(0o755)
         catalog = self.root / "catalog.json"
-        catalog.write_text(json.dumps(without(snapshot(), KIMI)))
+        catalog.write_text(json.dumps(without(snapshot(), GLM_FLASH)))
         env = dict(os.environ)
         env.pop("SYNTHETIC_MODELS_EVAL", None)
         env.update({
@@ -746,13 +761,13 @@ class CatalogSnapshotTest(WatchTestCase):
             capture_output=True, text=True,
         )
 
-    def test_it_writes_exactly_the_four_source_ids_with_their_fields(self):
+    def test_it_writes_exactly_the_three_source_ids_with_their_fields(self):
         catalog = snapshot()
         proc = self.run_snapshot(catalog)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         written = json.loads(self.out.read_text())
         by_id = {m["id"]: m for m in catalog["data"] if "alias_of" not in m}
-        self.assertEqual(sorted(m["id"] for m in written["data"]), sorted([GLM, GLM_FLASH, KIMI, DEEPSEEK]))
+        self.assertEqual(sorted(m["id"] for m in written["data"]), sorted([GLM, GLM_FLASH, DEEPSEEK]))
         for entry in written["data"]:
             upstream = by_id[entry["id"]]
             self.assertEqual(entry, {
@@ -781,9 +796,9 @@ class CatalogSnapshotTest(WatchTestCase):
         self.assertEqual(self.out.stat().st_mtime, 1)
 
     def test_a_catalog_missing_a_source_id_exits_non_zero_and_leaves_the_file(self):
-        proc = self.run_snapshot(without(snapshot(), KIMI))
+        proc = self.run_snapshot(without(snapshot(), GLM_FLASH))
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn(KIMI, proc.stderr)
+        self.assertIn(GLM_FLASH, proc.stderr)
         self.assertEqual(self.out.read_text(), self.SENTINEL)
 
     def test_efforts_that_are_not_a_list_of_strings_exit_non_zero(self):

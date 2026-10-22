@@ -54,26 +54,24 @@
     section's terms (`acpx`, `pi-readonly`, `thought_level`), and every other
     copy carries that heading once, after `# T3 Code`, holding only its
     pinned sentences in order.
-  - the expected file is the templates with the known actions replaced:
-    `{{ .user.gpgKey }}` by the entry's key, each `{{ .models.<name>.id }}`
-    by that entry's `id` in home/h82/agents/synthetic-models.nix, and each
-    `{{ index .models.<name>.roles "<role>" }}` by that role's effort there.
-    Any other action in the template, such as `range` or `if`, turns the
-    check red. The byte comparison stays green across a prose edit of the
-    template; the pinned sentences do not.
-  - every Pi assignment's `thinking` or `thought_level` is the effort its
-    role carries in the model source: the pinned sentences read each one
-    from there, so an effort the template writes as a literal, or reads from
-    another role, turns this red once the source role moves.
+  - the expected file is the templates with the known action replaced:
+    `{{ .user.gpgKey }}` by the entry's key. Any other action in the template,
+    such as `range`, `if`, or a model lookup, turns the check red. The byte
+    comparison stays green across a prose edit of the template; the pinned
+    sentences do not.
   - every assignment written as "`<model>` on the `<instance>` instance with
-    `<knob>` `<value>`" pairs `claudeAgent` with `effort` and `pi` with
-    `thinking`, and every one written as "`<model>` on the `<agent>` agent
-    with `thought_level` `<value>`" names the `pi` ACP agent. Each gives
-    `claude-opus-5-5` only `low` or `medium`, any other Claude model `low`,
-    `medium`, or `high`, and a Synthetic model `low`, `high`, or `max`, never
-    `medium`, which Synthetic's models do not offer.
-    The file must carry at least one such assignment, so a rephrasing that
-    the pattern no longer matches turns this red.
+    `<knob>` `<value>`" is one the rules allow: a Claude model on `claudeAgent`
+    with `effort` `low`, `medium`, or `high`, `claude-opus-5-5` there at `low`
+    or `medium` and at `xhigh` exactly once, in the `deep` category sentence,
+    and `gpt-6.1-sol` on `codex` with `reasoningEffort` `xhigh`. Nothing is
+    assigned to a Synthetic model on `pi` or an ACP agent, so a worker, scout,
+    or default peer sent back to one fails. The file must carry at least one
+    such assignment, so a rephrasing that the pattern no longer matches turns
+    this red.
+  - no instruction names a Synthetic model: no source model ID appears, no
+    text but the family-mapping sentence and the `# Pi over ACP` section says
+    `synthetic` or `hf:`, and `Kimi` and `moonshotai` appear nowhere as whole
+    words outside a store path.
   - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `CROSS_MODEL_MODEL_OVERRIDE`,
     `timeoutMs`, `childRunId`, `t3_thread_read`, `runtimeMode`,
     `full-access`, `full access`,
@@ -102,31 +100,35 @@
     foreground rule, slow-command timeout, background wait, no-rerun, or
     over-limit rule for delegated tasks, or later-turn notice, a reverted
     later-turn summary, skill outcome, or no-run rule, a `latestTerminalSummary`
-    rule under `# Git`; a retired peer rule,
-    a removed peer safeguard, a removed, negated, or reworded scout rule,
-    a removed, negated, or moved shared-checkout default, worktree trigger, or
-    worktree fallback clause, an added worktree rule for every task,
-    a removed or negated session_info-first or Pi model-ID fallback rule,
-    a review-findings sentence added, reordered, removed, or negated, a Pi
-    `thinking` that differs from its source role, an effort or instance the
-    assignment rule forbids, a worker sent back to the `opencode` instance,
-    each Pi peer candidate at `medium`, each ACP sentence removed or
-    negated, a review peer sent to the `pi` agent, an ACP worker at
-    `medium`, the ACP `quick` rule collapsed into the `unspecified-low`
-    effort or rule, an ACP fallback given another category's effort or
-    model, a fallback category dropped, a scout added to the ACP section, the ACP heading dropped, the
-    ACP section or an `acpx` rule leaked into Pi's copy, each
-    host family's default-peer sentence removed, negated, or swapped to
-    another candidate, a default of three peers, and the left-out named peer
-    and outside-T3 Synthetic peer rules removed or negated) fails them with its own
-    message, so a guard that stops failing turns this red. See
+    rule under `# Git`; a retired peer rule, a removed peer safeguard, a
+    removed, negated, or reworded scout rule, a removed, negated, or moved
+    shared-checkout default, worktree trigger, or worktree fallback clause, an
+    added worktree rule for every task, a removed or negated session_info-first
+    or Pi model-ID fallback rule, a review-findings sentence added, reordered,
+    removed, or negated, an effort or instance the assignment rule forbids,
+    each category, scout, and unassigned-subagent sentence at another effort
+    or model or given a fallback worker, a worker, scout, or default peer sent
+    back to a Synthetic model, the Codex candidate's model, effort, knob,
+    instance, or family changed, `claude-opus-5-5` at `xhigh` outside the
+    `deep` category, the `deep` definition loosened or given its security
+    clause back, the family mapping without its `openai.` namespace or its
+    `gpt-*` rule, each host family's default-peer sentence removed, negated,
+    or swapped to another candidate, a default of three peers, the outside-T3
+    Codex route's overrides or the `codex` host-family sentence removed or
+    changed, a Kimi or moonshotai word or a Synthetic model ID named, each
+    ACP sentence removed or negated, a review peer sent to the `pi` agent, an
+    ACP route that picks Synthetic workers on its own, a fallback sentence
+    added to the ACP section, a scout added to the ACP section, the ACP
+    heading dropped, and the ACP section or an `acpx` rule leaked into Pi's
+    copy) fails them with its own message, so a guard that stops failing turns
+    this red. The removed-word matcher is also run on text that spells a word
+    in a store path, text that names one, and a longer word. See
     .compound-engineering/artifacts/solutions/best-practices/mutation-testing-reveals-decorative-nix-check-assertions.md
 
-  The sentences, instances, and Claude efforts are written here, not read
-  from the module, so a mutation of the instruction file turns this red. Only
-  the model IDs and the Synthetic role efforts come from the model source, so a
-  changed ID or role reaches the expected file and the pinned sentences
-  together.
+  The sentences, instances, and efforts are written here, not read from the
+  module, so a mutation of the instruction file turns this red. Only the
+  model IDs come from the model source, so a model added there is also
+  forbidden in the instructions.
 
   Every lookup carries an `or` fallback and each store path is interpolated
   only inside its present branch, so a removed declaration fails inside the
@@ -151,22 +153,13 @@ let
   template = builtins.readFile ../home/h82/agents/instructions/instructions.md.tmpl;
   acpTemplate = builtins.readFile ../home/h82/agents/instructions/acp.md.tmpl;
 
-  # Only the model IDs and each Synthetic role's effort come from the module
-  # side, through the source every consumer reads; instances, Claude efforts,
-  # and sentences stay written here. A role read here that the source lacks
-  # fails evaluation, as the template's strict `index` fails the render.
+  # Only the model IDs come from the module side, through the source every
+  # consumer reads, and only to prove that no instruction names one;
+  # instances, efforts, and sentences stay written here.
   models = import ../home/h82/agents/synthetic-models.nix;
-  glmId = models.glm.id;
-  glmFlashId = models.glmFlash.id;
-  kimiId = models.kimi.id;
-  deepseekId = models.deepseek.id;
-  role = name: role: models.${name}.roles.${role};
-  modelNames = [
-    "glm"
-    "glmFlash"
-    "kimi"
-    "deepseek"
-  ];
+  modelIds = map (name: models.${name}.id) (
+    lib.filter (name: builtins.isAttrs models.${name}) (lib.attrNames models)
+  );
 
   # Pi reads the shared rendering alone; every other harness reads it
   # followed by the ACP section.
@@ -179,23 +172,7 @@ let
   ];
   deliveryPaths = [ piPath ] ++ acpPaths;
 
-  actionValues =
-    key:
-    {
-      "{{ .user.gpgKey }}" = key;
-      "{{ .models.glm.id }}" = glmId;
-      "{{ .models.glmFlash.id }}" = glmFlashId;
-      "{{ .models.kimi.id }}" = kimiId;
-      "{{ .models.deepseek.id }}" = deepseekId;
-    }
-    // lib.listToAttrs (
-      lib.concatMap (
-        name:
-        lib.mapAttrsToList (
-          roleName: effort: lib.nameValuePair "{{ index .models.${name}.roles \"${roleName}\" }}" effort
-        ) (models.${name}.roles or { })
-      ) modelNames
-    );
+  actionValues = key: { "{{ .user.gpgKey }}" = key; };
   knownActions = lib.attrNames (actionValues fakeKey);
 
   extractActions =
@@ -368,101 +345,109 @@ let
   # The self-test below mutates these sentences, so they are named once.
   firstPeerSentence = "When a skill's cross-model step activates, run it with the peers these rules pick from the candidates below, leaving out every candidate whose model family matches yours.";
   claudeCandidateSentence = "The first default candidate is Claude Code, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium`, of family `claude`.";
-  glmFlashCandidateSentence = "The second default candidate, the GLM Flash candidate, is Pi, `synthetic/${glmFlashId}` on the `pi` instance with `thinking` `${role "glmFlash" "reviewer"}`, of family `glm`.";
-  kimiCandidateSentence = "The third default candidate, the Kimi candidate, is Pi, `synthetic/${kimiId}` on the `pi` instance with `thinking` `${role "kimi" "reviewer"}`, of family `kimi`.";
-  glmCandidateSentence = "The GLM candidate, which runs only when the user names it, is Pi, `synthetic/${glmId}` on the `pi` instance with `thinking` `${role "glm" "reviewer"}`, of family `glm`.";
-  claudeHostSentence = "By default, a `claude` session runs the GLM Flash and Kimi candidates.";
-  glmHostSentence = "By default, a `glm` session runs the Claude Code candidate alone.";
-  kimiHostSentence = "By default, a `kimi` session runs the Claude Code and GLM Flash candidates.";
-  otherHostSentence = "By default, every other session, `deepseek` and `unknown` ones included, runs the Claude Code and Kimi candidates.";
+  codexModel = "gpt-6.1-sol";
+  codexCandidateSentence = "The second default candidate, the Codex candidate, is Codex, `${codexModel}` on the `codex` instance with `reasoningEffort` `xhigh`, of family `openai`.";
+  familyPrefixClause = ", `openai/`, or `openai.`";
+  familyMapSentence = "Map a model ID to its family after removing one leading provider prefix such as `synthetic/`${familyPrefixClause}: `claude-*` to `claude`, `gemini-*` to `gemini`, `gpt-*` to `openai`, an `hf:<org>/<name>` ID by its org, with `zai-org` to `glm`, `deepseek-ai` to `deepseek`, and `Qwen` to `qwen`, and a `syn:` alias or any other org to `unknown`.";
+  claudeHostSentence = "By default, a `claude` session runs the Codex candidate alone.";
+  openaiHostSentence = "By default, an `openai` session runs the Claude Code candidate alone.";
+  otherHostSentence = "By default, every other session, `glm`, `deepseek`, and `unknown` ones included, runs the Claude Code and Codex candidates.";
+  namedPeersSentence = "Peers the user names for that run replace the defaults, follow every other rule here, and number at most two.";
   leftOutPeerSentence = "When the family rule leaves out a peer the user named, your review report names that peer and says that its family matches yours.";
-  syntheticOutsideSentence = "Outside T3 Code, Compound Engineering's own route reaches no Synthetic model, so a Synthetic peer these rules pick runs only where a later section of these instructions says how to run it, and your review report otherwise names it as not run.";
+  codexHostFamilySentence = "When a Compound Engineering script asks for your host family and yours is `openai`, pass `codex`, because its list has no `openai`.";
+  unknownHostFamilySentence = "When a Compound Engineering script asks for your host family and yours is any other family outside its list, pass `unknown`.";
+  peerLaunchSentence = "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child on its candidate's instance and model, with `effort` in `target.options` for Claude Code, `reasoningEffort` in `target.options` for Codex, and `thinking` in `target.options` for a Pi peer the user names, instead of the skill's own peer route.";
+  noticeSentence = "Before launching, name each peer you will launch and the provider that gets the content, such as Anthropic for Claude Code and OpenAI for Codex; that notice authorizes the send.";
+  codexRouteOverrides = "`CROSS_MODEL_MODEL_OVERRIDE_TARGET=codex`, `CROSS_MODEL_MODEL_OVERRIDE=${codexModel}`, and `CROSS_MODEL_EFFORT_OVERRIDE=xhigh`";
+  codexRouteSentence = "Outside T3 Code, start the `codex` route of Compound Engineering's own peer route with ${codexRouteOverrides}, because the route runs `gpt-6-luna` without them.";
   isolationSentence = "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing.";
   secretsSentence = "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a peer task.";
   sessionInfoSentence = "In Pi or OpenCode, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.";
   piModelSentence = "In Pi, when `session_info` fails or names no model, print `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` through the bash tool and take that ID from `PI_MODEL`.";
-  writingSentence = "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `pi` instance with `thinking` `${role "glm" "writing-fallback"}` as fallback.";
-  deepSentence = "A unit is `deep` when its own design is hard, such as a new interface, data format, or concurrency rule, when it debugs subtle cross-module behavior, or when it carries a security or data-loss risk, even when its edit is mechanical; it goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium` as primary and to `synthetic/${glmId}` on the `pi` instance with `thinking` `${role "glm" "deep-fallback"}` as fallback.";
+  quickSentence = "A unit is `quick` when it is a mechanical edit, such as a rename, a pinned-text sync, boilerplate, a config tweak, or a one-file copy fix, even across files; it goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium`.";
+  writingSentence = "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high`.";
+  visualSentence = "A unit is `visual-engineering` when it builds or styles frontend UI, UX, CSS, layouts, animation, or design-system components; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high`.";
+  deepLead = "A unit is `deep` only when";
+  deepSecurityClause = ", or when it carries a security or data-loss risk, even when its edit is mechanical";
+  deepSentence = "${deepLead} its own design is hard, such as a new interface, data format, or concurrency rule, or when it debugs cross-module behavior whose cause is unknown; it goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`.";
+  deepNamedSentence = "When you classify a unit as `deep`, name in one line which of those two conditions it meets.";
+  deepUnclearSentence = "When it is unclear whether a unit is `deep`, classify it as `unspecified-high`.";
+  deepRiskSentence = "A unit that carries a security or data-loss risk but has a settled fix and a mechanical edit is `unspecified-high`, and the review step covers that risk.";
+  highSentence = "A unit is `unspecified-high` when it changes several modules across known patterns; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high`.";
+  lowSentence = "Every other unit is `unspecified-low`, which goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `high`.";
+  unitLaunchSentence = "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target` and its `effort` in `target.options`, instead of Compound Engineering's own delegation route.";
+  outsideRouteSentence = "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run, so give it only `claude` with `claude-sonnet-5-5` at `high` as its candidate.";
   scoutDefinitionSentence = "When the session lists T3 Code's delegation tools, the scouts of `ce-plan` are its repository, learnings, framework-docs, best-practices, and web researchers, in its first research pass or in deepening, and no other subagent is a scout.";
-  scoutRelaunchClause = " is relaunched once on that fallback under a new `clientRequestId`";
-  scoutHandoffClause = ", and when that relaunch fails too, or returns no findings, you do its research yourself and say so";
-  scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval,${scoutRelaunchClause}${scoutHandoffClause}";
-  scoutFallbackClause = "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
-  scoutHaikuClause = "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as primary";
-  scoutClaudeCodeCondition = " when your harness is Claude Code and otherwise to ";
-  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `thinking` for a Pi worker and `effort` for a Claude worker: a scout goes to ${scoutHaikuClause}${scoutClaudeCodeCondition}`synthetic/${deepseekId}` on the `pi` instance with `thinking` `${role "deepseek" "scout"}` as primary, and in either case to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
+  scoutHaikuClause = "a scout goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium`";
+  scoutHandoffClause = ", and when it returns no findings, you do its research yourself and say so";
+  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its `effort` in `target.options` in every harness: ${scoutHaikuClause}${scoutHandoffClause}.";
   scoutUntrackedClause = ", and an untracked file only when the task prompt names it";
-  scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, no gitignored file${scoutUntrackedClause}, and before launching, name each scout and the provider that gets its prompt, Synthetic for Pi and Anthropic for Claude Code; that notice authorizes the send.";
+  scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, no gitignored file${scoutUntrackedClause}, and before launching, name each scout and the provider that gets its prompt, Anthropic; that notice authorizes the send.";
+  reviewSchemaSentence = "In `ce-code-review`, `ce-doc-review`, and `ce-simplify-code`, ask each reviewer and peer for the skill's findings schema only, and re-read only what you need to confirm a finding.";
 
   # In section order, like `reviewFindingsSentences`.
   compoundEngineeringSentences = [
     firstPeerSentence
     "This covers `ce-code-review`, `ce-doc-review`, the `ce-pov` oracle panel, and `ce-bakeoff` judging, and each skill's own gates still decide whether the step runs."
     claudeCandidateSentence
-    glmFlashCandidateSentence
-    kimiCandidateSentence
-    glmCandidateSentence
-    "Map a model ID to its family after removing one leading provider prefix such as `synthetic/`: `claude-*` to `claude`, `gemini-*` to `gemini`, an `hf:<org>/<name>` ID by its org, with `zai-org` to `glm`, `moonshotai` to `kimi`, `deepseek-ai` to `deepseek`, and `Qwen` to `qwen`, and a `syn:` alias or any other org to `unknown`."
+    codexCandidateSentence
+    familyMapSentence
     "Your own family comes from the model ID you run, not from your harness."
     sessionInfoSentence
     piModelSentence
     "Only when those fail or name no model, read the ID from `orchestrator_capabilities` and `t3_thread_configuration` when the session lists T3 Code's tools, and otherwise from the model section of your system prompt."
     "When none of them names your model, your family is `unknown`, and no peer finding in your reviews raises confidence."
     claudeHostSentence
-    glmHostSentence
-    kimiHostSentence
+    openaiHostSentence
     otherHostSentence
-    "Peers the user names for that run, the GLM candidate included, replace the defaults, follow every other rule here, and number at most two."
+    namedPeersSentence
     leftOutPeerSentence
-    "Inside T3 Code, a session whose family Compound Engineering's own gate would skip, such as `glm`, `kimi`, `deepseek`, or `unknown`, still runs the cross-model step with the peers these rules pick."
+    "Inside T3 Code, a session whose family Compound Engineering's own gate would skip, such as `glm`, `deepseek`, or `unknown`, still runs the cross-model step with the peers these rules pick."
     "Outside T3 Code, such a session reports the cross-model pass as skipped by Compound Engineering."
-    "When a Compound Engineering script asks for your host family and yours is not in its list, pass `unknown`."
+    codexHostFamilySentence
+    unknownHostFamilySentence
     "Run each peer on its pinned model ID only."
     "When a peer is unavailable or fails, its pinned ID returning 404 included, finish with the others and report which peer failed and why; do not run another candidate or model in its place."
-    "When the session lists T3 Code's delegation tools, run each peer as a `delegate_task` child on its candidate's instance and model, with `effort` in `target.options` for Claude Code and `thinking` in `target.options` for Pi, instead of the skill's own peer route."
+    peerLaunchSentence
     isolationSentence
     secretsSentence
-    "Before launching, name each peer you will launch and the provider that gets the content, Anthropic for Claude Code and Synthetic for Pi; that notice authorizes the send."
+    noticeSentence
     "Treat the provider and model that `task_status` reports as the peer's identity receipt, and map its model, not its instance, to a family by the rule above; findings may raise confidence only when the peer's family is known and differs from yours."
     "Read each peer's result from its `task_status`, or from its session when the T3 Code rules take it from there, and fold it into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt."
     "When the session lists T3 Code's delegation tools, a peer has no deadline in a run with a person present: wait for its notification like any other delegated task, and leave cancelling a slow peer whose session holds no whole result to the user."
     "In a run with no person present, run `date +%s` right after the peer batch launches and give all its tasks one deadline, `CROSS_MODEL_HARD_SECS` plus 10 seconds or 1210 seconds by default; pass the smaller of 600000 and the time left, in milliseconds, as `timeoutMs` on each `t3_thread_wait`, and at the deadline treat a peer still running as the T3 Code rules treat a task whose bound has passed: take a whole result from its session, and otherwise cancel it with `task_cancel` and count it as failed."
     "Outside T3 Code, run the skill's own peer route once per harness in turn, naming that harness as the target of its pass; `ce-bakeoff` has no such route, so use its native judge and report the missing peers."
-    syntheticOutsideSentence
+    codexRouteSentence
     "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config sets `work_engine_mode: off`."
     "In `ce-work`, classify each implementation unit into `quick`, `writing`, `visual-engineering`, `unspecified-low`, `unspecified-high`, or `deep`, splitting independent mechanical or small edits into `quick` or `unspecified-low` units while keeping cohesive hard work whose shared reasoning would suffer if split as one `unspecified-high` or `deep` unit."
-    "A unit is `quick` when it is a mechanical edit, such as a rename, a pinned-text sync, boilerplate, a config tweak, or a one-file copy fix, even across files; it goes to `synthetic/${deepseekId}` on the `pi` instance with `thinking` `${role "deepseek" "quick"}` as primary and to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback."
+    quickSentence
     writingSentence
-    "A unit is `visual-engineering` when it builds or styles frontend UI, UX, CSS, layouts, animation, or design-system components; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${kimiId}` on the `pi` instance with `thinking` `${role "kimi" "visual-engineering-fallback"}` as fallback."
+    visualSentence
     deepSentence
-    "A unit is `unspecified-high` when it changes several modules across known patterns; it goes to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high` as primary and to `synthetic/${glmId}` on the `pi` instance with `thinking` `${role "glm" "unspecified-high-fallback"}` as fallback."
-    "Every other unit is `unspecified-low`, which goes to `synthetic/${deepseekId}` on the `pi` instance with `thinking` `${role "deepseek" "unspecified-low"}` as primary and to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback."
+    deepNamedSentence
+    deepUnclearSentence
+    deepRiskSentence
+    highSentence
+    lowSentence
     "These per-category efforts apply inside T3 Code, where every task carries its own effort."
-    "Inside T3 Code, launch each unit on its category's primary worker first, and when that worker is unavailable or its launch fails, give the unit to its category's fallback worker with that worker's own effort rule."
-    "When the session lists T3 Code's delegation tools, launch each unit through `delegate_task` with the worker's instance and model id as `target` and its effort in `target.options`, as `effort` for a Claude worker and as `thinking` for a Pi worker, instead of Compound Engineering's own delegation route."
-    "Outside T3 Code, Compound Engineering's own route keeps one recipient and one effort for a whole run and reaches no Synthetic model, so give it only `claude` with `claude-sonnet-5-5` at `high` as its candidate."
+    unitLaunchSentence
+    outsideRouteSentence
     scoutDefinitionSentence
     scoutAssignmentSentence
     scoutSafeguardSentence
+    reviewSchemaSentence
   ];
 
   acpHeading = "# Pi over ACP";
 
-  acpRouteSentence = "Outside T3 Code, or in a session that lists no T3 Code delegation tools, run each Synthetic peer or worker these rules pick on Pi yourself through `acpx`, the ACP client on your `PATH`, and give Compound Engineering's own route only its Claude Code peers and workers.";
-  acpCommandSentence = "Run each one as a one-shot session: `acpx --cwd <dir> --format quiet --timeout <seconds> <agent> exec --config-option model=synthetic/<id> --config-option thought_level=<effort> --file <prompt-file>`, where `<agent>` is the agent the rules below name, `synthetic/<id>` and `<effort>` are the model and the `thinking` effort these rules give the peer or worker, and `<prompt-file>` holds the whole prompt.";
+  acpRouteSentence = "Outside T3 Code, or in a session that lists no T3 Code delegation tools, run a Synthetic peer or worker the user names on Pi yourself through `acpx`, the ACP client on your `PATH`, and give Compound Engineering's own route every other peer and worker.";
+  acpCommandSentence = "Run it as a one-shot session: `acpx --cwd <dir> --format quiet --timeout <seconds> <agent> exec --config-option model=synthetic/<id> --config-option thought_level=<effort> --file <prompt-file>`, where `<agent>` is the agent the rules below name, `synthetic/<id>` and `<effort>` are the model and the `thinking` effort the user names for the peer or worker, and `<prompt-file>` holds the whole prompt.";
   acpTimeoutSentence = "Set `--cwd` to the checkout the work concerns, write the prompt file outside it, and set `--timeout` to 1200 seconds, or to the time left when a skill bounds the step more tightly.";
   acpResultSentence = "With `--format quiet`, standard output holds only the final assistant text, which is the result; exit status 3 means the run timed out, and any other nonzero status means it failed.";
   acpPeerAgentSentence = "Run a review peer on the `pi-readonly` agent, which keeps Pi's `session_info` and `web_search` tools but has no `bash`, `edit`, `write`, or `web_fetch` tool and no MCP server, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the prompt file, marked as untrusted data.";
   acpReceiptSentence = "Tell each review peer to call `session_info` first and start its answer with the `model` field it returns, map that model to a family by the rule above as the peer's identity receipt, and fold the answer into the skill's synthesis as that skill's peer artifact for the peer's family, with `independence_verified` set from that receipt.";
   acpFailureSentence = "Run every peer these rules pick in its own session, and when one fails or times out, finish with the others and report which peer failed and why.";
-  acpWorkerAgentSentence = "Run a `ce-work` worker on the `pi` agent, which keeps Pi's `bash`, `edit`, and `write` tools, with `--cwd` set to the checkout the unit edits.";
-  acpQuickSentence = "Give each `quick` unit to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `${role "deepseek" "quick"}` first, and hand it to Compound Engineering's own route only when that run fails.";
-  acpLowSentence = "Give each `unspecified-low` unit to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `${role "deepseek" "unspecified-low"}` first, and hand it to Compound Engineering's own route only when that run fails.";
-  acpFallbackSentence = "Give each `writing`, `visual-engineering`, `deep`, or `unspecified-high` unit to Compound Engineering's own route first, and when that run fails, run the unit on its category's Pi fallback below.";
-  acpWritingSentence = "The `writing` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "writing-fallback"}`.";
-  acpVisualSentence = "The `visual-engineering` fallback is `synthetic/${kimiId}` on the `pi` agent with `thought_level` `${role "kimi" "visual-engineering-fallback"}`.";
-  acpDeepSentence = "The `deep` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "deep-fallback"}`.";
-  acpHighSentence = "The `unspecified-high` fallback is `synthetic/${glmId}` on the `pi` agent with `thought_level` `${role "glm" "unspecified-high-fallback"}`.";
+  acpWorkerAgentSentence = "Run a `ce-work` worker the user names on the `pi` agent, which keeps Pi's `bash`, `edit`, and `write` tools, with `--cwd` set to the checkout the unit edits.";
 
   # In section order. The section names no scout: scouts run only as T3 Code
   # delegated tasks.
@@ -475,13 +460,6 @@ let
     acpReceiptSentence
     acpFailureSentence
     acpWorkerAgentSentence
-    acpQuickSentence
-    acpLowSentence
-    acpFallbackSentence
-    acpWritingSentence
-    acpVisualSentence
-    acpDeepSentence
-    acpHighSentence
   ];
 
   # Text only the ACP section carries, matched without regard to case, which
@@ -496,6 +474,7 @@ let
   t3CodeHeading = "# T3 Code";
 
   # The self-test below mutates these sentences, so they are named once.
+  unassignedModelSentence = "When no skill or rule assigns a model to a subagent, launch it as `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium`, and use `claude-opus-5-5` only where a skill or these rules name it.";
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
   allowedWaitsSentence = "A delay a test must reproduce, a retry interval, a wait the user asked for, a wait that blocks on the task's own run, and a foreground wait inside the turn on a command you run stay allowed.";
@@ -596,7 +575,7 @@ let
     "When the session lists T3 Code's delegation tools, such as `delegate_task`, launch every subagent through `delegate_task`, including the scouts, verifiers, reviewers, and workers a skill dispatches, and never use your harness's own subagent or multi-agent tools, even where T3 Code's own guidance prefers them for same-provider work."
     "When the session lists no T3 Code delegation tools, use your harness's own subagent tool."
     "The delegation rules that follow apply only when the session lists those tools."
-    "When no skill or rule names a model for a subagent, launch it on your own provider instance with the model from that instance's list in `orchestrator_capabilities` that you judge fits the tier the skill names, or with your own model when the skill names no tier or no listed model fits it, and when `orchestrator_capabilities` marks a default `effort` for that model, set `effort` in `target.options` to it, even for your own model."
+    unassignedModelSentence
     "A delegated subagent sees none of your conversation and none of the tool limits its native agent type had, so put everything it needs in its task prompt, including that it stays read-only when it only searches, reads, or reviews."
     "Tell each delegated subagent to launch no subagents of its own, so delegation stays one level deep."
     foregroundSentence
@@ -731,8 +710,8 @@ let
   ];
 
   # Terms of the in-turn delegated wait and the peer deadline, which apply
-  # only to a run with no person present, of the retired OpenCode pass's
-  # pinned model outside T3 Code, of the session check that takes
+  # only to a run with no person present, of the Codex route's pinned model
+  # outside T3 Code, of the session check that takes
   # a stalled task's result, and of the launch mode and approvals. They may appear only
   # inside the checked `# T3 Code` and `# Compound Engineering` sections,
   # where every sentence is pinned, so a rule added elsewhere cannot bring the
@@ -743,6 +722,7 @@ let
     "t3_thread_wait"
     "CROSS_MODEL_HARD_SECS"
     "CROSS_MODEL_MODEL_OVERRIDE"
+    "CROSS_MODEL_EFFORT_OVERRIDE"
     "timeoutMs"
     "childRunId"
     "t3_thread_read"
@@ -788,14 +768,34 @@ let
     "gemini-3.8-flash"
     "thinking level"
     "`max` for `deep`"
-    "CROSS_MODEL_EFFORT_OVERRIDE"
     "Apply every finding that `ce-code-review`, `ce-simplify-code`, and `ce-doc-review` report"
     "OpenCode pass"
     "OpenCode's family"
     "Synthetic for OpenCode"
     "`opencode` instance"
-    "CROSS_MODEL_MODEL_OVERRIDE"
   ];
+
+  # Matched as whole words, case-insensitively, outside store paths, so a
+  # store path that spells one cannot turn the check red. See
+  # .compound-engineering/artifacts/solutions/best-practices/store-hash-spells-forbidden-word-in-substring-check.md
+  removedWords = [
+    "Kimi"
+    "moonshotai"
+  ];
+
+  # Prints each removed word the file at "$1" names outside a store path.
+  removedWordsFunction = ''
+    removedWordsIn() {
+      local stripped word
+      stripped=$(mktemp)
+      sed -E 's#/nix/store/[0-9a-z]{32}-[^[:space:]`"]*##g' "$1" > "$stripped"
+      for word in ${lib.escapeShellArgs removedWords}; do
+        if grep -qiwF -- "$word" "$stripped"; then
+          echo "$word"
+        fi
+      done
+    }
+  '';
 
   # Fails the build, naming each sentence, unless `$file` holds it exactly
   # once and that occurrence starts where a sentence starts: at the start of
@@ -902,23 +902,26 @@ let
   };
 
   # Fails the build, naming each assignment, when a model is put on an
-  # instance or ACP agent with a knob or effort it must not take. Synthetic's
-  # models offer no `medium`, and `claude-opus-5-5` stays at `medium` or
-  # lower. Finding no assignment fails too, so a rewording the pattern misses
-  # cannot pass.
+  # instance with a knob or effort it must not take. Only Claude models run on
+  # `claudeAgent` at `low`, `medium`, or `high`, `claude-opus-5-5` at `low` or
+  # `medium` and at `xhigh` once, in the `deep` category sentence, and Codex
+  # runs `${codexModel}` on `codex` at `reasoningEffort` `xhigh`; no Synthetic
+  # model on `pi` or any ACP agent takes work on its own. Finding no
+  # assignment fails too, so a rewording the pattern misses cannot pass.
   assignmentRules = label: ''
     assignments=0
+    opusXhigh=0
     while IFS=$'\t' read -r model instance kind knob value; do
       assignments=$((assignments + 1))
       case "$kind:$instance:$knob:$model:$value" in
         instance:claudeAgent:effort:claude-opus-5-5:low | instance:claudeAgent:effort:claude-opus-5-5:medium) ;;
+        instance:claudeAgent:effort:claude-opus-5-5:xhigh) opusXhigh=$((opusXhigh + 1)) ;;
         instance:claudeAgent:effort:claude-opus-5-5:*)
           echo ${esc "${label} runs claude-opus-5-5 above effort medium:"} "$value" >&2
           failed=1
           ;;
         instance:claudeAgent:effort:claude-*:low | instance:claudeAgent:effort:claude-*:medium | instance:claudeAgent:effort:claude-*:high) ;;
-        instance:pi:thinking:synthetic/*:low | instance:pi:thinking:synthetic/*:high | instance:pi:thinking:synthetic/*:max) ;;
-        agent:pi:thought_level:synthetic/*:low | agent:pi:thought_level:synthetic/*:high | agent:pi:thought_level:synthetic/*:max) ;;
+        instance:codex:reasoningEffort:${codexModel}:xhigh) ;;
         *)
           echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance with $knob $value" >&2
           failed=1
@@ -931,6 +934,12 @@ let
     )
     if [ "$assignments" = "0" ]; then
       echo ${esc "${label} carries no model assignment the effort rules can read"} >&2
+      failed=1
+    fi
+    deepLine=$(grep -F -- ${esc deepLead} "$file" || true)
+    if [ "$opusXhigh" != "1" ] \
+      || ! grep -qF -- ${esc "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`"} <<<"$deepLine"; then
+      echo ${esc "${label} does not run claude-opus-5-5 at effort xhigh exactly once, in the deep category sentence:"} "$opusXhigh" >&2
       failed=1
     fi
   '';
@@ -980,6 +989,26 @@ let
           failed=1
         fi
       done
+      for word in $(removedWordsIn "$file"); do
+        echo ${esc "${label} names something the instructions no longer carry:"} "$word" >&2
+        failed=1
+      done
+      for id in ${lib.escapeShellArgs modelIds}; do
+        if grep -qF -- "$id" "$file"; then
+          echo ${esc "${label} names a Synthetic model:"} "$id" >&2
+          failed=1
+        fi
+      done
+      outsideSynthetic=$(mktemp)
+      h=${esc acpHeading} m=${esc "- ${familyMapSentence}"} awk '
+        BEGIN { h = ENVIRON["h"]; m = ENVIRON["m"] }
+        /^# / { inside = ($0 == h) }
+        !inside && $0 != m { print }
+      ' "$file" > "$outsideSynthetic"
+      if grep -iE 'synthetic|hf:' "$outsideSynthetic" >&2; then
+        echo ${esc "${label} names a Synthetic model outside the Pi over ACP section and the family-mapping sentence"} >&2
+        failed=1
+      fi
       ${assignmentRules label}
       outside=$(mktemp)
       t=${esc t3CodeHeading} c=${esc compoundEngineeringHeading} awk '
@@ -1120,13 +1149,32 @@ let
   lineRemoved = ''awk '$0 != ENVIRON["line"]' '';
   lineNegated = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
 
-  # Each Pi peer candidate at `thinking` `medium`, which no Synthetic model
-  # offers.
-  candidateAtMedium = name: id: sentence: {
-    name = "${name} candidate lowered to medium";
+  # The trailing full stop of the line replaced by `text` and a full stop.
+  suffixAdded =
+    text: ''t=${esc text} awk '$0 == ENVIRON["line"] { sub(/\.$/, ENVIRON["t"] ".") } { print }' '';
+  fallbackClause = " as primary and to `claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
+
+  glmId = models.glm.id;
+  deepseekId = models.deepseek.id;
+  glmFlashId = models.glmFlash.id;
+  pinFailure =
+    sentence: "does not hold this sentence exactly once, where a sentence starts: ${sentence}";
+  xhighOnce = "does not run claude-opus-5-5 at effort xhigh exactly once, in the deep category sentence:";
+
+  # One category's sentence at an effort other than its own.
+  categoryAtEffort = name: sentence: from: to: {
+    name = "${name} category given another effort";
     line = "- ${sentence}";
-    edit = replaceInLine "`thinking` `${role id "reviewer"}`" "`thinking` `medium`";
-    expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${models.${id}.id} on pi with thinking medium";
+    edit = replaceInLine "`effort` `${from}`" "`effort` `${to}`";
+    expect = pinFailure sentence;
+  };
+
+  # One worker or scout sentence with a fallback worker added back.
+  withFallback = name: sentence: {
+    name = "${name} given a fallback worker again";
+    line = "- ${sentence}";
+    edit = suffixAdded fallbackClause;
+    expect = pinFailure sentence;
   };
 
   # Each sentence removed, then negated, must fail the check on its own.
@@ -1173,31 +1221,251 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
-      name = "deep worker raised to claude-opus-5-5 max";
+      name = "deep category lowered to claude-opus-5-5 medium";
       line = "- ${deepSentence}";
-      edit = replaceInLine "`effort` `medium` as primary" "`effort` `max` as primary";
+      edit = replaceInLine "`effort` `xhigh`" "`effort` `medium`";
+      expect = "${xhighOnce} 0";
+    }
+    {
+      name = "deep category raised to claude-opus-5-5 max";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "`effort` `xhigh`" "`effort` `max`";
       expect = "runs claude-opus-5-5 above effort medium: max";
+    }
+    {
+      name = "deep category lowered to claude-opus-5-5 high";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "`effort` `xhigh`" "`effort` `high`";
+      expect = "runs claude-opus-5-5 above effort medium: high";
     }
     {
       name = "Claude Code candidate raised to xhigh";
       line = "- ${claudeCandidateSentence}";
       edit = replaceInLine "`effort` `medium`" "`effort` `xhigh`";
-      expect = "runs claude-opus-5-5 above effort medium: xhigh";
+      expect = "${xhighOnce} 2";
     }
-    (candidateAtMedium "GLM Flash" "glmFlash" glmFlashCandidateSentence)
-    (candidateAtMedium "Kimi" "kimi" kimiCandidateSentence)
-    (candidateAtMedium "GLM" "glm" glmCandidateSentence)
     {
-      name = "claude host sentence rewritten to run the GLM candidate";
+      name = "Claude Code candidate raised to high";
+      line = "- ${claudeCandidateSentence}";
+      edit = replaceInLine "`effort` `medium`" "`effort` `high`";
+      expect = "runs claude-opus-5-5 above effort medium: high";
+    }
+    {
+      name = "scout raised to claude-opus-5-5 xhigh";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium`" "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`";
+      expect = "${xhighOnce} 2";
+    }
+    {
+      name = "Codex candidate moved to another model";
+      line = "- ${codexCandidateSentence}";
+      edit = replaceInLine "`${codexModel}`" "`gpt-6-luna`";
+      expect = "assigns a model an instance, knob, or effort it does not take: gpt-6-luna on codex with reasoningEffort xhigh";
+    }
+    {
+      name = "Codex candidate lowered to high";
+      line = "- ${codexCandidateSentence}";
+      edit = replaceInLine "`reasoningEffort` `xhigh`" "`reasoningEffort` `high`";
+      expect = "assigns a model an instance, knob, or effort it does not take: ${codexModel} on codex with reasoningEffort high";
+    }
+    {
+      name = "Codex candidate given the effort knob instead of reasoningEffort";
+      line = "- ${codexCandidateSentence}";
+      edit = replaceInLine "`reasoningEffort` `xhigh`" "`effort` `xhigh`";
+      expect = "assigns a model an instance, knob, or effort it does not take: ${codexModel} on codex with effort xhigh";
+    }
+    {
+      name = "Codex candidate moved to the claudeAgent instance";
+      line = "- ${codexCandidateSentence}";
+      edit = replaceInLine "on the `codex` instance" "on the `claudeAgent` instance";
+      expect = "assigns a model an instance, knob, or effort it does not take: ${codexModel} on claudeAgent with reasoningEffort xhigh";
+    }
+    {
+      name = "Codex candidate given another family";
+      line = "- ${codexCandidateSentence}";
+      edit = replaceInLine "of family `openai`" "of family `claude`";
+      expect = pinFailure codexCandidateSentence;
+    }
+    {
+      name = "GLM Flash candidate sentence added to the defaults";
+      line = "- The second default candidate, the GLM Flash candidate, is Pi, `synthetic/${glmFlashId}` on the `pi` instance with `thinking` `high`, of family `glm`.";
+      edit = ceLineAdded;
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${glmFlashId} on pi with thinking high";
+    }
+    {
+      name = "claude host sentence rewritten to run a Synthetic candidate";
       line = "- ${claudeHostSentence}";
-      edit = replaceInLine "the GLM Flash and Kimi candidates" "the GLM and Kimi candidates";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${claudeHostSentence}";
+      edit = replaceInLine "the Codex candidate alone" "the Codex and GLM Flash candidates";
+      expect = pinFailure claudeHostSentence;
     }
     {
-      name = "kimi host sentence rewritten to run the Kimi candidate";
-      line = "- ${kimiHostSentence}";
-      edit = replaceInLine "the Claude Code and GLM Flash candidates" "the Claude Code and Kimi candidates";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${kimiHostSentence}";
+      name = "claude host sentence rewritten to run the Claude Code candidate";
+      line = "- ${claudeHostSentence}";
+      edit = replaceInLine "the Codex candidate alone" "the Claude Code candidate alone";
+      expect = pinFailure claudeHostSentence;
+    }
+    {
+      name = "openai host sentence rewritten to run the Codex candidate";
+      line = "- ${openaiHostSentence}";
+      edit = replaceInLine "the Claude Code candidate alone" "the Codex candidate alone";
+      expect = pinFailure openaiHostSentence;
+    }
+    {
+      name = "other-host sentence rewritten to drop the Codex candidate";
+      line = "- ${otherHostSentence}";
+      edit = replaceInLine "the Claude Code and Codex candidates" "the Claude Code candidate alone";
+      expect = pinFailure otherHostSentence;
+    }
+    {
+      name = "other-host sentence rewritten to run a Kimi candidate";
+      line = "- ${otherHostSentence}";
+      edit = replaceInLine "the Claude Code and Codex candidates" "the Claude Code and Kimi candidates";
+      expect = "names something the instructions no longer carry: Kimi";
+    }
+    {
+      name = "Kimi candidate sentence added";
+      line = "- The third default candidate, the Kimi candidate, is Pi.";
+      edit = ceLineAdded;
+      expect = "names something the instructions no longer carry: Kimi";
+    }
+    {
+      name = "moonshotai ID named in a sentence";
+      line = "- Review with `hf:moonshotai/Kimi-K3`.";
+      edit = ceLineAdded;
+      expect = "names something the instructions no longer carry: moonshotai";
+    }
+    {
+      name = "Synthetic model ID named in a sentence";
+      line = "- Use `${glmId}` for a second opinion.";
+      edit = ceLineAdded;
+      expect = "names a Synthetic model: ${glmId}";
+    }
+    {
+      name = "family-mapping sentence loses its openai. namespace";
+      line = "- ${familyMapSentence}";
+      edit = replaceInLine familyPrefixClause ", or `openai/`";
+      expect = pinFailure familyMapSentence;
+    }
+    {
+      name = "family-mapping sentence loses its gpt mapping";
+      line = "- ${familyMapSentence}";
+      edit = replaceInLine "`gpt-*` to `openai`, " "";
+      expect = pinFailure familyMapSentence;
+    }
+    {
+      name = "family-mapping sentence maps moonshotai again";
+      line = "- ${familyMapSentence}";
+      edit = replaceInLine "with `zai-org` to `glm`, " "with `zai-org` to `glm`, `moonshotai` to `kimi`, ";
+      expect = "names something the instructions no longer carry: moonshotai";
+    }
+    {
+      name = "peer notice drops OpenAI";
+      line = "- ${noticeSentence}";
+      edit = replaceInLine " and OpenAI for Codex" "";
+      expect = pinFailure noticeSentence;
+    }
+    {
+      name = "peer notice names Synthetic again";
+      line = "- ${noticeSentence}";
+      edit = replaceInLine "OpenAI for Codex" "Synthetic for Pi";
+      expect = "names a Synthetic model outside the Pi over ACP section and the family-mapping sentence";
+    }
+    {
+      name = "peer launch sentence names effort for Codex";
+      line = "- ${peerLaunchSentence}";
+      edit = replaceInLine "`reasoningEffort` in `target.options` for Codex" "`effort` in `target.options` for Codex";
+      expect = pinFailure peerLaunchSentence;
+    }
+    {
+      name = "Codex route override drops its effort";
+      line = "- ${codexRouteSentence}";
+      edit = replaceInLine ", and `CROSS_MODEL_EFFORT_OVERRIDE=xhigh`" "";
+      expect = pinFailure codexRouteSentence;
+    }
+    {
+      name = "Codex route override moves to another model";
+      line = "- ${codexRouteSentence}";
+      edit = replaceInLine "`CROSS_MODEL_MODEL_OVERRIDE=${codexModel}`" "`CROSS_MODEL_MODEL_OVERRIDE=gpt-6-luna`";
+      expect = pinFailure codexRouteSentence;
+    }
+    {
+      name = "Codex route override drops its target";
+      line = "- ${codexRouteSentence}";
+      edit = replaceInLine "`CROSS_MODEL_MODEL_OVERRIDE_TARGET=codex`, " "";
+      expect = pinFailure codexRouteSentence;
+    }
+    {
+      name = "quick worker sent back to Synthetic";
+      line = "- ${quickSentence}";
+      edit = replaceInLine "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium`" "`synthetic/${deepseekId}` on the `pi` instance with `thinking` `low`";
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${deepseekId} on pi with thinking low";
+    }
+    {
+      name = "unspecified-low worker sent back to Synthetic";
+      line = "- ${lowSentence}";
+      edit = replaceInLine "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `high`" "`synthetic/${deepseekId}` on the `pi` instance with `thinking` `high`";
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${deepseekId} on pi with thinking high";
+    }
+    {
+      name = "writing worker sent back to Synthetic";
+      line = "- ${writingSentence}";
+      edit = replaceInLine "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `high`" "`synthetic/${glmId}` on the `pi` instance with `thinking` `high`";
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${glmId} on pi with thinking high";
+    }
+    {
+      name = "quick worker raised to claude-haiku-5-5 max";
+      line = "- ${quickSentence}";
+      edit = replaceInLine "`effort` `medium`" "`effort` `max`";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-haiku-5-5 on claudeAgent with effort max";
+    }
+    (categoryAtEffort "quick" quickSentence "medium" "high")
+    (categoryAtEffort "quick" quickSentence "medium" "low")
+    (categoryAtEffort "writing" writingSentence "high" "medium")
+    (categoryAtEffort "visual-engineering" visualSentence "high" "medium")
+    (categoryAtEffort "unspecified-high" highSentence "high" "medium")
+    (categoryAtEffort "unspecified-low" lowSentence "high" "medium")
+    (withFallback "quick" quickSentence)
+    (withFallback "writing" writingSentence)
+    (withFallback "visual-engineering" visualSentence)
+    (withFallback "deep" deepSentence)
+    (withFallback "unspecified-high" highSentence)
+    (withFallback "unspecified-low" lowSentence)
+    (withFallback "scout" scoutAssignmentSentence)
+    {
+      name = "deep definition regains its security and data-loss clause";
+      line = "- ${deepSentence}";
+      edit = replaceInLine ", or when it debugs cross-module behavior whose cause is unknown" "${deepSecurityClause}, or when it debugs cross-module behavior whose cause is unknown";
+      expect = pinFailure deepSentence;
+    }
+    {
+      name = "deep definition regains its subtle-behavior wording";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "whose cause is unknown" "that is subtle";
+      expect = pinFailure deepSentence;
+    }
+    {
+      name = "deep definition loosened from only when to when";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "`deep` only when" "`deep` when";
+      expect = pinFailure deepSentence;
+    }
+    {
+      name = "unassigned subagent sent back to the session model";
+      line = "- ${unassignedModelSentence}";
+      edit = replaceInLine "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium`" "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `medium`";
+      expect = pinFailure unassignedModelSentence;
+    }
+    {
+      name = "unassigned subagent raised to claude-opus-5-5 xhigh";
+      line = "- ${unassignedModelSentence}";
+      edit = replaceInLine "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium`" "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`";
+      expect = "${xhighOnce} 2";
+    }
+    {
+      name = "unassigned subagent lowered to claude-sonnet-5-5 low";
+      line = "- ${unassignedModelSentence}";
+      edit = replaceInLine "`effort` `medium`" "`effort` `low`";
+      expect = pinFailure unassignedModelSentence;
     }
     {
       name = "every host given three default peers";
@@ -1210,14 +1478,6 @@ let
       line = "- Set `CROSS_MODEL_MODEL_OVERRIDE` to the GLM candidate before you push.";
       edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
       expect = "names a delegation term outside the T3 Code and Compound Engineering sections: CROSS_MODEL_MODEL_OVERRIDE";
-    }
-    {
-      name = "GLM writing fallback rendered at another effort than its source role";
-      line = "- ${writingSentence}";
-      edit = replaceInLine "`thinking` `${role "glm" "writing-fallback"}`" "`thinking` `${
-        if role "glm" "writing-fallback" == "max" then "high" else "max"
-      }`";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
       name = "session_info-first sentence negated";
@@ -1406,66 +1666,34 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
-      name = "scout assignment loses its failed-launch clause";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine scoutFailedLaunchClause "";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout failed-launch clause joined by and instead of or";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine "returns no findings, or that waits" "returns no findings, and that waits";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout relaunch reuses the failed scout's clientRequestId";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine "under a new `clientRequestId`" "under the same `clientRequestId`";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout failure no longer ends in the parent's own research";
+      name = "scout assignment loses its no-findings clause";
       line = "- ${scoutAssignmentSentence}";
       edit = replaceInLine scoutHandoffClause "";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
+      expect = pinFailure scoutAssignmentSentence;
     }
     {
-      name = "scout no longer relaunches on its fallback";
+      name = "scout goes back to DeepSeek";
       line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine scoutRelaunchClause " counts as a failed launch";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
+      edit = replaceInLine scoutHaikuClause "a scout goes to `synthetic/${deepseekId}` on the `pi` instance with `thinking` `high`";
+      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${deepseekId} on pi with thinking high";
     }
     {
-      name = "scout fallback raised to claude-opus-5-5 high";
+      name = "scout lowered to claude-haiku-5-5 high";
       line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine scoutFallbackClause "`claude-opus-5-5` on the `claudeAgent` instance with `effort` `high` as fallback";
-      expect = "runs claude-opus-5-5 above effort medium: high";
+      edit = replaceInLine scoutHaikuClause "a scout goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `high`";
+      expect = pinFailure scoutAssignmentSentence;
     }
     {
-      name = "scout rendered at another effort than its source role";
+      name = "scout raised to claude-haiku-5-5 max";
       line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine "`thinking` `${role "deepseek" "scout"}`" "`thinking` `${
-        if role "deepseek" "scout" == "max" then "high" else "max"
-      }`";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout Claude Code branch goes back to DeepSeek";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine "${scoutHaikuClause}${scoutClaudeCodeCondition}" "";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout Haiku primary loses its harness condition";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine " when your harness is Claude Code" "";
-      expect = "does not hold this sentence exactly once, where a sentence starts:";
-    }
-    {
-      name = "scout Haiku primary raised to effort max";
-      line = "- ${scoutAssignmentSentence}";
-      edit = replaceInLine scoutHaikuClause "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `max` as primary";
+      edit = replaceInLine scoutHaikuClause "a scout goes to `claude-haiku-5-5` on the `claudeAgent` instance with `effort` `max`";
       expect = "assigns a model an instance, knob, or effort it does not take: claude-haiku-5-5 on claudeAgent with effort max";
+    }
+    {
+      name = "scout condition on a Claude Code harness restored";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine " in every harness" " when your harness is Claude Code";
+      expect = pinFailure scoutAssignmentSentence;
     }
     {
       name = "scout safeguard sentence removed";
@@ -1601,62 +1829,75 @@ let
     }
   ]
   ++ removedAndNegated "claude host sentence" claudeHostSentence
-  ++ removedAndNegated "glm host sentence" glmHostSentence
-  ++ removedAndNegated "kimi host sentence" kimiHostSentence
+  ++ removedAndNegated "openai host sentence" openaiHostSentence
   ++ removedAndNegated "other-host sentence" otherHostSentence
+  ++ removedAndNegated "named peers sentence" namedPeersSentence
   ++ removedAndNegated "left-out named peer sentence" leftOutPeerSentence
-  ++ removedAndNegated "outside-T3 Synthetic peer sentence" syntheticOutsideSentence
+  ++ removedAndNegated "Codex candidate sentence" codexCandidateSentence
+  ++ removedAndNegated "family-mapping sentence" familyMapSentence
+  ++ removedAndNegated "Codex host-family sentence" codexHostFamilySentence
+  ++ removedAndNegated "unknown host-family sentence" unknownHostFamilySentence
+  ++ removedAndNegated "peer launch sentence" peerLaunchSentence
+  ++ removedAndNegated "peer notice sentence" noticeSentence
+  ++ removedAndNegated "outside-T3 Codex route sentence" codexRouteSentence
   ++ removedAndNegated "session_info-first sentence" sessionInfoSentence
   ++ removedAndNegated "Pi model-ID fallback sentence" piModelSentence
+  ++ removedAndNegated "quick category sentence" quickSentence
+  ++ removedAndNegated "writing category sentence" writingSentence
+  ++ removedAndNegated "visual-engineering category sentence" visualSentence
+  ++ removedAndNegated "deep category sentence" deepSentence
+  ++ removedAndNegated "deep one-line condition sentence" deepNamedSentence
+  ++ removedAndNegated "deep unclear-case sentence" deepUnclearSentence
+  ++ removedAndNegated "security-risk classification sentence" deepRiskSentence
+  ++ removedAndNegated "unspecified-high category sentence" highSentence
+  ++ removedAndNegated "unspecified-low category sentence" lowSentence
+  ++ removedAndNegated "unit launch sentence" unitLaunchSentence
+  ++ removedAndNegated "outside-T3 worker candidate sentence" outsideRouteSentence
+  ++ removedAndNegated "review findings-schema sentence" reviewSchemaSentence
+  ++ removedAndNegatedIn "T3 Code" "unassigned-model sentence" unassignedModelSentence
   ++ lib.concatMap (sentence: removedAndNegatedIn "Pi over ACP" "ACP sentence" sentence) acpSentences
   ++ [
     {
       name = "worker sent back to the opencode instance";
       line = "- ${writingSentence}";
-      edit = replaceInLine "on the `pi` instance with `thinking`" "on the `opencode` instance with `variant`";
-      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${glmId} on opencode with variant ${role "glm" "writing-fallback"}";
+      edit = replaceInLine "on the `claudeAgent` instance with `effort`" "on the `opencode` instance with `variant`";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-sonnet-5-5 on opencode with variant high";
     }
     {
       name = "review peer sent to the pi agent over ACP";
       line = "- ${acpPeerAgentSentence}";
       edit = replaceInLine "on the `pi-readonly` agent" "on the `pi` agent";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpPeerAgentSentence}";
+      expect = pinFailure acpPeerAgentSentence;
     }
     {
-      name = "ACP worker lowered to medium";
-      line = "- ${acpLowSentence}";
-      edit = replaceInLine "`thought_level` `${role "deepseek" "unspecified-low"}`" "`thought_level` `medium`";
-      expect = "assigns a model an instance, knob, or effort it does not take: synthetic/${deepseekId} on pi with thought_level medium";
+      name = "ACP route sentence routes Synthetic workers on its own again";
+      line = "- ${acpRouteSentence}";
+      edit = replaceInLine "a Synthetic peer or worker the user names" "each Synthetic peer or worker these rules pick";
+      expect = pinFailure acpRouteSentence;
     }
     {
-      name = "ACP quick unit collapsed to the unspecified-low effort";
-      line = "- ${acpQuickSentence}";
-      edit = replaceInLine "`thought_level` `${role "deepseek" "quick"}`" "`thought_level` `${role "deepseek" "unspecified-low"}`";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpQuickSentence}";
+      name = "ACP route sentence hands Claude Code and Codex peers to acpx";
+      line = "- ${acpRouteSentence}";
+      edit = replaceInLine "every other peer and worker" "no other peer or worker";
+      expect = pinFailure acpRouteSentence;
     }
     {
-      name = "ACP quick and unspecified-low units collapsed into one rule";
-      line = "- ${acpQuickSentence}";
-      edit = replaceInLine "Give each `quick` unit" "Give each `quick` or `unspecified-low` unit";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpQuickSentence}";
+      name = "ACP command takes an effort from the rules again";
+      line = "- ${acpCommandSentence}";
+      edit = replaceInLine "effort the user names for the peer or worker" "effort these rules give the peer or worker";
+      expect = pinFailure acpCommandSentence;
     }
     {
-      name = "ACP deep fallback collapsed to the writing fallback's effort";
-      line = "- ${acpDeepSentence}";
-      edit = replaceInLine "`thought_level` `${role "glm" "deep-fallback"}`" "`thought_level` `${role "glm" "writing-fallback"}`";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpDeepSentence}";
+      name = "ACP worker rule routes every ce-work worker to Pi";
+      line = "- ${acpWorkerAgentSentence}";
+      edit = replaceInLine "a `ce-work` worker the user names" "a `ce-work` worker";
+      expect = pinFailure acpWorkerAgentSentence;
     }
     {
-      name = "ACP visual-engineering fallback sent to GLM";
-      line = "- ${acpVisualSentence}";
-      edit = replaceInLine "`synthetic/${kimiId}`" "`synthetic/${glmId}`";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpVisualSentence}";
-    }
-    {
-      name = "ACP fallback category dropped from the lead rule";
-      line = "- ${acpFallbackSentence}";
-      edit = replaceInLine "`writing`, `visual-engineering`, `deep`, or `unspecified-high`" "`writing`, `deep`, or `unspecified-high`";
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${acpFallbackSentence}";
+      name = "ACP quick fallback sentence added";
+      line = "- Give each `quick` unit to `synthetic/${deepseekId}` on the `pi` agent with `thought_level` `low` first.";
+      edit = ''awk '{ print } $0 == "# Pi over ACP" { print ENVIRON["line"] }' '';
+      expect = "carries an unpinned Pi over ACP sentence: Give each `quick` unit";
     }
     {
       name = "scout sent over ACP";
@@ -1690,6 +1931,37 @@ let
       line = "- ${piModelSentence}";
       edit = lineRemoved;
       expect = "moves a Compound Engineering sentence out of its section: ${piModelSentence}";
+    }
+  ];
+
+  # Text the removed-word matcher must judge as written: a store path, which
+  # may spell a word in its hash or name, is no hit, and neither is a longer
+  # word that contains one.
+  removedWordCases = [
+    {
+      name = "a store path that spells Kimi in its hash and name";
+      text = "see /nix/store/kimikimikimikimikimikimikimikimi-kimi-tool-1.0/bin/kimi";
+      hit = "";
+    }
+    {
+      name = "Kimi after a store path";
+      text = "/nix/store/kimikimikimikimikimikimikimikimi-tool Kimi";
+      hit = "Kimi";
+    }
+    {
+      name = "Kimi in capitals and lower case";
+      text = "Kimi K3 and kimi";
+      hit = "Kimi";
+    }
+    {
+      name = "moonshotai in an ID";
+      text = "hf:moonshotai/x";
+      hit = "moonshotai";
+    }
+    {
+      name = "a longer word that contains Kimi";
+      text = "Kimiko";
+      hit = "";
     }
   ];
 
@@ -1755,7 +2027,15 @@ let
           selfTestFailed=1
         fi
       ''
-    ) selfTestMutants;
+    ) selfTestMutants
+    + lib.concatMapStrings (case: ''
+      matcherFile=$(mktemp)
+      printf '%s\n' ${esc case.text} > "$matcherFile"
+      if [ "$(removedWordsIn "$matcherFile")" != ${esc case.hit} ]; then
+        echo ${esc "self-test: the removed-word matcher misjudges ${case.name}"} >&2
+        selfTestFailed=1
+      fi
+    '') removedWordCases;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 in
@@ -1763,6 +2043,8 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   ${configurations.userGuard}
   failed=0
   fakeEntries=0
+
+  ${removedWordsFunction}
 
   ${lib.optionalString (unknownActions != [ ] || malformedAction) ''
     echo ${

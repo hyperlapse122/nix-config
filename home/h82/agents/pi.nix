@@ -87,7 +87,7 @@ let
   # longer names. When a source `id` moves to a newer build, add the previous
   # one here, or its models.json entry and its modelThinkingLevels key stay
   # behind with the values last written.
-  retiredModels = [ ];
+  retiredModels = [ "hf:moonshotai/Kimi-K3" ];
 
   # The apiKey is a `!` command: Pi runs the packaged helper for every
   # request, so no key reaches this file.

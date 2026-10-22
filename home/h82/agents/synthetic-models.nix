@@ -8,10 +8,16 @@
 #   `-Code`. Its first capture group is the version; POSIX regular
 #   expressions have no non-capturing group, so later groups only hold the
 #   optional parts of that version or the build suffix.
-# - `roles`: each role the model fills inside T3 Code, with the effort that
-#   role runs at. These models offer no `medium` effort.
+# - `roles`: each role a consumer reads from the model, with the effort that
+#   role runs at. Only the text-generation role exists today: OpenCode's
+#   `small_model` alias and Pi's startup effort read it. An entry no consumer
+#   reads a role from carries `roles = { }`. These models offer no `medium`
+#   effort.
 # - `defaultEffort`: the reasoning effort a session outside T3 Code runs the
 #   model at as-is; OpenCode's settings pin it today.
+#
+# No instruction routes work to these models; they stay for Pi and OpenCode
+# sessions the user starts by hand.
 #
 # The DeepSeek `id` pins one dated build and moves only when the user changes
 # it after a reconcile issue reports a newer one.
@@ -20,12 +26,7 @@
     id = "hf:zai-org/GLM-5.3";
     family = "glm";
     lineage = "hf:zai-org/GLM-([0-9]+([.][0-9]+)?)";
-    roles = {
-      reviewer = "max";
-      deep-fallback = "max";
-      writing-fallback = "high";
-      unspecified-high-fallback = "high";
-    };
+    roles = { };
     defaultEffort = "max";
   };
 
@@ -33,21 +34,8 @@
     id = "hf:zai-org/GLM-5.3-Flash";
     family = "glm";
     lineage = "hf:zai-org/GLM-([0-9]+([.][0-9]+)?)-Flash";
-    roles = {
-      reviewer = "high";
-    };
+    roles = { };
     defaultEffort = "high";
-  };
-
-  kimi = {
-    id = "hf:moonshotai/Kimi-K3";
-    family = "kimi";
-    lineage = "hf:moonshotai/Kimi-K([0-9]+([.][0-9]+)?)";
-    roles = {
-      reviewer = "high";
-      visual-engineering-fallback = "max";
-    };
-    defaultEffort = "max";
   };
 
   deepseek = {
@@ -55,9 +43,6 @@
     family = "deepseek";
     lineage = "hf:deepseek-ai/DeepSeek-V([0-9]+([.][0-9]+)?)-Flash(-[0-9]{4})?";
     roles = {
-      unspecified-low = "high";
-      quick = "low";
-      scout = "high";
       text-generation = "low";
     };
     defaultEffort = "high";

@@ -131,7 +131,7 @@ pass 'the issue step reads the markers only through the script'
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/synthetic-models-reconcile.XXXXXX")
 trap 'rm -rf -- "$scratch"' EXIT
 
-kimi='hf:moonshotai/Kimi-K3'
+flash='hf:zai-org/GLM-5.3-Flash'
 glm='hf:zai-org/GLM-5.3'
 
 # watch_run <name> <jq-filter>: runs the real script on the snapshot as the
@@ -147,15 +147,15 @@ glm_efforts() {
   printf '(.data[] | select(.id == "%s") | .reasoning_parameters.efforts) = %s' "$glm" "$1"
 }
 
-watch_run kimi "$(drop "$kimi")"
-watch_run kimi-glm "$(drop "$kimi") | $(drop "$glm")"
+watch_run flash "$(drop "$flash")"
+watch_run flash-glm "$(drop "$flash") | $(drop "$glm")"
 watch_run clean '.'
 watch_run glm-low-high "$(glm_efforts '["low","high"]')"
 watch_run glm-high "$(glm_efforts '["high"]')"
 
-[[ $(jq -r .status "$scratch/kimi.json") == drift ]] || fail 'the kimi fixture is not drift'
+[[ $(jq -r .status "$scratch/flash.json") == drift ]] || fail 'the flash fixture is not drift'
 [[ $(jq -r .status "$scratch/clean.json") == clean ]] || fail 'the snapshot fixture is not clean'
-[[ $(jq -r .fingerprint "$scratch/kimi.json") != $(jq -r .fingerprint "$scratch/kimi-glm.json") ]] ||
+[[ $(jq -r .fingerprint "$scratch/flash.json") != $(jq -r .fingerprint "$scratch/flash-glm.json") ]] ||
   fail 'the two drift fixtures share a fingerprint'
 [[ $(jq -r .fingerprint "$scratch/glm-low-high.json") == $(jq -r .fingerprint "$scratch/glm-high.json") ]] ||
   fail 'the effort fixtures differ in fingerprint'
@@ -252,30 +252,30 @@ notice reachable >"$scratch/reachable.md"
 printf 'a person comments\n' >"$scratch/person.md"
 
 # Drift with no open issue: one label and one create.
-run_step create success kimi '[]'
+run_step create success flash '[]'
 expect_ok 'drift with no open issue'
-title=$(jq -r .title "$scratch/kimi.json")
+title=$(jq -r .title "$scratch/flash.json")
 expect_writes "label create model-reconcile --repo example/nix-config --force --color B60205 --description Synthetic model drift for home/h82/agents/synthetic-models.nix
 issue create --repo example/nix-config --label model-reconcile --title $title --body-file $dir/runner/issue.md" \
   'drift with no open issue'
-cmp -s "$dir/body-3.md" "$scratch/kimi.md" || fail 'the created issue does not carry the script body'
+cmp -s "$dir/body-3.md" "$scratch/flash.md" || fail 'the created issue does not carry the script body'
 pass 'drift with no open issue creates one issue'
 
 # The same drift: nothing.
-run_step same success kimi '[4]' 4 "$(view same "$scratch/kimi.md")"
+run_step same success flash '[4]' 4 "$(view same "$scratch/flash.md")"
 expect_ok 'the same drift'
 grep -Fxq 'issue view 4 --repo example/nix-config --json body,comments' "$log" || fail 'the open issue was not read'
 expect_writes '' 'the same drift'
 pass 'the same fingerprint and body write nothing'
 
 # A new fingerprint: one edit and one comment.
-run_step changed success kimi-glm '[4]' 4 "$(view changed "$scratch/kimi.md")"
+run_step changed success flash-glm '[4]' 4 "$(view changed "$scratch/flash.md")"
 expect_ok 'a new fingerprint'
-title=$(jq -r .title "$scratch/kimi-glm.json")
+title=$(jq -r .title "$scratch/flash-glm.json")
 expect_writes "issue edit 4 --repo example/nix-config --title $title --body-file $dir/runner/issue.md
 issue comment 4 --repo example/nix-config --body-file $dir/runner/changed.md" 'a new fingerprint'
-cmp -s "$dir/body-3.md" "$scratch/kimi-glm.md" || fail 'the edit does not carry the new body'
-grep -Fxq "$(head -n 1 "$scratch/kimi-glm.md")" "$dir/body-4.md" || fail 'the change comment lacks the first line'
+cmp -s "$dir/body-3.md" "$scratch/flash-glm.md" || fail 'the edit does not carry the new body'
+grep -Fxq "$(head -n 1 "$scratch/flash-glm.md")" "$dir/body-4.md" || fail 'the change comment lacks the first line'
 pass 'a new fingerprint edits once and comments once'
 
 # The same fingerprint, a new body: one silent edit.
@@ -286,7 +286,7 @@ expect_writes "issue edit 4 --repo example/nix-config --title $title --body-file
 pass 'a new body digest with the same fingerprint edits without a comment'
 
 # Clean with an open issue: comment the commit and close it.
-run_step resolved success clean '[4]' 4 "$(view resolved "$scratch/kimi.md")"
+run_step resolved success clean '[4]' 4 "$(view resolved "$scratch/flash.md")"
 expect_ok 'clean with an open issue'
 expect_writes "issue comment 4 --repo example/nix-config --body-file $dir/runner/resolved.md
 issue close 4 --repo example/nix-config" 'clean with an open issue'
@@ -306,7 +306,7 @@ grep -Fq 'unexpected watch status: unknown' "$dir/step.log" || fail 'an unknown 
 pass 'an unknown status exits non-zero'
 
 # Several open issues: keep the oldest, close the rest pointing at it.
-run_step duplicates success kimi '[9,3,7]' 3 "$(view duplicates "$scratch/kimi.md")"
+run_step duplicates success flash '[9,3,7]' 3 "$(view duplicates "$scratch/flash.md")"
 expect_ok 'several open issues'
 expect_writes "issue comment 7 --repo example/nix-config --body-file $dir/runner/duplicate.md
 issue close 7 --repo example/nix-config
@@ -316,7 +316,7 @@ grep -Fq 'duplicate of #3' "$dir/body-2.md" || fail 'the duplicate comment does 
 pass 'the oldest open issue is kept and the others are closed'
 
 # A failed comparison with an open issue: one notice, non-zero.
-run_step blind failure - '[4]' 4 "$(view blind "$scratch/kimi.md" "$scratch/person.md")"
+run_step blind failure - '[4]' 4 "$(view blind "$scratch/flash.md" "$scratch/person.md")"
 ((status != 0)) || fail 'a failed comparison exited 0'
 expect_blind_message
 expect_writes "issue comment 4 --repo example/nix-config --body-file $dir/runner/notice.md" 'a failed comparison'
@@ -324,14 +324,14 @@ cmp -s "$dir/body-3.md" "$scratch/unreachable.md" || fail 'the notice is not the
 pass 'a failed comparison comments once on the open issue'
 
 # Still failing: no second notice.
-run_step still-blind failure - '[4]' 4 "$(view still-blind "$scratch/kimi.md" "$scratch/unreachable.md" "$scratch/person.md")"
+run_step still-blind failure - '[4]' 4 "$(view still-blind "$scratch/flash.md" "$scratch/unreachable.md" "$scratch/person.md")"
 ((status != 0)) || fail 'a second failed comparison exited 0'
 expect_blind_message
 expect_writes '' 'a second failed comparison'
 pass 'a failure streak comments only once'
 
 # A new streak after a recovery: a notice again.
-run_step blind-again failure - '[4]' 4 "$(view blind-again "$scratch/kimi.md" "$scratch/unreachable.md" "$scratch/reachable.md")"
+run_step blind-again failure - '[4]' 4 "$(view blind-again "$scratch/flash.md" "$scratch/unreachable.md" "$scratch/reachable.md")"
 ((status != 0)) || fail 'a failed comparison after a recovery exited 0'
 expect_blind_message
 expect_writes "issue comment 4 --repo example/nix-config --body-file $dir/runner/notice.md" 'a new failure streak'
@@ -345,7 +345,7 @@ expect_writes '' 'a failed comparison with no issue'
 pass 'a failed comparison with no open issue writes nothing'
 
 # Recovery: the same drift after a notice says the catalog is reachable.
-run_step recovered success kimi '[4]' 4 "$(view recovered "$scratch/kimi.md" "$scratch/unreachable.md")"
+run_step recovered success flash '[4]' 4 "$(view recovered "$scratch/flash.md" "$scratch/unreachable.md")"
 expect_ok 'a recovery'
 expect_writes "issue comment 4 --repo example/nix-config --body-file $dir/runner/notice.md" 'a recovery'
 cmp -s "$dir/body-3.md" "$scratch/reachable.md" || fail 'the recovery comment is not the reachable notice'
