@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# Drives the pi wrapper against a stub Pi that records its argv and its whole
+# environment, and the pi-synthetic-key helper against key files.
+#
+#   pi.sh WRAPPER HELPER        the sources, placeholders rendered here
+#   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE
+#                               a built copy, checked for its constants
+set -euo pipefail
+
+usage() {
+  printf 'usage: %s WRAPPER HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE\n' "${0##*/}" >&2
+  exit 2
+}
+
+absolute() { printf '%s/%s' "$(cd -- "$(dirname -- "$1")" && pwd -P)" "$(basename -- "$1")"; }
+
+mode=source
+if [[ ${1:-} == --packaged ]]; then
+  [[ $# -eq 3 && -d $2 && -n $3 ]] || usage
+  mode=packaged
+  bindir=$2
+  want_key_file=$3
+else
+  [[ $# -eq 2 && -f $1 && -f $2 ]] || usage
+  wrapper_src=$(absolute "$1")
+  helper_src=$(absolute "$2")
+fi
+
+fail() { printf 'pi: FAIL (%s): %s\n' "$mode" "$*" >&2; exit 1; }
+pass() { printf 'pi: ok (%s) - %s\n' "$mode" "$*"; }
+
+# --- packaging ---------------------------------------------------------------
+
+# The packaged wrapper execs the real Pi, so it is checked for what the build
+# substituted; the source run below covers its behaviour.
+if [[ $mode == packaged ]]; then
+  store=${NIX_STORE:-/nix/store}
+  for name in pi pi-synthetic-key; do
+    f=$bindir/$name
+    [[ -x $f ]] || fail "$f is not executable"
+    if grep -qE '@[A-Z_]+@' "$f"; then
+      fail "a placeholder survived in $f: $(grep -oE '@[A-Z_]+@' "$f" | head -n1)"
+    fi
+    shebang=$(head -n1 "$f")
+    [[ $shebang == "#!$store/"*/bin/bash ]] || fail "$name's shebang is not a store bash: $shebang"
+  done
+  pi=$(sed -nE "s/^PI='(.*)'$/\1/p" "$bindir/pi")
+  [[ $pi == "$store/"* && -x $pi ]] || fail "PI '$pi' is not an executable store path"
+  grep -qxF "KEY_FILE='$want_key_file'" "$bindir/pi-synthetic-key" ||
+    fail "KEY_FILE is $(grep -m1 '^KEY_FILE=' "$bindir/pi-synthetic-key"), want '$want_key_file'"
+  [[ -z $(env -i "$bindir/pi-synthetic-key") ]] || fail 'the helper printed a key from a missing key file'
+  [[ $(env -i SYNTHETIC_API_KEY=caller-key "$bindir/pi-synthetic-key") == caller-key ]] ||
+    fail 'the helper did not print the caller key'
+  pass 'the constants are substituted and point at Pi and the key file'
+  printf 'pi: all checks passed (%s)\n' "$mode"
+  exit 0
+fi
+
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/pi-tests.XXXXXX")
+trap 'chmod -R u+rwx "$scratch" 2>/dev/null; rm -rf -- "$scratch"' EXIT
+
+bash_bin=$(command -v bash) || fail 'bash is required'
+env_bin=$(command -v env) || fail 'env is required'
+synthetic_file=$scratch/keys/synthetic_api_key
+exa_file=$scratch/keys/exa_api_key
+synthetic_key=fake-synthetic-key-123
+exa_key=fake-exa-key-456
+mkdir -p "$scratch/keys"
+
+rec=$scratch/rec
+home=$scratch/home
+stub=$scratch/pi-stub
+mkdir -p "$home"
+
+wrapper=$scratch/pi
+sed -e "s|@PI@|$stub|" -e "1s|.*|#!$bash_bin|" "$wrapper_src" >"$wrapper"
+helper=$scratch/pi-synthetic-key
+sed -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|" -e "1s|.*|#!$bash_bin|" "$helper_src" >"$helper"
+chmod +x "$wrapper" "$helper"
+
+cat >"$stub" <<STUB
+#!$bash_bin
+# The wrapper may run with a PATH that holds nothing useful, so env is
+# called by its absolute path.
+printf '%s\0' "\$@" >"$rec/argv"
+printf '%s' "\$#" >"$rec/argc"
+"$env_bin" -0 >"$rec/env"
+printf 'stub-pi ran\n'
+exit "\$(<"$scratch/status")"
+STUB
+chmod +x "$stub"
+
+# run [VAR=value ...] ARGS... -- runs the wrapper in a clean environment and
+# leaves its status in $rc and its output in $scratch/stdout and stderr.
+run() {
+  local -a assigns=()
+  while [[ $# -gt 0 && $1 == *=* && $1 != -* ]]; do
+    assigns+=("$1")
+    shift
+  done
+  rm -rf -- "$rec"
+  mkdir -p "$rec"
+  : >"$rec/env"
+  set +e
+  env -i HOME="$home" PATH=/caller/bin "${assigns[@]}" "$wrapper" "$@" \
+    >"$scratch/stdout" 2>"$scratch/stderr"
+  rc=$?
+  set -e
+}
+
+stub_ran() { [[ -f $rec/argv ]]; }
+# The value the stub saw for one variable, or nonzero status when unset.
+recorded() {
+  local entry
+  while IFS= read -r -d '' entry; do
+    if [[ ${entry%%=*} == "$1" ]]; then
+      printf '%s' "${entry#*=}"
+      return 0
+    fi
+  done <"$rec/env"
+  return 1
+}
+
+# helper [VAR=value ...] -- runs the key helper in a clean environment and
+# leaves its stdout in $out and its status in $rc.
+helper() {
+  set +e
+  out=$(env -i HOME="$home" PATH=/caller/bin "$@" "$helper" 2>"$scratch/helper-stderr")
+  rc=$?
+  set -e
+  [[ $rc -eq 0 ]] || fail "the helper exited $rc"
+  [[ ! -s $scratch/helper-stderr ]] || fail "the helper printed to stderr: $(cat "$scratch/helper-stderr")"
+}
+
+set_key_file() {
+  chmod -R u+rwx "$synthetic_file" 2>/dev/null || true
+  rm -rf -- "$synthetic_file"
+  if [[ $# -gt 0 ]]; then printf '%s' "$1" >"$synthetic_file"; fi
+}
+
+fingerprint() { stat -c '%s %Y.%y' -- "$synthetic_file" "$exa_file" && cat -- "$synthetic_file" "$exa_file"; }
+
+echo 0 >"$scratch/status"
+
+# --- arguments, exit status, and switches ------------------------------------
+
+echo 3 >"$scratch/status"
+run --mode rpc --model "synthetic/a b" "two words"
+stub_ran || fail 'the stub pi never ran'
+mapfile -d '' argv <"$rec/argv"
+expected=(--mode rpc --model "synthetic/a b" "two words")
+[[ ${#argv[@]} -eq ${#expected[@]} ]] || fail "argv has ${#argv[@]} words: ${argv[*]}"
+for i in "${!expected[@]}"; do
+  [[ ${argv[i]} == "${expected[i]}" ]] || fail "argv[$i] is '${argv[i]}', want '${expected[i]}'"
+done
+[[ $rc -eq 3 ]] || fail "exit status $rc, want the stub's 3"
+pass 'arguments, --mode rpc included, reach Pi unchanged and the exit status is kept'
+echo 0 >"$scratch/status"
+
+run
+[[ $(<"$rec/argc") == 0 ]] || fail "a bare run passed $(<"$rec/argc") words"
+pass 'a bare run passes no arguments'
+
+for assigns in '' 'PI_SKIP_VERSION_CHECK=0 PI_TELEMETRY=1'; do
+  # shellcheck disable=SC2086
+  run $assigns
+  [[ $(recorded PI_SKIP_VERSION_CHECK) == 1 ]] ||
+    fail "PI_SKIP_VERSION_CHECK is '$(recorded PI_SKIP_VERSION_CHECK)' with '${assigns:-no caller values}'"
+  [[ $(recorded PI_TELEMETRY) == 0 ]] ||
+    fail "PI_TELEMETRY is '$(recorded PI_TELEMETRY)' with '${assigns:-no caller values}'"
+done
+[[ $(recorded PATH) == /caller/bin ]] || fail "PATH is '$(recorded PATH)', want the caller's"
+pass 'PI_SKIP_VERSION_CHECK=1 and PI_TELEMETRY=0 hold over caller values, and PATH is the caller'"'"'s'
+
+# --- keys stay out of the environment ----------------------------------------
+
+printf '%s\n' "$synthetic_key" >"$synthetic_file"
+printf '%s\n' "$exa_key" >"$exa_file"
+chmod 0400 "$synthetic_file" "$exa_file"
+touch -d '2001-02-03 04:05:06' "$synthetic_file" "$exa_file"
+before=$(fingerprint)
+run --mode rpc
+stub_ran || fail 'the stub did not run with both key files present'
+for var in SYNTHETIC_API_KEY EXA_API_KEY; do
+  if recorded "$var" >/dev/null; then fail "Pi's environment holds $var"; fi
+done
+for needle in "$synthetic_key" "$exa_key" "$synthetic_file" "$exa_file" "$scratch/keys"; do
+  if grep -aqF -- "$needle" "$rec/env" "$rec/argv" "$scratch/stdout" "$scratch/stderr"; then
+    fail "'$needle' reached Pi's environment, argv, or the wrapper's output"
+  fi
+done
+# The source wrapper is never told the key-file paths, so a variable naming
+# any key or key file is caught by its name or its value as well.
+while IFS= read -r -d '' entry; do
+  name=${entry%%=*} value=${entry#*=}
+  if [[ $name == *KEY* || $value == *_api_key* ]]; then fail "Pi's environment holds $name='$value'"; fi
+done <"$rec/env"
+if grep -raqF -e "$synthetic_key" -e "$exa_key" "$home"; then fail "a key was written under $home"; fi
+[[ $(fingerprint) == "$before" ]] || fail 'a key file changed'
+pass 'with both key files present, Pi sees neither key nor a variable naming a key file, and neither file changes'
+
+chmod u+w "$synthetic_file" "$exa_file"
+rm -f -- "$synthetic_file" "$exa_file"
+echo 4 >"$scratch/status"
+run --mode rpc
+stub_ran || fail 'the stub did not run with no key files'
+[[ $rc -eq 4 ]] || fail "exit status $rc with no key files, want the stub's 4"
+[[ ! -s $scratch/stderr ]] || fail "the wrapper printed to stderr: $(cat "$scratch/stderr")"
+pass 'with no key files, Pi still runs and stderr is empty'
+echo 0 >"$scratch/status"
+
+# --- the key helper ----------------------------------------------------------
+
+set_key_file "$synthetic_key"
+helper
+[[ $out == "$synthetic_key" ]] || fail "the helper printed '$out', want the file key"
+set_key_file $'fake-key-789\n'
+helper
+[[ $out == fake-key-789 ]] || fail "a trailing newline was not stripped: '$out'"
+pass 'the helper prints the key file'"'"'s contents'
+
+set_key_file "$synthetic_key"
+helper SYNTHETIC_API_KEY=caller-key
+[[ $out == caller-key ]] || fail "the helper printed '$out', want the caller key"
+helper SYNTHETIC_API_KEY=
+[[ $out == "$synthetic_key" ]] || fail 'an empty caller key blocked the file key'
+pass 'a caller-exported SYNTHETIC_API_KEY wins, and an empty one falls back to the file'
+
+check_no_key() {
+  helper
+  [[ -z $out ]] || fail "$1: the helper printed '$out'"
+}
+
+set_key_file
+check_no_key 'missing key file'
+set_key_file ''
+check_no_key 'empty key file'
+set_key_file 'fake key'
+check_no_key 'key with a space'
+set_key_file $'fake-key\nsecond-line'
+check_no_key 'two-line key file'
+set_key_file $'fake\x01key'
+check_no_key 'key with a control character'
+set_key_file "$(printf 'x%.0s' {1..8193})"
+check_no_key 'oversize key file'
+set_key_file
+mkdir "$synthetic_file"
+check_no_key 'key path is a directory'
+rmdir "$synthetic_file"
+pass 'a missing, empty, whitespace-bearing, control-bearing, oversize, or directory key file prints nothing'
+
+longest=$(printf 'x%.0s' {1..8192})
+set_key_file "$longest"
+helper
+[[ $out == "$longest" ]] || fail 'an 8192-character key was not accepted'
+pass 'a key of exactly 8192 characters is accepted'
+
+printf 'pi: all checks passed (%s)\n' "$mode"

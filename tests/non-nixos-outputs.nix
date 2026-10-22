@@ -169,6 +169,7 @@ let
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
       opencode = packageNamed "opencode";
+      pi = packageNamed "pi";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -191,6 +192,16 @@ let
             ''
               if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/synthetic_api_key'"} ${opencode}/bin/opencode; then
                 ${fail "${entry.name}: the opencode wrapper does not read ${state}/synthetic_api_key"}
+              fi
+            ''
+        )
+        (
+          if pi == null then
+            fail "${entry.name}: no pi package in home.packages"
+          else
+            ''
+              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/synthetic_api_key'"} ${pi}/bin/pi-synthetic-key; then
+                ${fail "${entry.name}: Pi's key helper does not read ${state}/synthetic_api_key"}
               fi
             ''
         )
