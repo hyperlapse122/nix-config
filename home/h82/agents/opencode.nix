@@ -25,10 +25,9 @@ let
 
   models = import ./synthetic-models.nix;
   # A second entry for the same upstream model, so small_model, which
-  # OpenCode 2.x uses only for title generation, and T3 Code's text
-  # generation (home/h82/t3code.nix) run at the text-generation role's effort
-  # while the main entry keeps its own. The suffix keeps the key under the
-  # model's org, which the shared instructions map to its family.
+  # OpenCode 2.x uses only for title generation, runs at the text-generation
+  # role's effort while the main entry keeps its own. The suffix keeps the key
+  # under the model's org, which the shared instructions map to its family.
   textKey = entry: "${entry.id}@${entry.roles.text-generation}";
   textModels = lib.unique (
     map (name: models.${name}) [

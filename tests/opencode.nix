@@ -42,7 +42,7 @@
     and every other key inside a declared entry stay, the retired
     syn:large:text entry goes, and the provider's options and other providers
     stay; service.json disables OpenCode's shared background server. The
-    small_model entry is also the one T3 Code's text generation selects, so
+    small_model entry is also the one T3 Code hides in its OpenCode picker, so
     the check fails while the source's `smallModel` and `textGeneration` would
     name different entries.
   - no Home Manager file targets .config/opencode/opencode.json or
@@ -85,9 +85,10 @@ let
   glmFlash = json models.glmFlash.id;
   kimi = json models.kimi.id;
   deepseek = json models.deepseek.id;
-  # The text-generation effort names the entry small_model and T3 Code's text
-  # generation select, so both follow the source's role. Each selection must
-  # find its own entry, so the two are read separately; today they share one.
+  # The text-generation effort names the entry small_model selects and T3 Code
+  # hides in its OpenCode picker, so both follow the source's role. Each
+  # selection must find its own entry, so the two are read separately; today
+  # they share one.
   smallEffort = models.${models.smallModel}.roles.text-generation;
   smallKey = "${models.${models.smallModel}.id}@${smallEffort}";
   textEffort = models.${models.textGeneration}.roles.text-generation;
