@@ -696,7 +696,7 @@ grep -Eq '^[^#]*nix run \.#synthetic-models-watch -- --snapshot home/h82/agents/
   fail 'the catalog snapshot step no longer refreshes home/h82/agents/synthetic-catalog.json'
 snapshot_stub='if [[ ${FAIL:-0} == 1 ]]; then
   printf "{\"data\": [" >home/h82/agents/synthetic-catalog.json
-  echo "synthetic-models-watch: the catalog lacks hf:moonshotai/Kimi-K3" >&2
+  echo "synthetic-models-watch: the catalog lacks hf:zai-org/GLM-5.3-Flash" >&2
   exit 1
 fi
 printf "{\"data\": [{\"id\": \"hf:new/Model\"}]}\n" >home/h82/agents/synthetic-catalog.json'

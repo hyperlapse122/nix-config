@@ -28,20 +28,19 @@
     as on a dry run, the stub must not run. T3 Code rewrites both files at
     runtime, so the keys are merged rather than the files owned. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, OpenCode, and Pi instances, the disabled Grok
-    instance, the Claude instance's launch arguments emptied, which retires the --add-dir an
-    earlier generation wrote, no environment entry upserted, and the built-in
-    Codex instance declared disabled, since Codex is no longer installed; the
+    enabled Antigravity, Claude, Codex, OpenCode, and Pi instances, the
+    disabled Grok instance, the Claude instance's launch arguments emptied,
+    which retires the --add-dir an earlier generation wrote, no environment
+    entry upserted, and the Codex instance's launch arguments emptied, which
+    retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
     first. The Pi instance declares no binaryPath and no launch arguments. It
     owns two model selections whole: the default, Claude Opus at effort
-    medium, and text generation, the Pi instance with the text-generation
-    model of home/h82/agents/synthetic-models.nix as `synthetic/<id>` and a
-    `thinking` option at its text-generation role's effort.
+    medium, and text generation, Claude Haiku 5.5 on the claudeAgent instance
+    at effort low.
     On a full configuration, tests/t3code-hidden-model.py also ties the alias
     the declaration hides in the OpenCode picker to the small_model the
-    OpenCode activation declares and to that text-generation selection (its
-    model plus `@` plus its thinking effort), and runs the real merger over a settings.json
+    OpenCode activation declares, and runs the real merger over a settings.json
     that already hides another model and an alias of another effort: the other
     model must stay hidden, the earlier alias must go, and the current one must
     appear once, also on a second run.
@@ -263,7 +262,7 @@ let
           "codex"
           "enabled"
         ];
-        value = false;
+        value = true;
       }
       {
         path = [
@@ -375,12 +374,12 @@ let
         ];
       };
       textGenerationModelSelection = {
-        instanceId = "pi";
-        model = "synthetic/${textGeneration.id}";
+        instanceId = "claudeAgent";
+        model = "claude-haiku-5-5";
         options = [
           {
-            id = "thinking";
-            value = textGeneration.roles.text-generation;
+            id = "effort";
+            value = "low";
           }
         ];
       };

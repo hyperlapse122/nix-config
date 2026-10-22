@@ -1,11 +1,11 @@
 /*
   T3 Code nightly, one artifact per trait: my.t3.cli.enable installs the
   headless `t3` CLI and my.t3.desktop.enable the desktop app. Its Claude
-  sessions run the flake's own claude with its user-level settings, so nothing
-  here adds a copy of it. The T3 Code settings that
-  differ from the pinned nightly's defaults are merged into its own settings
-  files on activation, and the Antigravity runtime it requires is installed
-  where T3 Code looks for it.
+  and Codex sessions run the flake's own claude and codex with their
+  user-level settings, so nothing here adds a copy of either. The T3 Code
+  settings that differ from the pinned nightly's defaults are merged into its
+  own settings files on activation, and the Antigravity runtime it requires is
+  installed where T3 Code looks for it.
 
   The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
   it fails the assertion below rather than a build.
@@ -44,8 +44,8 @@ let
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
   # declared provider instance states `enabled`, even where it equals the
-  # default: claudeAgent's does, since T3 Code turns that instance on. A
-  # cleanup that drops default-valued settings must keep it, or the instance
+  # default: claudeAgent's and codex's do, since T3 Code turns those instances
+  # on. A cleanup that drops default-valued settings must keep it, or the instance
   # would go back to following T3 Code's default. App state (onboarding marks,
   # folded panels, favorites, and every provider instance field not declared
   # here) stays the app's. T3 Code leaves its built-in Antigravity, OpenCode,
@@ -71,13 +71,14 @@ let
         enabled = true;
         config.launchArgs = "";
       };
-      # T3 Code enables its built-in Codex instance unless one is declared.
-      # The merge can retire only top-level keys, so the launch arguments an
-      # earlier generation wrote, which carried the old instructions, are
-      # overwritten with nothing.
+      # The codex on PATH is the packaged wrapper, so no binaryPath is needed.
+      # Codex reads the instructions from ~/.codex/AGENTS.md. The merge can
+      # retire only top-level keys, so the launch arguments an earlier
+      # generation wrote, which carried the old instructions, are overwritten
+      # with nothing.
       codex = {
         driver = "codex";
-        enabled = false;
+        enabled = true;
         config.launchArgs = "";
       };
       # T3 Code enables its built-in Grok instance unless one is declared.
@@ -93,8 +94,7 @@ let
       };
       # The pi on PATH is the packaged wrapper, whose Synthetic provider reads
       # the key file per request, so no binaryPath is needed and no key reaches
-      # this file. No launch arguments: Pi applies the text-generation model's
-      # startup thinking level when T3 Code switches to it with set_model.
+      # this file. No launch arguments.
       pi = {
         driver = "pi";
         enabled = true;
@@ -133,11 +133,10 @@ let
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
   #
-  # Text generation selects the text-generation model on the Pi instance. Its
-  # `thinking` option records the role's effort for the reader: T3 Code's Pi
-  # text generation sends set_model and never set_thinking_level, so the level
-  # that reaches Synthetic is the model's startup level, which
-  # home/h82/agents/pi.nix sets to the same effort.
+  # Text generation runs on the claudeAgent instance with Claude Haiku 5.5 at
+  # effort low, not on Pi, so the Synthetic DeepSeek model below no longer
+  # carries it. The Synthetic model stays only as the `@<effort>` alias that
+  # OpenCode's small_model names, which hiddenAlias hides.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
   textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
@@ -152,12 +151,12 @@ let
       ];
     };
     textGenerationModelSelection = {
-      instanceId = "pi";
-      model = "synthetic/${textGeneration.id}";
+      instanceId = "claudeAgent";
+      model = "claude-haiku-5-5";
       options = [
         {
-          id = "thinking";
-          value = textGeneration.roles.text-generation;
+          id = "effort";
+          value = "low";
         }
       ];
     };

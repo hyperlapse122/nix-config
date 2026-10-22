@@ -1,0 +1,41 @@
+{
+  "version": "0.163.0",
+  "platforms": {
+    "x86_64-linux": {
+      "codex": {
+        "asset": "codex-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "beb339e8ecd9ba057a6bb2dc81ad8ca474812edfbf0fc5056ca818797648dde4",
+        "hash": "sha256-vrM56OzZugV6a7Lcga2MpHSBLt+/D8UFbKgYeXZI3eQ="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "314263128ba6592e7e807c265deeaf928a692b72dcbfeb5e0b20c9423b703529",
+        "hash": "sha256-MUJjEoumWS5+gHwmXe6vkoppK3Lcv+teCyDJQjtwNSk="
+      }
+    },
+    "aarch64-linux": {
+      "codex": {
+        "asset": "codex-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "a7261e65f4a96d8f4ca65a069c6cf2dc2c33defc341e48078acefda9461fffe4",
+        "hash": "sha256-pyYeZfSpbY9MploGnGzy3Cwz3vw0HkgHis79qUYf/+Q="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
+        "sha256": "284356aefb197f00b76b912efdfdbae8ccf3ea1f89b976dde064b7ccb43214ef",
+        "hash": "sha256-KENWrvsZfwC3a5Eu/f266Mzz6h+JuXbd4GS3zLQyFO8="
+      }
+    },
+    "aarch64-darwin": {
+      "codex": {
+        "asset": "codex-aarch64-apple-darwin.tar.gz",
+        "sha256": "61c4d9a92521bdb42b0c1d9f87c673f6da628a06de5945cbdd9a0010632f6d10",
+        "hash": "sha256-YcTZqSUhvbQrDB2fh8Zz9tpiigbeWUXL3ZoAEGMvbRA="
+      },
+      "codeModeHost": {
+        "asset": "codex-code-mode-host-aarch64-apple-darwin.tar.gz",
+        "sha256": "2e28f49a4767a97586843c92692b96481be74d837199b49038f731cec88e9941",
+        "hash": "sha256-Lij0mkdnqXWGhDySaSuWSBvnTYNxmbSQOPcxzsiOmUE="
+      }
+    }
+  }
+}

@@ -9,9 +9,8 @@ two declared documents a configuration's activation passes to it:
 home/h82/t3code.nix builds the alias it hides as `synthetic/<id>@<effort>`, and
 home/h82/agents/opencode.nix builds the `small_model` key the same way, each
 from its own formula. The alias is the entry OpenCode's small_model names, so
-the two must stay one string, and it is the model text generation selects on
-the Pi instance plus `@` and that selection's `thinking` effort. Then the
-real merger runs on the T3 Code document over a settings.json that already
+the two must stay one string. Text generation no longer selects the alias; it
+runs on Claude Haiku 5.5. Then the real merger runs on the T3 Code document over a settings.json that already
 hides another model and an alias of an earlier effort: the other model must
 stay hidden, the earlier alias must go, and the current one must be hidden
 exactly once, also on a second run.
@@ -60,18 +59,6 @@ def main(merger, t3_path, opencode_path):
         problems.append('T3 Code hides {!r}, but OpenCode declares small_model {!r}'.format(alias, small))
     if '@' not in alias or prefix != alias[:alias.rindex('@') + 1]:
         problems.append('the hidden alias {!r} does not extend its retire prefix {!r}'.format(alias, prefix))
-    selection = get(t3, ['own', 'textGenerationModelSelection'])
-    if get(selection, ['instanceId']) != 'pi':
-        problems.append('text generation selects instance {!r}, not pi'.format(get(selection, ['instanceId'])))
-    thinking = [
-        option.get('value') for option in get(selection, ['options']) or []
-        if isinstance(option, dict) and option.get('id') == 'thinking'
-    ]
-    if len(thinking) != 1:
-        problems.append('text generation declares {} thinking options, not 1'.format(len(thinking)))
-    elif '{}@{}'.format(get(selection, ['model']), thinking[0]) != alias:
-        problems.append('T3 Code hides {!r}, but text generation selects {!r} at thinking {!r}'.format(
-            alias, get(selection, ['model']), thinking[0]))
     declared_keys = {
         entry['path'][3]
         for entry in opencode.get('setPaths', [])

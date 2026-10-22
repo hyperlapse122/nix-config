@@ -5,8 +5,9 @@
 
   Pins the shape of home/h82/agents/synthetic-models.nix, the one source of
   every Synthetic model the repository uses: each `id` starts with `hf:` and
-  its family is the one its org maps to, every role runs at `low`, `high`, or
-  `max`, the efforts these models offer (never `medium`), each lineage pattern matches its own `id` and its
+  its family is the one its org maps to, every role an entry has (GLM-5.3 and
+  GLM-5.3 Flash have none) runs at `low`, `high`, or `max`, the efforts these
+  models offer (never `medium`), each lineage pattern matches its own `id` and its
   first capture group is a version under both Nix `builtins.match` and Python
   `re.fullmatch`, and the top-level selections name existing entries. It also
   reads the committed catalog snapshot, home/h82/agents/synthetic-catalog.json,
@@ -25,7 +26,6 @@ let
   # Org to family, as the shared instructions map a model ID.
   orgFamilies = {
     zai-org = "glm";
-    moonshotai = "kimi";
     deepseek-ai = "deepseek";
     Qwen = "qwen";
   };
@@ -39,8 +39,7 @@ let
   entryNames = lib.subtractLists selections (lib.attrNames source);
   entries = lib.genAttrs entryNames (name: source.${name});
 
-  # The efforts these models offer; the shared instructions render each role's
-  # effort as an OpenCode `variant`.
+  # The efforts these models offer.
   efforts = [
     "low"
     "high"
@@ -104,7 +103,6 @@ let
     ++ lib.optional (
       version != null && builtins.match versionShape version == null
     ) "${name}: lineage captures `${version}`, not a version"
-    ++ lib.optional ((entry.roles or { }) == { }) "${name}: no roles"
     ++ lib.mapAttrsToList (
       role: effort: "${name}: role ${role} runs at effort `${toString effort}`, not ${offered}"
     ) (lib.filterAttrs (_: effort: !lib.elem effort efforts) (entry.roles or { }))

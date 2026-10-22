@@ -29,7 +29,7 @@
     divergent file (an MCP server, a 1.x plugin key, a user plugins entry, a
     user-added provider entry, the synthetic provider's own options, and
     synthetic model entries the user wrote, keys the user added inside the
-    declared entries, and the retired syn:large:text alias in opencode.json,
+    declared entries, and the retired syn:large:text alias and Kimi K3 entry in opencode.json,
     a password and a port in service.json), and creates a missing file holding
     only the declared keys. The result is mode 0600 in every case.
     opencode.json drops the retired autoupdate key, allowlists the synthetic
@@ -37,10 +37,10 @@
     `<DeepSeek ID>@<text-generation effort>` that points at the source's
     DeepSeek ID at that effort, and assigns only the managed leaves under
     provider.synthetic.models: each source model's
-    options.reasoningEffort at its pinned effort (GLM and Kimi max, GLM-5.3-Flash
+    options.reasoningEffort at its pinned effort (GLM max, GLM-5.3-Flash
     and DeepSeek high), and that small entry's id and effort. A model entry the user wrote
     and every other key inside a declared entry stay, the retired
-    syn:large:text entry goes, and the provider's options and other providers
+    syn:large:text and hf:moonshotai/Kimi-K3 entries go, and the provider's options and other providers
     stay; service.json disables OpenCode's shared background server. The
     small_model entry is also the one T3 Code hides in its OpenCode picker, so
     the check fails while the source's `smallModel` and `textGeneration` would
@@ -87,7 +87,7 @@ let
   defaultModel = json ("synthetic/" + models.${models.defaultModel}.id);
   glm = json models.glm.id;
   glmFlash = json models.glmFlash.id;
-  kimi = json models.kimi.id;
+  retiredKimi = json "hf:moonshotai/Kimi-K3";
   deepseek = json models.deepseek.id;
   # The text-generation effort names the entry small_model selects and T3 Code
   # hides in its OpenCode picker, so both follow the source's role. Each
@@ -115,7 +115,6 @@ let
     {
       ${glm}: {"options": {"reasoningEffort": "max"}},
       ${glmFlash}: {"options": {"reasoningEffort": "high"}},
-      ${kimi}: {"options": {"reasoningEffort": "max"}},
       ${deepseek}: {"options": {"reasoningEffort": "high"}},
       ${deepseekSmall}: {"id": ${deepseek}, "options": {"reasoningEffort": ${smallEffortJson}}}
     }
@@ -140,12 +139,12 @@ let
         ${modelLeaf deepseek [ "options" "reasoningEffort" ] (json "high")},
         ${modelLeaf glm [ "options" "reasoningEffort" ] (json "max")},
         ${modelLeaf glmFlash [ "options" "reasoningEffort" ] (json "high")},
-        ${modelLeaf kimi [ "options" "reasoningEffort" ] (json "max")},
         ${modelLeaf deepseekSmall [ "id" ] deepseek},
         ${modelLeaf deepseekSmall [ "options" "reasoningEffort" ] smallEffortJson}
       ],
       "removePaths": [
-        {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"}
+        {"path": ["provider", "synthetic", "models"], "key": "syn:large:text"},
+        {"path": ["provider", "synthetic", "models"], "key": ${retiredKimi}}
       ]
     }
   '';
@@ -168,6 +167,7 @@ let
           "models": {
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
             "syn:large:text": {"name": "syn:large:text"},
+            ${retiredKimi}: {"options": {"reasoningEffort": "max"}},
             ${glm}: {"options": {"reasoningEffort": "low", "temperature": 0.2}, "name": "user edit"},
             ${deepseekSmall}: {"id": "hf:example/Other", "name": "user title model"}
           }
@@ -198,7 +198,6 @@ let
             "hf:zai-org/GLM-4.7": {"name": "GLM 4.7"},
             ${glm}: {"options": {"reasoningEffort": "max", "temperature": 0.2}, "name": "user edit"},
             ${glmFlash}: {"options": {"reasoningEffort": "high"}},
-            ${kimi}: {"options": {"reasoningEffort": "max"}},
             ${deepseek}: {"options": {"reasoningEffort": "high"}},
             ${deepseekSmall}: {"id": ${deepseek}, "name": "user title model", "options": {"reasoningEffort": ${smallEffortJson}}}
           }

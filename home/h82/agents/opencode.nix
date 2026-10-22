@@ -74,7 +74,10 @@ let
   # effort renames a textKey entry, add the previous key here, or its entry stays
   # behind with the effort last written. syn:large:text is the retired
   # cross-reviewer alias, declared through its `name`.
-  retiredModels = [ "syn:large:text" ];
+  retiredModels = [
+    "syn:large:text"
+    "hf:moonshotai/Kimi-K3"
+  ];
 
   # `opencode mcp add` and `opencode plugin add` rewrite this file, so
   # activation assigns these keys and leaves everything else as OpenCode wrote

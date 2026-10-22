@@ -3,6 +3,7 @@
   imports = [
     ./agent-plugins.nix
     ./claude.nix
+    ./codex.nix
     ./cross-model-peers.nix
     ./gemini.nix
     ./instructions

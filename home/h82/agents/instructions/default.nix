@@ -7,11 +7,8 @@
 let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
-  models = import ../synthetic-models.nix;
 
-  context = pkgs.writeText "agent-instructions.json" (
-    builtins.toJSON (hostFacts.of config.my // { inherit models; })
-  );
+  context = pkgs.writeText "agent-instructions.json" (builtins.toJSON (hostFacts.of config.my));
 
   render =
     name: template:
@@ -29,9 +26,9 @@ let
   '';
 in
 {
-  # Plain store links no harness rewrites. OpenCode loads its copy from its
-  # global AGENTS.md, the Antigravity CLI reads ~/.gemini/config, and Pi
-  # reads ~/.pi/agent/AGENTS.md.
+  # Plain store links no harness rewrites. Codex reads ~/.codex/AGENTS.md,
+  # OpenCode loads its copy from its global AGENTS.md, the Antigravity CLI
+  # reads ~/.gemini/config, and Pi reads ~/.pi/agent/AGENTS.md.
   home.file = {
     agent-instructions-pi = {
       target = ".pi/agent/AGENTS.md";
@@ -39,6 +36,10 @@ in
     };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
+      source = instructions;
+    };
+    agent-instructions-codex = {
+      target = ".codex/AGENTS.md";
       source = instructions;
     };
     agent-instructions-opencode = {

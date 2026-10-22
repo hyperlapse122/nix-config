@@ -5,7 +5,7 @@ Usage: pi_declared.py MERGER MODELS SETTINGS SNAPSHOT HELPER WORKDIR IDS
 MODELS and SETTINGS are the declared documents home.activation hands the
 merger, SNAPSHOT is home/h82/agents/synthetic-catalog.json, and HELPER is the
 installed pi-synthetic-key. IDS is a JSON object naming the model source's
-glm, glmFlash, kimi, and deepseek IDs. Every expected value is written here, apart from
+glm, glmFlash, and deepseek IDs. Every expected value is written here, apart from
 the model IDs, which come from the model source, so the module's own rendering
 is never what the check compares against. Prints one line per failure and
 exits 1 when there is any.
@@ -33,7 +33,7 @@ def load(path):
         return json.load(handle)
 
 
-GLM, GLM_FLASH, KIMI, DEEPSEEK = ids['glm'], ids['glmFlash'], ids['kimi'], ids['deepseek']
+GLM, GLM_FLASH, DEEPSEEK = ids['glm'], ids['glmFlash'], ids['deepseek']
 
 # What each model's catalog entry lists, and the map Pi must send for it: a
 # listed effort maps to itself, `off` maps to `none` when listed, and every
@@ -42,17 +42,18 @@ THREE_EFFORTS = {'off': None, 'minimal': None, 'low': 'low', 'medium': None, 'hi
 LEVEL_MAPS = {
     GLM: THREE_EFFORTS,
     GLM_FLASH: THREE_EFFORTS,
-    KIMI: THREE_EFFORTS,
     DEEPSEEK: {
         'off': 'none', 'minimal': None, 'low': 'low', 'medium': None, 'high': 'high', 'xhigh': 'xhigh', 'max': 'max',
     },
 }
 # The effort each model starts at: its default, except the text-generation
 # model, which starts at the text-generation role's effort.
-STARTUP = {GLM: 'max', GLM_FLASH: 'high', KIMI: 'max', DEEPSEEK: 'low'}
-# The IDs home/h82/agents/pi.nix retires, none today. A fixture ID is added
-# to a copy of each declaration below, so the removal is exercised anyway.
-RETIRED = []
+STARTUP = {GLM: 'max', GLM_FLASH: 'high', DEEPSEEK: 'low'}
+# The IDs home/h82/agents/pi.nix retires. A fixture ID is added to a copy of
+# each declaration below, so the removal is exercised for an ID that is not
+# in the list too.
+KIMI = 'hf:moonshotai/Kimi-K3'
+RETIRED = [KIMI]
 FIXTURE_RETIRED = 'hf:retired-org/Retired-Fixture-1'
 
 models = load(models_path)
@@ -176,7 +177,10 @@ with open(seeded_models, 'w') as handle:
     json.dump({
         'providers': {
             'ollama': other_provider,
-            'synthetic': {'compat': {'supportsStore': False}, 'models': [hand_added, stale_glm]},
+            'synthetic': {
+                'compat': {'supportsStore': False},
+                'models': [hand_added, stale_glm, {'id': KIMI, 'name': 'Kimi K3'}],
+            },
         },
     }, handle)
 os.chmod(seeded_models, 0o644)
@@ -212,7 +216,11 @@ with open(seeded_settings, 'w') as handle:
         'theme': 'dark',
         'defaultProjectTrust': 'always',
         'lastChangelogVersion': '1.0.0',
-        'modelThinkingLevels': {'synthetic/hf:example/Hand-Added': 'low', 'synthetic/' + GLM: 'low'},
+        'modelThinkingLevels': {
+            'synthetic/hf:example/Hand-Added': 'low',
+            'synthetic/' + GLM: 'low',
+            'synthetic/' + KIMI: 'max',
+        },
     }, handle)
 os.chmod(seeded_settings, 0o644)
 merge(seeded_settings, settings_path, 'Pi settings')
@@ -233,10 +241,10 @@ check(
 )
 check(mode(seeded_settings) == 0o600, 'merged settings.json is mode {:o}'.format(mode(seeded_settings)))
 
-# A retired ID leaves both files. The declarations retire none today, so a
-# copy of each retires a fixture ID the way pi.nix would list it, and the
-# seeded files hold that ID's entry and thinking level beside a hand-added
-# model's.
+# A retired ID leaves both files. The seeded files above held the real
+# retired ID; a copy of each declaration also retires a fixture ID the way
+# pi.nix would list a newly retired one, and the seeded files hold that ID's
+# entry and thinking level beside a hand-added model's.
 retired_models = dict(models)
 retired_models['removeEntries'] = [dict(entry, values=entry.get('values', []) + [FIXTURE_RETIRED])
                                    for entry in models.get('removeEntries', [])]

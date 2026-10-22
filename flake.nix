@@ -153,6 +153,8 @@
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
+        codex-release = agentTools.codexRelease;
+        codex = import ./packages/codex.nix { inherit pkgs; };
         opencode-release = agentTools.opencodeRelease;
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         pi-release = agentTools.piRelease;
@@ -346,6 +348,8 @@
               ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          codex-package = import ./tests/codex.nix { inherit pkgs self; };
+          codex-settings = import ./tests/codex-settings.nix { inherit pkgs self; };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
@@ -356,9 +360,10 @@
           agent-settings =
             let
               tools = import ./packages/agent-tools.nix { inherit pkgs; };
+              inherit (tools) agentSettingsPython;
               packaged = tools.agentSettings;
             in
-            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            pkgs.runCommand "agent-settings-tests" { nativeBuildInputs = [ agentSettingsPython ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${./scripts/agent-settings} scripts/agent-settings
@@ -440,6 +445,35 @@
               assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
               PY
 
+              # TOML mode through the packaged binary, which proves the built
+              # interpreter carries tomlkit: a comment and a table the merge does
+              # not own must survive, and the declared leaves start divergent.
+              mkdir -p home/.codex
+              printf '# keep me\ncheck_for_update_on_startup = true\ndeveloper_instructions = "stale"\n\n[features]\nmemories = true\n\n[plugins."x"]\nenabled = true\n' \
+                > home/.codex/config.toml
+              printf '{"remove":["developer_instructions"],"setPaths":[{"path":["check_for_update_on_startup"],"value":false},{"path":["features","memories"],"value":false},{"path":["features","daemon_auto_start"],"value":false}]}\n' \
+                > codex.json
+              env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"
+              grep -qxF '# keep me' home/.codex/config.toml
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import tomllib
+              merged = tomllib.load(open('home/.codex/config.toml', 'rb'))
+              assert merged == {'check_for_update_on_startup': False, 'features': {'memories': False, 'daemon_auto_start': False}, 'plugins': {'x': {'enabled': True}}}, merged
+              PY
+
+              # Malformed TOML must fail the process and leave the file alone.
+              printf 'model = "unterminated\n' > home/.codex/config.toml
+              if env -i ${packaged}/bin/agent-settings --format toml --label Codex \
+                  --settings "$PWD/home/.codex/config.toml" --declared "$PWD/codex.json"; then
+                echo "packaged merger accepted malformed TOML" >&2
+                exit 1
+              fi
+              if [ "$(cat home/.codex/config.toml)" != 'model = "unterminated' ]; then
+                echo "refused TOML merge still rewrote the settings file" >&2
+                exit 1
+              fi
+
               touch $out
             '';
           gemini = import ./tests/gemini.nix { inherit pkgs self; };
@@ -479,7 +513,12 @@
             fixtures = linuxFixtures;
           };
           agent-plugin-sync =
-            pkgs.runCommand "agent-plugin-sync-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            pkgs.runCommand "agent-plugin-sync-tests"
+              {
+                # The opencode and pi cases drive the real merger, whose source
+                # imports tomlkit.
+                nativeBuildInputs = [ (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettingsPython ];
+              }
               ''
                 export PYTHONDONTWRITEBYTECODE=1
                 mkdir -p scripts tests
@@ -502,6 +541,9 @@
             pythonScriptCheck "claude-code-release" ./scripts/claude-code-release
               ./tests/test_claude_code_release.py;
           mise-release = pythonScriptCheck "mise-release" ./scripts/mise-release ./tests/test_mise_release.py;
+          codex-release =
+            pythonScriptCheck "codex-release" ./scripts/codex-release
+              ./tests/test_codex_release.py;
           opencode-release =
             pythonScriptCheck "opencode-release" ./scripts/opencode-release
               ./tests/test_opencode_release.py;
@@ -1050,26 +1092,66 @@
               ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
-          codex-absent =
+          codex =
             let
-              assertUser =
+              # The version attribute is compared with the pin for the reason
+              # given on the claude-code check: versionCheckHook already proves
+              # the binary reports that attribute. The wrapper flags are read
+              # from the installed bin/codex itself, because they are what keep
+              # Codex from updating itself under any other CODEX_HOME, such as
+              # T3 Code's per-provider homes, which never receive the declared
+              # config.toml keys.
+              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
+              wrapperFlags = [
+                "-c check_for_update_on_startup=false"
+                "--disable in_app_updates"
+                "--disable daemon_auto_start"
+              ];
+              assertConfiguration =
                 entry:
                 let
-                  codexFiles = builtins.filter (pkgs.lib.hasPrefix ".codex/") (homeFileTargets entry);
+                  codexPkg = userPackageOf "codex" entry;
+                  versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
+                    echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
+                    fail=1
+                  '';
+                  flagsMissing = pkgs.lib.optionalString (codexPkg != null) ''
+                    for flag in ${pkgs.lib.escapeShellArgs wrapperFlags}; do
+                      if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
+                        echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
+                        fail=1
+                      fi
+                    done
+                  '';
+                  # Codex looks for codex-code-mode-host beside the binary the
+                  # wrapper execs, never on PATH, so the host is found from that
+                  # exec target. It is run, not just inspected, because a binary
+                  # that exists and is executable can still fail to start.
+                  codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
+                    target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
+                    if [ -z "$target" ]; then
+                      echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
+                      fail=1
+                    elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
+                      echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
+                      fail=1
+                    fi
+                  '';
                 in
                 ''
-                  ${pkgs.lib.optionalString (userPackageOf "codex" entry != null) ''
-                    echo 'codex is still in the user packages on ${entry.name}' >&2
-                    fail=1
-                  ''}
-                  ${pkgs.lib.optionalString (codexFiles != [ ]) ''
-                    echo 'home files under ~/.codex remain on ${entry.name}: ${toString codexFiles}' >&2
-                    fail=1
-                  ''}
+                  ${assertUserPackage {
+                    pname = "codex";
+                    executables = [ "codex" ];
+                    desktopEntries = [ ];
+                  } entry}
+                  ${versionMismatch}
+                  ${flagsMissing}
+                  ${codeModeHostMissing}
                 '';
             in
-            pkgs.runCommand "codex-absent" { } ''
-              ${forEveryUser assertUser}
+            pkgs.runCommand "codex-tests" { } ''
+              set -x
+              ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
           grok-absent =
