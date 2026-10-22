@@ -153,6 +153,13 @@ in
 {
   home.packages = [ pi ];
 
+  # Pi loads every directory under ~/.pi/agent/extensions that holds an
+  # index.js. T3 Code's text generation passes --no-extensions and skips it.
+  home.file.".pi/agent/extensions/nix-config".source = import ../../../packages/pi-extension.nix {
+    inherit pkgs;
+    inherit (pi) syntheticKeyFile exaKeyFile;
+  };
+
   # Unguarded and after installPackages for the reasons given on
   # claudeSettings in claude.nix: a refusal must fail the rebuild loudly
   # without stranding linkGeneration or installPackages behind it. Pi rewrites

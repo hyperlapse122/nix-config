@@ -1454,6 +1454,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          pi-extension = import ./tests/pi-extension.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           text-template = import ./tests/text-template.nix { inherit pkgs; };
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           vscodium = import ./tests/vscodium.nix { inherit pkgs self; };
