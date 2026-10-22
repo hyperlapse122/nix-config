@@ -56,6 +56,11 @@ let
   # command so the sandboxed repository check can drive it with fixtures.
   miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
 
+  # Resolves the latest Codex release and its musl asset digest from the
+  # GitHub releases API. Its network call goes through an overridable command
+  # so the sandboxed repository check can drive it with fixtures.
+  codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
+
   # Resolves the latest OpenCode release, its per-platform tarball URLs, and
   # their sha512 integrity from the npm registry's @opencode/cli packages. Its
   # network calls go through an overridable command so the sandboxed repository
@@ -134,6 +139,7 @@ in
     wifimanDesktopRelease
     claudeCodeRelease
     miseRelease
+    codexRelease
     opencodeRelease
     piRelease
     npmRelease

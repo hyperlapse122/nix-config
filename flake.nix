@@ -153,6 +153,8 @@
         claude-code = import ./packages/claude-code.nix { inherit pkgs; };
         mise-release = agentTools.miseRelease;
         mise = import ./packages/mise.nix { inherit pkgs; };
+        codex-release = agentTools.codexRelease;
+        codex = import ./packages/codex.nix { inherit pkgs; };
         opencode-release = agentTools.opencodeRelease;
         opencode = import ./packages/opencode.nix { inherit pkgs; };
         pi-release = agentTools.piRelease;
@@ -346,6 +348,7 @@
               ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          codex-package = import ./tests/codex.nix { inherit pkgs self; };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
@@ -502,6 +505,9 @@
             pythonScriptCheck "claude-code-release" ./scripts/claude-code-release
               ./tests/test_claude_code_release.py;
           mise-release = pythonScriptCheck "mise-release" ./scripts/mise-release ./tests/test_mise_release.py;
+          codex-release =
+            pythonScriptCheck "codex-release" ./scripts/codex-release
+              ./tests/test_codex_release.py;
           opencode-release =
             pythonScriptCheck "opencode-release" ./scripts/opencode-release
               ./tests/test_opencode_release.py;
