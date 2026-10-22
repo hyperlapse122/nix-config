@@ -349,7 +349,9 @@ let
   scoutHandoffClause = ", and when that relaunch fails too, or returns no findings, you do its research yourself and say so";
   scoutFailedLaunchClause = ", and a scout that starts but returns no findings, or that waits on an approval,${scoutRelaunchClause}${scoutHandoffClause}";
   scoutFallbackClause = "`claude-sonnet-5-5` on the `claudeAgent` instance with `effort` `medium` as fallback";
-  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `variant` for an OpenCode worker and `effort` for a Claude worker: a scout goes to `synthetic/${deepseekId}` on the `opencode` instance with `variant` `${role "deepseek" "scout"}` as primary and to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
+  scoutHaikuClause = "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `medium` as primary";
+  scoutClaudeCodeCondition = " when your harness is Claude Code and otherwise to ";
+  scoutAssignmentSentence = "When the session lists T3 Code's delegation tools, launch each scout through `delegate_task` with its effort in `target.options`, as `variant` for an OpenCode worker and `effort` for a Claude worker: a scout goes to ${scoutHaikuClause}${scoutClaudeCodeCondition}`synthetic/${deepseekId}` on the `opencode` instance with `variant` `${role "deepseek" "scout"}` as primary, and in either case to ${scoutFallbackClause}${scoutFailedLaunchClause}.";
   scoutUntrackedClause = ", and an untracked file only when the task prompt names it";
   scoutSafeguardSentence = "When the session lists T3 Code's delegation tools, tell each scout to open no credential, nothing under `secrets/`, no gitignored file${scoutUntrackedClause}, and before launching, name each scout and the provider that gets its prompt, Synthetic for OpenCode and Anthropic for Claude Code; that notice authorizes the send.";
 
@@ -1147,6 +1149,24 @@ let
         if role "deepseek" "scout" == "max" then "high" else "max"
       }`";
       expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Claude Code branch goes back to DeepSeek";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine "${scoutHaikuClause}${scoutClaudeCodeCondition}" "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Haiku primary loses its harness condition";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine " when your harness is Claude Code" "";
+      expect = "does not hold this sentence exactly once, where a sentence starts:";
+    }
+    {
+      name = "scout Haiku primary raised to effort max";
+      line = "- ${scoutAssignmentSentence}";
+      edit = replaceInLine scoutHaikuClause "`claude-haiku-5-5` on the `claudeAgent` instance with `effort` `max` as primary";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-haiku-5-5 on claudeAgent with effort max";
     }
     {
       name = "scout safeguard sentence removed";
