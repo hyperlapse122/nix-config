@@ -9,15 +9,10 @@
 #   expressions have no non-capturing group, so later groups only hold the
 #   optional parts of that version or the build suffix.
 # - `roles`: each role a consumer reads from the model, with the effort that
-#   role runs at. Only the text-generation role exists today: Pi's
-#   startup effort reads it. An entry no consumer
-#   reads a role from carries `roles = { }`. These models offer no `medium`
-#   effort.
+#   role runs at. An entry no consumer reads a role from carries
+#   `roles = { }`. These models offer no `medium` effort.
 # - `defaultEffort`: the reasoning effort a session outside T3 Code runs the
-#   model at as-is; Pi's settings pin it today.
-#
-# No instruction routes work to these models; they stay for Pi sessions
-# the user starts by hand.
+#   model at as-is.
 #
 # The DeepSeek `id` pins one dated build and moves only when the user changes
 # it after a reconcile issue reports a newer one.

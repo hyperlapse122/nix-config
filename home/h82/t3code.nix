@@ -108,9 +108,6 @@ let
         driver = "grok";
         enabled = false;
       };
-      # OpenCode is no longer installed. The declaration stays, disabled, so
-      # the merge turns off the enabled instance an earlier generation wrote;
-      # without it the instance would linger, pointing at a missing binary.
       opencode = {
         driver = "opencode";
         enabled = false;
