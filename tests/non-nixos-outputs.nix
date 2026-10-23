@@ -199,6 +199,9 @@ let
               if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/synthetic_api_key'"} ${pi}/bin/pi-synthetic-key; then
                 ${fail "${entry.name}: Pi's key helper does not read ${state}/synthetic_api_key"}
               fi
+              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} ${pi}/bin/pi-openrouter-key; then
+                ${fail "${entry.name}: Pi's OpenRouter key helper does not read ${state}/openrouter_api_key"}
+              fi
             ''
         )
         (

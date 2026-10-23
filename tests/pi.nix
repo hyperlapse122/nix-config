@@ -14,8 +14,8 @@
   committed snapshot, home/h82/agents/synthetic-catalog.json.
 
   Verifies, on every user:
-  - home-path/bin/pi is the packaged wrapper and home-path/bin/pi-synthetic-key
-    the packaged key helper.
+  - home-path/bin/pi is the packaged wrapper, and home-path/bin/pi-synthetic-key
+    and home-path/bin/pi-openrouter-key the packaged key helpers.
   - home.activation.piModels and home.activation.piSettings each run after
     installPackages, invoke the packaged merger without swallowing its exit
     status (the script, run with a failing merger in its place, fails too),
@@ -201,6 +201,14 @@ let
               case "$helper" in
                 /nix/store/*-pi-*/bin/pi-synthetic-key) ;;
                 *) fail ${host'}": bin/pi-synthetic-key is not the packaged helper: $helper"; helper= ;;
+              esac
+            fi
+            if [ ! -x ${homePath}/bin/pi-openrouter-key ]; then
+              fail ${host'}": home-path has no executable bin/pi-openrouter-key"
+            else
+              case "$(readlink -f ${homePath}/bin/pi-openrouter-key)" in
+                /nix/store/*-pi-*/bin/pi-openrouter-key) ;;
+                *) fail ${host'}": bin/pi-openrouter-key is not the packaged helper: $(readlink -f ${homePath}/bin/pi-openrouter-key)" ;;
               esac
             fi
           ''

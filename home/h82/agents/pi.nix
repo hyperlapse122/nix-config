@@ -11,8 +11,16 @@ let
     if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
   syntheticKeyFile = "${keyDirectory}/synthetic_api_key";
   exaKeyFile = "${keyDirectory}/exa_api_key";
+  openrouterKeyFile = "${keyDirectory}/openrouter_api_key";
 
-  pi = import ../../../packages/pi.nix { inherit pkgs syntheticKeyFile exaKeyFile; };
+  pi = import ../../../packages/pi.nix {
+    inherit
+      pkgs
+      syntheticKeyFile
+      exaKeyFile
+      openrouterKeyFile
+      ;
+  };
 
   piAcp = import ../../../packages/pi-acp.nix { inherit pkgs pi; };
   acpx = import ../../../packages/acpx.nix { inherit pkgs piAcp; };
@@ -160,7 +168,12 @@ in
   # Pi loads every directory under ~/.pi/agent/extensions that holds an
   # index.js.
   home.file.".pi/agent/extensions/nix-config".source = import ../../../packages/pi-extension.nix {
-    inherit pkgs syntheticKeyFile exaKeyFile;
+    inherit
+      pkgs
+      syntheticKeyFile
+      exaKeyFile
+      openrouterKeyFile
+      ;
   };
 
   # Unguarded and after installPackages for the reasons given on

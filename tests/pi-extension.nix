@@ -11,12 +11,13 @@
 
   Verifies:
   - the packaged extension directory holds exactly one regular file, a root
-    index.js equal to packages/pi-extension/index.js with only the two
+    index.js equal to packages/pi-extension/index.js with only the three
     placeholders replaced by the paths it was given, and imports nothing but
     node:fs/promises: Pi runs it from the store, where no package resolves.
   - the fixture tests pass under node --test against the repository source,
-    including the key-file table they run against both the extension and
-    scripts/pi-synthetic-key, so the two copies of the key rules cannot drift.
+    including the key-file table they run against the extension,
+    scripts/pi-synthetic-key, and scripts/pi-openrouter-key, so the three
+    copies of the key rules cannot drift.
   - per user, exactly one enabled Home Manager file targets
     .pi/agent/extensions/nix-config, found by its resolved `target`, and the
     materialized `home-files` holds that directory with exactly the one
@@ -53,8 +54,8 @@ let
     dir:
     pkgs.writeText "pi-extension-expected-index.js" (
       builtins.replaceStrings
-        [ ''"@SYNTHETIC_KEY_FILE@"'' ''"@EXA_KEY_FILE@"'' ]
-        [ ''"${dir}/synthetic_api_key"'' ''"${dir}/exa_api_key"'' ]
+        [ ''"@SYNTHETIC_KEY_FILE@"'' ''"@EXA_KEY_FILE@"'' ''"@OPENROUTER_KEY_FILE@"'' ]
+        [ ''"${dir}/synthetic_api_key"'' ''"${dir}/exa_api_key"'' ''"${dir}/openrouter_api_key"'' ]
         (builtins.readFile source)
     );
 
@@ -63,6 +64,7 @@ let
     inherit pkgs;
     syntheticKeyFile = "${fakeDir}/synthetic_api_key";
     exaKeyFile = "${fakeDir}/exa_api_key";
+    openrouterKeyFile = "${fakeDir}/openrouter_api_key";
   };
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
@@ -136,7 +138,7 @@ pkgs.runCommand "pi-extension-tests" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
   fi
 
   cp ${./pi-extension.test.mjs} test.mjs
-  if ! HOME=$TMPDIR EXTENSION=${source} KEY_HELPER=${../scripts/pi-synthetic-key} node --test test.mjs >&2; then
+  if ! HOME=$TMPDIR EXTENSION=${source} KEY_HELPER=${../scripts/pi-synthetic-key} OPENROUTER_KEY_HELPER=${../scripts/pi-openrouter-key} node --test test.mjs >&2; then
     echo 'the Pi extension fixture tests failed' >&2
     failed=1
   fi

@@ -253,8 +253,8 @@ let
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
 
-      # Pi's Synthetic provider runs the packaged key helper, which reads the
-      # key host-secrets publishes into the state directory.
+      # Pi's Synthetic and OpenRouter providers run the packaged key helpers,
+      # which read the keys host-secrets publishes into the state directory.
       pi=$(readlink -f "$gen/home-path/bin/pi" || true)
       piKey=$(readlink -f "$gen/home-path/bin/pi-synthetic-key" || true)
       if [ -z "$pi" ] || [ ! -f "$pi" ]; then
@@ -263,6 +263,12 @@ let
         bad "no pi-synthetic-key beside pi"
       elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$piKey"; then
         bad "Pi's key helper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
+      fi
+      piOpenrouterKey=$(readlink -f "$gen/home-path/bin/pi-openrouter-key" || true)
+      if [ -z "$piOpenrouterKey" ] || [ ! -f "$piOpenrouterKey" ]; then
+        bad "no pi-openrouter-key beside pi"
+      elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/openrouter_api_key'"} "$piOpenrouterKey"; then
+        bad "Pi's OpenRouter key helper does not read ${user.my.secrets.stateDir}/openrouter_api_key"
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the

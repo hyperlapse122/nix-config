@@ -36,9 +36,10 @@ EOF
 chmod +x "$work/bin/npx"
 export PATH=$work/bin:$PATH
 
-# Exported keys a calling session might carry; neither may reach Pi.
+# Exported keys a calling session might carry; none may reach Pi.
 export SYNTHETIC_API_KEY=fake-synthetic-key-for-tests
 export EXA_API_KEY=fake-exa-key-for-tests
+export OPENROUTER_API_KEY=fake-openrouter-key-for-tests
 # A caller's own choice of Pi must not win over the packaged one.
 export PI_ACP_PI_COMMAND=/var/empty/not-pi
 
@@ -84,7 +85,7 @@ case $mode in
       if [ "$agent" = pi ]; then expected=$pi_command; else expected=$readonly_command; fi
       grep -qxF "PI_ACP_PI_COMMAND=$expected" "$PI_STUB_LOG/env" ||
         fail "$agent did not set PI_ACP_PI_COMMAND to $expected: $(grep '^PI_ACP_PI_COMMAND=' "$PI_STUB_LOG/env" || echo unset)"
-      for key in SYNTHETIC_API_KEY EXA_API_KEY; do
+      for key in SYNTHETIC_API_KEY EXA_API_KEY OPENROUTER_API_KEY; do
         if grep -q "^$key=" "$PI_STUB_LOG/env"; then
           fail "$agent passed $key to Pi"
         fi
