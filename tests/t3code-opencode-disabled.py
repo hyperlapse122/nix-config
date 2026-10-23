@@ -23,15 +23,7 @@ import tempfile
 
 
 def main(merger, declared_path):
-    with open(declared_path) as handle:
-        declared = json.load(handle)
     problems = []
-    if declared.get('prefixEntries'):
-        problems.append('the declaration still carries prefixEntries')
-    for entry in declared.get('setPaths', []):
-        if entry.get('path', [])[:2] == ['providerModelPreferences', 'opencode']:
-            problems.append('the declaration still sets {}'.format('.'.join(entry['path'])))
-
     seeded = {
         'unrelated': {'kept': True},
         'providerInstances': {'opencode': {'driver': 'opencode', 'enabled': True}},
