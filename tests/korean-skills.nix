@@ -12,13 +12,14 @@
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/<name>
     Pi                        ~/.pi/agent/skills/<name>
+    Codex                     ~/.codex/skills/<name>
 
   The user list is `userEntries` from `tests/lib/configurations.nix`, so the
   NixOS and non-NixOS Linux user environments are both covered, and the
   helper's guard fails the build when that list is empty.
 
   Verifies, per Home Manager user:
-  - each of the twelve targets is exactly one enabled Home Manager file, found by
+  - each of the fifteen targets is exactly one enabled Home Manager file, found by
     its resolved `target` rather than its attribute name, because either can
     move the file without changing its text.
   - each target exists in the materialized `home-files`, holds a SKILL.md whose
@@ -28,8 +29,13 @@
     `skills/<name>` (so `references/` and `examples/` are there too), and
     LICENSE against the input's root LICENSE. See
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
-  - the enabled targets at or under each root are exactly the three skill
-    directories, so a skill dropped from or added to the module, or a file
+  - each target's SKILL.md in `home-files` is not a symlink, because Codex
+    skips a SKILL.md symlink: home/h82/agents/skills.nix links the skill
+    directory itself, never its files with `recursive = true`.
+  - no enabled target is ~/.codex/skills/.system or under it, which Codex
+    owns.
+  - the enabled targets at or under each of the five roots are exactly the
+    three skill directories, so a skill dropped from or added to the module, or a file
     declared inside a skill directory, turns this red.
   - nothing exists at ~/.agents/skills or ~/.gemini/config/skills in the
     materialized `home-files`: the Antigravity CLI lists skills under
@@ -79,7 +85,11 @@ let
     ".config/opencode/skills"
     ".gemini/antigravity-cli/skills"
     ".pi/agent/skills"
+    ".codex/skills"
   ];
+
+  # Codex keeps its bundled skills here; no declared skill may land on it.
+  codexSystemDir = ".codex/skills/.system";
 
   forbiddenRoots = [
     ".agents/skills"
@@ -136,6 +146,10 @@ let
     in
     ''
       dir=${homeFiles}/${target}
+      if [ -L "$dir/SKILL.md" ]; then
+        echo ${esc "the SKILL.md of ~/${target} on ${label} is a symlink in home-files; link the skill directory, not its files"} >&2
+        failed=1
+      fi
       if [ ! -f "$dir/SKILL.md" ]; then
         echo ${esc "~/${target} on ${label} holds no SKILL.md in home-files"} >&2
         failed=1
@@ -204,6 +218,15 @@ let
         failed=1
       ''
     ) roots
+    + (
+      let
+        found = targetsUnder userConfig codexSystemDir;
+      in
+      lib.optionalString (found != [ ]) ''
+        echo ${esc "~/${codexSystemDir} on ${label} belongs to Codex, but these targets are declared there: ${lib.concatStringsSep ", " found}"} >&2
+        failed=1
+      ''
+    )
     + lib.optionalString (registry == null) ''
       echo ${esc "missing my.koreanSkills on ${label}"} >&2
       failed=1
