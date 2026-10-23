@@ -67,10 +67,9 @@ let
     }
   ];
 
-  # Nested keys this repository used to declare and has since retired, which
-  # settingsPaths cannot drop. `prune` removes `modelSettings` with it when
-  # this was its only key, and leaves every other key under it alone.
-  # Claude Code runs every model at its own default effort now.
+  # settingsPaths only assigns, so a nested key this repository stops
+  # declaring is removed here instead.  `value` is what this repository wrote,
+  # so a level the user saves with /effort stays.
   removePaths = [
     {
       path = [
@@ -79,6 +78,7 @@ let
       ];
       key = "effortLevel";
       prune = true;
+      value = "medium";
     }
   ];
 

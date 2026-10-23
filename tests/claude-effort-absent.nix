@@ -26,8 +26,13 @@
     flag of the activation script. Neither may hold a string or key that spells
     an effort outside `remove` and `removePaths`, and the settings merge must
     still retire the top-level `effortLevel` key and
-    `modelSettings."claude-opus-5-5".effortLevel` with `prune`, so the value
-    an earlier rebuild wrote goes.
+    `modelSettings."claude-opus-5-5".effortLevel` with `prune` and the `value`
+    `medium`, so the value an earlier rebuild wrote goes and a level the user
+    saved with `/effort` stays.
+  - the session environment each generation materializes: the Home Manager
+    `hm-session-vars.sh` and `.config/environment.d/10-home-manager.conf`,
+    read the way `tests/session-variables.nix` reads them. Neither may assign
+    `CLAUDE_CODE_EFFORT_LEVEL`, which would force an effort on every session.
   - the declaration JSON the T3 Code settings merge is invoked with, found the
     same way. It must own at least one selection on the `claudeAgent` instance,
     and no such selection may carry anything that spells an effort. It is read
@@ -44,8 +49,12 @@
     fails when the real copies no longer carry them, so those passes are not
     vacuous.
   - the Claude declaration: the Opus `effortLevel` path set again, `effortLevel`
-    in the settings tier, either retirement dropped, and an `effortLevel` in
-    the global config tier.
+    in the settings tier, either retirement dropped, the `prune` flag or the
+    `value` dropped or changed, and an `effortLevel` in the global config
+    tier.
+  - the session environment: a `CLAUDE_CODE_EFFORT_LEVEL` export appended to
+    the real `hm-session-vars.sh`, and the same assignment appended to the
+    real `environment.d` file. An unrelated export passes.
   - the T3 Code declaration: an `effort` option on `defaultModelSelection` or
     on `textGenerationModelSelection`, and no selection left on `claudeAgent`.
     An effort on a selection that is not on `claudeAgent` passes.
@@ -141,9 +150,9 @@ let
     ),
     (
       if $retire and (((.removePaths // []) | any(
-        .path == ["modelSettings", "claude-opus-5-5"] and .key == "effortLevel" and .prune == true
+        .path == ["modelSettings", "claude-opus-5-5"] and .key == "effortLevel" and .prune == true and .value == "medium"
       )) | not) then
-        "no longer retires modelSettings.claude-opus-5-5.effortLevel with prune"
+        "no longer retires modelSettings.claude-opus-5-5.effortLevel with prune and the value medium"
       else empty end
     )
   '';
@@ -185,6 +194,7 @@ let
       label = entry.name;
       user = userOf entry;
       homeFiles = user.home-files or null;
+      sessionVars = user.home.sessionVariablesPackage or null;
     in
     lib.optionalString (homeFiles == null) ''
       echo ${esc "no materialized home-files on ${label}"} >&2
@@ -204,6 +214,16 @@ let
         fi
       '') deliveryPaths
     )
+    + lib.optionalString (sessionVars == null) ''
+      echo ${esc "no session variables package on ${label}"} >&2
+      failed=1
+    ''
+    + lib.optionalString (sessionVars != null) ''
+      checkSession ${esc "hm-session-vars.sh on ${label}"} ${esc "${sessionVars}/etc/profile.d/hm-session-vars.sh"} || failed=1
+    ''
+    + lib.optionalString (homeFiles != null) ''
+      checkSession ${esc "environment.d/10-home-manager.conf on ${label}"} ${esc "${homeFiles}/.config/environment.d/10-home-manager.conf"} || failed=1
+    ''
     + ''
       checkDeclaration ${esc "the Claude Code settings merge on ${label}"} claude-settings ${esc (activation user "claudeSettings")} || failed=1
       checkDeclaration ${esc "the Claude Code global config merge on ${label}"} claude-global ${esc (activation user "claudeGlobalConfig")} || failed=1
@@ -286,6 +306,46 @@ let
       }
 
       ${
+        let
+          sessionVars = baseUser.home.sessionVariablesPackage or null;
+        in
+        if sessionVars == null || baseFiles == null then
+          ''
+            echo ${esc "self-test: no session environment on ${base.name}"} >&2
+            selfTestFailed=1
+          ''
+        else
+          ''
+            shellFile=${esc "${sessionVars}/etc/profile.d/hm-session-vars.sh"}
+            environmentFile=${esc "${baseFiles}/.config/environment.d/10-home-manager.conf"}
+            if [ ! -s "$shellFile" ] || [ ! -s "$environmentFile" ]; then
+              echo "self-test: the first user's session environment files are missing" >&2
+              selfTestFailed=1
+            else
+              expectPass 'the real hm-session-vars.sh' sessionProblems "$shellFile"
+              expectPass 'the real environment.d file' sessionProblems "$environmentFile"
+
+              sessionMutant() { # name, file, line
+                local name=$1 mutated
+                mutated=$(mktemp)
+                { cat "$2"; printf '%s\n' "$3"; } > "$mutated"
+                if applied "$name" "$2" "$mutated"; then
+                  expectFail "$name" 'the session environment sets CLAUDE_CODE_EFFORT_LEVEL' sessionProblems "$mutated"
+                fi
+              }
+              sessionMutant 'an effort exported in hm-session-vars.sh' "$shellFile" 'export CLAUDE_CODE_EFFORT_LEVEL="high"'
+              sessionMutant 'an effort assigned in environment.d' "$environmentFile" 'CLAUDE_CODE_EFFORT_LEVEL=high'
+
+              unrelated=$(mktemp)
+              { cat "$shellFile"; printf '%s\n' 'export UNRELATED_SETTING="high"'; } > "$unrelated"
+              if applied 'an unrelated export' "$shellFile" "$unrelated"; then
+                expectPass 'an unrelated export' sessionProblems "$unrelated"
+              fi
+            fi
+          ''
+      }
+
+      ${
         if activation baseUser "claudeSettings" == "" then
           ''
             echo ${esc "self-test: no Claude Code settings activation on ${base.name}"} >&2
@@ -307,10 +367,14 @@ let
                 '.setPaths += [{path: ["modelSettings", "claude-opus-5-5", "effortLevel"], value: "xhigh"}]'
               jsonMutant 'effortLevel in the settings tier' claude-settings 'declares an effort outside its retirements' "$claudeDeclared" \
                 '.set.effortLevel = "medium"'
-              jsonMutant 'the removePaths retirement dropped' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune' "$claudeDeclared" \
+              jsonMutant 'the removePaths retirement dropped' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune and the value medium' "$claudeDeclared" \
                 '.removePaths = []'
-              jsonMutant 'the prune flag dropped' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune' "$claudeDeclared" \
+              jsonMutant 'the prune flag dropped' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune and the value medium' "$claudeDeclared" \
                 '.removePaths |= map(del(.prune))'
+              jsonMutant 'the value dropped' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune and the value medium' "$claudeDeclared" \
+                '.removePaths |= map(del(.value))'
+              jsonMutant 'the value changed' claude-settings 'no longer retires modelSettings.claude-opus-5-5.effortLevel with prune and the value medium' "$claudeDeclared" \
+                '.removePaths |= map(.value = "high")'
               jsonMutant 'the top-level retirement dropped' claude-settings 'no longer retires the top-level effortLevel key' "$claudeDeclared" \
                 '.remove -= ["effortLevel"]'
               jsonMutant 'effortLevel in the global config tier' claude-global 'declares an effort outside its retirements' "$globalDeclared" \
@@ -403,6 +467,30 @@ pkgs.runCommand "claude-effort-absent-tests"
         printf '%s\n' "$out"
         return 1
       fi
+    }
+
+    # Prints the assignments of CLAUDE_CODE_EFFORT_LEVEL in a session
+    # environment file, and fails when there are any. It matches the shell
+    # form (export NAME="value") and the environment.d form (NAME=value).
+    sessionProblems() {
+      local hits
+      hits=$(grep -E '(^|[[:space:];])(export[[:space:]]+)?CLAUDE_CODE_EFFORT_LEVEL=' "$1" || true)
+      if [ -n "$hits" ]; then
+        printf 'the session environment sets CLAUDE_CODE_EFFORT_LEVEL: %s\n' "$hits"
+        return 1
+      fi
+    }
+
+    checkSession() {
+      local label=$1 file=$2 problems
+      if [ ! -s "$file" ]; then
+        echo "$label is missing or empty" >&2
+        return 1
+      fi
+      problems=$(sessionProblems "$file") || {
+        printf '%s\n' "$problems" | sed "s|^|$label: |" >&2
+        return 1
+      }
     }
 
     # Follows the --declared flag of an activation script to the declaration

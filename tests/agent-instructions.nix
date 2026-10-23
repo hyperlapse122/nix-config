@@ -118,8 +118,14 @@
     Claude unit or scout routed through `delegate_task` without the capability
     condition, the subagent ban, the foreground or secret rule narrowed to
     delegated tasks, the worktree launch without the parent commit, or its
-    cleanup forced, the leftover-worktree report rule removed, negated, or
-    stripped of its unmerged-commits or kept-native-branch clause, the rename
+    cleanup forced or stripped of its tool-offers condition or `delegate_task`
+    fallback, the reviewer `fork` rule without its tool-offers condition, the
+    overlapping-edit, parallel-edits, rewrite, committed-state, or
+    shared-checkout rule removed, negated, narrowed to delegated tasks, or
+    moved under `## Delegated tasks`, the leftover-worktree report rule
+    removed, negated, or stripped of its unmerged-commits, kept-native-branch,
+    or recovery clause, the worktree-signal sentence removed, negated, or
+    stripped of its path, the rename
     rule without its outside-T3-Code-worktree condition or with it inverted,
     the keep-the-branch-name rule removed, negated, told to rename, to push
     under another name, or stripped of its pull request, the branch collision
@@ -246,6 +252,8 @@ let
   gitHeading = "# Git";
 
   # The self-test below mutates these sentences, so they are named once.
+  worktreeSignalDirectory = "T3 Code's worktree directory, `~/.t3/worktrees/` by default";
+  worktreeSignalSentence = "A worktree T3 Code created is a checkout whose path is under ${worktreeSignalDirectory}.";
   renameCondition = "Outside a worktree T3 Code created, before the first push, rename";
   renameSentence = "${renameCondition} a branch whose name does not describe the change, such as a worktree codename or random hex, with `git branch -m`.";
   renameLine = "- ${renameSentence} ${renameNamingSentence} ${renameNeverSentence}";
@@ -258,6 +266,7 @@ let
   keepNameLine = "- ${keepNameSentence} ${collisionSentence}";
 
   gitSentences = [
+    worktreeSignalSentence
     renameSentence
     renameNamingSentence
     renameNeverSentence
@@ -518,16 +527,27 @@ let
   noDelegationToolsSentence = "When the session lists no T3 Code delegation tools, use your harness's own subagent tool.";
   unassignedModelSentence = "When no skill or rule assigns a model to a subagent, launch it as `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance, and use `opus` and `fable` only where a skill or these rules name them.";
   freshPromptSentence = "A fresh subagent sees none of your conversation, so put everything it needs in its prompt, including that it stays read-only when it only searches, reads, or reviews.";
-  freshReviewerSentence = "Launch each reviewer and verifier fresh, never as a `fork`, so it does not start from your own conclusion.";
+  freshReviewerCondition = "When your own subagent tool offers a `fork` mode, ";
+  freshReviewerSentence = "${freshReviewerCondition}launch each reviewer and verifier fresh, never as a `fork`, so it does not start from your own conclusion.";
   secretsSentence = "Never put a file under `secrets/` or a value you know to be decrypted or a credential into a subagent's prompt.";
   worktreeParentCommitClause = ", name the parent commit in its prompt for it to verify before it edits";
-  worktreeLaunchSentence = "Launch a unit that needs its own checkout with the native tool's `isolation: \"worktree\"`${worktreeParentCommitClause}, and tell it to commit its edits and report its branch.";
+  worktreeOwnToolClause = "on your own subagent tool when it offers that argument, such as Claude Code's `Agent`";
+  worktreeDelegateClause = ", and otherwise, when the session lists T3 Code's delegation tools, with `isolation: \"worktree\"` on `delegate_task`";
+  worktreeLaunchSentence = "Launch a unit that needs its own checkout with `isolation: \"worktree\"` ${worktreeOwnToolClause}${worktreeDelegateClause}${worktreeParentCommitClause}, and tell it to commit its edits and report its branch.";
+  overlappingEditSentence = "Before you edit a file that a still-running subagent also edits, in this checkout or in a worktree you will merge back, wait until that subagent has finished and its edits are merged.";
+  parallelEditsSentence = "Never run two subagents that edit the same files in one checkout at the same time: from a clean checkout, launch each in its own worktree as the worktree rule above says, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another.";
+  rewriteTriggerExamples = "a formatter, a code generator, a dependency update, a branch switch, or a mutation test run inside the checkout";
+  rewriteTriggerSentence = "Launch a subagent in its own worktree, as the worktree rule above says, when it runs a command that rewrites files beyond the subagent's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
+  committedStateTriggerSentence = "Launch a subagent in its own worktree, as the worktree rule above says, when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
+  sharedCheckoutLeaveClause = ", and, while another subagent edits there, to leave formatting, builds, and checks to you";
+  sharedCheckoutSentence = "Tell subagents that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
   worktreeRemoveCommand = "`git worktree remove`";
   worktreeBranchCommand = "`git branch -d`";
   worktreeCleanupSentence = "After you merge that branch without a conflict, remove its worktree with ${worktreeRemoveCommand} and its branch with ${worktreeBranchCommand}, never with `--force` or `-D`; when the merge conflicts, abort it and keep the worktree and the branch.";
   leftoverUnmergedClause = " or unmerged commits";
   leftoverNativeClause = ", and for a kept native worktree name its branch as what survives, because removing the parent T3 Code worktree deletes the kept checkout and leaves the branch";
-  leftoverSentence = "When a run used worktrees, end your report by naming each worktree or branch it leaves with uncommitted changes${leftoverUnmergedClause}${leftoverNativeClause}.";
+  leftoverRecoveryClause = ", and say that its commits stay on that branch and can be checked out again with `git worktree add <path> <branch>`";
+  leftoverSentence = "When a run used worktrees, end your report by naming each worktree or branch it leaves with uncommitted changes${leftoverUnmergedClause}${leftoverNativeClause}${leftoverRecoveryClause}.";
 
   t3CodeHeading = "# T3 Code";
 
@@ -557,12 +577,7 @@ let
   worktreeFallbackClause = "; a worktree launch of a task other than a cross-model peer that still fails after that relaunch is skipped and reported with the reason when the task needed the committed state${worktreeFallbackRewriteCase}, and runs in your checkout once every other task there has finished only when it got its worktree for parallel edits of one file";
   launchFailureSentence = "When a `delegate_task` launch fails, relaunch it once with the same `clientRequestId`; when that fails too, do the work yourself, unless these instructions forbid it, as they do for a cross-model peer${worktreeFallbackClause}.";
   sharedCheckoutDefaultPeerClause = "; a cross-model peer is the one task that always gets a worktree, as the peer rule above says";
-  sharedCheckoutDefaultSentence = "Launch every delegated task other than a cross-model peer in the checkout you work in, with no `isolation` argument, and give a task its own worktree only in the three cases below${sharedCheckoutDefaultPeerClause}.";
-  parallelEditsSentence = "Never run two tasks that edit the same files in one checkout at the same time: from a clean checkout, launch each with `isolation: \"worktree\"`, tell each to commit its edits and report its branch, and merge those branches back one at a time; otherwise launch them one after another.";
-  rewriteTriggerExamples = "a formatter, a code generator, a dependency update, a branch switch, or a mutation test run inside the checkout";
-  rewriteTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it runs a command that rewrites files beyond the task's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and merge that branch back once it has finished.";
-  committedStateTriggerSentence = "Launch a task with `isolation: \"worktree\"` when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
-  sharedCheckoutLeaveClause = ", and, while another task edits there, to leave formatting, builds, and checks to you";
+  sharedCheckoutDefaultSentence = "Launch every delegated task other than a cross-model peer in the checkout you work in, with no `isolation` argument, and give a task its own worktree only in the cases the worktree rules of the Subagents section name${sharedCheckoutDefaultPeerClause}.";
   foregroundSentence = "Tell each subagent to run the commands its report depends on in the foreground, raising a slow command's timeout as far as its harness allows and waiting inside the turn for one that outlasts it, and not to end its turn until it has written its final report, because the last message of that turn is its result; ending the turn while such a command still runs in the background and an ending that promises a later report, such as \"I'll report when it finishes\", are forbidden to it, while a server it keeps running for its own work, such as a dev server for a browser check, may stay in the background.";
   slowCommandTimeoutSentence = "Tell each subagent to give a command that can take more than a minute, such as a test suite, a build, or a flake check, a timeout that covers its expected run before it starts the command, where its shell tool takes one and up to the tool's limit, such as 600000 ms for Claude Code's Bash tool, whose 120000 ms default moves a longer command to the background.";
   backgroundWaitSentence = "Tell it that when its harness moves a command it waits on to the background, it waits for that command inside the turn with blocking foreground calls, each within the tool's limit, until the harness's record of that one command shows it finished, and then reads the command's output and exit status from that record, such as with a Claude Code Bash loop like `until grep -q '^\\[exited with code' <output-file>; do sleep 5; done` on the output file the Bash tool named, under a `timeout` below 600000 ms and repeated as needed, never with a match on a process name, which can catch another task's run, because Claude Code's `Monitor` and background notifications do not hold the turn, whatever its tool descriptions advise.";
@@ -660,7 +675,6 @@ let
         fi
       '') h.markers
   ) harnessFacts;
-  sharedCheckoutSentence = "Tell tasks that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
 
   subagentsSentences = [
     nativeRouteSentence
@@ -671,6 +685,11 @@ let
     freshReviewerSentence
     secretsSentence
     worktreeLaunchSentence
+    overlappingEditSentence
+    parallelEditsSentence
+    rewriteTriggerSentence
+    committedStateTriggerSentence
+    sharedCheckoutSentence
     worktreeCleanupSentence
     leftoverSentence
     foregroundSentence
@@ -692,14 +711,9 @@ let
     fullAccessSentence
     rejectionSentence
     launchFailureSentence
-    "Before you edit a file that a still-running task also edits, in this checkout or in a worktree you will merge back, wait until that task has finished and its edits are merged."
     "Launch every delegated task that does not need another task's result in the same response, each with `delegate_task` in its default `async` mode, instead of launching one, waiting for it, and then launching the next."
     "Never use `mode: \"wait\"`, even for a single task, because it holds your turn until the task finishes."
     sharedCheckoutDefaultSentence
-    parallelEditsSentence
-    rewriteTriggerSentence
-    committedStateTriggerSentence
-    sharedCheckoutSentence
     "Give each delegated task its own `clientRequestId`, and reuse it when you retry that launch, except for the relaunch without `runtimeMode` after a rejected runtime mode, which takes a new one."
     "Launch a task that needs an earlier task's result only after you have read that result."
     "In a run with a person present, after launching, do the work that does not need the delegated results, and when only those results remain, end your turn so the user can talk to you while the tasks run."
@@ -1401,6 +1415,7 @@ let
     ''from=${esc from} to=${esc to} awk '$0 == ENVIRON["line"] { i = index($0, ENVIRON["from"]); if (i) $0 = substr($0, 1, i - 1) ENVIRON["to"] substr($0, i + length(ENVIRON["from"])) } { print }' '';
   ceLineAdded = ''awk '{ print } $0 == "# Compound Engineering" { print ENVIRON["line"] }' '';
   lineRemoved = ''awk '$0 != ENVIRON["line"]' '';
+  movedUnderDelegatedTasks = ''awk '$0 == ENVIRON["line"] { next } { print } $0 == "## Delegated tasks" { print ENVIRON["line"] }' '';
   lineNegated = ''awk '$0 == ENVIRON["line"] { $0 = "- Do not " substr($0, 3) } { print }' '';
 
   # The trailing full stop of the line replaced by `text` and a full stop.
@@ -2096,10 +2111,10 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     {
-      name = "rewrite-command trigger moved above the shared-checkout default";
+      name = "rewrite-command trigger moved above the overlapping-edit wait";
       line = "- ${rewriteTriggerSentence}";
-      edit = ''d=${esc "- ${sharedCheckoutDefaultSentence}"} awk '$0 == ENVIRON["d"] { print ENVIRON["line"] } $0 != ENVIRON["line"] { print }' '';
-      expect = "reorders or duplicates a T3 Code sentence:";
+      edit = ''d=${esc "- ${overlappingEditSentence}"} awk '$0 == ENVIRON["d"] { print ENVIRON["line"] } $0 != ENVIRON["line"] { print }' '';
+      expect = "reorders or duplicates a Subagents sentence:";
     }
     {
       name = "worktree sentence for every delegated task added";
@@ -2168,8 +2183,14 @@ let
   ++ removedAndNegatedIn "Subagents" "fresh reviewer sentence" freshReviewerSentence
   ++ removedAndNegatedIn "Subagents" "subagent secret sentence" secretsSentence
   ++ removedAndNegatedIn "Subagents" "worktree launch sentence" worktreeLaunchSentence
+  ++ removedAndNegatedIn "Subagents" "overlapping-edit sentence" overlappingEditSentence
+  ++ removedAndNegatedIn "Subagents" "parallel-edits sentence" parallelEditsSentence
+  ++ removedAndNegatedIn "Subagents" "rewrite-command trigger sentence" rewriteTriggerSentence
+  ++ removedAndNegatedIn "Subagents" "committed-state trigger sentence" committedStateTriggerSentence
+  ++ removedAndNegatedIn "Subagents" "shared-checkout sentence" sharedCheckoutSentence
   ++ removedAndNegatedIn "Subagents" "worktree cleanup sentence" worktreeCleanupSentence
   ++ removedAndNegatedIn "Subagents" "leftover worktree report sentence" leftoverSentence
+  ++ removedAndNegatedIn "Git" "worktree signal sentence" worktreeSignalSentence
   ++ removedAndNegatedIn "T3 Code" "pull request watch sentence" pullRequestToolsSentence
   ++ removedAndNegatedIn "T3 Code" "Delegated tasks limiting sentence" delegatedTasksLimitSentence
   ++ removedAndNegatedIn "T3 Code" "delegated task tool-limits sentence" delegatedToolLimitsSentence
@@ -2348,8 +2369,134 @@ let
     {
       name = "worktree launch loses the native isolation";
       line = "- ${worktreeLaunchSentence}";
-      edit = replaceInLine "with the native tool's `isolation: \"worktree\"`" "in your own checkout";
+      edit = replaceInLine "with `isolation: \"worktree\"` ${worktreeOwnToolClause}" "in your own checkout";
       expect = pinFailure worktreeLaunchSentence;
+    }
+    {
+      name = "worktree launch no longer depends on the tool offering the argument";
+      line = "- ${worktreeLaunchSentence}";
+      edit = replaceInLine " when it offers that argument" "";
+      expect = pinFailure worktreeLaunchSentence;
+    }
+    {
+      name = "worktree launch loses its delegate_task fallback";
+      line = "- ${worktreeLaunchSentence}";
+      edit = replaceInLine worktreeDelegateClause "";
+      expect = pinFailure worktreeLaunchSentence;
+    }
+    {
+      name = "worktree launch narrowed to the native tool again";
+      line = "- ${worktreeLaunchSentence}";
+      edit = replaceInLine "${worktreeOwnToolClause}" "with the native tool";
+      expect = pinFailure worktreeLaunchSentence;
+    }
+    {
+      name = "worktree launch narrowed to delegate_task";
+      line = "- ${worktreeLaunchSentence}";
+      edit = replaceInLine "${worktreeOwnToolClause}${worktreeDelegateClause}" "on `delegate_task`";
+      expect = pinFailure worktreeLaunchSentence;
+    }
+    {
+      name = "reviewer fork rule no longer depends on the tool offering a fork mode";
+      line = "- ${freshReviewerSentence}";
+      edit = replaceInLine freshReviewerCondition "";
+      expect = pinFailure freshReviewerSentence;
+    }
+    {
+      name = "worktree signal sentence loses its path";
+      line = "- ${worktreeSignalSentence}";
+      edit = replaceInLine " whose path is under ${worktreeSignalDirectory}" "";
+      expect = pinFailure worktreeSignalSentence;
+    }
+    {
+      name = "worktree signal sentence loses its default directory";
+      line = "- ${worktreeSignalSentence}";
+      edit = replaceInLine ", `~/.t3/worktrees/` by default" "";
+      expect = pinFailure worktreeSignalSentence;
+    }
+    {
+      name = "worktree signal sentence turned into a name check";
+      line = "- ${worktreeSignalSentence}";
+      edit = replaceInLine "whose path is under ${worktreeSignalDirectory}" "whose branch name T3 Code gave it";
+      expect = pinFailure worktreeSignalSentence;
+    }
+    {
+      name = "leftover report loses the recovery clause";
+      line = "- ${leftoverSentence}";
+      edit = replaceInLine leftoverRecoveryClause "";
+      expect = pinFailure leftoverSentence;
+    }
+    {
+      name = "leftover report names another recovery command";
+      line = "- ${leftoverSentence}";
+      edit = replaceInLine "`git worktree add <path> <branch>`" "`git checkout <branch>` in the parent worktree";
+      expect = pinFailure leftoverSentence;
+    }
+    {
+      name = "overlapping-edit wait narrowed to delegated tasks";
+      line = "- ${overlappingEditSentence}";
+      edit = replaceInLine "still-running subagent also edits" "still-running task also edits";
+      expect = pinFailure overlappingEditSentence;
+    }
+    {
+      name = "parallel-edits rule narrowed to delegated tasks";
+      line = "- ${parallelEditsSentence}";
+      edit = replaceInLine "Never run two subagents" "Never run two tasks";
+      expect = pinFailure parallelEditsSentence;
+    }
+    {
+      name = "parallel-edits rule narrowed to the delegate_task isolation argument";
+      line = "- ${parallelEditsSentence}";
+      edit = replaceInLine "launch each in its own worktree as the worktree rule above says" "launch each with `isolation: \"worktree\"`";
+      expect = pinFailure parallelEditsSentence;
+    }
+    {
+      name = "rewrite-command trigger narrowed to delegated tasks";
+      line = "- ${rewriteTriggerSentence}";
+      edit = replaceInLine "Launch a subagent in its own worktree" "Launch a task with `isolation: \"worktree\"`";
+      expect = pinFailure rewriteTriggerSentence;
+    }
+    {
+      name = "committed-state trigger narrowed to delegated tasks";
+      line = "- ${committedStateTriggerSentence}";
+      edit = replaceInLine "Launch a subagent in its own worktree" "Launch a task with `isolation: \"worktree\"`";
+      expect = pinFailure committedStateTriggerSentence;
+    }
+    {
+      name = "shared-checkout rule narrowed to delegated tasks";
+      line = "- ${sharedCheckoutSentence}";
+      edit = replaceInLine "Tell subagents that share" "Tell tasks that share";
+      expect = pinFailure sharedCheckoutSentence;
+    }
+    {
+      name = "overlapping-edit wait moved under Delegated tasks";
+      line = "- ${overlappingEditSentence}";
+      edit = movedUnderDelegatedTasks;
+      expect = "moves a Subagents sentence out of its section: ${overlappingEditSentence}";
+    }
+    {
+      name = "parallel-edits rule moved under Delegated tasks";
+      line = "- ${parallelEditsSentence}";
+      edit = movedUnderDelegatedTasks;
+      expect = "moves a Subagents sentence out of its section: ${parallelEditsSentence}";
+    }
+    {
+      name = "rewrite-command trigger moved under Delegated tasks";
+      line = "- ${rewriteTriggerSentence}";
+      edit = movedUnderDelegatedTasks;
+      expect = "moves a Subagents sentence out of its section: ${rewriteTriggerSentence}";
+    }
+    {
+      name = "committed-state trigger moved under Delegated tasks";
+      line = "- ${committedStateTriggerSentence}";
+      edit = movedUnderDelegatedTasks;
+      expect = "moves a Subagents sentence out of its section: ${committedStateTriggerSentence}";
+    }
+    {
+      name = "shared-checkout rule moved under Delegated tasks";
+      line = "- ${sharedCheckoutSentence}";
+      edit = movedUnderDelegatedTasks;
+      expect = "moves a Subagents sentence out of its section: ${sharedCheckoutSentence}";
     }
     {
       name = "worktree removal forced";

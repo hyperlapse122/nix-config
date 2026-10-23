@@ -134,12 +134,8 @@ let
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
   #
-  # Text generation runs on the claudeAgent instance with Claude Haiku 5.5, not
-  # on Pi, so the Synthetic DeepSeek model below no longer carries it. Neither
-  # selection names an effort: a Claude model runs at Claude Code's own default,
-  # and the owned write drops any effort an earlier generation left behind. The
-  # Synthetic model stays only as the `@<effort>` alias that OpenCode's
-  # small_model names, which hiddenAlias hides.
+  # The Synthetic text-generation model stays only as the `@<effort>` alias
+  # that OpenCode's small_model names, which hiddenAlias hides.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
   textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {

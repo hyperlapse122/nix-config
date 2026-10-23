@@ -29,7 +29,8 @@
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
     and nested path at its declared value, lists every retired key for
-    removal, and prunes the Opus effort setting that earlier rebuilds wrote.
+    removal, and prunes the Opus effort setting that earlier rebuilds wrote, only while
+    it still holds the value `medium` they wrote.
     Asserting the rendered file rather than the Nix attribute set keeps the
     check on what activation actually feeds the merger.
   - no environment.etc entry declares claude-code/managed-settings.json, on
@@ -110,6 +111,7 @@ let
       ];
       key = "effortLevel";
       prune = true;
+      value = "medium";
     }
   ];
 
