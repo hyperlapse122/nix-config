@@ -1131,8 +1131,8 @@
               # the binary reports that attribute. The wrapper flags are read
               # from the installed bin/codex itself, because they are what keep
               # Codex from updating itself under any other CODEX_HOME, such as
-              # T3 Code's per-provider homes, which never receive the declared
-              # config.toml keys.
+              # a home a T3 Code instance gets when it declares one, which
+              # never receives the declared config.toml keys.
               pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
               wrapperFlags = [
                 "-c check_for_update_on_startup=false"

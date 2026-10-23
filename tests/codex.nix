@@ -11,9 +11,9 @@
     attribute is compared with the pin file for the reason given on the
     claude-code check: versionCheckHook already proves the binary reports that
     attribute.
-  - under two different `CODEX_HOME`s, one standing for a T3 Code
-    per-provider home whose config.toml never receives the declared keys,
-    `codex features list` reports `in_app_updates` and `daemon_auto_start` as
+  - under two different `CODEX_HOME`s, one standing for a home a T3 Code
+    instance would get only by declaring one, whose config.toml never
+    receives the declared keys, `codex features list` reports `in_app_updates` and `daemon_auto_start` as
     false. The unwrapped binary beside it reports both as true, so the
     assertion cannot pass on a default that already is false.
   - the wrapper carries `check_for_update_on_startup=false`, which has no
@@ -22,6 +22,13 @@
     starts.
   - the bundled model catalog lists `gpt-6.1-sol`, the model the cross-model
     review peer runs.
+  - `codex debug prompt-input`, offline and with no login, lists a skill
+    directory linked into `$CODEX_HOME/skills` exactly once, and lists it
+    once again when the same directory is also linked into
+    `~/.agents/skills`. A pin that stops reading `$CODEX_HOME/skills`, the
+    root home/h82/agents/skills.nix links into and Codex calls deprecated,
+    lists it zero times; one that stops deduplicating by the resolved
+    SKILL.md lists it twice.
 
   The builder collects every failure instead of exiting at the first.
 */
@@ -92,6 +99,49 @@ pkgs.runCommand "codex-package-tests" { } ''
   }
   if ! grep -qF '"slug":"gpt-6.1-sol"' <<< "$models"; then
     echo "the codex model catalog does not list gpt-6.1-sol" >&2
+    fail=1
+  fi
+
+  # Sets $count to how many times the prompt Codex would send offers the probe
+  # skill, with $1 as HOME and $2 as CODEX_HOME. Runs offline, with no login.
+  # Codex prints one `- <name>: <description>` line per skill.
+  skillCount() {
+    if ! (cd skill-work && HOME=$1 CODEX_HOME=$2 "$wrapper" debug prompt-input hello) \
+      > prompt-input.json 2> prompt-input.log; then
+      echo "codex debug prompt-input failed under CODEX_HOME=$2:" >&2
+      cat prompt-input.log >&2
+      fail=1
+    fi
+    count=$({ grep -oF -- '- probe-skill: A probe skill for the listing check.' prompt-input.json || true; } | wc -l)
+  }
+
+  # home/h82/agents/skills.nix links each skill directory into
+  # ~/.codex/skills, the root Codex calls deprecated, and on some hosts Codex
+  # also reaches it through ~/.agents/skills. Every link resolves to one store
+  # directory, so Codex must list it once from ~/.codex/skills alone and once
+  # from both roots.
+  mkdir -p skill-store/probe-skill skill-work \
+    only-codex/home only-codex/codex/skills \
+    both-roots/home/.agents/skills both-roots/codex/skills
+  cat > skill-store/probe-skill/SKILL.md <<'EOF'
+  ---
+  name: probe-skill
+  description: A probe skill for the listing check.
+  ---
+  Probe.
+  EOF
+  ln -s "$PWD/skill-store/probe-skill" only-codex/codex/skills/probe-skill
+  ln -s "$PWD/skill-store/probe-skill" both-roots/codex/skills/probe-skill
+  ln -s "$PWD/skill-store/probe-skill" both-roots/home/.agents/skills/probe-skill
+
+  skillCount "$PWD/only-codex/home" "$PWD/only-codex/codex"
+  if [ "$count" -ne 1 ]; then
+    echo "codex lists a skill linked into \$CODEX_HOME/skills $count times, expected once" >&2
+    fail=1
+  fi
+  skillCount "$PWD/both-roots/home" "$PWD/both-roots/codex"
+  if [ "$count" -ne 1 ]; then
+    echo "codex lists a skill reached through \$CODEX_HOME/skills and ~/.agents/skills $count times, expected once" >&2
     fail=1
   fi
 
