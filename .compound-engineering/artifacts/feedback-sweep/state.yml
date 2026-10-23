@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-23T02:00:58Z"
+    cursor: "2026-10-23T03:53:14Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -376,7 +376,7 @@ items:
     id: "hyperlapse122/nix-config#310"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/310"
-    updatedAt: "2026-10-23T02:00:58Z"
+    updatedAt: "2026-10-23T02:06:06Z"
   "gh-issues:hyperlapse122/nix-config#311":
     source: "gh-issues"
     status: "source_gone"
@@ -421,7 +421,7 @@ items:
     id: "hyperlapse122/nix-config#313"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/313"
-    updatedAt: "2026-10-23T02:00:58Z"
+    updatedAt: "2026-10-23T02:06:09Z"
   "gh-issues:hyperlapse122/nix-config#316":
     source: "gh-issues"
     status: "in_plan"
@@ -435,43 +435,63 @@ items:
     id: "hyperlapse122/nix-config#316"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/316"
-    updatedAt: "2026-10-23T01:23:13Z"
+    updatedAt: "2026-10-23T02:05:50Z"
   "gh-issues:hyperlapse122/nix-config#317":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Install a generalized test-audit skill in every harness and have shared agent instructions use it when tests are written, changed, reviewed, or pruned."
+    fix_ref: "#322"
+    verified_merge_sha: "da0a63996c4986b70752d8fa8ceba1f6e5526c77"
+    verified_at: "2026-10-23T04:09:32Z"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#322"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#317"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/317"
-    updatedAt: "2026-10-23T01:57:10Z"
+    updatedAt: "2026-10-23T03:53:14Z"
   "gh-issues:hyperlapse122/nix-config#319":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Declare an install path for repository skills in Codex and verify that plugin installs reach every Codex home; #317 depends on it."
+    fix_ref: "#322"
+    verified_merge_sha: "da0a63996c4986b70752d8fa8ceba1f6e5526c77"
+    verified_at: "2026-10-23T04:09:32Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#322"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#319"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/319"
+    updatedAt: "2026-10-23T03:53:14Z"
+  "gh-issues:hyperlapse122/nix-config#320":
+    source: "gh-issues"
+    status: "source_gone"
+    sensitive: false
+    body: "Use the priority service tier for the Codex review peer; proposes a measured comparison before deciding."
     author_class: "teammate"
     claimed_fix_ref: null
     existing_ack: true
     existing_closeout: false
-    id: "hyperlapse122/nix-config#319"
+    id: "hyperlapse122/nix-config#320"
     media: []
-    origin: "https://github.com/hyperlapse122/nix-config/issues/319"
-    updatedAt: "2026-10-23T01:56:59Z"
+    origin: "https://github.com/hyperlapse122/nix-config/issues/320"
+    source_gone_reason: "closed as not planned at source (wontfix): priority tier costs 2.5x subscription usage, over the 2x adoption bar"
+    updatedAt: "2026-10-23T02:56:10Z"
 last_run:
-  timestamp: "2026-10-23T02:07:11Z"
+  timestamp: "2026-10-23T04:09:57Z"
   outcome: "completed"
-  writer: "sweep-MS-7D91-t3-f1e07d4c-2026-10-23"
+  writer: "sweep-MS-7D91-t3a74a2496-2026-10-23"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 3
+      acknowledged: 1
       closed: 2
-      in_plan: 4
-      ingested: 3
+      in_plan: 2
+      ingested: 1
       media_analyzed: 0
-      source_gone: 0
+      source_gone: 1
