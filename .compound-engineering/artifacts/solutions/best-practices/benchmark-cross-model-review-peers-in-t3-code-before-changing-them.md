@@ -1,6 +1,7 @@
 ---
 title: Benchmark a cross-model review peer in T3 Code before changing its model or effort, and never rank models on one sample
 date: "2026-10-22"
+last_updated: "2026-10-23"
 category: best-practices
 module: "Cross-model review peers (home/h82/agents/synthetic-models.nix, home/h82/agents/instructions/instructions.md.tmpl)"
 problem_type: best_practice
@@ -40,6 +41,8 @@ sqlite3 -readonly "file:$HOME/.t3/userdata/statev2.sqlite?mode=ro" \
 The stored text starts with T3 Code's role preamble (`Act as the review sub-agent for this task.`), so launch each benchmark run with `role: "review"` and the rest of the text as `task`, then read the sent message back the same way and `cmp` it against `prompt-full.txt`. A paraphrased or truncated prompt measures a different review.
 
 A delegated thread can disappear when T3 Code compacts its state: on 2026-10-21 a `delegated-task:` thread from earlier the same day returned `thread_not_found`, and neither `statev2.sqlite` nor the OpenCode database still held it. Capture the prompt while the peer is live, or wait for the next real review to launch one.
+
+**Rebuild the fixture the original peer saw, not just its prompt.** A captured prompt points at a reviewed checkout and a scratch directory by path, and both change after the review ends. On 2026-10-23 the prompt of a `ce-code-review` Codex peer named the checkout `~/.t3/worktrees/nix-config/t3-dbe265a0`. That review had covered base `9574dcd` plus uncommitted edits on `5047b1b`, the state its scratch `full.diff` records. By the time of the replay, the checkout sat at `5726717`, which already held the review's fixes, so a replay there would review a different tree. The scratch directory had also gained the rest of that review's outputs after the peer launched: `review.json`, `synthesized-findings.json`, the other reviewers' JSON, and the peer's own `adversarial-codex.json`. A replayed peer may read any of them. Before each run, rebuild the reviewed tree on the same path (base plus `full.diff`, checked against `full.diff`), and reset the scratch directory to the files whose modification time predates the peer's `startedAt`. For a code-review peer, that set was `full.diff`, `files.txt`, `intent.md`, `reviewer-brief.md`, `adversarial-review-brief.md`, and `adversarial-review-constraints.md`. Restore the checkout to its branch afterwards. Budget Codex usage too: one default-tier `gpt-6.1-sol` `xhigh` review took about 9 percent of the 5-hour window (see [The Codex priority service tier costs 2.5x subscription usage](codex-priority-tier-costs-2-5x-subscription-usage-for-review-peer.md)).
 
 **Run the candidates one at a time, with the same isolation as a real peer.** Launch each with `delegate_task`, `isolation: "worktree"`, `runtimeMode: "full-access"`, and the effort in `target.options` (`{"variant": "high"}` for OpenCode). `task_status` reports the served model and `options` (`[{"id": "variant", "value": "high"}]`), which is the receipt that the variant arrived.
 
