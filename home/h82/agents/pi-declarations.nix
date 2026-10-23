@@ -2,10 +2,16 @@
 # committed catalog snapshots. A derivation rather than Nix evaluation over the
 # snapshots, so evaluation needs no import-from-derivation for the list of
 # OpenRouter models the pinned Pi bundles.
-{ pkgs, pi }:
+{
+  pkgs,
+  pi,
+  preLedgerIds,
+}:
 pkgs.runCommand "pi-declared-models.json"
   {
     nativeBuildInputs = [ pkgs.python3 ];
+    passAsFile = [ "preLedgerIds" ];
+    preLedgerIds = builtins.concatStringsSep "\n" preLedgerIds + "\n";
   }
   ''
     # Pi lists its bundled OpenRouter models only when it holds a key, and
@@ -23,6 +29,7 @@ pkgs.runCommand "pi-declared-models.json"
       ${./synthetic-catalog.json} \
       ${./openrouter-catalog.json} \
       bundled \
+      "$preLedgerIdsPath" \
       ${pi}/bin/pi-synthetic-key \
       ${pi}/bin/pi-openrouter-key \
       $out

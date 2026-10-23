@@ -9,10 +9,10 @@
 // files under a temporary directory and imports it fresh, because the
 // extension takes EXA_API_KEY out of process.env when it loads.
 //
-// KEY_HELPER names scripts/pi-synthetic-key and OPENROUTER_KEY_HELPER
-// scripts/pi-openrouter-key, each with its placeholder in place; they default
-// to the repository copies. The key-file table runs against both helpers and
-// the extension, so a rule that drifts in any copy turns this red.
+// KEY_HELPER names scripts/pi-provider-key, with its @KEY_VAR@ and @KEY_FILE@
+// placeholders in place; it defaults to the repository copy. The key-file
+// table runs against both packaged helper shapes and the extension, so a rule
+// that drifts in either source turns this red.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -26,12 +26,11 @@ const sourcePath =
   process.env.EXTENSION ?? new URL("../packages/pi-extension/index.js", import.meta.url).pathname;
 const source = await readFile(sourcePath, "utf8");
 const helperPath =
-  process.env.KEY_HELPER ?? new URL("../scripts/pi-synthetic-key", import.meta.url).pathname;
-const openrouterHelperPath =
-  process.env.OPENROUTER_KEY_HELPER ?? new URL("../scripts/pi-openrouter-key", import.meta.url).pathname;
+  process.env.KEY_HELPER ?? new URL("../scripts/pi-provider-key", import.meta.url).pathname;
+const helperSource = await readFile(helperPath, "utf8");
 const helpers = [
-  ["pi-synthetic-key", await readFile(helperPath, "utf8"), "@SYNTHETIC_KEY_FILE@"],
-  ["pi-openrouter-key", await readFile(openrouterHelperPath, "utf8"), "@OPENROUTER_KEY_FILE@"],
+  ["pi-synthetic-key", "SYNTHETIC_API_KEY"],
+  ["pi-openrouter-key", "OPENROUTER_API_KEY"],
 ];
 
 const EXA_KEY = "fake-exa-key-0123456789";
@@ -439,7 +438,7 @@ test("the caller's signal still aborts a stalled request, reported as aborted", 
   }
 });
 
-// --- key-file rules, shared with scripts/pi-synthetic-key and pi-openrouter-key
+// --- key-file rules, shared with scripts/pi-provider-key
 
 // Each case is a key file's exact contents and the key both copies must take
 // from it, or null when the file holds no key.
@@ -489,9 +488,12 @@ for (const [label, contents, want] of keyFileCases) {
     }
 
     assert.ok(bash, "bash must be on PATH to run the key helpers");
-    for (const [name, helperSource, placeholder] of helpers) {
+    for (const [name, keyVar] of helpers) {
       const helper = join(dir, name);
-      await writeFile(helper, helperSource.replace(placeholder, exaKeyFile()));
+      await writeFile(
+        helper,
+        helperSource.replace("@KEY_VAR@", keyVar).replace("@KEY_FILE@", exaKeyFile()),
+      );
       await chmod(helper, 0o755);
       // The caller's locale must not change the rule; glibc builds C.UTF-8 in.
       for (const env of [{}, { LC_ALL: "C.UTF-8" }]) {

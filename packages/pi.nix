@@ -58,12 +58,14 @@ stdenv.mkDerivation {
     install -Dm755 ${../scripts/pi} $out/bin/pi
     substituteInPlace $out/bin/pi \
       --replace-fail '@PI@' "$out/libexec/pi/pi"
-    install -Dm755 ${../scripts/pi-synthetic-key} $out/bin/pi-synthetic-key
+    install -Dm755 ${../scripts/pi-provider-key} $out/bin/pi-synthetic-key
     substituteInPlace $out/bin/pi-synthetic-key \
-      --replace-fail '@SYNTHETIC_KEY_FILE@' '${syntheticKeyFile}'
-    install -Dm755 ${../scripts/pi-openrouter-key} $out/bin/pi-openrouter-key
+      --replace-fail '@KEY_VAR@' 'SYNTHETIC_API_KEY' \
+      --replace-fail '@KEY_FILE@' '${syntheticKeyFile}'
+    install -Dm755 ${../scripts/pi-provider-key} $out/bin/pi-openrouter-key
     substituteInPlace $out/bin/pi-openrouter-key \
-      --replace-fail '@OPENROUTER_KEY_FILE@' '${openrouterKeyFile}'
+      --replace-fail '@KEY_VAR@' 'OPENROUTER_API_KEY' \
+      --replace-fail '@KEY_FILE@' '${openrouterKeyFile}'
     patchShebangs $out/bin/pi $out/bin/pi-synthetic-key $out/bin/pi-openrouter-key
 
     runHook postInstall

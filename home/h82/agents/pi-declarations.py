@@ -1,14 +1,16 @@
 """Writes the agent-settings declaration for Pi's models.json.
 
 Usage: pi-declarations.py SYNTHETIC_SNAPSHOT OPENROUTER_SNAPSHOT BUNDLED_IDS
-                          SYNTHETIC_KEY_HELPER OPENROUTER_KEY_HELPER OUT
+                          PRE_LEDGER_IDS SYNTHETIC_KEY_HELPER
+                          OPENROUTER_KEY_HELPER OUT
 
 BUNDLED_IDS holds one OpenRouter model ID per line: the chat models the pinned
-Pi bundles. An OpenRouter row Pi bundles becomes a modelOverrides entry, which
-keeps the bundled model's api, baseUrl, and compat; any other row becomes a
-models entry. Every Synthetic row becomes a models entry. The merger owns each
-set through its ledger, so a row a newer snapshot drops leaves models.json on
-the next apply.
+Pi bundles. PRE_LEDGER_IDS holds the Synthetic model IDs earlier generations
+wrote before the ledger existed, one per line. An OpenRouter row Pi bundles
+becomes a modelOverrides entry, which keeps the bundled model's api, baseUrl,
+and compat; any other row becomes a models entry. Every Synthetic row becomes a
+models entry. The merger owns each set through its ledger, so a row a newer
+snapshot drops leaves models.json on the next apply.
 
 Pi rejects the whole models.json when one field is invalid, so a field is
 written only when the snapshot gives it a valid value.
@@ -21,13 +23,6 @@ LEVELS = ('minimal', 'low', 'medium', 'high')
 EXTRA_LEVELS = ('xhigh', 'max')
 
 PER_MILLION = 1000000
-
-LEGACY_SYNTHETIC_IDS = [
-    'hf:zai-org/GLM-5.3',
-    'hf:zai-org/GLM-5.3-Flash',
-    'hf:deepseek-ai/DeepSeek-V4.1-Flash-1017',
-    'hf:moonshotai/Kimi-K3',
-]
 
 
 def per_million(price):
@@ -66,12 +61,15 @@ def level_map(efforts, override):
     return mapped
 
 
-def model(name, efforts, modalities, prices, context, max_tokens, *, override):
+def model(name, efforts, modalities, prices, context, max_tokens, *, override, has_reasoning=True):
     """efforts is None for a model without reasoning and [] for one that
-    reasons with no effort list."""
-    entry = {'name': name, 'reasoning': efforts is not None}
-    if efforts:
-        entry['thinkingLevelMap'] = level_map(efforts, override)
+    reasons with no effort list. On a bundled override whose snapshot row has
+    no reasoning key, reasoning is omitted so Pi's bundled value stands."""
+    entry = {'name': name}
+    if not (override and not has_reasoning):
+        entry['reasoning'] = efforts is not None
+        if efforts:
+            entry['thinkingLevelMap'] = level_map(efforts, override)
     entry['input'] = [modality for modality in ('text', 'image') if modality in modalities]
     entry['cost'] = {field: per_million(price) for field, price in prices.items()}
     if positive(context):
@@ -102,6 +100,7 @@ def synthetic_entry(row):
 
 
 def openrouter_entry(row, override):
+    has_reasoning = 'reasoning' in row
     reasoning = row.get('reasoning')
     pricing = row.get('pricing') or {}
     top = row.get('top_provider') or {}
@@ -119,16 +118,19 @@ def openrouter_entry(row, override):
         context=context if positive(context) else row.get('context_length'),
         max_tokens=top.get('max_completion_tokens'),
         override=override,
+        has_reasoning=has_reasoning,
     )
 
 
-def main(synthetic_path, openrouter_path, bundled_path, synthetic_helper, openrouter_helper, out):
+def main(synthetic_path, openrouter_path, bundled_path, pre_ledger_path, synthetic_helper, openrouter_helper, out):
     with open(synthetic_path) as handle:
         synthetic = json.load(handle)['data']
     with open(openrouter_path) as handle:
         openrouter = json.load(handle)['data']
     with open(bundled_path) as handle:
         bundled = {line.strip() for line in handle if line.strip()}
+    with open(pre_ledger_path) as handle:
+        pre_ledger_ids = [line.strip() for line in handle if line.strip()]
 
     overrides = {}
     models = []
@@ -157,7 +159,7 @@ def main(synthetic_path, openrouter_path, bundled_path, synthetic_helper, openro
                 'path': synthetic_at + ['models'],
                 'key': 'id',
                 'entries': [synthetic_entry(row) for row in synthetic],
-                'preLedgerIds': LEGACY_SYNTHETIC_IDS,
+                'preLedgerIds': pre_ledger_ids,
             },
             {'path': openrouter_at + ['models'], 'key': 'id', 'entries': models, 'preLedgerIds': []},
             {'path': openrouter_at + ['modelOverrides'], 'entries': overrides, 'preLedgerIds': []},

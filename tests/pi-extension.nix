@@ -15,9 +15,8 @@
     placeholders replaced by the paths it was given, and imports nothing but
     node:fs/promises: Pi runs it from the store, where no package resolves.
   - the fixture tests pass under node --test against the repository source,
-    including the key-file table they run against the extension,
-    scripts/pi-synthetic-key, and scripts/pi-openrouter-key, so the three
-    copies of the key rules cannot drift.
+    including the key-file table they run against the extension and
+    scripts/pi-provider-key, so the two copies of the key rules cannot drift.
   - per user, exactly one enabled Home Manager file targets
     .pi/agent/extensions/nix-config, found by its resolved `target`, and the
     materialized `home-files` holds that directory with exactly the one
@@ -138,7 +137,7 @@ pkgs.runCommand "pi-extension-tests" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
   fi
 
   cp ${./pi-extension.test.mjs} test.mjs
-  if ! HOME=$TMPDIR EXTENSION=${source} KEY_HELPER=${../scripts/pi-synthetic-key} OPENROUTER_KEY_HELPER=${../scripts/pi-openrouter-key} node --test test.mjs >&2; then
+  if ! HOME=$TMPDIR EXTENSION=${source} KEY_HELPER=${../scripts/pi-provider-key} node --test test.mjs >&2; then
     echo 'the Pi extension fixture tests failed' >&2
     failed=1
   fi

@@ -25,7 +25,6 @@ import sys
 
 (merger, models_path, settings_path, synthetic_path, openrouter_path, bundled_path,
  renderer, synthetic_helper, openrouter_helper, workdir, default_model) = sys.argv[1:12]
-
 failures = []
 
 
@@ -84,12 +83,17 @@ def expected_map(efforts, override):
     return mapped
 
 
-def check_model(label, got, *, name, efforts, modalities, prices, context, max_tokens, override):
+def check_model(label, got, *, name, efforts, modalities, prices, context, max_tokens, override, has_reasoning=True):
     check(got.get('name') == name, '{}: name is {!r}, expected {!r}'.format(label, got.get('name'), name))
-    check(got.get('reasoning') is (efforts is not None), '{}: reasoning is {!r}'.format(label, got.get('reasoning')))
-    check(got.get('thinkingLevelMap') == expected_map(efforts, override),
-          '{}: thinkingLevelMap is {!r}, expected {!r}'.format(label, got.get('thinkingLevelMap'),
-                                                              expected_map(efforts, override)))
+    if override and not has_reasoning:
+        check('reasoning' not in got, '{}: reasoning is {!r}, expected omitted'.format(label, got.get('reasoning')))
+        check('thinkingLevelMap' not in got,
+              '{}: thinkingLevelMap is {!r}, expected omitted'.format(label, got.get('thinkingLevelMap')))
+    else:
+        check(got.get('reasoning') is (efforts is not None), '{}: reasoning is {!r}'.format(label, got.get('reasoning')))
+        check(got.get('thinkingLevelMap') == expected_map(efforts, override),
+              '{}: thinkingLevelMap is {!r}, expected {!r}'.format(label, got.get('thinkingLevelMap'),
+                                                                  expected_map(efforts, override)))
     check(got.get('input') == [m for m in ('text', 'image') if m in modalities],
           '{}: input is {!r} for modalities {!r}'.format(label, got.get('input'), modalities))
     cost = got.get('cost', {})
@@ -119,6 +123,7 @@ def check_synthetic(row, got):
 
 
 def check_openrouter(row, got, override):
+    has_reasoning = 'reasoning' in row
     reasoning = row.get('reasoning')
     pricing = row['pricing']
     top = row.get('top_provider') or {}
@@ -131,7 +136,7 @@ def check_openrouter(row, got, override):
         prices={'input': pricing.get('prompt'), 'output': pricing.get('completion'),
                 'cacheRead': pricing.get('input_cache_read'), 'cacheWrite': pricing.get('input_cache_write')},
         context=context if isinstance(context, int) and context > 0 else row.get('context_length'),
-        max_tokens=top.get('max_completion_tokens'), override=override)
+        max_tokens=top.get('max_completion_tokens'), override=override, has_reasoning=has_reasoning)
 
 
 def owned(document, path):
@@ -163,7 +168,7 @@ for forbidden in ('synthetic_api_key', 'openrouter_api_key', 'exa_api_key', 'aut
 
 synthetic_set = owned(models, SYNTHETIC + ['models'])
 check(synthetic_set.get('key') == 'id', 'the synthetic models are not keyed by id')
-check(synthetic_set.get('preLedgerIds') == [GLM, GLM_FLASH, DEEPSEEK, KIMI],
+check(synthetic_set.get('preLedgerIds') == sorted([GLM, GLM_FLASH, DEEPSEEK, KIMI]),
       'the synthetic preLedgerIds are {}'.format(synthetic_set.get('preLedgerIds')))
 synthetic_declared = synthetic_set.get('entries', [])
 synthetic_by_id = {entry.get('id'): entry for entry in synthetic_declared}
@@ -218,6 +223,15 @@ dump(os.path.join(fixture_dir, 'openrouter.json'), {'data': [
      'pricing': {'prompt': '0.000001', 'completion': '0.000002', 'input_cache_read': '0.0000001',
                  'input_cache_write': '0.00000125'},
      'reasoning': {'supported_efforts': ['low', 'high', 'max']}},
+    {'id': 'fixture/bundled-no-reasoning', 'name': 'Bundled without reasoning key',
+     'architecture': {'input_modalities': ['text'], 'output_modalities': ['text']},
+     'context_length': 200000, 'top_provider': {'context_length': 200000, 'max_completion_tokens': None},
+     'pricing': {'prompt': '-1', 'completion': '-1'}},
+    {'id': 'fixture/bundled-null-reasoning', 'name': 'Bundled with null reasoning',
+     'architecture': {'input_modalities': ['text'], 'output_modalities': ['text']},
+     'context_length': 128000, 'top_provider': {'context_length': 128000, 'max_completion_tokens': 4096},
+     'pricing': {'prompt': '0.000001', 'completion': '0.000002'},
+     'reasoning': None},
     {'id': 'fixture/no-efforts', 'name': 'No efforts',
      'architecture': {'input_modalities': ['text'], 'output_modalities': ['text']},
      'context_length': 0, 'top_provider': {'context_length': 0, 'max_completion_tokens': 0},
@@ -225,17 +239,22 @@ dump(os.path.join(fixture_dir, 'openrouter.json'), {'data': [
      'reasoning': {'mandatory': True}},
 ]})
 with open(os.path.join(fixture_dir, 'bundled'), 'w') as handle:
-    handle.write('fixture/bundled\nfixture/not-in-snapshot\n')
+    handle.write('fixture/bundled\nfixture/bundled-no-reasoning\nfixture/bundled-null-reasoning\nfixture/not-in-snapshot\n')
+with open(os.path.join(fixture_dir, 'pre-ledger'), 'w') as handle:
+    handle.write('hf:fixture/Legacy\n')
 fixture_out = os.path.join(fixture_dir, 'declared.json')
 rendered = subprocess.run(
     [sys.executable, '-I', renderer, os.path.join(fixture_dir, 'synthetic.json'),
      os.path.join(fixture_dir, 'openrouter.json'), os.path.join(fixture_dir, 'bundled'),
+     os.path.join(fixture_dir, 'pre-ledger'),
      '/helpers/synthetic', '/helpers/openrouter', fixture_out],
     capture_output=True, text=True,
 )
 check(rendered.returncode == 0, 'the renderer failed on the fixture rows: {}'.format(rendered.stderr.strip()))
 fixture = load(fixture_out) if rendered.returncode == 0 else {}
 fixture_sets = {tuple(entry['path']): entry['entries'] for entry in fixture.get('ownEntries', [])}
+check(owned(fixture, SYNTHETIC + ['models']).get('preLedgerIds') == ['hf:fixture/Legacy'],
+      'fixture synthetic preLedgerIds are {}'.format(owned(fixture, SYNTHETIC + ['models']).get('preLedgerIds')))
 expected_sets = {
     ('providers', 'synthetic', 'models'): [{
         'id': 'hf:fixture/Plain', 'name': 'Plain', 'reasoning': False, 'input': ['text', 'image'],
@@ -263,6 +282,18 @@ expected_sets = {
             'input': ['text', 'image'],
             'cost': {'input': 1, 'output': 2, 'cacheRead': 0.1, 'cacheWrite': 1.25},
             'contextWindow': 32000, 'maxTokens': 4096,
+        },
+        'fixture/bundled-no-reasoning': {
+            'name': 'Bundled without reasoning key',
+            'input': ['text'],
+            'cost': {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0},
+            'contextWindow': 200000,
+        },
+        'fixture/bundled-null-reasoning': {
+            'name': 'Bundled with null reasoning', 'reasoning': False,
+            'input': ['text'],
+            'cost': {'input': 1, 'output': 2, 'cacheRead': 0, 'cacheWrite': 0},
+            'contextWindow': 128000, 'maxTokens': 4096,
         },
     },
 }

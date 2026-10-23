@@ -3,8 +3,7 @@
 # environment, and the pi-synthetic-key and pi-openrouter-key helpers against
 # key files.
 #
-#   pi.sh WRAPPER SYNTHETIC_HELPER OPENROUTER_HELPER
-#                               the sources, placeholders rendered here
+#   pi.sh WRAPPER KEY_HELPER    the sources, placeholders rendered here
 #   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE OPENROUTER_KEY_FILE
 #                               a built copy, checked for its constants, then
 #                               run like the sources with Pi and every key
@@ -12,7 +11,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s WRAPPER SYNTHETIC_HELPER OPENROUTER_HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE OPENROUTER_KEY_FILE\n' "${0##*/}" >&2
+  printf 'usage: %s WRAPPER KEY_HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE OPENROUTER_KEY_FILE\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -27,10 +26,9 @@ if [[ ${1:-} == --packaged ]]; then
   want_exa_file=$4
   want_openrouter_file=$5
 else
-  [[ $# -eq 3 && -f $1 && -f $2 && -f $3 ]] || usage
+  [[ $# -eq 2 && -f $1 && -f $2 ]] || usage
   wrapper_src=$(absolute "$1")
-  synthetic_helper_src=$(absolute "$2")
-  openrouter_helper_src=$(absolute "$3")
+  helper_src=$(absolute "$2")
 fi
 
 fail() { printf 'pi: FAIL (%s): %s\n' "$mode" "$*" >&2; exit 1; }
@@ -57,6 +55,8 @@ if [[ $mode == packaged ]]; then
   for spec in "pi-synthetic-key SYNTHETIC_API_KEY $want_key_file" \
     "pi-openrouter-key OPENROUTER_API_KEY $want_openrouter_file"; do
     read -r name var file <<<"$spec"
+    grep -qxF "KEY_VAR='$var'" "$bindir/$name" ||
+      fail "$name's KEY_VAR is $(grep -m1 '^KEY_VAR=' "$bindir/$name"), want '$var'"
     grep -qxF "KEY_FILE='$file'" "$bindir/$name" ||
       fail "$name's KEY_FILE is $(grep -m1 '^KEY_FILE=' "$bindir/$name"), want '$file'"
     [[ -z $(env -i "$bindir/$name") ]] || fail "$name printed a key from a missing key file"
@@ -98,11 +98,14 @@ if [[ $mode == packaged ]]; then
   done
   grep -qxF "PI='$stub'" "$wrapper" || fail 'could not point the packaged wrapper copy at the stub'
 else
-  for name in wrapper synthetic_helper openrouter_helper; do
-    src_var=${name}_src
-    sed -e "s|@PI@|$stub|" -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|g" \
-      -e "s|@EXA_KEY_FILE@|$exa_file|g" -e "s|@OPENROUTER_KEY_FILE@|$openrouter_file|g" \
-      -e "1s|.*|#!$bash_bin|" "${!src_var}" >"${!name}"
+  sed -e "s|@PI@|$stub|" -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|g" \
+    -e "s|@EXA_KEY_FILE@|$exa_file|g" -e "s|@OPENROUTER_KEY_FILE@|$openrouter_file|g" \
+    -e "1s|.*|#!$bash_bin|" "$wrapper_src" >"$wrapper"
+  for spec in "synthetic_helper SYNTHETIC_API_KEY $synthetic_file" \
+    "openrouter_helper OPENROUTER_API_KEY $openrouter_file"; do
+    read -r dst_var var file <<<"$spec"
+    sed -e "s|@KEY_VAR@|$var|g" -e "s|@KEY_FILE@|$file|g" \
+      -e "1s|.*|#!$bash_bin|" "$helper_src" >"${!dst_var}"
   done
 fi
 chmod +x "$wrapper" "$synthetic_helper" "$openrouter_helper"

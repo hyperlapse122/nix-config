@@ -108,6 +108,8 @@
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
+          "pi-models-load"
+          "pi-settings"
           "printing"
           "proton-vpn"
           "user-avatar"
@@ -1654,12 +1656,11 @@
               ${guardChecks}
               mkdir -p scripts tests
               cp ${./scripts/pi} scripts/pi
-              cp ${./scripts/pi-synthetic-key} scripts/pi-synthetic-key
-              cp ${./scripts/pi-openrouter-key} scripts/pi-openrouter-key
+              cp ${./scripts/pi-provider-key} scripts/pi-provider-key
               cp ${./tests/pi.sh} tests/pi.sh
-              chmod +x scripts/pi scripts/pi-synthetic-key scripts/pi-openrouter-key
+              chmod +x scripts/pi scripts/pi-provider-key
               patchShebangs scripts
-              bash tests/pi.sh scripts/pi scripts/pi-synthetic-key scripts/pi-openrouter-key
+              bash tests/pi.sh scripts/pi scripts/pi-provider-key
               bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile} ${openrouterKeyFile}
               touch $out
             '';

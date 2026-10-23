@@ -215,17 +215,6 @@ jobs:
             git commit -m "chore(packages): bump codex to $NEW_VER"
           fi
 
-<<<<<<< HEAD
-          if [ -n "$(git status --porcelain home/h82/agents/synthetic-catalog.json)" ]; then
-            git add home/h82/agents/synthetic-catalog.json
-            git commit -m "chore(agents): refresh the synthetic catalog snapshot"
-=======
-          if [ -n "$(git status --porcelain packages/opencode-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/opencode-release.json)
-            git add packages/opencode-release.json
-            git commit -m "chore(packages): bump opencode to $NEW_VER"
->>>>>>> b3b9e46 (ci: refresh model catalog snapshots in their own workflow)
-          fi
 
           if [ -n "$(git status --porcelain packages/pi-release.json)" ]; then
             NEW_VER=$(jq -r .version packages/pi-release.json)

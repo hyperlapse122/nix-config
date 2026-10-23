@@ -21,9 +21,12 @@ jobs:
       # main moved.
       VERIFY_TARGETS: .#checks.x86_64-linux.pi-settings .#checks.x86_64-linux.pi-models-load .#checks.x86_64-linux.synthetic-models
     steps:
-      # No token stays in .git/config; only the push step holds one.
+      # No token stays in .git/config; only the push step holds one. Pin ref
+      # to main so workflow_dispatch from another branch cannot push that
+      # branch's commits to main.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -78,9 +81,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # VERIFY_TARGETS is a list of installables, split on purpose.
-          # shellcheck disable=SC2086
-          nix build --no-link --print-build-logs $VERIFY_TARGETS
+          syn=home/h82/agents/synthetic-catalog.json
+          or=home/h82/agents/openrouter-catalog.json
+          verify() {
+            # VERIFY_TARGETS is a list of installables, split on purpose.
+            # shellcheck disable=SC2086
+            nix build --no-link --print-build-logs $VERIFY_TARGETS
+          }
+          if ! verify; then
+            if [ -n "$(git status --porcelain -- "$syn")" ] && [ -n "$(git status --porcelain -- "$or")" ]; then
+              tmp=$(mktemp -d)
+              cp "$syn" "$tmp/synthetic"
+              cp "$or" "$tmp/openrouter"
+              git checkout -- "$syn" "$or"
+              cp "$tmp/synthetic" "$syn"
+              if ! verify; then
+                echo "::warning title=Synthetic catalog snapshot rejected::Verification failed for $syn; keeping the current snapshot."
+                git checkout -- "$syn"
+              fi
+              cp "$tmp/openrouter" "$or"
+              if ! verify; then
+                echo "::warning title=OpenRouter catalog snapshot rejected::Verification failed for $or; keeping the current snapshot."
+                git checkout -- "$or"
+              fi
+              rm -rf -- "$tmp"
+              if [ -z "$(git status --porcelain -- "$syn" "$or")" ]; then
+                exit 1
+              fi
+            else
+              exit 1
+            fi
+          fi
 
       - name: Commit each changed snapshot
         if: steps.changes.outputs.changed == 'true'

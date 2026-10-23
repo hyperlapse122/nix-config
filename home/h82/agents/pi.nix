@@ -27,12 +27,29 @@ let
 
   sourceModels = import ./synthetic-models.nix;
 
+  # The four Synthetic models earlier generations wrote before the ledger
+  # existed, with the startup thinking levels those generations set. Defined
+  # once here so the one-time settings.json cleanup and the models.json
+  # preLedgerIds seed name the same IDs.
+  legacyStartupLevels = {
+    "hf:zai-org/GLM-5.3" = [ "max" ];
+    "hf:zai-org/GLM-5.3-Flash" = [ "high" ];
+    "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017" = [
+      "low"
+      "high"
+    ];
+    "hf:moonshotai/Kimi-K3" = [ "max" ];
+  };
+
   # Every model of both committed catalog snapshots, built by a derivation
   # (pi-declarations.nix). The merger owns each provider's models through its
   # ledger, so a model a newer snapshot drops leaves models.json on the next
   # apply. Each apiKey is a `!` command naming a packaged helper, so no key
   # reaches the file.
-  declaredModels = import ./pi-declarations.nix { inherit pkgs pi; };
+  declaredModels = import ./pi-declarations.nix {
+    inherit pkgs pi;
+    preLedgerIds = lib.attrNames legacyStartupLevels;
+  };
 
   # defaultProjectTrust never: a checkout Pi works in must not be able to supply
   # extensions or packages that run code. No model gets a startup thinking
@@ -46,23 +63,12 @@ let
         defaultModel = sourceModels.${sourceModels.defaultModel}.id;
         defaultProjectTrust = "never";
       };
-      removePaths =
-        lib.mapAttrsToList
-          (id: values: {
-            path = [ "modelThinkingLevels" ];
-            key = "synthetic/${id}";
-            inherit values;
-            migration = "pi-startup-levels-2026-10";
-          })
-          {
-            "hf:zai-org/GLM-5.3" = [ "max" ];
-            "hf:zai-org/GLM-5.3-Flash" = [ "high" ];
-            "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017" = [
-              "low"
-              "high"
-            ];
-            "hf:moonshotai/Kimi-K3" = [ "max" ];
-          };
+      removePaths = lib.mapAttrsToList (id: values: {
+        path = [ "modelThinkingLevels" ];
+        key = "synthetic/${id}";
+        inherit values;
+        migration = "pi-startup-levels-2026-10";
+      }) legacyStartupLevels;
     }
   );
 in

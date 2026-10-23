@@ -113,7 +113,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertNotIn(IMAGE, ids)
         self.assertEqual(len(ids), len(catalog["data"]) - 1)
 
-    def test_a_malformed_row_is_skipped_and_named(self):
+    def test_a_malformed_row_is_skipped_and_named_or_keeps_its_previous_entry(self):
         catalog = fixture()
         row_of(catalog, GPT5)["context_length"] = "400k"
         proc = self.run_snapshot(catalog)
@@ -122,6 +122,23 @@ class SnapshotTest(unittest.TestCase):
         ids = [m["id"] for m in self.written()]
         self.assertNotIn(GPT5, ids)
         self.assertEqual(len(ids), len(catalog["data"]) - 1)
+
+        self.assertEqual(self.run_snapshot(fixture()).returncode, 0)
+        first = self.out.read_text()
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(GPT5, proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
+
+    def test_a_snapshot_that_shrinks_below_the_retention_floor_is_refused(self):
+        self.assertEqual(self.run_snapshot(fixture()).returncode, 0)
+        first = self.out.read_text()
+        truncated = copy.deepcopy(fixture())
+        truncated["data"] = truncated["data"][:2]
+        proc = self.run_snapshot(truncated)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("shrank from 6 to 2 models (floor 5)", proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
 
     def test_an_empty_result_exits_non_zero_and_leaves_the_file(self):
         only_image = copy.deepcopy(fixture())

@@ -792,7 +792,7 @@ class CatalogSnapshotTest(WatchTestCase):
             ["low", "high", "max"],
         )
 
-    def test_a_malformed_row_outside_the_source_is_skipped_and_named(self):
+    def test_a_malformed_row_outside_the_source_is_skipped_and_named_or_keeps_its_previous_entry(self):
         catalog = snapshot()
         next(m for m in catalog["data"] if m["id"] == QWEN)["pricing"]["prompt"] = "USD 0.1"
         proc = self.run_snapshot(catalog)
@@ -801,6 +801,24 @@ class CatalogSnapshotTest(WatchTestCase):
         ids = [m["id"] for m in json.loads(self.out.read_text())["data"]]
         self.assertNotIn(QWEN, ids)
         self.assertEqual(len(ids), 13)
+
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        first = self.out.read_text()
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(QWEN, proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
+
+    def test_a_snapshot_that_shrinks_below_the_retention_floor_is_refused(self):
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        first = self.out.read_text()
+        source_ids = {GLM, GLM_FLASH, DEEPSEEK}
+        truncated = copy.deepcopy(snapshot())
+        truncated["data"] = [m for m in truncated["data"] if m["id"] in source_ids]
+        proc = self.run_snapshot(truncated)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("shrank from 14 to 3 models (floor 12)", proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
 
     def test_a_row_without_reasoning_parameters_is_kept_with_no_efforts(self):
         catalog = snapshot()
