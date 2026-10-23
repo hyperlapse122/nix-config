@@ -61,12 +61,14 @@
     sentences do not.
   - every assignment written as "`<model>` on the `<instance>` instance",
     optionally followed by "with `<knob>` `<value>`", is one the rules allow: a
-    Claude model on `claudeAgent` with no knob at all, so no Claude model
-    carries an effort, and `gpt-6.1-sol` on `codex` with `reasoningEffort`
-    `xhigh`. Nothing is assigned to a Synthetic model on `pi` or an ACP agent,
-    so a worker, scout, or default peer sent back to one fails. The file must
-    carry at least one such assignment, so a rephrasing that the pattern no
-    longer matches turns this red.
+    Claude model on `claudeAgent` with no knob at all, `claude-opus-5-5` on
+    `claudeAgent` with `effort` `xhigh` only on the line that is exactly the
+    pinned `deep` sentence, so no other Claude assignment carries an effort,
+    and `gpt-6.1-sol` on `codex` with `reasoningEffort` `xhigh`. Nothing is
+    assigned to a Synthetic model on `pi` or an ACP agent, so a worker, scout,
+    or default peer sent back to one fails. The file must carry at least one
+    such assignment, so a rephrasing that the pattern no longer matches turns
+    this red.
   - no instruction names a Synthetic model: no source model ID appears, no
     text but the family-mapping sentence and the `# Pi over ACP` section says
     `synthetic` or `hf:`, and `Kimi` and `moonshotai` appear nowhere as whole
@@ -110,7 +112,10 @@
     or Pi model-ID fallback rule, a review-findings sentence added, reordered,
     removed, or negated, an effort or instance the assignment rule forbids,
     each category, scout, and unassigned-subagent sentence given an effort,
-    another model, or a fallback worker, every assignment sentence removed, a
+    another model, or a fallback worker, the `deep` worker's assignment on
+    another line, its `xhigh` lowered or raised, its effort dropped, or its
+    worker moved back to `fable`, the launch sentences without their effort
+    clauses, every assignment sentence removed, a
     worker, scout, or default peer sent back to a Synthetic model, the Codex
     candidate's model, effort, knob, instance, or family changed, the `deep`
     definition loosened or given its security clause back, the native subagent
@@ -423,7 +428,7 @@ let
   visualSentence = "A unit is `visual-engineering` when it builds or styles frontend UI, UX, CSS, layouts, animation, or design-system components; it goes to `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance.";
   deepLead = "A unit is `deep` only when";
   deepSecurityClause = ", or when it carries a security or data-loss risk, even when its edit is mechanical";
-  deepSentence = "${deepLead} its own design is hard, such as a new interface, data format, or concurrency rule, or when it debugs cross-module behavior whose cause is unknown; it goes to `fable`, `claude-fable-5-1` on the `claudeAgent` instance.";
+  deepSentence = "${deepLead} its own design is hard, such as a new interface, data format, or concurrency rule, or when it debugs cross-module behavior whose cause is unknown; it goes to `opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`.";
   deepNamedSentence = "When you classify a unit as `deep`, name in one line which of those two conditions it meets.";
   deepUnclearSentence = "When it is unclear whether a unit is `deep`, classify it as `unspecified-high`.";
   deepRiskSentence = "A unit that carries a security or data-loss risk but has a settled fix and a mechanical edit is `unspecified-high`, and the review step covers that risk.";
@@ -431,8 +436,11 @@ let
   lowSentence = "Every other unit is `unspecified-low`, which goes to `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance.";
   nativeToolClause = "your own subagent tool can run Claude models, such as Claude Code's `Agent`";
   delegationToolsClause = "the session lists T3 Code's delegation tools";
-  unitNativeClause = "launch each unit through that tool with the worker's alias as `model`";
-  unitLaunchSentence = "When ${nativeToolClause}, ${unitNativeClause}, and otherwise, when ${delegationToolsClause}, launch it through `delegate_task` with the worker's instance and model id as `target` and no `target.options`, instead of Compound Engineering's own delegation route.";
+  unitNativeEffortClause = " and its effort, when its category names one, as `effort`";
+  unitNativeClause = "launch each unit through that tool with the worker's alias as `model`${unitNativeEffortClause}";
+  delegateEffortClause = "effort as `effort` in `target.options` when its category names one, and no other `target.options`";
+  unitDelegateClause = "launch it through `delegate_task` with the worker's instance and model id as `target`, its ${delegateEffortClause}";
+  unitLaunchSentence = "When ${nativeToolClause}, ${unitNativeClause}, and otherwise, when ${delegationToolsClause}, ${unitDelegateClause}, instead of Compound Engineering's own delegation route.";
   outsideRouteSentence = "Outside T3 Code, in a session whose own subagent tool cannot run Claude models, Compound Engineering's own route keeps one recipient for a whole run, so give it only `claude` with `claude-sonnet-5-5` as its candidate.";
   workEngineSentence = "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
   workNoEditSentence = "When ${nativeToolClause}, or ${delegationToolsClause}, and you run `ce-work`, edit no file yourself: delegate every implementation unit, and keep merging task branches, running the formatter, committing, and running checks, unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
@@ -537,7 +545,7 @@ let
   # The self-test below mutates these sentences, so they are named once.
   nativeOverrideClause = ", even when `orchestrator_capabilities` shows nonempty `inheritedOptions` and even where T3 Code's own guidance prefers `delegate_task` for same-provider work";
   nativeRouteSentence = "When ${nativeToolClause}, launch every Claude subagent through that tool, including the scouts, verifiers, reviewers, and workers a skill dispatches, and pass the role's alias as `model`${nativeOverrideClause}.";
-  delegateRouteSentence = "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID and no `target.options`.";
+  delegateRouteSentence = "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's ${delegateEffortClause}.";
   noDelegationToolsSentence = "When the session lists no T3 Code delegation tools, use your harness's own subagent tool.";
   unassignedModelSentence = "When no skill or rule assigns a model to a subagent, launch it as `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance, and use `opus` and `fable` only where a skill or these rules name them.";
   freshPromptSentence = "A fresh subagent sees none of your conversation, so put everything it needs in its prompt, including that it stays read-only when it only searches, reads, or reviews.";
@@ -617,9 +625,9 @@ let
     "The task is told never to stop and rerun a background command it waits on"
     "starts in the background on purpose instead of in the foreground"
   ];
-  # Nothing declares a Claude effort, so a release that moves a default
-  # changes every session with no diff here; the guide's step is the only
-  # thing that looks for it.
+  # Only the `deep` worker's launch names a Claude effort, so a release that
+  # moves a default changes every other session with no diff here; the
+  # guide's step is the only thing that looks for it.
   releaseNotesDocTerms = [
     "check the release notes of the new version for a changed default effort"
   ];
@@ -1239,34 +1247,46 @@ let
 
   # Fails the build, naming each assignment, when a model is put on an
   # instance with a knob or effort it must not take. A Claude model runs on
-  # `claudeAgent` with no knob at all, so no Claude model carries an effort,
-  # and Codex runs `${codexModel}` on `codex` at `reasoningEffort` `xhigh`; no
+  # `claudeAgent` with no knob at all, except `claude-opus-5-5` at `effort`
+  # `xhigh` on a line that is exactly the pinned `deep` sentence; the same
+  # assignment on any other line, such as the Claude Code candidate's, fails,
+  # so the exception belongs to the sentence, not to the model and value. The
+  # pin that the `deep` sentence occurs exactly once is what keeps this
+  # line-number exemption to a single line. Codex
+  # runs `${codexModel}` on `codex` at `reasoningEffort` `xhigh`; no
   # Synthetic model on `pi` or any ACP agent takes work on its own. Finding no
   # assignment fails too, so a rewording the pattern misses cannot pass. A
   # missing knob reads as `-`, because a tab-separated `read` collapses empty
   # fields.
   assignmentRules = label: ''
     assignments=0
-    while IFS=$'\t' read -r model instance kind knob value; do
+    deepLines=" $(d=${esc "- ${deepSentence}"} awk 'BEGIN { d = ENVIRON["d"] } $0 == d { printf "%d ", NR }' "$file")"
+    while IFS=$'\t' read -r line model instance kind knob value; do
       assignments=$((assignments + 1))
+      allowed=0
       case "$kind:$instance:$knob:$model:$value" in
-        instance:claudeAgent:-:claude-*:-) ;;
-        instance:codex:reasoningEffort:${codexModel}:xhigh) ;;
-        *)
-          if [ "$knob" = "-" ]; then
-            echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance" >&2
-          else
-            echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance with $knob $value" >&2
+        instance:claudeAgent:-:claude-*:-) allowed=1 ;;
+        instance:codex:reasoningEffort:${codexModel}:xhigh) allowed=1 ;;
+        instance:claudeAgent:effort:claude-opus-5-5:xhigh)
+          if [[ "$deepLines" == *" $line "* ]]; then
+            allowed=1
           fi
-          failed=1
           ;;
       esac
+      if [ "$allowed" = "0" ]; then
+        if [ "$knob" = "-" ]; then
+          echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance" >&2
+        else
+          echo ${esc "${label} assigns a model an instance, knob, or effort it does not take:"} "$model on $instance with $knob $value" >&2
+        fi
+        failed=1
+      fi
     done < <(
-      grep -oE -- '`[^`]+` on the `[^`]+` (instance|agent)( with `[^`]+` `[^`]+`)?' "$file" \
+      grep -noE -- '`[^`]+` on the `[^`]+` (instance|agent)( with `[^`]+` `[^`]+`)?' "$file" \
         | sed -E \
-          -e 's/^`([^`]+)` on the `([^`]+)` (instance|agent) with `([^`]+)` `([^`]+)`$/\1\t\2\t\3\t\4\t\5/' \
+          -e 's/^([0-9]+):`([^`]+)` on the `([^`]+)` (instance|agent) with `([^`]+)` `([^`]+)`$/\1\t\2\t\3\t\4\t\5\t\6/' \
           -e 't' \
-          -e 's/^`([^`]+)` on the `([^`]+)` (instance|agent)$/\1\t\2\t\3\t-\t-/' \
+          -e 's/^([0-9]+):`([^`]+)` on the `([^`]+)` (instance|agent)$/\1\t\2\t\3\t\4\t-\t-/' \
         || true
     )
     if [ "$assignments" = "0" ]; then
@@ -1451,7 +1471,8 @@ let
   pinFailure =
     sentence: "does not hold this sentence exactly once, where a sentence starts: ${sentence}";
 
-  # One assignment sentence given an effort again, which no Claude model takes.
+  # One assignment sentence given an effort again, which no Claude assignment
+  # but the `deep` sentence's takes.
   withEffort = name: sentence: model: effort: {
     name = "${name} given the effort ${effort} again";
     line = "- ${sentence}";
@@ -1478,9 +1499,13 @@ let
     alias = "opus";
     id = "claude-opus-5-5";
   };
-  fableModel = {
-    alias = "fable";
-    id = "claude-fable-5-1";
+
+  # The `deep` sentence's effort changed to one the rule does not accept.
+  deepEffortChanged = effort: {
+    name = "deep category's effort changed to ${effort}";
+    line = "- ${deepSentence}";
+    edit = replaceInLine "`effort` `xhigh`" "`effort` `${effort}`";
+    expect = "assigns a model an instance, knob, or effort it does not take: claude-opus-5-5 on claudeAgent with effort ${effort}";
   };
 
   # The `quick` and `unspecified-low` models traded: the #308 assignment
@@ -1547,8 +1572,37 @@ let
       edit = ''awk '$0 != ENVIRON["line"]' '';
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
-    (withEffort "deep category" deepSentence "claude-fable-5-1" "xhigh")
-    (withEffort "deep category" deepSentence "claude-fable-5-1" "medium")
+    (deepEffortChanged "high")
+    {
+      name = "deep category's effort dropped";
+      line = "- ${deepSentence}";
+      edit = replaceInLine " with `effort` `xhigh`" "";
+      expect = pinFailure deepSentence;
+    }
+    {
+      name = "deep worker's assignment appended to the Claude Code candidate's line";
+      line = "- ${claudeCandidateSentence}";
+      edit = suffixAdded "; a `deep` unit goes to `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-opus-5-5 on claudeAgent with effort xhigh";
+    }
+    {
+      name = "unit launch sentence drops the native effort clause";
+      line = "- ${unitLaunchSentence}";
+      edit = replaceInLine unitNativeEffortClause "";
+      expect = pinFailure unitLaunchSentence;
+    }
+    {
+      name = "unit launch sentence drops the delegate_task effort clause";
+      line = "- ${unitLaunchSentence}";
+      edit = replaceInLine ", its ${delegateEffortClause}" " and no `target.options`";
+      expect = pinFailure unitLaunchSentence;
+    }
+    {
+      name = "delegate_task route sentence drops its effort clause";
+      line = "- ${delegateRouteSentence}";
+      edit = replaceInLine ", a `ce-work` worker's ${delegateEffortClause}" " and no `target.options`";
+      expect = pinFailure delegateRouteSentence;
+    }
     (withEffort "Claude Code candidate" claudeCandidateSentence "claude-opus-5-5" "medium")
     (withEffort "Claude Code candidate" claudeCandidateSentence "claude-opus-5-5" "xhigh")
     (withEffort "scout" scoutAssignmentSentence "claude-haiku-5-5" "medium")
@@ -1714,10 +1768,16 @@ let
     (withEffort "writing category" writingSentence "claude-sonnet-5-5" "high")
     (withEffort "visual-engineering category" visualSentence "claude-sonnet-5-5" "high")
     (withEffort "unspecified-high category" highSentence "claude-opus-5-5" "high")
+    (withEffort "unspecified-high category" highSentence "claude-opus-5-5" "xhigh")
     (withEffort "unspecified-low category" lowSentence "claude-sonnet-5-5" "high")
     (withModel "unspecified-low category" lowSentence sonnetModel haikuModel)
     (withModel "unspecified-high category" highSentence opusModel sonnetModel)
-    (withModel "deep category" deepSentence fableModel opusModel)
+    {
+      name = "deep category moved back to fable";
+      line = "- ${deepSentence}";
+      edit = replaceInLine "`opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`" "`fable`, `claude-fable-5-1` on the `claudeAgent` instance";
+      expect = pinFailure deepSentence;
+    }
     (withModel "quick category" quickSentence haikuModel sonnetModel)
     (withModel "writing category" writingSentence sonnetModel haikuModel)
     (withModel "visual-engineering category" visualSentence sonnetModel opusModel)

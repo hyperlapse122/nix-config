@@ -5,22 +5,29 @@
 
   `fixtures` is tests/lib/linux-fixtures.nix. Fails when anything this
   repository renders gives a Claude model an effort again, so Claude Code runs
-  every model at its own default. Codex's `reasoningEffort` and Pi's `thinking`
-  effort stay allowed. Runs over `userEntries` from
-  `tests/lib/configurations.nix`: every NixOS configuration and every
-  non-NixOS fixture host, production and bootstrap alike. A macOS user's files
-  need an aarch64-darwin builder, so that side is left to the shared modules
-  these users run.
+  every model at its own default, except the `ce-work` `deep` worker, which
+  runs `claude-opus-5-5` at `effort` `xhigh` per launch. Codex's
+  `reasoningEffort` and Pi's `thinking` effort stay allowed. Runs over
+  `userEntries` from `tests/lib/configurations.nix`: every NixOS
+  configuration and every non-NixOS fixture host, production and bootstrap
+  alike. A macOS user's files need an aarch64-darwin builder, so that side is
+  left to the shared modules these users run.
 
   Reads what activation and Home Manager materialize, not the Nix attribute
   sets behind them:
-  - each of the five instruction copies in `home-files`, split into sentences
-    outside store paths. A sentence that names Claude -- the word, a
+  - each of the five instruction copies in `home-files`, split into
+    sentences. A sentence that names Claude -- the word, a
     `claude-*` model ID, or a role alias -- and the whole word `effort`,
     `efforts`, `effortLevel`, or `CLAUDE_CODE_EFFORT_LEVEL` fails, and so does
     a `claudeAgent` instance followed by "with `<knob>` `<value>`", which is how
     an assignment carries a knob. `reasoningEffort` and `CROSS_MODEL_EFFORT_OVERRIDE` are
-    not whole words, and a sentence about Codex or Pi names no Claude.
+    not whole words, and a sentence about Codex or Pi names no Claude. The
+    only exemptions are `exemptSentences`, written here word for word: the
+    `deep` worker sentence and the two launch sentences that carry its
+    effort. A sentence is exempt only when it equals one of them, after its
+    list marker and its full stop, so any other wording fails. Store paths
+    are cut from a sentence only after that comparison, for the term search,
+    so a store path inside an exempt-looking sentence makes it non-exempt.
   - the declaration JSON that the Claude Code settings merge and the Claude
     Code global config merge are invoked with, found through the `--declared`
     flag of the activation script. Neither may hold a string or key that spells
@@ -43,7 +50,12 @@
   the first user environment and requires this check's own message:
   - instruction copies: a `claudeAgent` assignment given `effort` `high`, one
     given another knob, a sentence that names a `claude-*` model and an effort
-    in words, and one that sets `effortLevel`. A Codex `reasoningEffort`
+    in words, one that sets `effortLevel`, one that names `opus` and an
+    effort outside the exempt sentences, the `deep` sentence with its
+    effort changed to `high`, the unit launch sentence giving `opus` an
+    effort on its `delegate_task` side, and a copy of the `deep` sentence
+    with a store path glued to its effort, so the exemptions are exact. The
+    real copy must carry every exempt sentence. A Codex `reasoningEffort`
     `xhigh` assignment, a sentence naming a store path that spells `effort`,
     and the real Pi copy's `thought_level=<effort>` must pass, and the builder
     fails when the real copies no longer carry them, so those passes are not
@@ -95,9 +107,23 @@ let
     ".gemini/config/AGENTS.md"
   ];
 
-  # Prints each sentence of the file that pairs Claude with an effort, outside
-  # store paths, and exits 1 when it printed any. Sentences end at a full stop
-  # and a space, as in tests/agent-instructions.nix.
+  # The sentences that may give a Claude model an effort: the `deep` worker's
+  # assignment and the two launch rules that pass it on. Written here, not
+  # read from the template, so a change to any of them turns this red.
+  exemptSentences = [
+    "A unit is `deep` only when its own design is hard, such as a new interface, data format, or concurrency rule, or when it debugs cross-module behavior whose cause is unknown; it goes to `opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`."
+    "When your own subagent tool can run Claude models, such as Claude Code's `Agent`, launch each unit through that tool with the worker's alias as `model` and its effort, when its category names one, as `effort`, and otherwise, when the session lists T3 Code's delegation tools, launch it through `delegate_task` with the worker's instance and model id as `target`, its effort as `effort` in `target.options` when its category names one, and no other `target.options`, instead of Compound Engineering's own delegation route."
+    "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's effort as `effort` in `target.options` when its category names one, and no other `target.options`."
+  ];
+  exemptList = pkgs.writeText "claude-effort-absent-exempt" (
+    lib.concatMapStrings (sentence: "${sentence}\n") exemptSentences
+  );
+
+  # Prints each sentence of the file outside `exemptSentences` that pairs
+  # Claude with an effort once its store paths are cut, and exits 1 when it
+  # printed any.
+  # Sentences end at a full stop and a space, as in
+  # tests/agent-instructions.nix. A list that cannot be read exits 2.
   sentenceProgram = pkgs.writeText "claude-effort-absent-sentences.awk" ''
     function hasWord(line, term,    from, pos, before, after) {
       from = 1
@@ -110,13 +136,32 @@ let
       }
       return 0
     }
+    # Strips a list marker and a full stop, so a sentence compares the same
+    # wherever the split left it.
+    function bare(text) {
+      sub(/^ *- /, "", text)
+      sub(/\.$/, "", text)
+      return text
+    }
+    BEGIN {
+      list = "${exemptList}"
+      while ((status = (getline entry < list)) > 0) exempt[bare(entry)] = 1
+      if (status < 0) {
+        print "cannot read the exempt sentence list " list
+        exit 2
+      }
+    }
+    # A sentence is compared with the exemptions as written, so a store path
+    # inside it makes it non-exempt; store paths are cut only afterwards, for
+    # the term search. A store path holds no space, so it never splits.
     {
-      line = $0
-      gsub(/\/nix\/store\/[0-9a-z]{32}-[^[:space:]`"]*/, "", line)
-      count = split(line, sentences, /\. /)
+      count = split($0, sentences, /\. /)
       for (i = 1; i <= count; i++) {
         original = sentences[i]
-        lowered = tolower(original)
+        if (bare(original) in exempt) continue
+        lowered = original
+        gsub(/\/nix\/store\/[0-9a-z]{32}-[^[:space:]`"]*/, "", lowered)
+        lowered = tolower(lowered)
         if (lowered ~ /`claudeagent` instance with `[^`]+` `[^`]+`/) {
           print "a claudeAgent assignment carries a knob: " original
           bad = 1
@@ -129,7 +174,7 @@ let
         }
       }
     }
-    END { exit bad }
+    END { exit (status < 0 ? 2 : bad) }
   '';
 
   # The Claude Code merges. `retire` is true for settings.json, whose
@@ -176,6 +221,13 @@ let
   # A store path that spells `effort` in its name, which the sentence rule must
   # not read.
   storePathCase = "- Claude `sonnet` reads /nix/store/0123456789abcdfghijklmnpqrsvwxyz-effort-tools for the notes.";
+  # The `deep` sentence with a store path glued to its effort: it is not an
+  # exempt sentence, and only reads as one once the store path is gone.
+  deepStorePathCase =
+    "- "
+    + lib.replaceStrings [ "`xhigh`" ] [ "`xhigh/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-tools`" ] (
+      lib.head exemptSentences
+    );
   codexCase = "- Codex runs `gpt-6.1-sol` on the `codex` instance with `reasoningEffort` `xhigh`.";
   # The Pi ACP command carries `<effort>`; Pi reads no ACP section, so this
   # holds in the copies that do.
@@ -264,6 +316,12 @@ let
                 echo "self-test: the real copy no longer carries Pi's thought_level=<effort>, so that pass would be vacuous" >&2
                 selfTestFailed=1
               fi
+              while IFS= read -r sentence; do
+                if ! grep -qxF -- "- $sentence" "$claudeCopy"; then
+                  echo "self-test: the real copy no longer carries this exempt sentence as a line, so its exemption would be vacuous: $sentence" >&2
+                  selfTestFailed=1
+                fi
+              done < ${exemptList}
 
               textMutant() { # name, expected message, sed program
                 local name=$1 expect=$2 program=$3 mutated
@@ -299,6 +357,18 @@ let
               appended 'a role alias with CLAUDE_CODE_EFFORT_LEVEL' \
                 'a sentence gives a Claude model an effort' \
                 '- Run `sonnet` with CLAUDE_CODE_EFFORT_LEVEL set to `high`.'
+              appended 'a sentence outside the exemptions that names opus and an effort' \
+                'a sentence gives a Claude model an effort' \
+                '- Launch every reviewer on `opus` with `effort` `xhigh`.'
+              textMutant 'the deep sentence with its effort changed to high' \
+                'a claudeAgent assignment carries a knob' \
+                's/(goes to `opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` )`xhigh`/\1`high`/'
+              textMutant 'the unit launch sentence giving opus an effort on the delegate side' \
+                'a sentence gives a Claude model an effort' \
+                's/and no other `target\.options`, instead of Compound Engineering/and `opus` at `effort` `high`, instead of Compound Engineering/'
+              appended 'the deep sentence with a store path glued to its effort' \
+                'a claudeAgent assignment carries a knob' \
+                ${esc deepStorePathCase}
               appended 'a Codex reasoningEffort xhigh assignment' "" ${esc codexCase}
               appended 'a store path whose name spells effort' "" ${esc storePathCase}
             fi
