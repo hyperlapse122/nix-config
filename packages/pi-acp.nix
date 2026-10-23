@@ -12,9 +12,9 @@
     `--tools` allowlist would also drop the tools extensions register, so the
     tools are removed by name and session_info and web_search stay.
 
-  Both unset SYNTHETIC_API_KEY and EXA_API_KEY, so a key the calling session
-  exported never reaches the commands Pi's tools run; Pi reads its keys from
-  the key files instead.
+  Both unset SYNTHETIC_API_KEY, EXA_API_KEY, and OPENROUTER_API_KEY, so a key
+  the calling session exported never reaches the commands Pi's tools run; Pi
+  reads its keys from the key files instead.
 
   The npm tarball ships its built dist/ and no lock file. scripts/npm-release
   pins the tarball in pi-acp-release.json and writes pi-acp/package-lock.json
@@ -66,6 +66,7 @@ pkgs.runCommand "pi-acp-${source.version}"
       makeWrapper ${adapter}/bin/pi-acp $out/bin/''${variant%%:*} \
         --unset SYNTHETIC_API_KEY \
         --unset EXA_API_KEY \
+        --unset OPENROUTER_API_KEY \
         --set PI_ACP_PI_COMMAND "''${variant#*:}"
     done
 

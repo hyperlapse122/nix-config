@@ -79,13 +79,11 @@ let
   expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
 
   # What tests/pi.nix hands tests/pi_declared.py.
-  piSnapshot = ../home/h82/agents/synthetic-catalog.json;
+  syntheticSnapshot = ../home/h82/agents/synthetic-catalog.json;
+  openrouterSnapshot = ../home/h82/agents/openrouter-catalog.json;
+  renderer = ../home/h82/agents/pi-declarations.py;
   piModels = import ../home/h82/agents/synthetic-models.nix;
-  piIds = builtins.toJSON {
-    glm = piModels.glm.id;
-    glmFlash = piModels.glmFlash.id;
-    deepseek = piModels.deepseek.id;
-  };
+  defaultModel = piModels.${piModels.defaultModel}.id;
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -253,8 +251,8 @@ let
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
 
-      # Pi's Synthetic provider runs the packaged key helper, which reads the
-      # key host-secrets publishes into the state directory.
+      # Pi's Synthetic and OpenRouter providers run the packaged key helpers,
+      # which read the keys host-secrets publishes into the state directory.
       pi=$(readlink -f "$gen/home-path/bin/pi" || true)
       piKey=$(readlink -f "$gen/home-path/bin/pi-synthetic-key" || true)
       if [ -z "$pi" ] || [ ! -f "$pi" ]; then
@@ -263,6 +261,12 @@ let
         bad "no pi-synthetic-key beside pi"
       elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$piKey"; then
         bad "Pi's key helper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
+      fi
+      piOpenrouterKey=$(readlink -f "$gen/home-path/bin/pi-openrouter-key" || true)
+      if [ -z "$piOpenrouterKey" ] || [ ! -f "$piOpenrouterKey" ]; then
+        bad "no pi-openrouter-key beside pi"
+      elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/openrouter_api_key'"} "$piOpenrouterKey"; then
+        bad "Pi's OpenRouter key helper does not read ${user.my.secrets.stateDir}/openrouter_api_key"
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the
@@ -306,14 +310,21 @@ let
         piModelsDeclared=$(stepBlock piModels | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -n1 | awk '{print $2}' || true)
         piTarget=${lib.escapeShellArg "${config.my.user.home}/.pi/agent/settings.json"}
         piScratch=$TMPDIR/pi-$variant/settings.json
+        piLedgerTarget=$(grep -oE -- '--ledger[[:space:]]+[^[:space:]]+' <<<"$piBlock" | awk '{print $2}' | tr -d "'" || true)
+        piLedgerScratch=$TMPDIR/pi-$variant/ledger.json
         piRedirected=''${piBlock//"$piTarget"/"$piScratch"}
+        if [ -n "$piLedgerTarget" ]; then
+          piRedirected=''${piRedirected//"$piLedgerTarget"/"$piLedgerScratch"}
+        fi
         if [ -z "$piMerger" ] || [ -z "$piDeclared" ] || [ -z "$piModelsDeclared" ]; then
           bad "the Pi activation steps do not run the packaged merger with a declared document"
         elif [ "$piRedirected" = "$piBlock" ]; then
           bad "the Pi settings merge does not target $piTarget"
         else
-          mkdir -p "$TMPDIR/pi-$variant"
-          if ! output=$(python3 -I ${./pi_declared.py} "$piMerger" "$piModelsDeclared" "$piDeclared" ${piSnapshot} "$piKey" "$TMPDIR/pi-$variant/declared" ${lib.escapeShellArg piIds} 2>&1); then
+          mkdir -p "$TMPDIR/pi-$variant/work/home"
+          HOME=$TMPDIR/pi-$variant/work/home PI_OFFLINE=1 OPENROUTER_API_KEY=sk-fake "$pi" --list-models > "$TMPDIR/pi-$variant/work/listed"
+          awk '$1 == "openrouter" { print $2 }' "$TMPDIR/pi-$variant/work/listed" > "$TMPDIR/pi-$variant/work/bundled"
+          if ! output=$(python3 -I ${./pi_declared.py} "$piMerger" "$piModelsDeclared" "$piDeclared"             ${syntheticSnapshot} ${openrouterSnapshot} "$TMPDIR/pi-$variant/work/bundled" ${renderer}             "$piKey" "$piOpenrouterKey" "$TMPDIR/pi-$variant/declared" ${lib.escapeShellArg defaultModel} 2>&1); then
             bad "the declared Pi documents failed:"$'\n'"$output"
           fi
           if ! output=$(bash -euo pipefail -c "$piRedirected" 2>&1); then

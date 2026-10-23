@@ -61,6 +61,7 @@ GLM = "hf:zai-org/GLM-5.3"
 GLM_FLASH = "hf:zai-org/GLM-5.3-Flash"
 KIMI = "hf:moonshotai/Kimi-K3"
 DEEPSEEK = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017"
+QWEN = "hf:Qwen/Qwen3.8-27B"
 
 # Records its argv and stdin, then answers from a queue of outcomes: an
 # integer exits with that status the way `curl -f` does, anything else is
@@ -761,13 +762,17 @@ class CatalogSnapshotTest(WatchTestCase):
             capture_output=True, text=True,
         )
 
-    def test_it_writes_exactly_the_three_source_ids_with_their_fields(self):
+    def test_it_writes_every_catalog_row_sorted_by_id_with_its_fields(self):
         catalog = snapshot()
         proc = self.run_snapshot(catalog)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         written = json.loads(self.out.read_text())
-        by_id = {m["id"]: m for m in catalog["data"] if "alias_of" not in m}
-        self.assertEqual(sorted(m["id"] for m in written["data"]), sorted([GLM, GLM_FLASH, DEEPSEEK]))
+        ids = [m["id"] for m in written["data"]]
+        self.assertEqual(len(ids), 14)
+        self.assertEqual(ids, sorted(m["id"] for m in catalog["data"]))
+        self.assertIn("syn:large:text", ids)
+        self.assertIn("infinite:small:vision", ids)
+        by_id = {m["id"]: m for m in catalog["data"]}
         for entry in written["data"]:
             upstream = by_id[entry["id"]]
             self.assertEqual(entry, {
@@ -786,6 +791,47 @@ class CatalogSnapshotTest(WatchTestCase):
             next(m for m in written["data"] if m["id"] == GLM)["reasoning_parameters"]["efforts"],
             ["low", "high", "max"],
         )
+
+    def test_a_malformed_row_outside_the_source_is_skipped_and_named_or_keeps_its_previous_entry(self):
+        catalog = snapshot()
+        next(m for m in catalog["data"] if m["id"] == QWEN)["pricing"]["prompt"] = "USD 0.1"
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(QWEN, proc.stderr)
+        ids = [m["id"] for m in json.loads(self.out.read_text())["data"]]
+        self.assertNotIn(QWEN, ids)
+        self.assertEqual(len(ids), 13)
+
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        first = self.out.read_text()
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(QWEN, proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
+
+    def test_a_snapshot_that_shrinks_below_the_retention_floor_is_refused(self):
+        self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)
+        first = self.out.read_text()
+        source_ids = {GLM, GLM_FLASH, DEEPSEEK}
+        truncated = copy.deepcopy(snapshot())
+        truncated["data"] = [m for m in truncated["data"] if m["id"] in source_ids]
+        proc = self.run_snapshot(truncated)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("shrank from 14 to 3 models (floor 12)", proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
+
+    def test_a_row_without_reasoning_parameters_is_kept_with_no_efforts(self):
+        catalog = snapshot()
+        del next(m for m in catalog["data"] if m["id"] == QWEN)["reasoning_parameters"]
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        written = next(m for m in json.loads(self.out.read_text())["data"] if m["id"] == QWEN)
+        self.assertNotIn("reasoning_parameters", written)
+
+    def test_an_empty_catalog_exits_non_zero_and_leaves_the_file(self):
+        proc = self.run_snapshot({"data": []})
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(self.out.read_text(), self.SENTINEL)
 
     def test_a_second_run_leaves_the_file_as_it_is(self):
         self.assertEqual(self.run_snapshot(snapshot()).returncode, 0)

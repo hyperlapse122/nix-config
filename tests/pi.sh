@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Drives the pi wrapper against a stub Pi that records its argv and its whole
-# environment, and the pi-synthetic-key helper against key files.
+# environment, and the pi-synthetic-key and pi-openrouter-key helpers against
+# key files.
 #
-#   pi.sh WRAPPER HELPER        the sources, placeholders rendered here
-#   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE
+#   pi.sh WRAPPER KEY_HELPER    the sources, placeholders rendered here
+#   pi.sh --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE OPENROUTER_KEY_FILE
 #                               a built copy, checked for its constants, then
-#                               run like the sources with Pi and both key
-#                               files retargeted into a scratch directory
+#                               run like the sources with Pi and every key
+#                               file retargeted into a scratch directory
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s WRAPPER HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE\n' "${0##*/}" >&2
+  printf 'usage: %s WRAPPER KEY_HELPER | --packaged BINDIR SYNTHETIC_KEY_FILE EXA_KEY_FILE OPENROUTER_KEY_FILE\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -18,11 +19,12 @@ absolute() { printf '%s/%s' "$(cd -- "$(dirname -- "$1")" && pwd -P)" "$(basenam
 
 mode=source
 if [[ ${1:-} == --packaged ]]; then
-  [[ $# -eq 4 && -d $2 && -n $3 && -n $4 ]] || usage
+  [[ $# -eq 5 && -d $2 && -n $3 && -n $4 && -n $5 ]] || usage
   mode=packaged
   bindir=$2
   want_key_file=$3
   want_exa_file=$4
+  want_openrouter_file=$5
 else
   [[ $# -eq 2 && -f $1 && -f $2 ]] || usage
   wrapper_src=$(absolute "$1")
@@ -39,7 +41,7 @@ pass() { printf 'pi: ok (%s) - %s\n' "$mode" "$*"; }
 # paths point into the scratch directory.
 if [[ $mode == packaged ]]; then
   store=${NIX_STORE:-/nix/store}
-  for name in pi pi-synthetic-key; do
+  for name in pi pi-synthetic-key pi-openrouter-key; do
     f=$bindir/$name
     [[ -x $f ]] || fail "$f is not executable"
     if grep -qE '@[A-Z_]+@' "$f"; then
@@ -50,12 +52,18 @@ if [[ $mode == packaged ]]; then
   done
   pi=$(sed -nE "s/^PI='(.*)'$/\1/p" "$bindir/pi")
   [[ $pi == "$store/"* && -x $pi ]] || fail "PI '$pi' is not an executable store path"
-  grep -qxF "KEY_FILE='$want_key_file'" "$bindir/pi-synthetic-key" ||
-    fail "KEY_FILE is $(grep -m1 '^KEY_FILE=' "$bindir/pi-synthetic-key"), want '$want_key_file'"
-  [[ -z $(env -i "$bindir/pi-synthetic-key") ]] || fail 'the helper printed a key from a missing key file'
-  [[ $(env -i SYNTHETIC_API_KEY=caller-key "$bindir/pi-synthetic-key") == caller-key ]] ||
-    fail 'the helper did not print the caller key'
-  pass 'the constants are substituted and point at Pi and the key file'
+  for spec in "pi-synthetic-key SYNTHETIC_API_KEY $want_key_file" \
+    "pi-openrouter-key OPENROUTER_API_KEY $want_openrouter_file"; do
+    read -r name var file <<<"$spec"
+    grep -qxF "KEY_VAR='$var'" "$bindir/$name" ||
+      fail "$name's KEY_VAR is $(grep -m1 '^KEY_VAR=' "$bindir/$name"), want '$var'"
+    grep -qxF "KEY_FILE='$file'" "$bindir/$name" ||
+      fail "$name's KEY_FILE is $(grep -m1 '^KEY_FILE=' "$bindir/$name"), want '$file'"
+    [[ -z $(env -i "$bindir/$name") ]] || fail "$name printed a key from a missing key file"
+    [[ $(env -i "$var=caller-key" "$bindir/$name") == caller-key ]] ||
+      fail "$name did not print the caller key"
+  done
+  pass 'the constants are substituted and point at Pi and each key file'
 fi
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/pi-tests.XXXXXX")
@@ -65,8 +73,10 @@ bash_bin=$(command -v bash) || fail 'bash is required'
 env_bin=$(command -v env) || fail 'env is required'
 synthetic_file=$scratch/keys/synthetic_api_key
 exa_file=$scratch/keys/exa_api_key
+openrouter_file=$scratch/keys/openrouter_api_key
 synthetic_key=fake-synthetic-key-123
 exa_key=fake-exa-key-456
+openrouter_key=fake-openrouter-key-789
 mkdir -p "$scratch/keys"
 
 rec=$scratch/rec
@@ -78,22 +88,27 @@ mkdir -p "$home"
 # build could substitute: a wrapper changed to read a key file reads the
 # scratch one holding a key, and the checks below see it.
 wrapper=$scratch/pi
-helper=$scratch/pi-synthetic-key
+synthetic_helper=$scratch/pi-synthetic-key
+openrouter_helper=$scratch/pi-openrouter-key
 if [[ $mode == packaged ]]; then
-  for name in pi pi-synthetic-key; do
+  for name in pi pi-synthetic-key pi-openrouter-key; do
     sed -e "s|^PI='.*'\$|PI='$stub'|" -e "s|$want_key_file|$synthetic_file|g" \
-      -e "s|$want_exa_file|$exa_file|g" -e "s|$bindir/|$scratch/|g" \
-      "$bindir/$name" >"$scratch/$name"
+      -e "s|$want_exa_file|$exa_file|g" -e "s|$want_openrouter_file|$openrouter_file|g" \
+      -e "s|$bindir/|$scratch/|g" "$bindir/$name" >"$scratch/$name"
   done
   grep -qxF "PI='$stub'" "$wrapper" || fail 'could not point the packaged wrapper copy at the stub'
 else
-  for name in wrapper helper; do
-    src_var=${name}_src
-    sed -e "s|@PI@|$stub|" -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|g" \
-      -e "s|@EXA_KEY_FILE@|$exa_file|g" -e "1s|.*|#!$bash_bin|" "${!src_var}" >"${!name}"
+  sed -e "s|@PI@|$stub|" -e "s|@SYNTHETIC_KEY_FILE@|$synthetic_file|g" \
+    -e "s|@EXA_KEY_FILE@|$exa_file|g" -e "s|@OPENROUTER_KEY_FILE@|$openrouter_file|g" \
+    -e "1s|.*|#!$bash_bin|" "$wrapper_src" >"$wrapper"
+  for spec in "synthetic_helper SYNTHETIC_API_KEY $synthetic_file" \
+    "openrouter_helper OPENROUTER_API_KEY $openrouter_file"; do
+    read -r dst_var var file <<<"$spec"
+    sed -e "s|@KEY_VAR@|$var|g" -e "s|@KEY_FILE@|$file|g" \
+      -e "1s|.*|#!$bash_bin|" "$helper_src" >"${!dst_var}"
   done
 fi
-chmod +x "$wrapper" "$helper"
+chmod +x "$wrapper" "$synthetic_helper" "$openrouter_helper"
 
 cat >"$stub" <<STUB
 #!$bash_bin
@@ -138,24 +153,32 @@ recorded() {
   return 1
 }
 
-# helper [VAR=value ...] -- runs the key helper in a clean environment and
-# leaves its stdout in $out and its status in $rc.
+use_helper() {
+  case $1 in
+    pi-synthetic-key) helper=$synthetic_helper key_var=SYNTHETIC_API_KEY key_file=$synthetic_file ;;
+    pi-openrouter-key) helper=$openrouter_helper key_var=OPENROUTER_API_KEY key_file=$openrouter_file ;;
+  esac
+  helper_name=$1
+}
+
+# Leaves the key helper's stdout in $out and its status in $rc.
 helper() {
   set +e
   out=$(env -i HOME="$home" PATH=/caller/bin "$@" "$helper" 2>"$scratch/helper-stderr")
   rc=$?
   set -e
-  [[ $rc -eq 0 ]] || fail "the helper exited $rc"
-  [[ ! -s $scratch/helper-stderr ]] || fail "the helper printed to stderr: $(cat "$scratch/helper-stderr")"
+  [[ $rc -eq 0 ]] || fail "$helper_name exited $rc"
+  [[ ! -s $scratch/helper-stderr ]] || fail "$helper_name printed to stderr: $(cat "$scratch/helper-stderr")"
 }
 
 set_key_file() {
-  chmod -R u+rwx "$synthetic_file" 2>/dev/null || true
-  rm -rf -- "$synthetic_file"
-  if [[ $# -gt 0 ]]; then printf '%s' "$1" >"$synthetic_file"; fi
+  chmod -R u+rwx "$key_file" 2>/dev/null || true
+  rm -rf -- "$key_file"
+  if [[ $# -gt 0 ]]; then printf '%s' "$1" >"$key_file"; fi
 }
 
-fingerprint() { stat -c '%s %Y.%y' -- "$synthetic_file" "$exa_file" && cat -- "$synthetic_file" "$exa_file"; }
+key_files=("$synthetic_file" "$exa_file" "$openrouter_file")
+fingerprint() { stat -c '%s %Y.%y' -- "${key_files[@]}" && cat -- "${key_files[@]}"; }
 
 echo 0 >"$scratch/status"
 
@@ -193,15 +216,16 @@ pass 'PI_SKIP_VERSION_CHECK=1 and PI_TELEMETRY=0 hold over caller values, and PA
 
 printf '%s\n' "$synthetic_key" >"$synthetic_file"
 printf '%s\n' "$exa_key" >"$exa_file"
-chmod 0400 "$synthetic_file" "$exa_file"
-touch -d '2001-02-03 04:05:06' "$synthetic_file" "$exa_file"
+printf '%s\n' "$openrouter_key" >"$openrouter_file"
+chmod 0400 "${key_files[@]}"
+touch -d '2001-02-03 04:05:06' "${key_files[@]}"
 before=$(fingerprint)
 run --mode rpc
-stub_ran || fail 'the stub did not run with both key files present'
-for var in SYNTHETIC_API_KEY EXA_API_KEY; do
+stub_ran || fail 'the stub did not run with every key file present'
+for var in SYNTHETIC_API_KEY EXA_API_KEY OPENROUTER_API_KEY; do
   if recorded "$var" >/dev/null; then fail "Pi's environment holds $var"; fi
 done
-for needle in "$synthetic_key" "$exa_key" "$synthetic_file" "$exa_file" "$scratch/keys"; do
+for needle in "$synthetic_key" "$exa_key" "$openrouter_key" "${key_files[@]}" "$scratch/keys"; do
   if grep -aqF -- "$needle" "$rec/env" "$rec/argv" "$scratch/stdout" "$scratch/stderr"; then
     fail "'$needle' reached Pi's environment, argv, or the wrapper's output"
   fi
@@ -212,27 +236,34 @@ while IFS= read -r -d '' entry; do
   name=${entry%%=*} value=${entry#*=}
   if [[ $name == *KEY* || $value == *_api_key* ]]; then fail "Pi's environment holds $name='$value'"; fi
 done <"$rec/env"
-if grep -raqF -e "$synthetic_key" -e "$exa_key" "$home"; then fail "a key was written under $home"; fi
+if grep -raqF -e "$synthetic_key" -e "$exa_key" -e "$openrouter_key" "$home"; then fail "a key was written under $home"; fi
 [[ $(fingerprint) == "$before" ]] || fail 'a key file changed'
-pass 'with both key files present, Pi sees neither key nor a variable naming a key file, and neither file changes'
+pass 'with every key file present, Pi sees no key nor a variable naming a key file, and no file changes'
 
 # A key the caller exported is the documented way to test another account:
 # it passes through to Pi unchanged, and the helper Pi runs with that
 # environment prints it instead of the file key.
-run SYNTHETIC_API_KEY=caller-synthetic-key EXA_API_KEY=caller-exa-key --mode rpc
-[[ $(recorded SYNTHETIC_API_KEY) == caller-synthetic-key ]] ||
-  fail "an exported SYNTHETIC_API_KEY reached Pi as '$(recorded SYNTHETIC_API_KEY || echo unset)'"
-[[ $(recorded EXA_API_KEY) == caller-exa-key ]] ||
-  fail "an exported EXA_API_KEY reached Pi as '$(recorded EXA_API_KEY || echo unset)'"
-for needle in "$synthetic_key" "$exa_key" "$synthetic_file" "$exa_file"; do
+run SYNTHETIC_API_KEY=caller-synthetic-key EXA_API_KEY=caller-exa-key \
+  OPENROUTER_API_KEY=caller-openrouter-key --mode rpc
+for spec in SYNTHETIC_API_KEY=caller-synthetic-key EXA_API_KEY=caller-exa-key \
+  OPENROUTER_API_KEY=caller-openrouter-key; do
+  var=${spec%%=*}
+  [[ $(recorded "$var") == "${spec#*=}" ]] ||
+    fail "an exported $var reached Pi as '$(recorded "$var" || echo unset)'"
+done
+for needle in "$synthetic_key" "$exa_key" "$openrouter_key" "${key_files[@]}"; do
   if grep -aqF -- "$needle" "$rec/env"; then fail "'$needle' reached Pi's environment beside an exported key"; fi
 done
-helper SYNTHETIC_API_KEY="$(recorded SYNTHETIC_API_KEY)"
-[[ $out == caller-synthetic-key ]] || fail "the helper under Pi's environment printed '$out', want the exported key"
-pass 'an exported key reaches Pi unchanged and wins in the helper, and no file key joins it'
+for name in pi-synthetic-key pi-openrouter-key; do
+  use_helper "$name"
+  exported=$(recorded "$key_var")
+  helper "$key_var=$exported"
+  [[ $out == "$exported" ]] || fail "$name under Pi's environment printed '$out', want the exported key"
+done
+pass 'an exported key reaches Pi unchanged and wins in its helper, and no file key joins it'
 
-chmod u+w "$synthetic_file" "$exa_file"
-rm -f -- "$synthetic_file" "$exa_file"
+chmod u+w "${key_files[@]}"
+rm -f -- "${key_files[@]}"
 echo 4 >"$scratch/status"
 run --mode rpc
 stub_ran || fail 'the stub did not run with no key files'
@@ -241,50 +272,52 @@ stub_ran || fail 'the stub did not run with no key files'
 pass 'with no key files, Pi still runs and stderr is empty'
 echo 0 >"$scratch/status"
 
-# --- the key helper ----------------------------------------------------------
-
-set_key_file "$synthetic_key"
-helper
-[[ $out == "$synthetic_key" ]] || fail "the helper printed '$out', want the file key"
-set_key_file $'fake-key-789\n'
-helper
-[[ $out == fake-key-789 ]] || fail "a trailing newline was not stripped: '$out'"
-pass 'the helper prints the key file'"'"'s contents'
-
-set_key_file "$synthetic_key"
-helper SYNTHETIC_API_KEY=caller-key
-[[ $out == caller-key ]] || fail "the helper printed '$out', want the caller key"
-helper SYNTHETIC_API_KEY=
-[[ $out == "$synthetic_key" ]] || fail 'an empty caller key blocked the file key'
-pass 'a caller-exported SYNTHETIC_API_KEY wins, and an empty one falls back to the file'
-
 check_no_key() {
   helper
-  [[ -z $out ]] || fail "$1: the helper printed '$out'"
+  [[ -z $out ]] || fail "$1: $helper_name printed '$out'"
 }
 
-set_key_file
-check_no_key 'missing key file'
-set_key_file ''
-check_no_key 'empty key file'
-set_key_file 'fake key'
-check_no_key 'key with a space'
-set_key_file $'fake-key\nsecond-line'
-check_no_key 'two-line key file'
-set_key_file $'fake\x01key'
-check_no_key 'key with a control character'
-set_key_file "$(printf 'x%.0s' {1..8193})"
-check_no_key 'oversize key file'
-set_key_file
-mkdir "$synthetic_file"
-check_no_key 'key path is a directory'
-rmdir "$synthetic_file"
-pass 'a missing, empty, whitespace-bearing, control-bearing, oversize, or directory key file prints nothing'
+# Both helpers follow one set of rules, each for its own variable and file.
+for name in pi-synthetic-key pi-openrouter-key; do
+  use_helper "$name"
+  set_key_file "$synthetic_key"
+  helper
+  [[ $out == "$synthetic_key" ]] || fail "$helper_name printed '$out', want the file key"
+  set_key_file $'fake-key-789\n'
+  helper
+  [[ $out == fake-key-789 ]] || fail "$helper_name: a trailing newline was not stripped: '$out'"
+  pass "$helper_name prints the key file's contents"
 
-longest=$(printf 'x%.0s' {1..8192})
-set_key_file "$longest"
-helper
-[[ $out == "$longest" ]] || fail 'an 8192-character key was not accepted'
-pass 'a key of exactly 8192 characters is accepted'
+  set_key_file "$synthetic_key"
+  helper "$key_var=caller-key"
+  [[ $out == caller-key ]] || fail "$helper_name printed '$out', want the caller key"
+  helper "$key_var="
+  [[ $out == "$synthetic_key" ]] || fail "$helper_name: an empty caller key blocked the file key"
+  pass "$helper_name: a caller-exported $key_var wins, and an empty one falls back to the file"
+
+  set_key_file
+  check_no_key 'missing key file'
+  set_key_file ''
+  check_no_key 'empty key file'
+  set_key_file 'fake key'
+  check_no_key 'key with a space'
+  set_key_file $'fake-key\nsecond-line'
+  check_no_key 'two-line key file'
+  set_key_file $'fake\x01key'
+  check_no_key 'key with a control character'
+  set_key_file "$(printf 'x%.0s' {1..8193})"
+  check_no_key 'oversize key file'
+  set_key_file
+  mkdir "$key_file"
+  check_no_key 'key path is a directory'
+  rmdir "$key_file"
+  pass "$helper_name: a missing, empty, whitespace-bearing, control-bearing, oversize, or directory key file prints nothing"
+
+  longest=$(printf 'x%.0s' {1..8192})
+  set_key_file "$longest"
+  helper
+  [[ $out == "$longest" ]] || fail "$helper_name: an 8192-character key was not accepted"
+  pass "$helper_name accepts a key of exactly 8192 characters"
+done
 
 printf 'pi: all checks passed (%s)\n' "$mode"

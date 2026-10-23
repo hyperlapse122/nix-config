@@ -108,6 +108,8 @@
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
+          "pi-models-load"
+          "pi-settings"
           "printing"
           "proton-vpn"
           "user-avatar"
@@ -164,6 +166,7 @@
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         synthetic-models-watch = agentTools.syntheticModelsWatch;
+        openrouter-catalog-snapshot = agentTools.openrouterCatalogSnapshot;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
         antigravity-acp = import ./packages/antigravity-acp.nix {
@@ -233,18 +236,22 @@
           homeFileTargets =
             entry: map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }));
 
-          # Runs a stdlib Python test against a copy of the one script it drives.
+          # Runs a stdlib Python test against a copy of the one script it drives
+          # and of the modules it imports.
           optionalLines = text: pkgs.lib.optionalString (text != "") "\n${pkgs.lib.removeSuffix "\n" text}";
           pythonScriptCheckWith =
             {
               setup ? "",
               extra ? "",
+              modules ? [ ],
             }:
             name: script: test:
             pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
-              cp ${script} scripts/${baseNameOf script}
+              cp ${script} scripts/${baseNameOf script}${
+                pkgs.lib.concatMapStrings (module: "\ncp ${module} scripts/${baseNameOf module}") modules
+              }
               cp ${test} tests/${baseNameOf test}${optionalLines setup}
               python tests/${baseNameOf test}${optionalLines extra}
               touch $out
@@ -595,6 +602,7 @@
               );
             in
             pythonScriptCheckWith {
+              modules = [ ./scripts/catalog_snapshot.py ];
               # The real source must match the snapshot, and the tests read it,
               # never a copy that can drift.
               setup = ''
@@ -612,6 +620,18 @@
                 export SYNTHETIC_MODELS_SOURCE_JSON=${realSource}
               '';
             } "synthetic-models-watch" ./scripts/synthetic-models-watch ./tests/test_synthetic_models_watch.py;
+          openrouter-catalog-snapshot =
+            pythonScriptCheckWith
+              {
+                modules = [ ./scripts/catalog_snapshot.py ];
+                setup = ''
+                  mkdir -p tests/fixtures
+                  cp -r ${./tests/fixtures/openrouter-models} tests/fixtures/openrouter-models
+                '';
+              }
+              "openrouter-catalog-snapshot"
+              ./scripts/openrouter-catalog-snapshot
+              ./tests/test_openrouter_catalog_snapshot.py;
           synthetic-models-reconcile =
             pkgs.runCommand "synthetic-models-reconcile-tests"
               {
@@ -624,7 +644,8 @@
               ''
                 export PYTHONDONTWRITEBYTECODE=1
                 bash ${./tests/synthetic-models-reconcile.sh} \
-                  ${./.github/workflows/synthetic-models.yml} ${./scripts/synthetic-models-watch} \
+                  ${./.github/workflows/synthetic-models.yml} \
+                  ${agentTools.syntheticModelsWatch}/libexec/synthetic-models-watch/synthetic-models-watch \
                   ${./tests/fixtures/synthetic-models/catalog-2026-10-21.json} \
                   ${pkgs.writeText "synthetic-models.json" (
                     builtins.toJSON (import ./home/h82/agents/synthetic-models.nix)
@@ -1462,6 +1483,22 @@
                   ${./.github/workflows/update-dependencies.yml}
                 touch $out
               '';
+          model-catalogs-reconcile =
+            pkgs.runCommand "model-catalogs-reconcile-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.jq
+                  pkgs.yq-go
+                  pkgs.gawk
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                bash ${./tests/model-catalogs-reconcile.sh} \
+                  ${./.github/workflows/model-catalogs.yml}
+                touch $out
+              '';
           ci-workflow-docs-skip =
             pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''
@@ -1520,6 +1557,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          pi-models-load = import ./tests/pi-models-load.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           pi-extension = import ./tests/pi-extension.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -1550,7 +1591,15 @@
             let
               syntheticKeyFile = "/var/empty/pi-test/synthetic_api_key";
               exaKeyFile = "/var/empty/pi-test/exa_api_key";
-              packaged = import ./packages/pi.nix { inherit pkgs syntheticKeyFile exaKeyFile; };
+              openrouterKeyFile = "/var/empty/pi-test/openrouter_api_key";
+              packaged = import ./packages/pi.nix {
+                inherit
+                  pkgs
+                  syntheticKeyFile
+                  exaKeyFile
+                  openrouterKeyFile
+                  ;
+              };
               unsafePaths = [
                 {
                   label = "a relative path";
@@ -1578,6 +1627,7 @@
                   [
                     "syntheticKeyFile"
                     "exaKeyFile"
+                    "openrouterKeyFile"
                   ]
                 ++ [
                   {
@@ -1585,6 +1635,7 @@
                     args = {
                       syntheticKeyFile = "/home/test-user/.local/state/cli-auth/synthetic_api_key";
                       exaKeyFile = "/home/test-user/.local/state/cli-auth/exa_api_key";
+                      openrouterKeyFile = "/home/test-user/.local/state/cli-auth/openrouter_api_key";
                     };
                     accept = true;
                   }
@@ -1605,12 +1656,12 @@
               ${guardChecks}
               mkdir -p scripts tests
               cp ${./scripts/pi} scripts/pi
-              cp ${./scripts/pi-synthetic-key} scripts/pi-synthetic-key
+              cp ${./scripts/pi-provider-key} scripts/pi-provider-key
               cp ${./tests/pi.sh} tests/pi.sh
-              chmod +x scripts/pi scripts/pi-synthetic-key
+              chmod +x scripts/pi scripts/pi-provider-key
               patchShebangs scripts
-              bash tests/pi.sh scripts/pi scripts/pi-synthetic-key
-              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile}
+              bash tests/pi.sh scripts/pi scripts/pi-provider-key
+              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile} ${openrouterKeyFile}
               touch $out
             '';
           pi-acp =

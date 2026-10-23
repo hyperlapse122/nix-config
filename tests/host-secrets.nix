@@ -13,7 +13,8 @@
     prints no token;
   - an identity with the wrong mode or a symlinked identity is refused;
   - an SSH file the identity cannot decrypt, a token publish-cli-auth
-    rejects, or an SSH field that is no private key fails stage and leaves no
+    rejects, a tokens file that lacks openrouter_api_key, or an SSH field
+    that is no private key fails stage, names the cause, and leaves no
     plaintext behind;
   - with the right identity, `stage` then `publish` leave gh and glab
     configuration at 0600, the tokens at 0400 in ~/.local/state/cli-auth, and
@@ -99,13 +100,14 @@ pkgs.runCommand "host-secrets-tests"
     pass 'stage refuses a loose-mode or symlinked identity'
 
     # --- failures after the first decrypt ------------------------------------
-    for case in ssh-other tokens-invalid ssh-invalid; do
+    for case in ssh-other tokens-invalid tokens-missing ssh-invalid; do
       fresh_home "$case"
       install_key ${secrets}/key.txt
       TOKENS=${secrets}/tokens.yaml SSH=${secrets}/ssh.yaml
       case $case in
         ssh-other) SSH=${secrets}/ssh-other.yaml expected='cannot decrypt the host SSH key' ;;
         tokens-invalid) TOKENS=${secrets}/tokens-invalid.yaml expected='failed validation' ;;
+        tokens-missing) TOKENS=${secrets}/tokens-missing.yaml expected='cannot decrypt openrouter_api_key' ;;
         ssh-invalid) SSH=${secrets}/ssh-invalid.yaml expected='not a valid private key' ;;
       esac
       if hs stage >out 2>err; then fail "stage succeeded with $case"; fi
@@ -125,7 +127,7 @@ pkgs.runCommand "host-secrets-tests"
       for file in .config/gh/hosts.yml .config/glab-cli/config.yml .ssh/id_ed25519_nix_config; do
         [ "$(stat -c %a "$HOME/$file")" = 600 ] || fail "$round: $file is not 0600"
       done
-      for token in github_token gitlab_token jpi_token tokscale_token synthetic_api_key exa_api_key; do
+      for token in github_token gitlab_token jpi_token tokscale_token synthetic_api_key exa_api_key openrouter_api_key; do
         [ "$(stat -c %a "$HOME/.local/state/cli-auth/$token")" = 400 ] || fail "$round: $token is not 0400"
       done
       [ "$(stat -c %a "$HOME/.local/state/cli-auth")" = 700 ] || fail "$round: the token directory is not 0700"

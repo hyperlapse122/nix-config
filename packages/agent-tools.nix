@@ -23,6 +23,27 @@ let
 
   pythonHelper = name: src: helperWith name src pkgs.python3;
 
+  # The two catalog scripts import scripts/catalog_snapshot.py from their own
+  # directory, so each is installed beside it under libexec and linked into
+  # bin. Their fetch goes through an overridable command so the sandboxed
+  # repository check can drive it with fixtures.
+  catalogHelper =
+    name: src:
+    pkgs.stdenvNoCC.mkDerivation {
+      pname = name;
+      version = "1";
+      dontUnpack = true;
+      nativeBuildInputs = [ pkgs.python3 ];
+      installPhase = ''
+        install -Dm755 ${src} $out/libexec/${name}/${name}
+        install -Dm644 ${../scripts/catalog_snapshot.py} $out/libexec/${name}/catalog_snapshot.py
+        patchShebangs $out/libexec/${name}/${name}
+        mkdir -p $out/bin
+        ln -s ../libexec/${name}/${name} $out/bin/${name}
+      '';
+      meta.mainProgram = name;
+    };
+
   # tomlkit is what lets the TOML mode rewrite a file such as Codex's
   # config.toml without dropping the comments and tables it does not own. The
   # flake check runs the source copy of the tests under this same interpreter.
@@ -110,7 +131,12 @@ let
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
 
   # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
-  syntheticModelsWatch = pythonHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
+  # Synthetic's catalog, and rewrites the committed Synthetic catalog snapshot.
+  syntheticModelsWatch = catalogHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
+
+  # Rewrites the committed OpenRouter catalog snapshot from OpenRouter's
+  # /models/user endpoint.
+  openrouterCatalogSnapshot = catalogHelper "openrouter-catalog-snapshot" ../scripts/openrouter-catalog-snapshot;
 
   # Runs from home activation and links the pinned Antigravity runtime into
   # T3 Code's managed runtime directory, which T3 Code checks on disk.
@@ -145,6 +171,7 @@ in
     antigravityAcpRelease
     t3codeRelease
     syntheticModelsWatch
+    openrouterCatalogSnapshot
     t3codeAntigravityInstall
     t3codeAntigravityLink
     androidSdkRelease

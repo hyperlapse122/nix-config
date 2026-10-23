@@ -33,12 +33,16 @@ the fingerprint, the body digest, and the latest catalog notice, and
 `--notice` prints the comment for a notice kind.
 
 `--snapshot FILE` rewrites the committed catalog snapshot instead of
-comparing: it keeps the catalog rows whose `id` the source names, trimmed to
-the fields Pi's model config renders, in the catalog's own shape, and leaves
-FILE untouched unless the content changes. `pricing` keeps only the four
-prices Pi's config reads, each a string home/h82/agents/pi.nix can parse. It
-refuses to write, and exits non-zero, when the catalog lacks a source ID or a
-kept row is malformed.
+comparing: it keeps every catalog row, `syn:` and alias rows included, sorted
+by `id` and trimmed to the fields Pi's model config renders, in the catalog's
+own shape, and leaves FILE untouched unless the content changes. `pricing`
+keeps only the four prices Pi's config reads, each a string
+home/h82/agents/pi-declarations.py can parse. A row without
+`reasoning_parameters` keeps none. A malformed row is skipped with a warning
+naming it on stderr, keeping its previous entry from FILE when one exists
+outside the source IDs. It refuses to write, and exits non-zero, when no row
+is left, when the valid rows shrink below the retention floor of FILE, or
+when a source ID is missing or malformed.
 """
 
 import argparse
@@ -47,14 +51,30 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import time
 
+# The shared module sits beside this script, also when a test loads it by
+# path or Python runs it isolated.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from catalog_snapshot import (  # noqa: E402
+    DEFAULT_FETCH,
+    Failure,
+    check_shrink_floor,
+    child_env,
+    command_from,
+    existing_rows,
+    is_int,
+    is_strings,
+    read_json,
+    run_fetch,
+    write,
+    write_if_changed,
+)
+
 SOURCE_FILE = "home/h82/agents/synthetic-models.nix"
 DEFAULT_URL = "https://api.synthetic.new/openai/v1/models"
-DEFAULT_FETCH = "curl -sSfL --max-time 60"
 DEFAULT_EVAL = "nix eval --json --file"
 DEFAULT_RETRY_WAIT = 30
 DEFAULT_EVAL_TIMEOUT = 300
@@ -79,48 +99,22 @@ NOTICES = {
 
 ID_PATTERN = re.compile(r"hf:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 EFFORT_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
-# The prices home/h82/agents/pi.nix reads, each an optional `$` and a JSON
-# number without a sign, which is what its perMillion hands builtins.fromJSON.
+# The prices home/h82/agents/pi-declarations.py reads, each an optional `$`
+# and a JSON number without a sign, which is what its per_million parses.
 PRICE_FIELDS = ("prompt", "completion", "input_cache_reads", "input_cache_writes")
 PRICE_PATTERN = re.compile(r"\$?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 # The catalog fields a snapshot row keeps, with the check each must pass.
 SNAPSHOT_FIELDS = {
     "display_name": lambda v: isinstance(v, str) and v != "",
-    "input_modalities": lambda v: isinstance(v, list) and all(isinstance(m, str) for m in v),
-    "context_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
-    "max_output_length": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "input_modalities": is_strings,
+    "context_length": is_int,
+    "max_output_length": is_int,
     "pricing": lambda v: isinstance(v, dict)
     and all(isinstance(v.get(field), str) and PRICE_PATTERN.fullmatch(v[field]) for field in PRICE_FIELDS),
 }
 # The top-level keys of the source that name an entry, in the order the
 # issue lists them among that entry's uses.
 ENTRY_POINTERS = ("defaultModel", "textGeneration")
-
-
-class Failure(Exception):
-    """A refusal that should stop the run with a readable message."""
-
-
-def child_env():
-    """The environment for subprocesses, without the API key."""
-    env = dict(os.environ)
-    env.pop(KEY_VARIABLE, None)
-    return env
-
-
-def command_from(variable, default):
-    command = shlex.split(os.environ.get(variable, default))
-    if not command:
-        raise Failure(f"{variable} is empty")
-    return command
-
-
-def read_json(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise Failure(f"cannot read {path}: {exc}") from None
 
 
 def load_source(source, source_json, timeout):
@@ -132,7 +126,7 @@ def load_source(source, source_json, timeout):
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            env=child_env(),
+            env=child_env(KEY_VARIABLE),
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
@@ -198,16 +192,8 @@ def fetch(url, retry_wait):
     """Return the catalog body, retrying once after a wait."""
     command = command_from("SYNTHETIC_MODELS_FETCH", DEFAULT_FETCH)
     key = os.environ.get(KEY_VARIABLE, "")
-    header = f"Authorization: Bearer {key}\n" if key else ""
-    argv = command + (["-H", "@-"] if key else []) + [url]
     for attempt in (1, 2):
-        proc = subprocess.run(
-            argv,
-            input=header,
-            capture_output=True,
-            text=True,
-            env=child_env(),
-        )
+        proc = run_fetch(command, url, key, KEY_VARIABLE)
         if proc.returncode == 0:
             try:
                 return json.loads(proc.stdout)
@@ -339,8 +325,14 @@ def classify(models, rows, aliases):
 
 
 def snapshot_row(row):
-    """The trimmed row for one catalog entry, or a Failure naming the bad field."""
-    model_id = row["id"]
+    """The trimmed row for one catalog entry, or a Failure naming the bad field.
+
+    A row without `reasoning_parameters` keeps no such key, so a renderer can
+    tell it from a row that lists no efforts.
+    """
+    model_id = row.get("id") if isinstance(row, dict) else None
+    if not isinstance(model_id, str) or model_id == "":
+        raise Failure(f"catalog entry {json.dumps(row)[:120]} has no valid id")
     kept = {"id": model_id}
     for field, valid in SNAPSHOT_FIELDS.items():
         if field not in row or not valid(row[field]):
@@ -348,6 +340,8 @@ def snapshot_row(row):
         kept[field] = row[field]
     kept["pricing"] = {field: row["pricing"][field] for field in PRICE_FIELDS}
     params = row.get("reasoning_parameters")
+    if params is None:
+        return kept
     efforts = params.get("efforts") if isinstance(params, dict) else None
     if not isinstance(efforts, list) or not all(isinstance(e, str) and EFFORT_PATTERN.fullmatch(e) for e in efforts):
         raise Failure(f"catalog entry {model_id} has efforts that are not a list of strings")
@@ -355,23 +349,38 @@ def snapshot_row(row):
     return kept
 
 
-def catalog_snapshot(models, rows):
-    """The snapshot text for the models in use; refuses a missing ID."""
-    missing = sorted(m["id"] for m in models.values() if m["id"] not in rows)
+def catalog_snapshot(models, catalog, previous=None):
+    """The snapshot text for every well-formed catalog row.
+
+    A malformed row is skipped with a warning naming it, keeping its previous
+    entry when one exists outside the source IDs. Refuses a source ID that is
+    missing or malformed, or a catalog that shrinks below the retention floor.
+    """
+    data = catalog.get("data") if isinstance(catalog, dict) else None
+    if not isinstance(data, list):
+        raise Failure("the catalog has no data list")
+    previous = previous or {}
+    source_ids = {m["id"] for m in models.values()}
+    kept, problems, fresh = {}, {}, set()
+    for row in data:
+        try:
+            entry = snapshot_row(row)
+        except Failure as exc:
+            model_id = row.get("id") if isinstance(row, dict) else None
+            if isinstance(model_id, str):
+                problems[model_id] = str(exc)
+                if model_id in previous and model_id not in source_ids:
+                    kept.setdefault(model_id, previous[model_id])
+            print(f"synthetic-models-watch: skipping {exc}", file=sys.stderr)
+            continue
+        kept[entry["id"]] = entry
+        fresh.add(entry["id"])
+    missing = sorted(m["id"] for m in models.values() if m["id"] not in kept)
+    # The source always names a model, so this also refuses an empty result.
     if missing:
-        raise Failure(f"the catalog lacks {', '.join(missing)}")
-    data = [snapshot_row(rows[model_id]) for model_id in sorted(m["id"] for m in models.values())]
-    return json.dumps({"data": data}, indent=2) + "\n"
-
-
-def write_if_changed(path, text):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            if f.read() == text:
-                return
-    except FileNotFoundError:
-        pass
-    write(path, text)
+        raise Failure("; ".join(problems.get(i, f"the catalog lacks {i}") for i in missing))
+    check_shrink_floor(len(fresh), len(previous))
+    return json.dumps({"data": [kept[i] for i in sorted(kept)]}, indent=2) + "\n"
 
 
 def sha256(text):
@@ -496,11 +505,6 @@ def notice_text(kind):
     return f"{NOTICES[kind]}\n\n<!-- {NOTICE_MARKER}: {kind} -->\n"
 
 
-def write(path, text):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default=SOURCE_FILE, help="Nix model source to evaluate (default: %(default)s)")
@@ -546,10 +550,11 @@ def main(argv=None):
             return 0
         models = models_in_use(load_source(args.source, args.source_json, args.eval_timeout))
         catalog = read_json(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
-        rows, aliases, rejected = catalog_rows(catalog)
         if args.snapshot:
-            write_if_changed(args.snapshot, catalog_snapshot(models, rows))
+            previous = existing_rows(args.snapshot, snapshot_row)
+            write_if_changed(args.snapshot, catalog_snapshot(models, catalog, previous))
             return 0
+        rows, aliases, rejected = catalog_rows(catalog)
         findings = classify(models, rows, aliases)
         mark = fingerprint(findings)
         result = {
