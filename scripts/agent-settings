@@ -25,11 +25,18 @@ The declared document is a JSON object with up to nine fields:
   remove    [name]                  top-level keys to drop
   setPaths  [{path: [key, ...], value: scalar}]
                                     leaves to assign inside nested objects
-  removePaths [{path: [key, ...], key: name}]
+  removePaths [{path: [key, ...], key: name, prune: bool, value: scalar}]
                                     the named key in the object at path:
                                     removes it when present; a missing path,
                                     a non-object segment, or an absent key is
-                                    a no-op
+                                    a no-op.  `value` is optional; when given,
+                                    the key goes only while it holds exactly
+                                    that value, so a value the user chose
+                                    stays.  `prune` is optional; true also
+                                    removes each object on the path that the
+                                    removals leave empty, innermost first,
+                                    after every removal has run, so the
+                                    result never depends on declaration order
   removeEntries [{path: [key, ...], key: name, values: [scalar]}]
                                     the list at path: drops every object entry
                                     whose `key` field equals one of values;
@@ -101,6 +108,9 @@ def private_directory(path):
     # fresh machine.
     path.chmod(0o700)
 
+
+# A removal that names no value removes its key whatever it holds.
+ANY_VALUE = object()
 
 FIELDS = {'set', 'remove', 'setPaths', 'removePaths', 'removeEntries', 'upsertPaths', 'prefixEntries', 'own',
           'migrateInstances'}
@@ -278,12 +288,17 @@ def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, decl
         raise ValueError('declared "removePaths" is not a list: {}'.format(declared))
     removals = []
     for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != {'path', 'key'}:
-            raise ValueError('declared "removePaths" entry is not {{path, key}}: {}'.format(declared))
-        path, key = entry['path'], entry['key']
+        if not isinstance(entry, dict) or not {'path', 'key'} <= set(entry) <= {'path', 'key', 'prune', 'value'}:
+            raise ValueError('declared "removePaths" entry is not {{path, key[, prune][, value]}}: {}'.format(declared))
+        path, key, prune = entry['path'], entry['key'], entry.get('prune', False)
+        value = entry.get('value', ANY_VALUE)
         check_path(path, declared)
         if not isinstance(key, str):
             raise ValueError('declared removePaths key must be a name: {}'.format(describe(path)))
+        if not isinstance(prune, bool):
+            raise ValueError('declared removePaths prune must be a boolean: {}'.format(describe(path)))
+        if isinstance(value, (dict, list)):
+            raise ValueError('declared removePaths value must be a scalar: {}'.format(describe(path)))
         # Same reasoning as setPaths: another declaration on the top-level key
         # would fight this one, with the outcome depending on order.
         check_top_level(path, assign, retire, owned)
@@ -293,10 +308,10 @@ def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, decl
         # under one object name different leaves, so they do not conflict.
         leaf = path + [key]
         check_disjoint(leaf, assigned_paths(paths, upserts, prefixes))
-        removals.append((path, key))
-    for index, (path, key) in enumerate(removals):
+        removals.append((path, key, prune, value))
+    for index, (path, key, _, _) in enumerate(removals):
         check_disjoint(path + [key], [other + [other_key]
-                                      for other, other_key in removals[index + 1:]])
+                                      for other, other_key, _, _ in removals[index + 1:]])
     return removals
 
 
@@ -323,7 +338,7 @@ def removal_entries(entries, assign, retire, owned, paths, upserts, prefixes, re
             check_disjoint(path, [other])
         check_disjoint(path, [other for other, _ in paths]
                        + [other for other, _, _ in prefixes]
-                       + [other + [other_key] for other, other_key in removals])
+                       + [other + [other_key] for other, other_key, _, _ in removals])
         for other, _, _ in drops:
             check_disjoint(path, [other])
         drops.append((path, key, values))
@@ -439,7 +454,8 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
                       if not (isinstance(entry, str) and entry.startswith(prefix))]
         if value is not None:
             entries.append(value)
-    for path, key in removals or []:
+    pruned = []
+    for path, key, prune, value in removals or []:
         # A walk that stops early is the no-op case: a missing path, a
         # non-object segment, or an absent key has nothing to remove, the way
         # top-level remove treats an absent key.  No parent is created.
@@ -449,8 +465,30 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
                 break
             node = node[segment]
         else:
-            if isinstance(node, dict):
-                node.pop(key, None)
+            # A declared value keeps what the user chose since: the key goes
+            # only while it still holds what this repository wrote.  Compared
+            # with the type too, so 1 never matches a true.
+            if (isinstance(node, dict) and key in node
+                    and (value is ANY_VALUE
+                         or (isinstance(node[key], bool) == isinstance(value, bool) and node[key] == value))):
+                del node[key]
+                if prune:
+                    pruned.append(path)
+    # Only after every removal, so a plain removal beside a pruning one under
+    # the same object empties it whichever is declared first.  Only an object
+    # a removal emptied goes, so a path that was already empty or never held
+    # the key stays as the user left it.
+    for path in pruned:
+        for depth in range(len(path), 0, -1):
+            node = merged
+            for segment in path[:depth]:
+                node = node.get(segment) if isinstance(node, dict) else None
+            if not isinstance(node, dict) or node:
+                break
+            parent = merged
+            for segment in path[:depth - 1]:
+                parent = parent[segment]
+            del parent[path[depth - 1]]
     for path, key, values in drops or []:
         # The same no-op walk as removePaths, ending at a list.
         node = merged

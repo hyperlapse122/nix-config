@@ -56,16 +56,28 @@ let
       ];
       value = true;
     }
-    # The session effort for Opus 5.5 only. In user settings, Claude Code
-    # ignores a top-level effortLevel for Opus 5.5 and later models, and a
-    # modelSettings entry applies only to the model it names, so other models
-    # start at their own default. The canonical ID also matches `opus[1m]`.
+    # Native worktrees start from the remote default branch unless this is
+    # `head`, which starts them from the parent's current commit.
+    {
+      path = [
+        "worktree"
+        "baseRef"
+      ];
+      value = "head";
+    }
+  ];
+
+  # settingsPaths only assigns, so a nested key this repository stops
+  # declaring is removed here instead.  `value` is what this repository wrote,
+  # so a level the user saves with /effort stays.
+  removePaths = [
     {
       path = [
         "modelSettings"
         "claude-opus-5-5"
-        "effortLevel"
       ];
+      key = "effortLevel";
+      prune = true;
       value = "medium";
     }
   ];
@@ -88,11 +100,25 @@ let
   ];
 
   renderDeclared =
-    name: set: remove: setPaths:
-    pkgs.writeText name (builtins.toJSON { inherit set remove setPaths; });
+    name: set: remove: setPaths: removePaths:
+    pkgs.writeText name (
+      builtins.toJSON {
+        inherit
+          set
+          remove
+          setPaths
+          removePaths
+          ;
+      }
+    );
 
-  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths;
-  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];
+  declared =
+    renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths
+      removePaths;
+  declaredGlobalConfig =
+    renderDeclared "claude-declared-global-config.json" globalConfigTier [ ]
+      [ ]
+      [ ];
 in
 {
   my.agents.crossModelPeers = [ "claude" ];

@@ -655,6 +655,29 @@ class OwnedKeyTests(unittest.TestCase):
         self.merge()
         self.assertEqual(self.read(), OWNED)
 
+    def test_owned_model_selections_drop_an_effort_an_earlier_generation_wrote(self):
+        # T3 Code's settings.json owns both Claude selections with no options,
+        # so the effort option an earlier rebuild wrote must not survive.
+        stale = {'instanceId': 'claudeAgent', 'model': 'claude-opus-5-5',
+                 'options': [{'id': 'effort', 'value': 'xhigh'}]}
+        self.seed({
+            'defaultModelSelection': stale,
+            'textGenerationModelSelection': {**stale, 'model': 'claude-haiku-5-5'},
+            'fontSize': 14,
+        })
+        self.declare(own={
+            'defaultModelSelection': {
+                'instanceId': 'claudeAgent', 'model': 'claude-opus-5-5', 'options': []},
+            'textGenerationModelSelection': {
+                'instanceId': 'claudeAgent', 'model': 'claude-haiku-5-5', 'options': []},
+        })
+        self.merge()
+        result = self.read()
+        for key in ('defaultModelSelection', 'textGenerationModelSelection'):
+            self.assertEqual(result[key]['options'], [], key)
+            self.assertNotIn('effort', json.dumps(result[key]), key)
+        self.assertEqual(result['fontSize'], 14)
+
     def test_second_run_does_not_rewrite_the_file(self):
         self.seed()
         self.merge()
@@ -1486,6 +1509,123 @@ class RemovePathTests(unittest.TestCase):
                       {'path': ['scanner'], 'key': 'live'}])
         self.merge()
         self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul'})
+
+    def declare_pruned(self, **fields):
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel', 'prune': True}],
+                     **fields)
+
+    def test_prune_removes_each_object_the_removal_empties(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}}, 'colorPalette': 'blue'})
+        self.declare_pruned(assign={'colorPalette': 'blue'})
+        self.merge()
+        self.assertEqual(self.read(), {'colorPalette': 'blue'})
+
+    def test_prune_keeps_a_sibling_key_and_a_sibling_model(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium', 'other': 1}}})
+        self.declare_pruned()
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-opus-5-5': {'other': 1}}})
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}, 'claude-sonnet-5-5': {'x': 1}}})
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-sonnet-5-5': {'x': 1}}})
+
+    def test_prune_leaves_a_file_without_the_path_untouched(self):
+        self.seed({'colorPalette': 'blue'})
+        self.declare_pruned(assign={'colorPalette': 'blue'})
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_removal_without_prune_leaves_the_emptied_parent(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}}})
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel'}])
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-opus-5-5': {}}})
+
+    def test_prune_leaves_an_existing_empty_parent_whose_key_is_absent(self):
+        # Nothing was removed, so nothing was emptied by this removal.
+        self.seed({'modelSettings': {'claude-opus-5-5': {}}})
+        self.declare_pruned()
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-opus-5-5': {}}})
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_prune_through_a_non_object_segment_is_a_no_op(self):
+        self.declare_pruned(assign={'colorPalette': 'blue'})
+        for middle in ('flat', 5, True, ['claude-opus-5-5']):
+            with self.subTest(middle=middle):
+                self.seed({'modelSettings': middle, 'colorPalette': 'blue'})
+                before = self.settings.read_bytes()
+                self.merge()
+                self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_pruning_and_plain_removals_under_one_object_give_one_result_in_either_order(self):
+        seed = {'a': {'b': {'x': 1, 'y': 2}}, 'keep': True}
+        pruning = {'path': ['a', 'b'], 'key': 'x', 'prune': True}
+        plain = {'path': ['a', 'b'], 'key': 'y'}
+        results = []
+        for order in ([pruning, plain], [plain, pruning]):
+            self.seed(seed)
+            self.declare(order)
+            self.merge()
+            results.append(self.read())
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0], {'keep': True})
+
+    def test_a_removal_with_a_value_removes_the_key_only_when_it_holds_that_value(self):
+        entry = {'path': ['scanner'], 'key': 'retired', 'value': 'stale'}
+        self.seed()
+        self.declare([entry])
+        self.merge()
+        self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul', 'live': 'keep'})
+        self.seed(dict(REMOVE_EXISTING, scanner={'retired': 'mine'}))
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_removal_with_a_value_never_matches_across_bool_and_number(self):
+        self.seed({'scanner': {'retired': True}})
+        self.declare([{'path': ['scanner'], 'key': 'retired', 'value': 1}])
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_pruning_removal_whose_value_differs_prunes_nothing(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'xhigh'}}})
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel',
+                       'prune': True, 'value': 'medium'}])
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_pruning_removal_whose_value_matches_prunes_the_emptied_objects(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}}})
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel',
+                       'prune': True, 'value': 'medium'}])
+        self.merge()
+        self.assertEqual(self.read(), {})
+
+    def test_refuses_a_removal_value_that_is_not_a_scalar(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for value in ({'a': 1}, ['stale']):
+            with self.subTest(value=value):
+                self.assert_refused({'removePaths': [dict(entry, value=value)]})
+
+    def test_refuses_a_prune_that_is_not_a_boolean(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for prune in ('yes', 1, None, []):
+            with self.subTest(prune=prune):
+                self.assert_refused({'removePaths': [dict(entry, prune=prune)]})
+
+    def test_a_nested_leaf_is_assigned_beside_the_users_keys(self):
+        self.seed({'worktree': {'symlinkDirectories': ['node_modules']}})
+        self.declare([], setPaths=[{'path': ['worktree', 'baseRef'], 'value': 'head'}])
+        self.merge()
+        self.assertEqual(self.read()['worktree'],
+                         {'symlinkDirectories': ['node_modules'], 'baseRef': 'head'})
 
     def test_process_removes_the_named_leaf(self):
         self.seed()

@@ -35,9 +35,9 @@
     retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
     first. The Pi instance declares no binaryPath and no launch arguments. It
-    owns two model selections whole: the default, Claude Opus at effort
-    medium, and text generation, Claude Haiku 5.5 on the claudeAgent instance
-    at effort low.
+    owns two model selections whole: the default, Claude Opus, and text
+    generation, Claude Haiku 5.5, both on the claudeAgent instance with no
+    option, so an effort an earlier generation wrote is dropped.
     On a full configuration, tests/t3code-hidden-model.py also ties the alias
     the declaration hides in the OpenCode picker to the small_model the
     OpenCode activation declares, and runs the real merger over a settings.json
@@ -357,6 +357,13 @@ let
       {
         path = [
           "storageCleanup"
+          "worktreeSettledAfterDays"
+        ];
+        value = 1;
+      }
+      {
+        path = [
+          "storageCleanup"
           "worktreeUnchanged"
         ];
         value = true;
@@ -366,22 +373,12 @@ let
       defaultModelSelection = {
         instanceId = "claudeAgent";
         model = "claude-opus-5-5";
-        options = [
-          {
-            id = "effort";
-            value = "medium";
-          }
-        ];
+        options = [ ];
       };
       textGenerationModelSelection = {
         instanceId = "claudeAgent";
         model = "claude-haiku-5-5";
-        options = [
-          {
-            id = "effort";
-            value = "low";
-          }
-        ];
+        options = [ ];
       };
     };
   };

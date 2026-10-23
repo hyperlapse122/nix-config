@@ -428,6 +428,34 @@
                 exit 1
               fi
 
+              mkdir -p home/.claude-pruned
+              printf '{"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"},"claude-sonnet-5-5":{"effortLevel":"low"}},"worktree":{"symlinkDirectories":["node_modules"]}}\n' \
+                > home/.claude-pruned/settings.json
+              printf '{"setPaths":[{"path":["worktree","baseRef"],"value":"head"}],"removePaths":[{"path":["modelSettings","claude-opus-5-5"],"key":"effortLevel","prune":true,"value":"medium"}]}\n' \
+                > pruned.json
+              env -i ${packaged}/bin/agent-settings --label 'Claude Code' \
+                --settings "$PWD/home/.claude-pruned/settings.json" --declared "$PWD/pruned.json"
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import json
+              merged = json.load(open('home/.claude-pruned/settings.json'))
+              assert merged == {
+                  'modelSettings': {'claude-sonnet-5-5': {'effortLevel': 'low'}},
+                  'worktree': {'symlinkDirectories': ['node_modules'], 'baseRef': 'head'},
+              }, merged
+              PY
+
+              # A level the user chose since stays: the declaration removes
+              # only the value this repository wrote.
+              printf '{"modelSettings":{"claude-opus-5-5":{"effortLevel":"xhigh"}}}\n' \
+                > home/.claude-pruned/settings.json
+              env -i ${packaged}/bin/agent-settings --label 'Claude Code' \
+                --settings "$PWD/home/.claude-pruned/settings.json" --declared "$PWD/pruned.json"
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import json
+              merged = json.load(open('home/.claude-pruned/settings.json'))
+              assert merged['modelSettings'] == {'claude-opus-5-5': {'effortLevel': 'xhigh'}}, merged
+              PY
+
               # An owned key through the packaged binary: the repository's entry
               # starts stale with an extra event, and another writer's entry
               # beside it must come through byte for byte.
@@ -505,6 +533,10 @@
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
           pi-sources = pinnedSources "pi-sources" ./packages/pi-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          claude-effort-absent = import ./tests/claude-effort-absent.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };

@@ -108,6 +108,7 @@ let
       worktreeAfterDays = 8;
       worktreeOnDelete = true;
       worktreeOnMerge = true;
+      worktreeSettledAfterDays = 1;
       worktreeUnchanged = true;
     };
   };
@@ -133,32 +134,20 @@ let
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
   #
-  # Text generation runs on the claudeAgent instance with Claude Haiku 5.5 at
-  # effort low, not on Pi, so the Synthetic DeepSeek model below no longer
-  # carries it. The Synthetic model stays only as the `@<effort>` alias that
-  # OpenCode's small_model names, which hiddenAlias hides.
+  # The Synthetic text-generation model stays only as the `@<effort>` alias
+  # that OpenCode's small_model names, which hiddenAlias hides.
   textGeneration = syntheticModels.${syntheticModels.textGeneration};
   textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
     defaultModelSelection = {
       instanceId = "claudeAgent";
       model = "claude-opus-5-5";
-      options = [
-        {
-          id = "effort";
-          value = "medium";
-        }
-      ];
+      options = [ ];
     };
     textGenerationModelSelection = {
       instanceId = "claudeAgent";
       model = "claude-haiku-5-5";
-      options = [
-        {
-          id = "effort";
-          value = "low";
-        }
-      ];
+      options = [ ];
     };
   };
 
