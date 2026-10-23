@@ -82,7 +82,7 @@ in
     enableSyntheticApiKey = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Decrypt synthetic_api_key from secrets/tokens.yaml for the opencode wrapper, which reads it at run time.";
+      description = "Decrypt synthetic_api_key from secrets/tokens.yaml for Pi's key helper, which reads it at run time.";
     };
     enableExaApiKey = lib.mkOption {
       type = lib.types.bool;

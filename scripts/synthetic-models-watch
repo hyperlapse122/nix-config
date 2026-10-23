@@ -94,7 +94,7 @@ SNAPSHOT_FIELDS = {
 }
 # The top-level keys of the source that name an entry, in the order the
 # issue lists them among that entry's uses.
-ENTRY_POINTERS = ("defaultModel", "smallModel", "textGeneration")
+ENTRY_POINTERS = ("defaultModel", "textGeneration")
 
 
 class Failure(Exception):
