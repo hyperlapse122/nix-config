@@ -655,6 +655,29 @@ class OwnedKeyTests(unittest.TestCase):
         self.merge()
         self.assertEqual(self.read(), OWNED)
 
+    def test_owned_model_selections_drop_an_effort_an_earlier_generation_wrote(self):
+        # T3 Code's settings.json owns both Claude selections with no options,
+        # so the effort option an earlier rebuild wrote must not survive.
+        stale = {'instanceId': 'claudeAgent', 'model': 'claude-opus-5-5',
+                 'options': [{'id': 'effort', 'value': 'xhigh'}]}
+        self.seed({
+            'defaultModelSelection': stale,
+            'textGenerationModelSelection': {**stale, 'model': 'claude-haiku-5-5'},
+            'fontSize': 14,
+        })
+        self.declare(own={
+            'defaultModelSelection': {
+                'instanceId': 'claudeAgent', 'model': 'claude-opus-5-5', 'options': []},
+            'textGenerationModelSelection': {
+                'instanceId': 'claudeAgent', 'model': 'claude-haiku-5-5', 'options': []},
+        })
+        self.merge()
+        result = self.read()
+        for key in ('defaultModelSelection', 'textGenerationModelSelection'):
+            self.assertEqual(result[key]['options'], [], key)
+            self.assertNotIn('effort', json.dumps(result[key]), key)
+        self.assertEqual(result['fontSize'], 14)
+
     def test_second_run_does_not_rewrite_the_file(self):
         self.seed()
         self.merge()

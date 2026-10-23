@@ -528,6 +528,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          claude-effort-absent = import ./tests/claude-effort-absent.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           git-cli-repo-flags = import ./tests/git-cli-repo-flags.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
