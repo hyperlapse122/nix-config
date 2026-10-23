@@ -68,6 +68,7 @@ The same tree and the same mutation go from a false pass to a correct failure pu
 - [An assertion on an unconditionally set option compiles to a constant](nix-check-assertion-on-unconditional-option-folds-to-a-constant.md) — the operand cannot vary; here it varies (the check does read three different hosts' scripts) and still cannot go red on this one dimension.
 - [A nullable option reaches a shell comparison as an empty word](nullable-option-empty-operand-passes-a-shell-comparison.md) — a shell-level blind spot at the value's type boundary; this is a text-level blind spot at the fragment's boundary.
 - [KDE Powerdevil overrides systemd-logind's lid and power-key settings](../integration-issues/kde-powerdevil-overrides-logind-lid-switch-settings.md) — the companion learning from the same change: why this check exists at all.
+- [A check that greps an activation step's arguments passes when the step only echoes them](activation-step-grep-check-passes-an-echo-only-step.md) — a full, anchored fragment still passes when the step's command is replaced by `echo`; running the step catches that.
 
 ## Out of scope
 
