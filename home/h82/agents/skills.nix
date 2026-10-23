@@ -31,13 +31,11 @@ in
   # SKILL.md that is a symlink, so the files inside must not be linked one by
   # one with `recursive = true`.
   config.home.file = lib.listToAttrs (
-    map
-      ({ root, name }: lib.nameValuePair "${root}/${name}" { source = config.my.agentSkills.${name}; })
-      (
-        lib.cartesianProduct {
-          root = roots;
-          name = lib.attrNames config.my.agentSkills;
-        }
-      )
+    lib.concatMap (
+      root:
+      lib.mapAttrsToList (
+        name: source: lib.nameValuePair "${root}/${name}" { inherit source; }
+      ) config.my.agentSkills
+    ) roots
   );
 }

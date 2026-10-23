@@ -23,8 +23,7 @@ let
 
   # One skill directory per name, with the upstream license beside it: the
   # repository keeps a single LICENSE at its root, and an installed skill is
-  # copied away from there. skills.nix links each directory into every
-  # harness's skill root.
+  # copied away from there.
   skillTree = pkgs.runCommand "korean-skills-${registry.tag}" { } ''
     ${lib.concatMapStringsSep "\n" (name: ''
       mkdir -p $out/${name}

@@ -20,8 +20,6 @@ let
   # wrapper in packages/codex.nix passes the same update overrides as flags,
   # so they also hold under any other CODEX_HOME, which never sees this file,
   # such as a home a T3 Code instance gets when it declares one.
-  # home/h82/t3code.nix declares none, so T3 Code's Codex sessions read this
-  # file.
   declaredPaths = [
     {
       path = [ "check_for_update_on_startup" ];

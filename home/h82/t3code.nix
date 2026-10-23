@@ -39,7 +39,16 @@ let
     pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
   };
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
-  antigravityPath = import ../../packages/antigravity-acp-path.nix { inherit pkgs; };
+  # A check evaluates this module without home/h82/agents/skills.nix; the
+  # wrapper's default skill list applies there.
+  antigravityPath = import ../../packages/antigravity-acp-path.nix (
+    {
+      inherit pkgs;
+    }
+    // lib.optionalAttrs (config.my ? agentSkills) {
+      skills = lib.attrNames config.my.agentSkills;
+    }
+  );
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
