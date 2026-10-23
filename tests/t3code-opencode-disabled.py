@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Check that T3 Code's declared settings turn an enabled opencode instance off.
+
+Run by tests/t3code-traits.nix with the packaged scripts/agent-settings and the
+declared document a configuration's activation passes to it:
+
+  t3code-opencode-disabled.py MERGER T3CODE_DECLARED
+
+T3 Code's built-in opencode instance is already off, so the declared value alone
+proves nothing. The real merger runs on a settings.json an earlier generation
+wrote, with the instance enabled: the merged file must hold it disabled, also on
+a second run, and keep the keys the declaration does not touch. The declaration
+must carry no entry for the retired hidden-model preference.
+
+Every failure is printed, and the exit status is 1 when there is any.
+"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+
+def main(merger, declared_path):
+    with open(declared_path) as handle:
+        declared = json.load(handle)
+    problems = []
+    if declared.get('prefixEntries'):
+        problems.append('the declaration still carries prefixEntries')
+    for entry in declared.get('setPaths', []):
+        if entry.get('path', [])[:2] == ['providerModelPreferences', 'opencode']:
+            problems.append('the declaration still sets {}'.format('.'.join(entry['path'])))
+
+    seeded = {
+        'unrelated': {'kept': True},
+        'providerInstances': {'opencode': {'driver': 'opencode', 'enabled': True}},
+    }
+    with tempfile.TemporaryDirectory() as work:
+        target = os.path.join(work, 'settings.json')
+        with open(target, 'w') as handle:
+            json.dump(seeded, handle)
+        os.chmod(target, 0o644)
+        for attempt in ('first', 'second'):
+            result = subprocess.run(
+                [merger, '--label', 't3codeSettings', '--settings', target, '--declared', declared_path],
+                env={}, capture_output=True, text=True)
+            if result.returncode != 0:
+                return problems + ['the merger refused the {} run: {}'.format(attempt, result.stderr.strip())]
+            with open(target) as handle:
+                merged = json.load(handle)
+            enabled = merged.get('providerInstances', {}).get('opencode', {}).get('enabled')
+            if enabled is not False:
+                problems.append('after the {} merge opencode.enabled is {!r}, not False'.format(attempt, enabled))
+            if merged.get('unrelated', {}).get('kept') is not True:
+                problems.append('the {} merge dropped a key the declaration does not touch'.format(attempt))
+    return problems
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        sys.exit('usage: t3code-opencode-disabled.py MERGER T3CODE_DECLARED')
+    found = main(*sys.argv[1:])
+    for line in found:
+        print(line, file=sys.stderr)
+    sys.exit(1 if found else 0)
