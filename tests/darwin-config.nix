@@ -85,9 +85,9 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills, ~/.config/opencode/skills, and
-    ~/.gemini/antigravity-cli/skills, each as exactly one enabled file and
-    nothing else under those roots; nothing lands under ~/.agents/skills or
+    ~/.claude/skills, ~/.config/opencode/skills,
+    ~/.gemini/antigravity-cli/skills, ~/.pi/agent/skills, and ~/.codex/skills,
+    each as exactly one enabled file and nothing else under those roots; nothing lands under ~/.agents/skills or
     ~/.gemini/config/skills; my.koreanSkills pins v1.0.0 with those skills.
 
   Every comparison is rendered into the builder, so a failure names the
@@ -382,6 +382,8 @@ let
         ".claude/skills"
         ".config/opencode/skills"
         ".gemini/antigravity-cli/skills"
+        ".pi/agent/skills"
+        ".codex/skills"
       ];
       koreanNames = [
         "humanizer"
