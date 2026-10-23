@@ -144,6 +144,12 @@ let
           failed=1
         fi
         description=${frontmatter "description" ''"$dir/SKILL.md"''}
+        # A YAML value that parses to nothing (quotes around nothing or only
+        # whitespace, null, ~) is empty too: Codex drops such a skill.
+        description=$(printf '%s' "$description" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/; s/^[[:space:]]+//; s/[[:space:]]+$//')
+        case "$description" in
+          "" | null | Null | NULL | "~") description= ;;
+        esac
         if [ -z "$description" ]; then
           echo ${esc "the SKILL.md of ~/${target} on ${label} declares no description"} >&2
           failed=1

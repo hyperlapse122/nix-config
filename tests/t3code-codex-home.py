@@ -9,9 +9,12 @@ configuration's activation passes to the merger:
 T3 Code picks a Codex instance's home from config.homePath,
 config.shadowHomePath, and config.setupMode, and the merge keeps every field
 the module does not declare, so a home set in the app would survive every
-apply. Every provider instance whose declared driver is "codex" must therefore
-declare config.homePath as the empty string, so Codex falls back to ~/.codex,
-where the plugin sync and the skills land, and config.setupMode as a value
+apply. An empty homePath is not enough: T3 Code sets CODEX_HOME only for a
+nonempty homePath, so a CODEX_HOME in the instance's environment, which the
+merge keeps too, would still choose the home. Every provider instance whose
+declared driver is "codex" must therefore declare config.homePath as
+"~/.codex", which T3 Code expands to the home where the plugin sync and the
+skills land, and config.setupMode as a value
 other than "managed", which would give the instance a home of T3 Code's own.
 At least one such instance must be declared.
 
@@ -40,8 +43,8 @@ def main():
         home = ('config', 'homePath')
         if home not in leaves:
             failures.append(f'the {name} instance declares no config.homePath, so a home set in the app survives every apply')
-        elif leaves[home] != '':
-            failures.append(f'the {name} instance declares config.homePath {leaves[home]!r}, not "", so its sessions leave ~/.codex')
+        elif leaves[home] != '~/.codex':
+            failures.append(f'the {name} instance declares config.homePath {leaves[home]!r}, not "~/.codex", so its sessions can leave ~/.codex')
         mode = ('config', 'setupMode')
         if mode not in leaves:
             failures.append(f'the {name} instance declares no config.setupMode, so a managed setup set in the app survives every apply')

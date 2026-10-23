@@ -32,8 +32,9 @@
     share Claude's base and run before Claude's, whose prune would otherwise
     delete a link they still name. Pi's row lists the plugin's `skills`
     directory in ~/.pi/agent/settings.json.
-  - The script names no CODEX_HOME, so the Codex row installs into ~/.codex,
-    the home T3 Code's Codex sessions run on.
+  - The Codex row runs its sync under `env -u CODEX_HOME` and the script sets
+    no CODEX_HOME, so the row installs into ~/.codex, the home T3 Code's
+    Codex sessions run on, even when the apply inherits a CODEX_HOME.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
   which Nix writes, and the registry in home/h82/agents/agent-plugins.nix, which a
@@ -383,11 +384,16 @@ let
         fi
 
         # T3 Code's Codex sessions run on ~/.codex, so the Codex plugin sync
-        # must install there too: a CODEX_HOME anywhere in the script, as an
-        # env prefix or an export, would send it to another home. A store path
-        # cannot spell the name, which is upper case with an underscore.
-        if grep -qF 'CODEX_HOME' <<< ${esc script}; then
-          echo 'the agentPlugins activation script must run the Codex plugin sync with no CODEX_HOME on ${hostName}' >&2
+        # must install there too. It must unset a CODEX_HOME the apply
+        # inherits, and nothing in the script may set one, as an env prefix or
+        # an export. A store path cannot spell the name, which is upper case
+        # with an underscore.
+        if ! grep -qE -- '(^|[[:space:]])env[[:space:]]+-u[[:space:]]+CODEX_HOME[[:space:]]' <<< "$(blockForHarness ${esc script} ${esc pluginName} codex)"; then
+          echo 'the agentPlugins activation script must run the Codex plugin sync under env -u CODEX_HOME on ${hostName}' >&2
+          failed=1
+        fi
+        if grep -qE -- 'CODEX_HOME=' <<< ${esc script}; then
+          echo 'the agentPlugins activation script must not set CODEX_HOME on ${hostName}' >&2
           failed=1
         fi
 

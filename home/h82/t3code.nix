@@ -89,15 +89,18 @@ let
       # T3 Code gives a Codex instance its own home only when its config names
       # one: a homePath, a shadowHomePath, or the "managed" setupMode. The
       # merge keeps every field not declared here, so one set in the app would
-      # survive every apply. Declaring an empty homePath and the non-managed
-      # "existing" setupMode keeps the sessions on ~/.codex, where the plugin
-      # sync and home/h82/agents/skills.nix install. shadowHomePath stays
+      # survive every apply. An empty homePath would still let a CODEX_HOME in
+      # the instance's own environment, which the merge also keeps, choose the
+      # home, because T3 Code sets CODEX_HOME only for a nonempty homePath.
+      # Declaring homePath as ~/.codex, which T3 Code expands, and the
+      # non-managed "existing" setupMode keeps the sessions on ~/.codex, where
+      # the plugin sync and home/h82/agents/skills.nix install. shadowHomePath stays
       # undeclared: a shadow home shares skills and plugins with ~/.codex.
       codex = {
         driver = "codex";
         enabled = true;
         config = {
-          homePath = "";
+          homePath = "~/.codex";
           launchArgs = "";
           setupMode = "existing";
         };

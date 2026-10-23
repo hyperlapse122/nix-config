@@ -34,11 +34,12 @@
     entry upserted, and the Codex instance's launch arguments emptied, which
     retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
-    first. The Codex instance also declares an empty home path and the
-    non-managed `existing` setup mode, so a home or managed setup set in the
-    app cannot survive an apply; tests/t3code-codex-home.py reads the
-    rendered declaration and fails when any instance with driver "codex"
-    leaves either undeclared, names a home, or declares `managed`, since
+    first. The Codex instance also declares `~/.codex` as its home path and
+    the non-managed `existing` setup mode, so neither a home or managed setup
+    set in the app nor a CODEX_HOME in the instance's environment can move it;
+    tests/t3code-codex-home.py reads the rendered declaration and fails when
+    any instance with driver "codex" leaves either undeclared, names another
+    home, or declares `managed`, since
     T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
     the skills land. The Pi instance declares no binaryPath and no launch arguments. It
     owns two model selections whole: the default, Claude Opus, and text
@@ -252,7 +253,7 @@ let
           "config"
           "homePath"
         ];
-        value = "";
+        value = "~/.codex";
       }
       {
         path = [
