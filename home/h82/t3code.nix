@@ -39,7 +39,16 @@ let
     pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
   };
   antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
-  antigravityPath = import ../../packages/antigravity-acp-path.nix { inherit pkgs; };
+  # A check evaluates this module without home/h82/agents/skills.nix; the
+  # wrapper's default skill list applies there.
+  antigravityPath = import ../../packages/antigravity-acp-path.nix (
+    {
+      inherit pkgs;
+    }
+    // lib.optionalAttrs (config.my ? agentSkills) {
+      skills = lib.attrNames config.my.agentSkills;
+    }
+  );
 
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
@@ -76,10 +85,25 @@ let
       # retire only top-level keys, so the launch arguments an earlier
       # generation wrote, which carried the old instructions, are overwritten
       # with nothing.
+      #
+      # T3 Code gives a Codex instance its own home only when its config names
+      # one: a homePath, a shadowHomePath, or the "managed" setupMode. The
+      # merge keeps every field not declared here, so one set in the app would
+      # survive every apply. An empty homePath would still let a CODEX_HOME in
+      # the instance's own environment, which the merge also keeps, choose the
+      # home, because T3 Code sets CODEX_HOME only for a nonempty homePath.
+      # Declaring homePath as ~/.codex, which T3 Code expands, and the
+      # non-managed "existing" setupMode keeps the sessions on ~/.codex, where
+      # the plugin sync and home/h82/agents/skills.nix install. shadowHomePath stays
+      # undeclared: a shadow home shares skills and plugins with ~/.codex.
       codex = {
         driver = "codex";
         enabled = true;
-        config.launchArgs = "";
+        config = {
+          homePath = "~/.codex";
+          launchArgs = "";
+          setupMode = "existing";
+        };
       };
       # T3 Code enables its built-in Grok instance unless one is declared.
       grok = {

@@ -85,10 +85,12 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills, ~/.config/opencode/skills, and
-    ~/.gemini/antigravity-cli/skills, each as exactly one enabled file and
-    nothing else under those roots; nothing lands under ~/.agents/skills or
-    ~/.gemini/config/skills; my.koreanSkills pins v1.0.0 with those skills.
+    ~/.claude/skills, ~/.config/opencode/skills,
+    ~/.gemini/antigravity-cli/skills, ~/.pi/agent/skills, and ~/.codex/skills,
+    each as exactly one enabled file, and the in-tree test-audit skill
+    directory beside them, and nothing else under those roots; nothing lands
+    under ~/.agents/skills or ~/.gemini/config/skills; my.koreanSkills pins
+    v1.0.0 with those skills.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -382,6 +384,8 @@ let
         ".claude/skills"
         ".config/opencode/skills"
         ".gemini/antigravity-cli/skills"
+        ".pi/agent/skills"
+        ".codex/skills"
       ];
       koreanNames = [
         "humanizer"
@@ -389,6 +393,9 @@ let
         "style-guide"
       ];
       koreanTargets = lib.concatMap (root: map (name: "${root}/${name}") koreanNames) koreanRoots;
+      # The vendored test-audit skill shares those roots; its source is the
+      # in-tree skill directory inside the flake's source tree.
+      testAuditTargets = map (root: "${root}/test-audit") koreanRoots;
       # Resolved targets of enabled entries, not attribute names. The source is
       # compared as a string with its context dropped, so no darwin derivation
       # is built, and the store path is never interpolated.
@@ -725,8 +732,22 @@ let
           )
           "${entry.name}: ${target} must be exactly one enabled home.file whose source is the ${name} directory of the korean-skills-v1.0.0 tree, got ${builtins.toJSON (map koreanSourceOf files)}"
       ) koreanTargets)
-      (check (sort koreanUnderRoots == sort koreanTargets)
-        "${entry.name}: the targets under the Korean skill roots must be exactly ${builtins.toJSON koreanTargets}, got ${builtins.toJSON (sort koreanUnderRoots)}"
+      (lib.concatMapStrings (
+        target:
+        let
+          files = koreanFilesAt target;
+        in
+        check
+          (
+            lib.length files == 1
+            && lib.hasSuffix "/home/h82/agents/skills/test-audit" (koreanSourceOf (lib.head files))
+          )
+          "${entry.name}: ${target} must be exactly one enabled home.file whose source is the in-tree test-audit skill directory, got ${builtins.toJSON (map koreanSourceOf files)}"
+      ) testAuditTargets)
+      (check (sort koreanUnderRoots == sort (koreanTargets ++ testAuditTargets))
+        "${entry.name}: the targets under the skill roots must be exactly ${
+          builtins.toJSON (koreanTargets ++ testAuditTargets)
+        }, got ${builtins.toJSON (sort koreanUnderRoots)}"
       )
       (check (koreanElsewhere == [ ])
         "${entry.name}: Korean skills must not be installed under .agents/skills or .gemini/config/skills, got ${builtins.toJSON koreanElsewhere}"

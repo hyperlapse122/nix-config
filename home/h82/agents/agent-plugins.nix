@@ -86,9 +86,11 @@ let
       cli = "${claudeCode}/bin/claude";
       env = claudeEnv;
     };
+    # T3 Code's Codex sessions run on ~/.codex, so the sync must install there
+    # even when the apply inherits a CODEX_HOME from the shell that ran it.
     codex = {
       cli = "${codex}/bin/codex";
-      env = "";
+      env = "-u CODEX_HOME";
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";

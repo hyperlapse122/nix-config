@@ -34,7 +34,14 @@
     entry upserted, and the Codex instance's launch arguments emptied, which
     retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
-    first. The Pi instance declares no binaryPath and no launch arguments. It
+    first. The Codex instance also declares `~/.codex` as its home path and
+    the non-managed `existing` setup mode, so neither a home or managed setup
+    set in the app nor a CODEX_HOME in the instance's environment can move it;
+    tests/t3code-codex-home.py reads the rendered declaration and fails when
+    any instance with driver "codex" leaves either undeclared, names another
+    home, or declares `managed`, since
+    T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
+    the skills land. The Pi instance declares no binaryPath and no launch arguments. It
     owns two model selections whole: the default, Claude Opus, and text
     generation, Claude Haiku 5.5, both on the claudeAgent instance with no
     option, so an effort an earlier generation wrote is dropped.
@@ -244,9 +251,27 @@ let
           "providerInstances"
           "codex"
           "config"
+          "homePath"
+        ];
+        value = "~/.codex";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
+          "config"
           "launchArgs"
         ];
         value = "";
+      }
+      {
+        path = [
+          "providerInstances"
+          "codex"
+          "config"
+          "setupMode"
+        ];
+        value = "existing";
       }
       {
         path = [
@@ -780,6 +805,12 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     declared=$(argAfter --declared)
     if [ -z "$declared" ] || ! cmp -s "$declared" "$want"; then
       echo "$name: the $attr declaration must equal $want, got '$declared'" >&2
+      fail=1
+    fi
+    if [ "$attr" = t3codeSettings ] && [ -n "$declared" ] \
+      && ! python3 -I ${./t3code-codex-home.py} "$declared" 2> codex-home.log; then
+      echo "$name: a declared Codex instance can run outside ~/.codex:" >&2
+      cat codex-home.log >&2
       fail=1
     fi
 

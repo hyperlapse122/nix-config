@@ -528,6 +528,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          test-audit-skill = import ./tests/test-audit-skill.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
@@ -1131,8 +1135,8 @@
               # the binary reports that attribute. The wrapper flags are read
               # from the installed bin/codex itself, because they are what keep
               # Codex from updating itself under any other CODEX_HOME, such as
-              # T3 Code's per-provider homes, which never receive the declared
-              # config.toml keys.
+              # a home a T3 Code instance gets when it declares one, which
+              # never receives the declared config.toml keys.
               pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
               wrapperFlags = [
                 "-c check_for_update_on_startup=false"

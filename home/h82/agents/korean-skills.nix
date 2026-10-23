@@ -31,19 +31,6 @@ let
       cp --no-preserve=mode ${inputs.korean-skills}/LICENSE $out/${name}/LICENSE
     '') registry.skills}
   '';
-
-  # Each root is a directory one harness reads skills from. Claude Code reads
-  # ~/.claude/skills. OpenCode ignores that directory under the wrapper's
-  # OPENCODE_DISABLE_CLAUDE_CODE=true. The Antigravity CLI and T3 Code's
-  # Antigravity instances read ~/.gemini/antigravity-cli/skills; not
-  # ~/.gemini/config/skills, which the CLI lists twice. Pi reads
-  # ~/.pi/agent/skills.
-  roots = [
-    ".claude/skills"
-    ".config/opencode/skills"
-    ".gemini/antigravity-cli/skills"
-    ".pi/agent/skills"
-  ];
 in
 {
   options.my.koreanSkills = lib.mkOption {
@@ -54,19 +41,5 @@ in
     description = "Korean skills registry, for repository checks.";
   };
 
-  config.home.file = lib.listToAttrs (
-    map
-      (
-        { root, name }:
-        lib.nameValuePair "${root}/${name}" {
-          source = "${skillTree}/${name}";
-        }
-      )
-      (
-        lib.cartesianProduct {
-          root = roots;
-          name = registry.skills;
-        }
-      )
-  );
+  config.my.agentSkills = lib.genAttrs registry.skills (name: "${skillTree}/${name}");
 }

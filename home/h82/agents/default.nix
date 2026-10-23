@@ -10,6 +10,8 @@
     ./korean-skills.nix
     ./opencode.nix
     ./pi.nix
+    ./skills.nix
+    ./test-audit.nix
     ./tokscale.nix
   ];
 }

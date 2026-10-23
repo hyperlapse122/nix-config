@@ -14,9 +14,12 @@
   the nixpkgs one. When GEMINI_HOME is a private scratch home that Compound
   Engineering created for a run and holds no token yet, the wrapper copies
   ~/.gemini/antigravity-acp/acp_token.json into it with mode 0600 before
-  execing the runtime. It also links the three Korean writing skills
-  (humanizer, grammar-checker, style-guide) from ~/.gemini/antigravity-cli/skills/
-  into the scratch home's antigravity-cli/skills/ when the source skills exist.
+  execing the runtime. It also links each skill in `skills` from
+  ~/.gemini/antigravity-cli/skills/ into the scratch home's
+  antigravity-cli/skills/ when the source skill exists. Home Manager passes
+  the names home/h82/agents/skills.nix links there; the default lists the
+  skills this flake declares, sorted as `lib.attrNames` sorts them, for
+  callers outside Home Manager; tests/t3code-traits.nix compares the two.
 
   The runtime defaults to packages/antigravity-acp-release.json, which
   scripts/antigravity-acp-release keeps at Google's newest complete release.
@@ -24,6 +27,12 @@
 */
 {
   pkgs,
+  skills ? [
+    "grammar-checker"
+    "humanizer"
+    "style-guide"
+    "test-audit"
+  ],
   runtime ? import ./antigravity-acp.nix {
     inherit pkgs;
     pins = (builtins.fromJSON (builtins.readFile ./antigravity-acp-release.json)).platforms;
@@ -112,7 +121,7 @@ let
         private_dir "$agy_cli_dir" || exit 0
         [ -e "$skills_dir" ] || [ -L "$skills_dir" ] || ${coreutils}/mkdir -m 700 "$skills_dir" || exit 0
         private_dir "$skills_dir" || exit 0
-        for skill in humanizer grammar-checker style-guide; do
+        for skill in ${pkgs.lib.escapeShellArgs skills}; do
           src=$src_dir/$skill
           dest=$skills_dir/$skill
           if [ -e "$src" ] && [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
