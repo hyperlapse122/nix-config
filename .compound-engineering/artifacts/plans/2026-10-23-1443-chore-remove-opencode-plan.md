@@ -90,7 +90,7 @@ Product Contract preservation: unchanged in scope. R10 now names only what stays
 - KTD1. **Fold the merged-list behaviour into `Pi` before deleting OpenCode's harness.** `scripts/agent-plugin-sync` defines `class Pi(OpenCode)`, so Pi's `sync`, `retire`, `listed`, and `write_entry` all come from the OpenCode class. Pi becomes a direct `Harness` subclass that owns those methods; a shared base class would have one subclass. The existing `PiCase` tests in `tests/test_agent_plugin_sync.py` are the regression guard. Covers R7 and R9.
 - KTD2. **Move the Synthetic and Exa key-gating assertions from `tests/opencode.nix` into `tests/pi.nix`.** `tests/opencode.nix` is the only check that a production configuration decrypts both keys with mode `0400` for h82, that a bootstrap configuration decrypts neither, and that turning off one option removes only its own key. Pi reads both keys, so its check is where they belong. Covers R5 and R9.
 - KTD3. **Prove the disabled instance on the merged settings file, not on the option.** T3 Code's built-in default for `opencode` is already off, so asserting the declared `enabled = false` would pass even with no declaration. `tests/t3code-traits.nix` asserts that merging the declared settings into a fixture holding `providerInstances.opencode.enabled = true` yields `false`. Covers R4.
-- KTD4. **Stop declaring the hidden-model entry and leave the user's copy alone.** The settings merger keeps keys the declaration no longer names, so the stale `providerModelPreferences.opencode.hiddenModels` entry stays in existing settings files. It only hides a model in an instance that is now disabled, and removing it would be machine cleanup, which the Product Contract excludes. Covers R2 and R4.
+- KTD4. **Stop declaring the hidden-model entry and retire the copy an earlier generation wrote.** The settings merger keeps keys the declaration no longer names, so the declaration carries a `removePaths` entry that removes `providerModelPreferences.opencode` and prunes an emptied `providerModelPreferences`; another provider's preference stays. The entry is one this repository's own declaration wrote, the same kind of managed setting as the disabled instance, so retiring it is not the machine cleanup the Product Contract excludes. Covers R2 and R4.
 - KTD5. **Keep the Tokscale `opencodeDbPaths` fixtures.** They are fixture keys in the Tokscale settings-merge tests (`flake.nix`, `tests/tokscale.nix`, `tests/test_agent_settings.py`), and `home/h82/agents/tokscale.nix` declares no OpenCode setting.
 - KTD6. **Keep `retired=(opencode_api_key)` in `scripts/host-secrets`, and its regression assertion in `tests/host-secrets.nix`, which seeds and checks the retired `opencode_api_key`.** It deletes a key file that earlier generations published on hosts that have not published since. It is a retired-secret cleanup the repository already owns, not part of OpenCode.
 - KTD7. **Remove `opencode` from `agents.toml`'s `agents` list and keep `/.opencode` in `.gitignore`.** dotagents reads that list for skill links, MCP, hooks, and plugin outputs, so removing the entry stops new project-scope output under `.opencode/`. Other checkouts and worktrees may still hold a generated `.opencode/` directory, and ignoring it costs nothing. The list already omits `codex` and `pi`, and that older drift stays out of scope.
@@ -175,7 +175,7 @@ U1 and U2 must land before U3, because U3 deletes the OpenCode class and `tests/
   - `nix flake check` evaluates with no reference to a deleted file.
   - The `update-dependencies-reconcile` check passes against the edited workflow.
   - `darwin-outputs` fails if the `piSettings` step moves before `writeBoundary` or targets another home.
-  - `darwin-config`, `korean-skills`, and `test-audit-skill` pass with the root list one shorter, and fail if `skills.nix` regains `.config/opencode/skills`.
+  - `darwin-config`, `korean-skills`, and `test-audit-skill` pass with the root list one shorter.
 - **Verification:** `nix flake check` passes, and every host output builds.
 
 ### U4. Disable T3 Code's OpenCode instance
@@ -190,7 +190,7 @@ U1 and U2 must land before U3, because U3 deletes the OpenCode class and `tests/
   3. `tests/t3code-traits.nix`: expect `enabled = false`, drop `prefixEntries` from the expected settings, drop `opencodeScript` and `checkHiddenModel`, and renumber `checkSettings`' positional arguments.
 - **Test scenarios:**
   - Covers KTD3: merging the declared settings into a fixture with `providerInstances.opencode.enabled = true` yields `false`.
-  - The materialized settings carry no `providerModelPreferences.opencode` declaration.
+  - Covers KTD4: merging into a fixture that holds `providerModelPreferences.opencode.hiddenModels` and another provider's preference removes the opencode entry and keeps the other one.
   - Mutation: setting `enabled = true` in `t3code.nix` turns the check red.
 - **Verification:** The `t3code-traits` check passes and fails under the mutation.
 
