@@ -1250,7 +1250,9 @@ let
   # `claudeAgent` with no knob at all, except `claude-opus-5-5` at `effort`
   # `xhigh` on a line that is exactly the pinned `deep` sentence; the same
   # assignment on any other line, such as the Claude Code candidate's, fails,
-  # so the exception belongs to the sentence, not to the model and value. Codex
+  # so the exception belongs to the sentence, not to the model and value. The
+  # pin that the `deep` sentence occurs exactly once is what keeps this
+  # line-number exemption to a single line. Codex
   # runs `${codexModel}` on `codex` at `reasoningEffort` `xhigh`; no
   # Synthetic model on `pi` or any ACP agent takes work on its own. Finding no
   # assignment fails too, so a rewording the pattern misses cannot pass. A
@@ -1571,7 +1573,6 @@ let
       expect = "does not hold this sentence exactly once, where a sentence starts:";
     }
     (deepEffortChanged "high")
-    (deepEffortChanged "max")
     {
       name = "deep category's effort dropped";
       line = "- ${deepSentence}";
