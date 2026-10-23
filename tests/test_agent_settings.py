@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
 import subprocess
 import sys
 import tempfile
@@ -267,7 +268,9 @@ class MergeTests(unittest.TestCase):
         with mock.patch.object(merger.os, 'replace', side_effect=OSError('nope')):
             with self.assertRaises(OSError):
                 self.merge()
-        leftovers = [p.name for p in self.settings.parent.iterdir() if p.name != 'settings.json']
+        # The persistent lock must survive; staged settings must not.
+        leftovers = [p.name for p in self.settings.parent.iterdir()
+                     if p.name not in ('settings.json', '.settings.json.lock')]
         self.assertEqual(leftovers, [])
         self.assertEqual(self.read(), EXISTING)
 
@@ -281,7 +284,8 @@ class MergeTests(unittest.TestCase):
     def test_leaves_no_temporary_file_behind(self):
         self.seed()
         self.merge()
-        leftovers = [p.name for p in self.settings.parent.iterdir() if p.name != 'settings.json']
+        leftovers = [p.name for p in self.settings.parent.iterdir()
+                     if p.name not in ('settings.json', '.settings.json.lock')]
         self.assertEqual(leftovers, [])
 
     def test_main_reports_refusal_without_a_traceback(self):
@@ -993,6 +997,8 @@ class UpsertPathTests(unittest.TestCase):
         data = json.loads(json.dumps(UPSERT_EXISTING))
         data['providerInstances']['claudeAgent']['environment'].insert(
             0, {'name': UPSERT_ENTRY['name'], 'value': '0'})
+        data['providerInstances']['claudeAgent']['environment'].append(
+            {'name': UPSERT_ENTRY['name'], 'value': 'later duplicate'})
         self.seed(data)
         self.merge()
         self.assertEqual(self.environment(), [UPSERT_ENTRY, {'name': 'FOO', 'value': '1'}])
@@ -1886,19 +1892,37 @@ class LedgerTests(unittest.TestCase):
             capture_output=True, text=True)
 
     def merge_failing_the_settings_replace(self, landed):
-        """Fail the apply at the settings rename, after it lands or instead of it."""
-        real = os.replace
-
-        def replace(source, target):
-            if Path(target) != self.settings:
-                return real(source, target)
-            if landed:
-                real(source, target)
-            raise OSError('interrupted at the settings rename')
-
-        with mock.patch.object(merger.os, 'replace', replace):
-            with self.assertRaises(OSError):
-                self.merge()
+        """Kill a real apply immediately before or after its settings rename."""
+        worker = '''
+import os, runpy, sys
+from pathlib import Path
+scope = runpy.run_path(sys.argv[1])
+settings = Path(sys.argv[2])
+original = os.replace
+def replace(source, target):
+    if Path(target) != settings:
+        return original(source, target)
+    if sys.argv[5] == 'True':
+        original(source, target)
+    print('settings-swap', flush=True)
+    sys.stdin.readline()
+    raise RuntimeError('interrupted apply was resumed')
+os.replace = replace
+scope['merge'](settings, Path(sys.argv[3]), ledger=Path(sys.argv[4]))
+'''
+        with subprocess.Popen(
+                [sys.executable, '-u', '-c', worker, str(SCRIPT), str(self.settings),
+                 str(self.declared), str(self.ledger), str(landed)],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
+            try:
+                ready, _, _ = select.select([process.stdout], [], [], 10)
+                self.assertTrue(ready, 'apply did not reach the settings rename')
+                self.assertEqual(process.stdout.readline(), 'settings-swap\n')
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                _, stderr = process.communicate(timeout=10)
+            self.assertLess(process.returncode, 0, stderr)
 
     def test_first_apply_without_a_ledger_prunes_a_pre_ledger_id_and_keeps_a_hand_added_entry(self):
         self.seed()
@@ -1952,9 +1976,172 @@ class LedgerTests(unittest.TestCase):
         self.seed()
         self.merge_failing_the_settings_replace(landed=True)
         self.assertIn(model('hf:org/New-3'), self.models())
+        # An agent's later save changes the digest of the landed settings.
+        edited = self.read()
+        edited['userPreference'] = 'keep me'
+        self.seed(edited)
         self.declare(['hf:org/Current-2'])
         self.merge()
         self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED])
+        self.assertEqual(self.read()['userPreference'], 'keep me')
+
+    def test_an_apply_interrupted_before_the_swap_does_not_claim_a_user_entry(self):
+        self.seed()
+        self.declare(['hf:org/Current-2', HAND_ADDED['id']])
+        before = self.settings.read_bytes()
+        self.merge_failing_the_settings_replace(landed=False)
+        self.assertEqual(self.settings.read_bytes(), before)
+        self.declare(['hf:org/Current-2'])
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED])
+
+    def test_interrupted_migration_runs_only_if_its_settings_swap_did_not_land(self):
+        self.declared.write_text(json.dumps({'removePaths': [
+            {'path': ['modelThinkingLevels'], 'key': 'synthetic/a', 'value': 'max',
+             'migration': 'startup-levels'},
+        ]}))
+        for landed in (False, True):
+            with self.subTest(landed=landed):
+                self.ledger.unlink(missing_ok=True)
+                self.seed({'modelThinkingLevels': {'synthetic/a': 'max'}})
+                self.merge_failing_the_settings_replace(landed=landed)
+                self.assertEqual(self.read()['modelThinkingLevels'], {} if landed else {'synthetic/a': 'max'})
+                # A user restores the old level after a successful swap.
+                self.seed({'modelThinkingLevels': {'synthetic/a': 'max'}, 'userPreference': 'keep me'})
+                self.merge()
+                self.assertEqual(self.read(), {
+                    'modelThinkingLevels': {'synthetic/a': 'max'} if landed else {},
+                    'userPreference': 'keep me',
+                })
+
+    def test_overlapping_applies_keep_both_paths_owned_until_the_next_prune(self):
+        self.seed()
+        second = self.declared.with_name('second.json')
+        second.write_text(json.dumps({'ownEntries': [
+            {'path': OVERRIDE_PATH, 'entries': {'x/b': {'name': 'second apply'}}},
+        ]}))
+        # Pause A immediately after reading the ledger. B either waits for
+        # the settings lock or completes before A resumes on an unfixed
+        # merger. Pipes establish the schedule without a timing sleep.
+        worker = '''
+import fcntl, runpy, sys
+from pathlib import Path
+scope = runpy.run_path(sys.argv[1])
+merge = scope['merge']
+original_read = merge.__globals__['read_ledger']
+original_lock = fcntl.flock
+first_read = True
+def read_ledger(path):
+    global first_read
+    state = original_read(path)
+    if first_read:
+        first_read = False
+        print('ledger-read', flush=True)
+        if sys.argv[5] == 'A':
+            assert sys.stdin.readline() == 'resume\\n'
+    return state
+def flock(fd, operation):
+    if operation == fcntl.LOCK_EX and sys.argv[5] == 'B':
+        print('locking', flush=True)
+    return original_lock(fd, operation)
+merge.__globals__['read_ledger'] = read_ledger
+fcntl.flock = flock
+merge(Path(sys.argv[2]), Path(sys.argv[3]), ledger=Path(sys.argv[4]))
+'''
+
+        def start(declared, role):
+            process = subprocess.Popen(
+                [sys.executable, '-u', '-c', worker, str(SCRIPT), str(self.settings),
+                 str(declared), str(self.ledger), role],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            def cleanup():
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=10)
+
+            self.addCleanup(cleanup)
+            return process
+
+        def signal(process):
+            readable, _, _ = select.select([process.stdout], [], [], 10)
+            self.assertTrue(readable, 'apply did not reach its synchronization point')
+            line = process.stdout.readline().strip()
+            self.assertTrue(line, 'apply exited before its synchronization point')
+            return line
+
+        first = start(self.declared, 'A')
+        self.assertEqual(signal(first), 'ledger-read')
+        other = start(second, 'B')
+        if signal(other) == 'ledger-read':
+            _, stderr = other.communicate(timeout=10)
+            self.assertEqual(other.returncode, 0, stderr)
+        first.stdin.write('resume\n')
+        first.stdin.flush()
+        for process in (first, other):
+            _, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, stderr)
+        self.declare([], overrides=[])
+        self.merge()
+        self.assertEqual(self.models(), [HAND_ADDED])
+        self.assertEqual(self.read()['providers']['openrouter']['modelOverrides'],
+                         {'user/hand': {'name': 'mine'}})
+
+    def test_owned_paths_with_the_wrong_shape_fail_without_writing_settings_or_a_ledger(self):
+        self.declare(['hf:org/Current-2'], overrides=['x/a'])
+        for path, malformed in ((OWN_PATH, {'not': 'a list'}), (OVERRIDE_PATH, ['not an object'])):
+            with self.subTest(path=path):
+                data = json.loads(json.dumps(OWN_EXISTING))
+                data[path[0]][path[1]][path[2]] = malformed
+                self.seed(data)
+                before = self.settings.read_bytes()
+                with self.assertRaises(ValueError) as error:
+                    self.merge()
+                self.assertIn(json.dumps(path), str(error.exception))
+                self.assertEqual(self.settings.read_bytes(), before)
+                self.assertFalse(self.ledger.exists())
+
+    def test_owned_upserts_keep_the_first_position_and_unowned_duplicates(self):
+        self.seed({'providers': {'synthetic': {'models': [
+            {'id': 'hf:org/Current-2', 'name': 'first'}, HAND_ADDED,
+            {'id': 'hf:org/Current-2', 'name': 'duplicate'}, HAND_ADDED,
+        ]}}})
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED, HAND_ADDED,
+                                         model('hf:org/New-3')])
+
+    def test_an_external_save_during_the_pending_record_is_merged_on_retry(self):
+        self.seed()
+        original = os.replace
+        saved = False
+
+        def replace(source, target):
+            nonlocal saved
+            original(source, target)
+            if Path(target) == self.ledger and not saved:
+                saved = True
+                edited = self.read()
+                edited['userPreference'] = 'saved while journaling'
+                self.seed(edited)
+
+        with mock.patch.object(merger.os, 'replace', replace):
+            self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED, model('hf:org/New-3')])
+        self.assertEqual(self.read().get('userPreference'), 'saved while journaling')
+
+    def test_a_pending_digest_mismatch_fails_without_changing_either_file(self):
+        self.seed()
+        self.merge_failing_the_settings_replace(landed=False)
+        journal = json.loads(self.ledger.read_text())
+        journal['pending']['digest'] = '0' * 64
+        self.ledger.write_text(json.dumps(journal))
+        before = self.settings.read_bytes(), self.ledger.read_bytes()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn(str(self.ledger), result.stderr)
+        self.assertIn('digest', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+        self.assertEqual((self.settings.read_bytes(), self.ledger.read_bytes()), before)
 
     def test_a_failed_settings_write_keeps_ownership_for_the_next_apply(self):
         self.seed()

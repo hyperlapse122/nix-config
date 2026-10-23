@@ -83,13 +83,15 @@ objects.
 
 `ownEntries` and `migration` need --ledger, a JSON file that records, for
 this settings file, the IDs each owned path last wrote and the migrations
-already run.  Before the settings file is replaced, the ledger records the
-union of the IDs it held and the IDs being written; after, only the IDs
-written.  An apply interrupted between the two still prunes what it wrote on
-the next run.  A path the ledger has no record of, such as on the first apply,
-owns its `preLedgerIds`.
-A ledger that cannot be read or parsed fails the merge before anything is
-touched, because guessing its contents would prune the user's entries.
+already run. Applies hold a per-settings interprocess lock from the ledger
+read through its final write. Before the settings swap, the ledger keeps its
+committed state and a separate pending state with the staged settings digest
+and filename. The rename consumes that file, so recovery knows whether the
+swap landed even if the agent saved another preference afterwards. Only a
+landed swap commits pending ownership and completed migrations. A path the
+ledger has no record of, such as on the first apply, owns its `preLedgerIds`.
+A ledger that cannot be read or parsed fails before settings or ownership
+change, because guessing its contents would prune the user's entries.
 
 A path is a list of keys rather than a dotted string, so a key that itself
 contains a dot is never split, and a literal top-level "a.b" key is never taken
@@ -98,7 +100,10 @@ for the path ["a", "b"].
 import argparse
 import collections
 import copy
+from contextlib import contextmanager
 import errno
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -557,24 +562,11 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
         else:
             if not isinstance(entries, list):
                 raise ValueError('{} is not a list, so its entries cannot be owned'.format(describe(path)))
-            # upsert() for each declared entry, in one pass: the first match
-            # keeps its position and later duplicates go.
-            by_id = {value[key]: value for value in declared}
-            position, kept = {}, []
-            for entry in entries:
-                name = entry.get(key) if isinstance(entry, dict) else None
-                if isinstance(name, str):
-                    if name in stale or name in position:
-                        continue
-                    if name in by_id:
-                        position[name] = len(kept)
-                kept.append(entry)
-            entries[:] = kept
-            for name, value in by_id.items():
-                if name in position:
-                    entries[position[name]] = copy.deepcopy(value)
-                else:
-                    entries.append(copy.deepcopy(value))
+            entries[:] = [entry for entry in entries
+                          if not (isinstance(entry, dict) and isinstance(entry.get(key), str)
+                                  and entry[key] in stale)]
+            for value in declared:
+                upsert(entries, key, value)
     for path, prefix, value in prefixes or []:
         node = parent_of(merged, path)
         if path[-1] not in node:
@@ -719,9 +711,35 @@ def serialize(merged, fmt):
     return json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
 
 
-def swap(settings, text, before):
+@contextmanager
+def settings_lock(settings):
+    # Never unlink the lock: a waiter must lock the same inode as a new apply.
+    lock = settings.with_name('.' + settings.name + '.lock')
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def digest(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def swap(settings, text, before, ledger=None, committed=None, final=None):
     """Write `text` only if the file still looks like `before`."""
     descriptor, temporary = tempfile.mkstemp(prefix='.settings-', dir=settings.parent)
+    journaled = False
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
             stream.write(text)
@@ -734,39 +752,92 @@ def swap(settings, text, before):
         # state.
         if snapshot(settings) != before:
             return False
+        if ledger is not None:
+            # Keep the stage until its journal has been cleared. Its absence
+            # then proves os.replace consumed it, even after an external save
+            # changes the settings digest. Set the flag before record(): a
+            # failed fsync can still leave its pending record on disk.
+            sync_directory(settings.parent)
+            journaled = True
+            pending = dict(final, settings=str(settings.absolute()), temporary=Path(temporary).name,
+                           digest=digest(text))
+            record(ledger, ledger_text(*committed, pending=pending))
+            if snapshot(settings) != before:
+                return False
         os.replace(temporary, settings)
         temporary = None
+        sync_directory(settings.parent)
         return True
     finally:
-        if temporary is not None:
+        if temporary is not None and not journaled:
             Path(temporary).unlink(missing_ok=True)
 
 
 def read_ledger(ledger):
-    """Return (owned IDs by path, completed migrations); a missing ledger records nothing."""
+    """Read committed ownership, migrations and an optional interrupted transaction."""
     try:
         raw = ledger.read_bytes()
     except FileNotFoundError:
-        return {}, []
+        return {}, [], None
     try:
         document = json.loads(raw.decode('utf-8'))
     except ValueError:
         document = None
-    if (not isinstance(document, dict) or set(document) != {'owned', 'migrations'}
-            or not isinstance(document['owned'], list)
-            or any(not isinstance(record, dict) or set(record) != {'path', 'ids'}
-                   or not strings(record['path']) or not record['path'] or not strings(record['ids'])
-                   for record in document['owned'])
-            or not strings(document['migrations'])):
+    def valid_state(state):
+        return (isinstance(state, dict) and isinstance(state.get('owned'), list)
+                and all(isinstance(record, dict) and set(record) == {'path', 'ids'}
+                        and strings(record['path']) and record['path'] and strings(record['ids'])
+                        for record in state['owned'])
+                and strings(state.get('migrations')))
+
+    if (not valid_state(document) or set(document) not in ({'owned', 'migrations'}, {'owned', 'migrations', 'pending'})):
         raise ValueError('ledger is malformed: {}'.format(ledger))
-    return {tuple(record['path']): record['ids'] for record in document['owned']}, document['migrations']
+    pending = document.get('pending')
+    if 'pending' in document and (
+            not valid_state(pending) or set(pending) != {'owned', 'migrations', 'settings', 'temporary', 'digest'}
+            or not isinstance(pending['settings'], str) or not Path(pending['settings']).is_absolute()
+            or not isinstance(pending['temporary'], str) or not pending['temporary'].startswith('.settings-')
+            or Path(pending['temporary']).name != pending['temporary']
+            or not isinstance(pending['digest'], str) or len(pending['digest']) != 64
+            or any(char not in '0123456789abcdef' for char in pending['digest'])):
+        raise ValueError('ledger is malformed: {}'.format(ledger))
+    return ({tuple(record['path']): record['ids'] for record in document['owned']}, document['migrations'], pending)
 
 
-def ledger_text(owned, migrations):
-    return json.dumps({
+def ledger_state(owned, migrations):
+    return {
         'owned': [{'path': list(path), 'ids': sorted(ids)} for path, ids in sorted(owned.items())],
         'migrations': sorted(migrations),
-    }, indent=2, ensure_ascii=False) + '\n'
+    }
+
+
+def ledger_text(owned, migrations, pending=None):
+    state = ledger_state(owned, migrations)
+    if pending is not None:
+        state['pending'] = pending
+    return json.dumps(state, indent=2, ensure_ascii=False) + '\n'
+
+
+def recover_ledger(ledger, settings):
+    owned, migrations, pending = read_ledger(ledger)
+    if pending is not None:
+        if pending['settings'] != str(settings.absolute()):
+            raise ValueError('ledger pending settings path does not match: {}'.format(ledger))
+        temporary = settings.parent / pending['temporary']
+        staged = read_text(temporary)
+        if staged is None:
+            # Only the rename removes a journaled stage. A user's later save
+            # must not cause a completed migration to run for a second time.
+            owned = {tuple(record['path']): record['ids'] for record in pending['owned']}
+            migrations = pending['migrations']
+        elif digest(staged) != pending['digest']:
+            raise ValueError('ledger pending settings digest does not match: {}'.format(ledger))
+        # Clear the journal before deleting a stage whose rename never ran;
+        # interruption during cleanup must never look like a landed swap.
+        record(ledger, ledger_text(owned, migrations))
+        temporary.unlink(missing_ok=True)
+        sync_directory(settings.parent)
+    return owned, migrations
 
 
 def record(ledger, text):
@@ -785,6 +856,7 @@ def record(ledger, text):
             os.fsync(stream.fileno())
         os.replace(temporary, ledger)
         temporary = None
+        sync_directory(ledger.parent)
     finally:
         if temporary is not None:
             Path(temporary).unlink(missing_ok=True)
@@ -795,23 +867,8 @@ def merge(settings, declared, fmt='json', ledger=None):
      entry_sets) = declaration(declared, fmt)
     migrations = {removal.migration for removal in removals if removal.migration is not None}
     keeps_ledger = bool(entry_sets or migrations)
-    recorded, completed = {}, []
-    if keeps_ledger:
-        if ledger is None:
-            raise ValueError('declared ownEntries and migrations need --ledger: {}'.format(declared))
-        recorded, completed = read_ledger(ledger)
-    # A migration the ledger records ran on an earlier apply; running it again
-    # would remove a value the user has saved since.
-    removals = [removal for removal in removals if removal.migration not in completed]
-    entry_sets = [entry_set._replace(pre_ledger=recorded.get(tuple(entry_set.path), entry_set.pre_ledger))
-                  for entry_set in entry_sets]
-    pending, final = dict(recorded), dict(recorded)
-    for path, key, entries, previous in entry_sets:
-        written = entry_ids(key, entries)
-        pending[tuple(path)] = set(previous) | set(written)
-        final[tuple(path)] = written
-    pending = ledger_text(pending, completed)
-    final = ledger_text(final, set(completed) | migrations)
+    if keeps_ledger and ledger is None:
+        raise ValueError('declared ownEntries and migrations need --ledger: {}'.format(declared))
     # Looked up per call rather than bound at import, so a test that patches
     # either reader reaches this merge.
     read = read_toml_settings if fmt == 'toml' else read_settings
@@ -826,30 +883,40 @@ def merge(settings, declared, fmt='json', ledger=None):
           upserts=upserts, migration=migration, prefixes=prefixes, removals=removals, drops=drops,
           entry_sets=entry_sets)
     private_directory(settings.parent)
-    for _ in range(ATTEMPTS):
-        before = snapshot(settings)
-        current = read(settings)
-        merged = apply(current, assign=assign, retire=retire, paths=paths, owned=owned,
-                       upserts=upserts, migration=migration, prefixes=prefixes, removals=removals,
-                       drops=drops, entry_sets=entry_sets)
-        if merged == current and before is not None:
-            try:
-                os.chmod(settings, 0o600)
-            except FileNotFoundError:
-                # Removed between the snapshot and here; fall through and let
-                # the next attempt recreate it rather than failing activation.
-                continue
+    with settings_lock(settings):
+        recorded, completed = recover_ledger(ledger, settings) if keeps_ledger else ({}, [])
+        removals = [removal for removal in removals if removal.migration not in completed]
+        entry_sets = [entry_set._replace(pre_ledger=recorded.get(tuple(entry_set.path), entry_set.pre_ledger))
+                      for entry_set in entry_sets]
+        final_owned = dict(recorded)
+        for path, key, entries, _ in entry_sets:
+            final_owned[tuple(path)] = entry_ids(key, entries)
+        final_migrations = set(completed) | migrations
+        final = ledger_text(final_owned, final_migrations)
+        for _ in range(ATTEMPTS):
+            before = snapshot(settings)
+            current = read(settings)
+            merged = apply(current, assign=assign, retire=retire, paths=paths, owned=owned,
+                           upserts=upserts, migration=migration, prefixes=prefixes, removals=removals,
+                           drops=drops, entry_sets=entry_sets)
+            if merged == current and before is not None:
+                try:
+                    os.chmod(settings, 0o600)
+                except FileNotFoundError:
+                    continue
+                if snapshot(settings) != before:
+                    continue
+                if keeps_ledger:
+                    record(ledger, final)
+                return
+            if swap(settings, serialize(merged, fmt), before,
+                    ledger=ledger if keeps_ledger else None, committed=(recorded, completed),
+                    final=ledger_state(final_owned, final_migrations)):
+                if keeps_ledger:
+                    record(ledger, final)
+                return
             if keeps_ledger:
-                record(ledger, final)
-            return
-        # Every ID this write may leave behind is owned before it lands, so
-        # an apply interrupted before the final record still prunes them.
-        if keeps_ledger:
-            record(ledger, pending)
-        if swap(settings, serialize(merged, fmt), before):
-            if keeps_ledger:
-                record(ledger, final)
-            return
+                recover_ledger(ledger, settings)
     raise ValueError('settings file kept changing while merging: {}'.format(settings))
 
 
