@@ -108,6 +108,8 @@ let
         driver = "grok";
         enabled = false;
       };
+      # OpenCode is gone, but the merge keeps undeclared fields, so this stays
+      # declared to turn off the instance an earlier generation enabled.
       opencode = {
         driver = "opencode";
         enabled = false;
