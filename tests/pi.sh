@@ -150,8 +150,6 @@ recorded() {
   return 1
 }
 
-# use_helper NAME -- points helper, set_key_file, and the checks below at
-# one key helper, its variable, and its key file.
 use_helper() {
   case $1 in
     pi-synthetic-key) helper=$synthetic_helper key_var=SYNTHETIC_API_KEY key_file=$synthetic_file ;;
@@ -160,8 +158,7 @@ use_helper() {
   helper_name=$1
 }
 
-# helper [VAR=value ...] -- runs the current key helper in a clean
-# environment and leaves its stdout in $out and its status in $rc.
+# Leaves the key helper's stdout in $out and its status in $rc.
 helper() {
   set +e
   out=$(env -i HOME="$home" PATH=/caller/bin "$@" "$helper" 2>"$scratch/helper-stderr")
@@ -271,8 +268,6 @@ stub_ran || fail 'the stub did not run with no key files'
 [[ ! -s $scratch/stderr ]] || fail "the wrapper printed to stderr: $(cat "$scratch/stderr")"
 pass 'with no key files, Pi still runs and stderr is empty'
 echo 0 >"$scratch/status"
-
-# --- the key helpers ---------------------------------------------------------
 
 check_no_key() {
   helper

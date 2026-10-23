@@ -38,8 +38,6 @@
 #   pi-acp and then acpx, each with its pin and lock file, and a failure for
 #   one restores both of that package's files, warns naming it, and still
 #   updates the other.
-# - Neither catalog key, SYNTHETIC_API_KEY or OPENROUTER_API_KEY, appears in
-#   this workflow: model-catalogs.yml owns both snapshots.
 # - The push step commits each changed pin on its own: the Pi pin as
 #   `chore(packages): bump pi to <version>`, and each of pi-acp and acpx as
 #   `chore(packages): bump <package> to <version>` with its pin and lock file

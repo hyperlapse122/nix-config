@@ -234,18 +234,22 @@
           homeFileTargets =
             entry: map (file: file.target or "") (builtins.attrValues (entry.user.home.file or { }));
 
-          # Runs a stdlib Python test against a copy of the one script it drives.
+          # Runs a stdlib Python test against a copy of the one script it drives
+          # and of the modules it imports.
           optionalLines = text: pkgs.lib.optionalString (text != "") "\n${pkgs.lib.removeSuffix "\n" text}";
           pythonScriptCheckWith =
             {
               setup ? "",
               extra ? "",
+              modules ? [ ],
             }:
             name: script: test:
             pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
-              cp ${script} scripts/${baseNameOf script}
+              cp ${script} scripts/${baseNameOf script}${
+                pkgs.lib.concatMapStrings (module: "\ncp ${module} scripts/${baseNameOf module}") modules
+              }
               cp ${test} tests/${baseNameOf test}${optionalLines setup}
               python tests/${baseNameOf test}${optionalLines extra}
               touch $out
@@ -596,6 +600,7 @@
               );
             in
             pythonScriptCheckWith {
+              modules = [ ./scripts/catalog_snapshot.py ];
               # The real source must match the snapshot, and the tests read it,
               # never a copy that can drift.
               setup = ''
@@ -616,6 +621,7 @@
           openrouter-catalog-snapshot =
             pythonScriptCheckWith
               {
+                modules = [ ./scripts/catalog_snapshot.py ];
                 setup = ''
                   mkdir -p tests/fixtures
                   cp -r ${./tests/fixtures/openrouter-models} tests/fixtures/openrouter-models
@@ -636,7 +642,8 @@
               ''
                 export PYTHONDONTWRITEBYTECODE=1
                 bash ${./tests/synthetic-models-reconcile.sh} \
-                  ${./.github/workflows/synthetic-models.yml} ${./scripts/synthetic-models-watch} \
+                  ${./.github/workflows/synthetic-models.yml} \
+                  ${agentTools.syntheticModelsWatch}/libexec/synthetic-models-watch/synthetic-models-watch \
                   ${./tests/fixtures/synthetic-models/catalog-2026-10-21.json} \
                   ${pkgs.writeText "synthetic-models.json" (
                     builtins.toJSON (import ./home/h82/agents/synthetic-models.nix)

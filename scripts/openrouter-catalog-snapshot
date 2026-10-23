@@ -27,13 +27,25 @@ import argparse
 import json
 import os
 import re
-import shlex
-import subprocess
 import sys
 
+# The shared module sits beside this script, also when a test loads it by
+# path or Python runs it isolated.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from catalog_snapshot import (  # noqa: E402
+    DEFAULT_FETCH,
+    Failure,
+    command_from,
+    is_int,
+    is_strings,
+    read_json,
+    run_fetch,
+    write_if_changed,
+)
+
 DEFAULT_URL = "https://openrouter.ai/api/v1/models/user"
-DEFAULT_FETCH = "curl -sSfL --max-time 60"
 KEY_VARIABLE = "OPENROUTER_API_KEY"
+FETCH_COMMAND = "OPENROUTER_CATALOG_FETCH"
 NAME = "openrouter-catalog-snapshot"
 
 PRICE_FIELDS = ("prompt", "completion", "input_cache_read", "input_cache_write")
@@ -41,43 +53,12 @@ REQUIRED_PRICES = ("prompt", "completion")
 PRICE_PATTERN = re.compile(r"-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 
 
-class Failure(Exception):
-    """A refusal that should stop the run with a readable message."""
-
-
-def is_int(value):
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def is_strings(value):
-    return isinstance(value, list) and all(isinstance(v, str) for v in value)
-
-
-def read_json(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise Failure(f"cannot read {path}: {exc}") from None
-
-
 def fetch(url):
     """Return the catalog body; the key travels only on the command's stdin."""
     key = os.environ.get(KEY_VARIABLE, "")
     if not key:
         raise Failure(f"{KEY_VARIABLE} is not set")
-    command = shlex.split(os.environ.get("OPENROUTER_CATALOG_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("OPENROUTER_CATALOG_FETCH is empty")
-    env = dict(os.environ)
-    env.pop(KEY_VARIABLE, None)
-    proc = subprocess.run(
-        command + ["-H", "@-", url],
-        input=f"Authorization: Bearer {key}\n",
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    proc = run_fetch(command_from(FETCH_COMMAND, DEFAULT_FETCH), url, key, KEY_VARIABLE)
     if proc.returncode != 0:
         raise Failure(f"fetching {url} failed with status {proc.returncode}")
     try:
@@ -157,17 +138,6 @@ def catalog_snapshot(catalog):
     if not kept:
         raise Failure("the catalog lists no text models")
     return json.dumps({"data": [kept[i] for i in sorted(kept)]}, indent=2) + "\n"
-
-
-def write_if_changed(path, text):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            if f.read() == text:
-                return
-    except FileNotFoundError:
-        pass
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
 
 
 def main(argv=None):

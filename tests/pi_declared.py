@@ -51,6 +51,7 @@ GLM_FLASH = 'hf:zai-org/GLM-5.3-Flash'
 DEEPSEEK = 'hf:deepseek-ai/DeepSeek-V4.1-Flash-1017'
 KIMI = 'hf:moonshotai/Kimi-K3'
 LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+PER_MILLION = 1000000
 
 models = load(models_path)
 settings = load(settings_path)
@@ -60,8 +61,6 @@ with open(bundled_path) as handle:
     bundled = {line.strip() for line in handle if line.strip()}
 check(bundled, 'the installed Pi lists no bundled OpenRouter model')
 
-# --- expected values from a snapshot row -------------------------------------
-
 
 def per_million(price):
     """Pi's perMillion: rounded to six places, and a missing, unparseable, or
@@ -70,7 +69,7 @@ def per_million(price):
         value = float((price or '').lstrip('$'))
     except ValueError:
         return 0
-    return round(value * 1000000, 6) if value >= 0 else 0
+    return round(value * PER_MILLION, 6) if value >= 0 else 0
 
 
 def expected_map(efforts, override):
@@ -199,8 +198,6 @@ for row in openrouter_rows:
     elif row['id'] in models_by_id:
         check_openrouter(row, models_by_id[row['id']], override=False)
 
-# --- the rules, pinned with fixture rows through the renderer ----------------
-
 fixture_dir = os.path.join(workdir, 'fixture')
 os.makedirs(fixture_dir, exist_ok=True)
 dump(os.path.join(fixture_dir, 'synthetic.json'), {'data': [
@@ -327,7 +324,7 @@ def entries_at(document, path):
     return node
 
 
-# AE1: an OpenRouter model and override the merger wrote on an earlier apply,
+# An OpenRouter model and override the merger wrote on an earlier apply,
 # which the snapshot no longer has, leave models.json; a model and a provider
 # the user added by hand stay.
 hand_added = {'id': 'hf:example/Hand-Added', 'name': 'Hand added', 'contextWindow': 1000}
@@ -389,8 +386,8 @@ check(sorted(entry['id'] for entry in entries_at(created, SYNTHETIC + ['models']
       'merging into a missing models.json did not create every synthetic model')
 check(os.path.exists(created_models) and mode(created_models) == 0o600, 'a created models.json is not mode 0600')
 
-# AE4: the startup levels earlier generations wrote leave settings.json, while
-# a level the user chose stays, both on another model and on one of the four
+# The startup levels the migration retires leave settings.json, while a
+# level the user chose stays, both on another model and on one of the four
 # when it no longer holds the value this repository wrote.
 QWEN = 'synthetic/hf:Qwen/Qwen3.8-27B'
 seeded_settings = os.path.join(workdir, 'settings.json')

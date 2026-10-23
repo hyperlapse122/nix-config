@@ -87,7 +87,7 @@ already run.  Before the settings file is replaced, the ledger records the
 union of the IDs it held and the IDs being written; after, only the IDs
 written.  An apply interrupted between the two still prunes what it wrote on
 the next run.  A path the ledger has no record of, such as on the first apply,
-owns its `preLedgerIds`: the IDs generations before the ledger wrote there.
+owns its `preLedgerIds`.
 A ledger that cannot be read or parsed fails the merge before anything is
 touched, because guessing its contents would prune the user's entries.
 
@@ -96,6 +96,7 @@ contains a dot is never split, and a literal top-level "a.b" key is never taken
 for the path ["a", "b"].
 """
 import argparse
+import collections
 import copy
 import errno
 import json
@@ -114,6 +115,9 @@ ATTEMPTS = 3
 
 # Syntaxes the settings file may be in. The declaration is always JSON.
 FORMATS = ('json', 'toml')
+
+Removal = collections.namedtuple('Removal', 'path key prune values migration')
+EntrySet = collections.namedtuple('EntrySet', 'path key entries pre_ledger')
 
 
 def check_directory(path):
@@ -220,7 +224,7 @@ def declaration(declared, fmt='json'):
         nulls = sorted({describe([name]) for name, value in {**assign, **owned}.items() if holds_null(value)}
                        | {describe(path) for path, value in paths if value is None}
                        | {describe(path) for path, _, value in upserts if holds_null(value)}
-                       | {describe(path) for path, _, entries, _ in entry_sets if holds_null(entries)})
+                       | {describe(entry_set.path) for entry_set in entry_sets if holds_null(entry_set.entries)})
         if nulls:
             raise ValueError('TOML cannot hold a declared null: {}'.format(', '.join(nulls)))
     return assign, retire, paths, removals, owned, upserts, prefixes, migration, drops, entry_sets
@@ -351,10 +355,10 @@ def removal_paths(entries, assign, retire, owned, paths, upserts, prefixes, decl
         # under one object name different leaves, so they do not conflict.
         leaf = path + [key]
         check_disjoint(leaf, assigned_paths(paths, upserts, prefixes))
-        removals.append((path, key, prune, values, migration))
-    for index, (path, key, *_) in enumerate(removals):
-        check_disjoint(path + [key], [other + [other_key]
-                                      for other, other_key, *_ in removals[index + 1:]])
+        removals.append(Removal(path, key, prune, values, migration))
+    for index, removal in enumerate(removals):
+        check_disjoint(removal.path + [removal.key],
+                       [other.path + [other.key] for other in removals[index + 1:]])
     return removals
 
 
@@ -381,7 +385,7 @@ def removal_entries(entries, assign, retire, owned, paths, upserts, prefixes, re
             check_disjoint(path, [other])
         check_disjoint(path, [other for other, _ in paths]
                        + [other for other, _, _ in prefixes]
-                       + [other + [other_key] for other, other_key, *_ in removals])
+                       + [other.path + [other.key] for other in removals])
         for other, _, _ in drops:
             check_disjoint(path, [other])
         drops.append((path, key, values))
@@ -419,10 +423,10 @@ def owned_entry_sets(entries, assign, retire, owned, paths, upserts, prefixes, r
         # ancestor, or a descendant would fight the prune or the upsert.
         check_top_level(path, assign, retire, owned)
         check_disjoint(path, assigned_paths(paths, upserts, prefixes)
-                       + [other + [other_key] for other, other_key, *_ in removals]
+                       + [other.path + [other.key] for other in removals]
                        + [other for other, _, _ in drops]
-                       + [other for other, *_ in entry_sets])
-        entry_sets.append((path, key, values, pre_ledger))
+                       + [other.path for other in entry_sets])
+        entry_sets.append(EntrySet(path, key, values, pre_ledger))
     return entry_sets
 
 
@@ -514,9 +518,8 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
     document's comments and layout; a plain dict assigned into it becomes a
     table.
 
-    Each of `entry_sets` is (path, key, entries, previous), where previous
-    holds the IDs this path owned before this apply, as merge() read them
-    from the ledger.
+    Each of `entry_sets` is an EntrySet whose pre_ledger holds the IDs its
+    path owned before this apply, as merge() read them from the ledger.
     """
     merged = copy.deepcopy(current)
     migrate(merged, migration)
@@ -554,11 +557,24 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
         else:
             if not isinstance(entries, list):
                 raise ValueError('{} is not a list, so its entries cannot be owned'.format(describe(path)))
-            entries[:] = [entry for entry in entries
-                          if not (isinstance(entry, dict) and isinstance(entry.get(key), str)
-                                  and entry[key] in stale)]
-            for value in declared:
-                upsert(entries, key, value)
+            # upsert() for each declared entry, in one pass: the first match
+            # keeps its position and later duplicates go.
+            by_id = {value[key]: value for value in declared}
+            position, kept = {}, []
+            for entry in entries:
+                name = entry.get(key) if isinstance(entry, dict) else None
+                if isinstance(name, str):
+                    if name in stale or name in position:
+                        continue
+                    if name in by_id:
+                        position[name] = len(kept)
+                kept.append(entry)
+            entries[:] = kept
+            for name, value in by_id.items():
+                if name in position:
+                    entries[position[name]] = copy.deepcopy(value)
+                else:
+                    entries.append(copy.deepcopy(value))
     for path, prefix, value in prefixes or []:
         node = parent_of(merged, path)
         if path[-1] not in node:
@@ -574,12 +590,12 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
         if value is not None:
             entries.append(value)
     pruned = []
-    for path, key, prune, values, _ in removals or []:
+    for removal in removals or []:
         # A walk that stops early is the no-op case: a missing path, a
         # non-object segment, or an absent key has nothing to remove, the way
         # top-level remove treats an absent key.  No parent is created.
         node = merged
-        for segment in path:
+        for segment in removal.path:
             if not isinstance(node, dict) or segment not in node:
                 break
             node = node[segment]
@@ -587,13 +603,14 @@ def apply(current, assign, retire, paths, owned=None, upserts=None, migration=No
             # A declared value keeps what the user chose since: the key goes
             # only while it still holds what this repository wrote.  Compared
             # with the type too, so 1 never matches a true.
-            if (isinstance(node, dict) and key in node
-                    and (values is ANY_VALUE
-                         or any(isinstance(node[key], bool) == isinstance(value, bool) and node[key] == value
-                                for value in values))):
-                del node[key]
-                if prune:
-                    pruned.append(path)
+            if (isinstance(node, dict) and removal.key in node
+                    and (removal.values is ANY_VALUE
+                         or any(isinstance(node[removal.key], bool) == isinstance(value, bool)
+                                and node[removal.key] == value
+                                for value in removal.values))):
+                del node[removal.key]
+                if removal.prune:
+                    pruned.append(removal.path)
     # Only after every removal, so a plain removal beside a pruning one under
     # the same object empties it whichever is declared first.  Only an object
     # a removal emptied goes, so a path that was already empty or never held
@@ -760,7 +777,6 @@ def record(ledger, text):
     except FileNotFoundError:
         pass
     ledger.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    # mkstemp creates the file 0600.
     descriptor, temporary = tempfile.mkstemp(prefix='.ledger-', dir=ledger.parent)
     try:
         with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
@@ -777,7 +793,7 @@ def record(ledger, text):
 def merge(settings, declared, fmt='json', ledger=None):
     (assign, retire, paths, removals, owned, upserts, prefixes, migration, drops,
      entry_sets) = declaration(declared, fmt)
-    migrations = {name for *_, name in removals if name is not None}
+    migrations = {removal.migration for removal in removals if removal.migration is not None}
     keeps_ledger = bool(entry_sets or migrations)
     recorded, completed = {}, []
     if keeps_ledger:
@@ -786,11 +802,9 @@ def merge(settings, declared, fmt='json', ledger=None):
         recorded, completed = read_ledger(ledger)
     # A migration the ledger records ran on an earlier apply; running it again
     # would remove a value the user has saved since.
-    removals = [removal for removal in removals if removal[-1] not in completed]
-    # A path the ledger has never recorded owns what generations before the
-    # ledger wrote there.
-    entry_sets = [(path, key, entries, recorded.get(tuple(path), pre_ledger))
-                  for path, key, entries, pre_ledger in entry_sets]
+    removals = [removal for removal in removals if removal.migration not in completed]
+    entry_sets = [entry_set._replace(pre_ledger=recorded.get(tuple(entry_set.path), entry_set.pre_ledger))
+                  for entry_set in entry_sets]
     pending, final = dict(recorded), dict(recorded)
     for path, key, entries, previous in entry_sets:
         written = entry_ids(key, entries)

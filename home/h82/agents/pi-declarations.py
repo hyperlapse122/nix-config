@@ -20,8 +20,9 @@ import sys
 LEVELS = ('minimal', 'low', 'medium', 'high')
 EXTRA_LEVELS = ('xhigh', 'max')
 
-# The IDs generations before the ledger wrote under providers.synthetic.models.
-SYNTHETIC_PRE_LEDGER = [
+PER_MILLION = 1000000
+
+LEGACY_SYNTHETIC_IDS = [
     'hf:zai-org/GLM-5.3',
     'hf:zai-org/GLM-5.3-Flash',
     'hf:deepseek-ai/DeepSeek-V4.1-Flash-1017',
@@ -41,7 +42,7 @@ def per_million(price):
         return 0
     if not per_token.is_finite() or per_token < 0:
         return 0
-    return round(float(per_token * 1000000), 6)
+    return round(float(per_token * PER_MILLION), 6)
 
 
 def positive(value):
@@ -65,7 +66,7 @@ def level_map(efforts, override):
     return mapped
 
 
-def model(name, efforts, modalities, prices, context, max_tokens, override):
+def model(name, efforts, modalities, prices, context, max_tokens, *, override):
     """efforts is None for a model without reasoning and [] for one that
     reasons with no effort list."""
     entry = {'name': name, 'reasoning': efforts is not None}
@@ -84,17 +85,17 @@ def synthetic_entry(row):
     reasoning = row.get('reasoning_parameters')
     pricing = row.get('pricing') or {}
     entry = model(
-        row['display_name'],
-        None if reasoning is None else list((reasoning or {}).get('efforts') or []),
-        row.get('input_modalities') or [],
-        {
+        name=row['display_name'],
+        efforts=None if reasoning is None else list((reasoning or {}).get('efforts') or []),
+        modalities=row.get('input_modalities') or [],
+        prices={
             'input': pricing.get('prompt'),
             'output': pricing.get('completion'),
             'cacheRead': pricing.get('input_cache_reads'),
             'cacheWrite': pricing.get('input_cache_writes'),
         },
-        row.get('context_length'),
-        row.get('max_output_length'),
+        context=row.get('context_length'),
+        max_tokens=row.get('max_output_length'),
         override=False,
     )
     return dict({'id': row['id']}, **entry)
@@ -106,18 +107,18 @@ def openrouter_entry(row, override):
     top = row.get('top_provider') or {}
     context = top.get('context_length')
     return model(
-        row['name'],
-        None if reasoning is None else list((reasoning or {}).get('supported_efforts') or []),
-        (row.get('architecture') or {}).get('input_modalities') or [],
-        {
+        name=row['name'],
+        efforts=None if reasoning is None else list((reasoning or {}).get('supported_efforts') or []),
+        modalities=(row.get('architecture') or {}).get('input_modalities') or [],
+        prices={
             'input': pricing.get('prompt'),
             'output': pricing.get('completion'),
             'cacheRead': pricing.get('input_cache_read'),
             'cacheWrite': pricing.get('input_cache_write'),
         },
-        context if positive(context) else row.get('context_length'),
-        top.get('max_completion_tokens'),
-        override,
+        context=context if positive(context) else row.get('context_length'),
+        max_tokens=top.get('max_completion_tokens'),
+        override=override,
     )
 
 
@@ -156,7 +157,7 @@ def main(synthetic_path, openrouter_path, bundled_path, synthetic_helper, openro
                 'path': synthetic_at + ['models'],
                 'key': 'id',
                 'entries': [synthetic_entry(row) for row in synthetic],
-                'preLedgerIds': SYNTHETIC_PRE_LEDGER,
+                'preLedgerIds': LEGACY_SYNTHETIC_IDS,
             },
             {'path': openrouter_at + ['models'], 'key': 'id', 'entries': models, 'preLedgerIds': []},
             {'path': openrouter_at + ['modelOverrides'], 'entries': overrides, 'preLedgerIds': []},

@@ -1818,8 +1818,8 @@ class RemoveEntryTests(unittest.TestCase):
         self.assertNotIn('hf:org/Retired-1', json.dumps(self.read()['providers']['synthetic']))
 
 
-# Pi's models.json as generations before the ledger left it: two models they
-# wrote, one the user added, and siblings no declaration names.  The stale
+# Pi's models.json with no ledger record: two models its `preLedgerIds` name,
+# one the user added, and siblings no declaration names.  The stale
 # name on Current-2 makes a run that skips the upsert differ from one that
 # applies it.
 OWN_PATH = ['providers', 'synthetic', 'models']
@@ -2001,7 +2001,7 @@ class LedgerTests(unittest.TestCase):
             {'path': levels, 'key': 'synthetic/a', 'value': 'max', 'migration': 'startup-levels'},
             {'path': levels, 'key': 'synthetic/b', 'values': ['low', 'high'], 'migration': 'startup-levels'},
         ]}))
-        # The first apply either removes what earlier generations wrote or,
+        # The first apply either removes the declared values or,
         # on a host that never held those values, finds nothing; it counts as
         # run either way.
         for first, migrated in (

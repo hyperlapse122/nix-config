@@ -2,7 +2,7 @@ name: Refresh model catalogs
 
 on:
   schedule:
-    - cron: '22,52 * * * *' # Every 30 minutes, between update-dependencies runs
+    - cron: '22,52 * * * *' # Between update-dependencies runs
   workflow_dispatch:
 
 concurrency:

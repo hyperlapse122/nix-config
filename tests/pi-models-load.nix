@@ -3,15 +3,10 @@
 
     import ./tests/pi-models-load.nix { inherit pkgs self fixtures; }
 
-  Asserts that Pi loads the models.json every Home Manager user environment
-  `tests/lib/configurations.nix` yields would write. For each user it takes
-  the merger and the declared document from the rendered piModels activation
-  script and the pi wrapper from home-path, applies the declaration to an
-  empty home with that merger, and runs `pi --list-models` offline with fake
-  keys (tests/pi_models_load.py). It fails when Pi reports a models.json
-  problem or leaves out a model the declaration names, and when a copy of the
-  merged file holding a null maxTokens passes the same test. Users sharing the
-  same pi, merger, and declaration are run once.
+  Checks that Pi loads the models.json every Home Manager user environment
+  `tests/lib/configurations.nix` yields would write, through
+  tests/pi_models_load.py. Users sharing the same pi, merger, and
+  declaration are run once.
 */
 {
   pkgs,

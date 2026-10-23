@@ -13,30 +13,9 @@
 # evaluated with the implicit `success()`. A `uses:` step is skipped. An
 # expression the runner does not know fails the check rather than guessing.
 #
-# A stub `nix` stands in for the two snapshot fetches and the verification
-# build. It logs every call, with the catalog keys and the push token it can
-# see, to an event log that the origin's post-receive hook also writes, so
-# the log orders verification against the pushes origin accepted. The push
-# step's authenticated URL reaches the sandbox origin through `insteadOf`.
-#
-# Covers:
-# - Each catalog key appears once in the workflow, in its own fetch step;
-#   GH_TOKEN_FOR_UPDATES appears once, in the push step; checkout sets
-#   `persist-credentials: false`; every `run:` step uses `shell: bash` and
-#   starts with `set -euo pipefail`.
-# - AE2: a failing OpenRouter fetch and a changed Synthetic snapshot push
-#   only the Synthetic commit, keep the OpenRouter snapshot, and warn naming
-#   OpenRouter. A missing Synthetic key warns naming Synthetic and still
-#   lands the OpenRouter refresh.
-# - Unchanged snapshots run no verification and push nothing.
-# - Verification gates the push: a failing verification pushes nothing.
-# - When main moved before the push, the push step verifies again before
-#   the push, and a failing re-verification pushes nothing.
-# - A rejected push fetches, rebases, verifies again, and pushes once more;
-#   a second rejection fails the run and pushes nothing. No build in the push
-#   step sees a catalog key.
-# - Without GH_TOKEN_FOR_UPDATES the run fails naming it and pushes nothing,
-#   and the token never reaches the run's output.
+# A stub `nix` stands in for the snapshot fetches and the verification build
+# and logs each call to an event log that origin's post-receive hook also
+# writes, so the log orders verification against the pushes origin accepted.
 
 set -euo pipefail
 
@@ -66,12 +45,9 @@ wf_json=$(yq -o=json '.' "$workflow")
 job=$(jq '.jobs | to_entries[0].value' <<<"$wf_json")
 step_count=$(jq '.steps | length' <<<"$job")
 
-# step_by_name <name>: the JSON of the named step.
 step_by_name() {
   jq --arg n "$1" '.steps[] | select(.name == $n)' <<<"$job"
 }
-
-# --- static contract --------------------------------------------------------
 
 for pair in 'SYNTHETIC_API_KEY|Refresh the Synthetic catalog snapshot' \
   'OPENROUTER_API_KEY|Refresh the OpenRouter catalog snapshot' \
@@ -101,11 +77,8 @@ for ((i = 0; i < step_count; i++)); do
 done
 pass 'every run step uses shell: bash and starts with set -euo pipefail'
 
-# --- job runner -------------------------------------------------------------
-
 declare -A secrets outputs
 
-# resolve <value>: an env value with `${{ secrets.NAME }}` resolved.
 resolve() {
   local re='^\$\{\{ secrets\.([A-Za-z0-9_]+) \}\}$'
   if [[ $1 =~ $re ]]; then
@@ -117,7 +90,6 @@ resolve() {
   fi
 }
 
-# should_run <if> <job-ok>: Actions' decision for a step's `if:`.
 should_run() {
   local cond=$1 ok=$2 re="^steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+) == '([^']*)'$"
   [[ -z $cond ]] && { ((ok)); return; }
@@ -194,7 +166,6 @@ EOF
   chmod +x "$bin/nix"
 }
 
-# move_main: a commit lands on origin's main from elsewhere.
 move_main() {
   git -C "$other" pull -q --rebase origin main 2>/dev/null
   printf 'moved\n' >>"$other/moved.txt"
@@ -204,8 +175,7 @@ move_main() {
   : >"$events"
 }
 
-# run_job <name>: runs the job's steps in the clone; sets job_ok and writes
-# the whole run's output to $scratch/<name>.log.
+# Sets job_ok and writes the whole run's output to $scratch/<name>.log.
 run_job() {
   local name=$1 log=$scratch/$1.log i step cond script out ok=1 status
   local -a env_args
@@ -246,18 +216,15 @@ run_job() {
   if grep -q "$token" "$log"; then fail "($name) the run printed GH_TOKEN_FOR_UPDATES"; fi
 }
 
-# pushed_subjects: origin's main subjects above init, oldest first.
 pushed_subjects() {
   git --git-dir "$origin" log --reverse --format=%s main | tail -n +2 | paste -sd '|'
 }
 
-# commit_files <subject>: the files the origin commit with that subject holds.
 commit_files() {
   git --git-dir "$origin" show --format= --name-only \
     "$(git --git-dir "$origin" log --format=%H --fixed-strings --grep="$1" main | head -n 1)"
 }
 
-# events_of <kind>: event lines of that kind, joined.
 events_of() { grep "^$1" "$events" | paste -sd '|' || true; }
 
 all_secrets() {
@@ -267,8 +234,6 @@ all_secrets() {
 syn_subject='chore(agents): refresh the synthetic catalog snapshot'
 or_subject='chore(agents): refresh the openrouter catalog snapshot'
 push_seen='syn= or= gh=set'
-
-# --- AE2: one provider fails, the other lands -------------------------------
 
 setup ae2
 all_secrets
@@ -286,7 +251,7 @@ if grep -q '^::warning.*Synthetic' "$scratch/ae2.log"; then fail '(ae2) a warnin
   fail "(ae2) each fetch should see only its own key: $(events_of fetch)"
 [[ $(events_of 'verify\|push') == "verify $verify_args syn= or= gh=|push $syn_subject" ]] ||
   fail "(ae2) expected one verification, then the push: $(events_of 'verify\|push')"
-pass 'AE2: a failing OpenRouter fetch warns naming OpenRouter and the Synthetic refresh alone lands'
+pass 'a failing OpenRouter fetch warns naming OpenRouter and the Synthetic refresh alone lands'
 
 setup nokey
 all_secrets
@@ -299,8 +264,6 @@ run_job nokey
 grep -q '^::warning.*Synthetic' "$scratch/nokey.log" || fail '(nokey) no warning names Synthetic'
 pass 'a missing Synthetic key keeps its snapshot, warns naming Synthetic, and the OpenRouter refresh lands'
 
-# --- nothing changed ----------------------------------------------------------
-
 setup same
 all_secrets
 run_job same
@@ -308,8 +271,6 @@ run_job same
 [[ -z $(pushed_subjects) && -z $(events_of 'verify\|push') ]] ||
   fail "(same) unchanged snapshots verified or pushed: $(events_of 'verify\|push')"
 pass 'unchanged snapshots run no verification and push nothing'
-
-# --- verification gates the push --------------------------------------------
 
 setup verify-fails
 all_secrets
@@ -319,8 +280,6 @@ run_job verify-fails
 ((!job_ok)) || fail '(verify-fails) the run succeeded with a failing verification'
 [[ -z $(pushed_subjects) ]] || fail "(verify-fails) origin got: $(pushed_subjects)"
 pass 'a failing verification fails the run and pushes nothing'
-
-# --- main moved before the push ---------------------------------------------
 
 setup moved
 all_secrets
@@ -346,8 +305,6 @@ run_job moved-fails
 [[ $(pushed_subjects) == 'unrelated commit on main' ]] || fail "(moved-fails) origin got: $(pushed_subjects)"
 pass 'a failing re-verification after main moved pushes nothing'
 
-# --- rejected push ------------------------------------------------------------
-
 setup rejected
 all_secrets
 echo change >"$ctl/synthetic-models-watch"
@@ -372,8 +329,6 @@ run_job rejected-twice
   fail "(rejected-twice) origin got: $(pushed_subjects)"
 [[ $(grep -c '^verify' "$events") == 3 ]] || fail '(rejected-twice) the push step retried more than once'
 pass 'a second rejected push fails the run and pushes nothing'
-
-# --- missing push token -------------------------------------------------------
 
 setup notoken
 all_secrets
