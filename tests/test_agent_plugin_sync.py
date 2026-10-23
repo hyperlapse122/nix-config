@@ -1133,6 +1133,29 @@ class PiSyncTestCase(PiCase):
         self.assertFalse(self.base.exists())
         self.assertFalse(self.settings.exists())
 
+    def test_a_refused_merge_fails_and_keeps_the_previous_state(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.seed({'skills': {'not': 'a list'}})
+        newer = self.make_source('v3.29.0')
+        result = self.run_sync(segment='v3.29.0', source=newer)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('plugins merge failed', result.stderr)
+        self.assertEqual(self.read(), {'skills': {'not': 'a list'}})
+        self.assertTrue((self.base / 'v3.28.0').is_symlink())
+
+    def test_a_merge_that_writes_nothing_fails_the_readback(self):
+        self.cli.write_text('#!{}\nimport sys\nsys.exit(0)\n'.format(sys.executable))
+        result = self.run_sync()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('does not list', result.stderr)
+
+    def test_dry_run_writes_nothing(self):
+        result = self.run_sync(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('would run:', result.stdout)
+        self.assertFalse(self.base.exists())
+        self.assertFalse(self.settings.exists())
+
 
 class PiRetireTestCase(PiCase):
     def test_retire_removes_only_the_plugin_entry_and_the_base(self):
@@ -1144,6 +1167,26 @@ class PiRetireTestCase(PiCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read(), {'skills': [USER_SKILLS]})
         self.assertFalse(self.base.exists())
+
+    def test_retire_on_a_home_without_settings_creates_none(self):
+        result = self.run_retire()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.settings.exists())
+
+    def test_a_refused_retire_keeps_the_base(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        self.seed({'skills': 'not a list'})
+        result = self.run_retire()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.base.exists())
+
+    def test_retire_dry_run_touches_nothing(self):
+        self.assertEqual(self.run_sync().returncode, 0)
+        before = self.settings.read_text()
+        result = self.run_retire(extra=['--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.settings.read_text(), before)
+        self.assertTrue(self.base.exists())
 
 
 if __name__ == '__main__':
