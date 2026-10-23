@@ -103,7 +103,6 @@ let
     ".pi/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
-    ".config/opencode/AGENTS.md"
     ".gemini/config/AGENTS.md"
   ];
 

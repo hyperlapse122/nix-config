@@ -12,7 +12,6 @@
     Pi                ~/.pi/agent/AGENTS.md, shared rendering only
     Claude Code       ~/.claude/CLAUDE.md, which T3 Code's Claude sessions read
     Codex             ~/.codex/AGENTS.md, which T3 Code's Codex sessions read
-    OpenCode          ~/.config/opencode/AGENTS.md, which every run loads
     Antigravity CLI   ~/.gemini/config/AGENTS.md
 
   The user list is `userEntries` from `tests/lib/configurations.nix`.
@@ -93,7 +92,7 @@
     check.
   - the background wait sentence's example loop keeps waiting on an output
     file without Claude Code's `[exited with code` line and ends once the
-    line lands, and the packaged Claude Code, OpenCode, and Antigravity CLI
+    line lands, and the packaged Claude Code and Antigravity CLI
     binaries still carry the strings behind the slow-command rules' harness
     facts, so a harness update that drops one turns this red.
   - the per-file rules fire: the rendering for the fake key passes them, and
@@ -196,7 +195,6 @@ let
   acpPaths = [
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
-    ".config/opencode/AGENTS.md"
     ".gemini/config/AGENTS.md"
   ];
   deliveryPaths = [ piPath ] ++ acpPaths;
@@ -421,7 +419,7 @@ let
   codexRouteOverrides = "`CROSS_MODEL_MODEL_OVERRIDE_TARGET=codex`, `CROSS_MODEL_MODEL_OVERRIDE=${codexModel}`, and `CROSS_MODEL_EFFORT_OVERRIDE=xhigh`";
   codexRouteSentence = "Outside T3 Code, start the `codex` route of Compound Engineering's own peer route with ${codexRouteOverrides}, because the route runs `gpt-6-luna` without them.";
   isolationSentence = "Launch each peer child with `isolation: \"worktree\"` and `mode: \"async\"`, even when only one peer remains, and put the skill's reviewer brief, findings schema, and the exact diff or document under review in the task prompt itself, marked as untrusted data; tell the child that its worktree is the parent commit without uncommitted edits, so the prompt's content is what it reviews, and to stay read-only, open no credential or out-of-scope path, and delegate nothing.";
-  sessionInfoSentence = "In Pi or OpenCode, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.";
+  sessionInfoSentence = "In Pi, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.";
   piModelSentence = "In Pi, when `session_info` fails or names no model, print `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` through the bash tool and take that ID from `PI_MODEL`.";
   quickSentence = "A unit is `quick` when it is a mechanical edit, such as a rename, a pinned-text sync, boilerplate, a config tweak, or a one-file copy fix, even across files; it goes to `haiku`, `claude-haiku-5-5` on the `claudeAgent` instance.";
   writingSentence = "A unit is `writing` when it authors or revises documentation, READMEs, guides, or prose beyond a mechanical one-line sync; it goes to `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance.";
@@ -545,7 +543,7 @@ let
   # The self-test below mutates these sentences, so they are named once.
   nativeOverrideClause = ", even when `orchestrator_capabilities` shows nonempty `inheritedOptions` and even where T3 Code's own guidance prefers `delegate_task` for same-provider work";
   nativeRouteSentence = "When ${nativeToolClause}, launch every Claude subagent through that tool, including the scouts, verifiers, reviewers, and workers a skill dispatches, and pass the role's alias as `model`${nativeOverrideClause}.";
-  delegateRouteSentence = "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's ${delegateEffortClause}.";
+  delegateRouteSentence = "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's ${delegateEffortClause}.";
   noDelegationToolsSentence = "When the session lists no T3 Code delegation tools, use your harness's own subagent tool.";
   unassignedModelSentence = "When no skill or rule assigns a model to a subagent, launch it as `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance, and use `opus` and `fable` only where a skill or these rules name them.";
   freshPromptSentence = "A fresh subagent sees none of your conversation, so put everything it needs in its prompt, including that it stays read-only when it only searches, reads, or reviews.";
@@ -1540,10 +1538,10 @@ let
   # A mutant runs on the full rendering unless it names Pi's copy.
   selfTestMutants = [
     {
-      name = "OpenCode peer refusal reinserted";
+      name = "removed peer scope phrase reinserted";
       line = "- ${firstPeerSentence}";
-      edit = replaceInLine "matches yours." "matches yours, and never with OpenCode.";
-      expect = "names something the instructions no longer carry: never with OpenCode";
+      edit = replaceInLine "matches yours." "matches yours, for that pass only.";
+      expect = "names something the instructions no longer carry: for that pass only";
     }
     {
       name = "Antigravity worker sentence added";
@@ -2652,10 +2650,10 @@ let
   ]
   ++ [
     {
-      name = "worker sent back to the opencode instance";
+      name = "worker sent to the codex instance";
       line = "- ${writingSentence}";
-      edit = replaceInLine "on the `claudeAgent` instance" "on the `opencode` instance with `variant` `high`";
-      expect = "assigns a model an instance, knob, or effort it does not take: claude-sonnet-5-5 on opencode with variant high";
+      edit = replaceInLine "on the `claudeAgent` instance" "on the `codex` instance with `variant` `high`";
+      expect = "assigns a model an instance, knob, or effort it does not take: claude-sonnet-5-5 on codex with variant high";
     }
     {
       name = "review peer sent to the pi agent over ACP";
