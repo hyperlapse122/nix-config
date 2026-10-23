@@ -5,12 +5,13 @@
 
   `fixtures` is tests/lib/linux-fixtures.nix. Fails when anything this
   repository renders gives a Claude model an effort again, so Claude Code runs
-  every model at its own default. Codex's `reasoningEffort` and Pi's `thinking`
-  effort stay allowed. Runs over `userEntries` from
-  `tests/lib/configurations.nix`: every NixOS configuration and every
-  non-NixOS fixture host, production and bootstrap alike. A macOS user's files
-  need an aarch64-darwin builder, so that side is left to the shared modules
-  these users run.
+  every model at its own default, except the `ce-work` `deep` worker, which
+  runs `claude-opus-5-5` at `effort` `xhigh` per launch. Codex's
+  `reasoningEffort` and Pi's `thinking` effort stay allowed. Runs over
+  `userEntries` from `tests/lib/configurations.nix`: every NixOS
+  configuration and every non-NixOS fixture host, production and bootstrap
+  alike. A macOS user's files need an aarch64-darwin builder, so that side is
+  left to the shared modules these users run.
 
   Reads what activation and Home Manager materialize, not the Nix attribute
   sets behind them:
@@ -20,7 +21,11 @@
     `efforts`, `effortLevel`, or `CLAUDE_CODE_EFFORT_LEVEL` fails, and so does
     a `claudeAgent` instance followed by "with `<knob>` `<value>`", which is how
     an assignment carries a knob. `reasoningEffort` and `CROSS_MODEL_EFFORT_OVERRIDE` are
-    not whole words, and a sentence about Codex or Pi names no Claude.
+    not whole words, and a sentence about Codex or Pi names no Claude. The
+    only exemptions are `exemptSentences`, written here word for word: the
+    `deep` worker sentence and the two launch sentences that carry its
+    effort. A sentence is exempt only when it equals one of them, after its
+    list marker and its full stop, so any other wording fails.
   - the declaration JSON that the Claude Code settings merge and the Claude
     Code global config merge are invoked with, found through the `--declared`
     flag of the activation script. Neither may hold a string or key that spells
@@ -43,7 +48,10 @@
   the first user environment and requires this check's own message:
   - instruction copies: a `claudeAgent` assignment given `effort` `high`, one
     given another knob, a sentence that names a `claude-*` model and an effort
-    in words, and one that sets `effortLevel`. A Codex `reasoningEffort`
+    in words, one that sets `effortLevel`, one that names `opus` and an
+    effort outside the exempt sentences, and the `deep` sentence with its
+    effort changed to `high`, so the exemption is exact. The real copy must
+    carry every exempt sentence. A Codex `reasoningEffort`
     `xhigh` assignment, a sentence naming a store path that spells `effort`,
     and the real Pi copy's `thought_level=<effort>` must pass, and the builder
     fails when the real copies no longer carry them, so those passes are not
@@ -95,9 +103,22 @@ let
     ".gemini/config/AGENTS.md"
   ];
 
+  # The sentences that may give a Claude model an effort: the `deep` worker's
+  # assignment and the two launch rules that pass it on. Written here, not
+  # read from the template, so a change to any of them turns this red.
+  exemptSentences = [
+    "A unit is `deep` only when its own design is hard, such as a new interface, data format, or concurrency rule, or when it debugs cross-module behavior whose cause is unknown; it goes to `opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` `xhigh`."
+    "When your own subagent tool can run Claude models, such as Claude Code's `Agent`, launch each unit through that tool with the worker's alias as `model` and its effort, when its category names one, as `effort`, and otherwise, when the session lists T3 Code's delegation tools, launch it through `delegate_task` with the worker's instance and model id as `target`, its effort as `effort` in `target.options` when its category names one, and no other `target.options`, instead of Compound Engineering's own delegation route."
+    "Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's effort as `effort` in `target.options` when its category names one, and no other `target.options`."
+  ];
+  exemptList = pkgs.writeText "claude-effort-absent-exempt" (
+    lib.concatMapStrings (sentence: "${sentence}\n") exemptSentences
+  );
+
   # Prints each sentence of the file that pairs Claude with an effort, outside
-  # store paths, and exits 1 when it printed any. Sentences end at a full stop
-  # and a space, as in tests/agent-instructions.nix.
+  # store paths and `exemptSentences`, and exits 1 when it printed any.
+  # Sentences end at a full stop and a space, as in
+  # tests/agent-instructions.nix. A list that cannot be read exits 2.
   sentenceProgram = pkgs.writeText "claude-effort-absent-sentences.awk" ''
     function hasWord(line, term,    from, pos, before, after) {
       from = 1
@@ -110,12 +131,28 @@ let
       }
       return 0
     }
+    # Strips a list marker and a full stop, so a sentence compares the same
+    # wherever the split left it.
+    function bare(text) {
+      sub(/^ *- /, "", text)
+      sub(/\.$/, "", text)
+      return text
+    }
+    BEGIN {
+      list = "${exemptList}"
+      while ((status = (getline entry < list)) > 0) exempt[bare(entry)] = 1
+      if (status < 0) {
+        print "cannot read the exempt sentence list " list
+        exit 2
+      }
+    }
     {
       line = $0
       gsub(/\/nix\/store\/[0-9a-z]{32}-[^[:space:]`"]*/, "", line)
       count = split(line, sentences, /\. /)
       for (i = 1; i <= count; i++) {
         original = sentences[i]
+        if (bare(original) in exempt) continue
         lowered = tolower(original)
         if (lowered ~ /`claudeagent` instance with `[^`]+` `[^`]+`/) {
           print "a claudeAgent assignment carries a knob: " original
@@ -129,7 +166,7 @@ let
         }
       }
     }
-    END { exit bad }
+    END { exit (status < 0 ? 2 : bad) }
   '';
 
   # The Claude Code merges. `retire` is true for settings.json, whose
@@ -264,6 +301,12 @@ let
                 echo "self-test: the real copy no longer carries Pi's thought_level=<effort>, so that pass would be vacuous" >&2
                 selfTestFailed=1
               fi
+              while IFS= read -r sentence; do
+                if ! grep -qxF -- "- $sentence" "$claudeCopy"; then
+                  echo "self-test: the real copy no longer carries this exempt sentence as a line, so its exemption would be vacuous: $sentence" >&2
+                  selfTestFailed=1
+                fi
+              done < ${exemptList}
 
               textMutant() { # name, expected message, sed program
                 local name=$1 expect=$2 program=$3 mutated
@@ -299,6 +342,12 @@ let
               appended 'a role alias with CLAUDE_CODE_EFFORT_LEVEL' \
                 'a sentence gives a Claude model an effort' \
                 '- Run `sonnet` with CLAUDE_CODE_EFFORT_LEVEL set to `high`.'
+              appended 'a sentence outside the exemptions that names opus and an effort' \
+                'a sentence gives a Claude model an effort' \
+                '- Launch every reviewer on `opus` with `effort` `xhigh`.'
+              textMutant 'the deep sentence with its effort changed to high' \
+                'a claudeAgent assignment carries a knob' \
+                's/(goes to `opus`, `claude-opus-5-5` on the `claudeAgent` instance with `effort` )`xhigh`/\1`high`/'
               appended 'a Codex reasoningEffort xhigh assignment' "" ${esc codexCase}
               appended 'a store path whose name spells effort' "" ${esc storePathCase}
             fi
