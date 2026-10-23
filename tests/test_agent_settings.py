@@ -687,7 +687,7 @@ class OwnedKeyTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_owned_value_is_not_aliased_to_the_declaration(self):
-        assign, retire, paths, _, owned, upserts, _, _, _ = merger.declaration(self.declared)
+        assign, retire, paths, _, owned, upserts, *_ = merger.declaration(self.declared)
         merged = merger.apply({}, assign, retire, paths, owned, upserts)
         merged['repo-owned']['enabled'] = False
         self.assertTrue(owned['repo-owned']['enabled'])
@@ -841,6 +841,7 @@ class TomlTests(unittest.TestCase):
             {'set': {'check_for_update_on_startup': None}},
             {'setPaths': [{'path': ['features', 'memories'], 'value': None}]},
             {'own': {'mcp_servers': {'x': {'command': None}}}},
+            {'ownEntries': [{'path': ['env'], 'key': 'name', 'entries': [{'name': 'x', 'value': None}]}]},
         ):
             with self.subTest(document=document):
                 self.declare(document)
@@ -882,7 +883,7 @@ class TomlTests(unittest.TestCase):
 
     def test_does_not_mutate_the_read_document(self):
         current = tomlkit.parse(TOML_EXISTING)
-        assign, retire, paths, _, owned, upserts, _, _, _ = merger.declaration(self.declared, fmt='toml')
+        assign, retire, paths, _, owned, upserts, *_ = merger.declaration(self.declared, fmt='toml')
         merger.apply(current, assign, retire, paths, owned, upserts)
         self.assertEqual(tomlkit.dumps(current), TOML_EXISTING)
 
@@ -1465,6 +1466,11 @@ class RemovePathTests(unittest.TestCase):
             {'removePaths': [dict(entry, path=[])]},
             {'removePaths': [dict(entry, path='scanner')]},
             {'removePaths': [dict(entry, key=3)]},
+            {'removePaths': [dict(entry, value='stale', values=['stale'])]},
+            {'removePaths': [dict(entry, values='stale')]},
+            {'removePaths': [dict(entry, values=[['stale']])]},
+            {'removePaths': [dict(entry, migration='')]},
+            {'removePaths': [dict(entry, migration=3)]},
         ):
             with self.subTest(document=document):
                 self.assert_refused(document)
@@ -1583,6 +1589,14 @@ class RemovePathTests(unittest.TestCase):
         before = self.settings.read_bytes()
         self.merge()
         self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_removal_with_values_removes_the_key_while_it_holds_any_of_them(self):
+        levels = ['modelThinkingLevels']
+        self.seed({'modelThinkingLevels': {'synthetic/a': 'low', 'synthetic/b': 'high', 'synthetic/c': 'max'}})
+        self.declare([{'path': levels, 'key': key, 'values': ['low', 'high']}
+                      for key in ('synthetic/a', 'synthetic/b', 'synthetic/c')])
+        self.merge()
+        self.assertEqual(self.read(), {'modelThinkingLevels': {'synthetic/c': 'max'}})
 
     def test_a_removal_with_a_value_never_matches_across_bool_and_number(self):
         self.seed({'scanner': {'retired': True}})
@@ -1802,6 +1816,242 @@ class RemoveEntryTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('hf:org/Retired-1', json.dumps(self.read()['providers']['synthetic']))
+
+
+# Pi's models.json as generations before the ledger left it: two models they
+# wrote, one the user added, and siblings no declaration names.  The stale
+# name on Current-2 makes a run that skips the upsert differ from one that
+# applies it.
+OWN_PATH = ['providers', 'synthetic', 'models']
+OVERRIDE_PATH = ['providers', 'openrouter', 'modelOverrides']
+PRE_LEDGER = ['hf:org/Retired-1', 'hf:org/Current-2']
+HAND_ADDED = {'id': 'hf:user/Hand-Added', 'name': 'mine'}
+OWN_EXISTING = {
+    'providers': {
+        'synthetic': {
+            'baseUrl': 'https://example.invalid/v1',
+            'models': [
+                {'id': 'hf:org/Retired-1', 'name': 'old build'},
+                {'id': 'hf:org/Current-2', 'name': 'stale name'},
+                HAND_ADDED,
+            ],
+        },
+        'openrouter': {'modelOverrides': {'user/hand': {'name': 'mine'}}},
+    },
+    'defaultProvider': 'synthetic',
+}
+
+
+def model(model_id):
+    return {'id': model_id, 'name': 'declared ' + model_id}
+
+
+class LedgerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.settings = Path(self.tmp.name) / 'home/.pi/agent/models.json'
+        self.ledger = Path(self.tmp.name) / 'state/nix-config/agent-settings-ledger/.pi/agent/models.json'
+        self.declared = Path(self.tmp.name) / 'declared.json'
+        self.declare(['hf:org/Current-2', 'hf:org/New-3'])
+
+    def declare(self, ids, overrides=None, **fields):
+        owned = [{'path': OWN_PATH, 'key': 'id', 'entries': [model(i) for i in ids],
+                  'preLedgerIds': PRE_LEDGER}]
+        if overrides is not None:
+            owned.append({'path': OVERRIDE_PATH,
+                          'entries': {name: {'name': 'declared ' + name} for name in overrides}})
+        document = {'ownEntries': owned}
+        document.update(fields)
+        self.declared.write_text(json.dumps(document))
+
+    def seed(self, data=None):
+        self.settings.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.write_text(json.dumps(data if data is not None else OWN_EXISTING, indent=2))
+        self.settings.chmod(0o600)
+
+    def merge(self):
+        merger.merge(self.settings, self.declared, ledger=self.ledger)
+
+    def read(self):
+        return json.loads(self.settings.read_text())
+
+    def models(self):
+        return self.read()['providers']['synthetic']['models']
+
+    def run_script(self):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), '--label', 'Pi models', '--settings', str(self.settings),
+             '--declared', str(self.declared), '--ledger', str(self.ledger)],
+            capture_output=True, text=True)
+
+    def merge_failing_the_settings_replace(self, landed):
+        """Fail the apply at the settings rename, after it lands or instead of it."""
+        real = os.replace
+
+        def replace(source, target):
+            if Path(target) != self.settings:
+                return real(source, target)
+            if landed:
+                real(source, target)
+            raise OSError('interrupted at the settings rename')
+
+        with mock.patch.object(merger.os, 'replace', replace):
+            with self.assertRaises(OSError):
+                self.merge()
+
+    def test_first_apply_without_a_ledger_prunes_a_pre_ledger_id_and_keeps_a_hand_added_entry(self):
+        self.seed()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED, model('hf:org/New-3')])
+        merged = self.read()
+        self.assertEqual(merged['providers']['openrouter'], OWN_EXISTING['providers']['openrouter'])
+        self.assertEqual(merged['providers']['synthetic']['baseUrl'], 'https://example.invalid/v1')
+        self.assertEqual(merged['defaultProvider'], 'synthetic')
+        self.assertEqual(self.ledger.stat().st_mode & 0o777, 0o600)
+
+    def test_second_apply_removes_exactly_the_entry_it_no_longer_declares(self):
+        self.seed()
+        self.merge()
+        self.declare(['hf:org/Current-2'])
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED])
+
+    def test_a_hand_added_entry_that_becomes_declared_is_replaced_then_removed_when_dropped(self):
+        self.seed()
+        self.declare(['hf:org/Current-2', HAND_ADDED['id']])
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), model(HAND_ADDED['id'])])
+        self.declare(['hf:org/Current-2'])
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2')])
+
+    def test_an_entry_the_user_adds_back_after_the_declaration_dropped_it_stays(self):
+        # Once an apply has removed an entry, it no longer owns that ID.
+        self.seed()
+        self.merge()
+        self.declare(['hf:org/Current-2'])
+        self.merge()
+        mine = {'id': 'hf:org/New-3', 'name': 'added back by hand'}
+        self.seed(dict(OWN_EXISTING, providers=dict(OWN_EXISTING['providers'], synthetic={
+            'baseUrl': 'https://example.invalid/v1', 'models': self.models() + [mine]})))
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED, mine])
+
+    def test_an_object_path_removes_a_key_it_wrote_and_keeps_one_it_never_wrote(self):
+        self.seed()
+        self.declare(['hf:org/Current-2'], overrides=['x/a', 'x/b'])
+        self.merge()
+        self.declare(['hf:org/Current-2'], overrides=['x/a'])
+        self.merge()
+        self.assertEqual(self.read()['providers']['openrouter']['modelOverrides'],
+                         {'user/hand': {'name': 'mine'}, 'x/a': {'name': 'declared x/a'}})
+
+    def test_an_apply_interrupted_after_the_settings_write_still_owns_what_it_wrote(self):
+        self.seed()
+        self.merge_failing_the_settings_replace(landed=True)
+        self.assertIn(model('hf:org/New-3'), self.models())
+        self.declare(['hf:org/Current-2'])
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED])
+
+    def test_a_failed_settings_write_keeps_ownership_for_the_next_apply(self):
+        self.seed()
+        self.merge()
+        self.declare(['hf:org/Current-2'])
+        before = self.settings.read_bytes()
+        self.merge_failing_the_settings_replace(landed=False)
+        self.assertEqual(self.settings.read_bytes(), before)
+        self.merge()
+        self.assertEqual(self.models(), [model('hf:org/Current-2'), HAND_ADDED])
+
+    def test_a_malformed_ledger_fails_naming_it_and_leaves_the_settings_unchanged(self):
+        self.seed()
+        self.ledger.parent.mkdir(parents=True)
+        for text in ('{ not json', '[]', '{"owned": "x"}',
+                     '{"owned": [{"path": ["providers"], "ids": [1]}]}'):
+            with self.subTest(text=text):
+                self.ledger.write_text(text)
+                before = self.settings.read_bytes()
+                result = self.run_script()
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn('Pi models settings merge failed', result.stderr)
+                self.assertIn(str(self.ledger), result.stderr)
+                self.assertNotIn('Traceback', result.stderr)
+                self.assertEqual(self.settings.read_bytes(), before)
+                self.assertEqual(self.ledger.read_text(), text)
+
+    def test_the_same_declaration_twice_leaves_both_files_byte_identical(self):
+        self.seed()
+        self.declare(['hf:org/Current-2', 'hf:org/New-3'], overrides=['x/a'])
+        self.merge()
+
+        def state(path):
+            stat = path.stat()
+            return path.read_bytes(), stat.st_ino, stat.st_mtime_ns
+
+        before = [state(self.settings), state(self.ledger)]
+        self.merge()
+        self.assertEqual([state(self.settings), state(self.ledger)], before)
+
+    def test_a_one_time_migration_runs_on_the_first_apply_only(self):
+        levels = ['modelThinkingLevels']
+        self.declared.write_text(json.dumps({'removePaths': [
+            {'path': levels, 'key': 'synthetic/a', 'value': 'max', 'migration': 'startup-levels'},
+            {'path': levels, 'key': 'synthetic/b', 'values': ['low', 'high'], 'migration': 'startup-levels'},
+        ]}))
+        # The first apply either removes what earlier generations wrote or,
+        # on a host that never held those values, finds nothing; it counts as
+        # run either way.
+        for first, migrated in (
+            ({'synthetic/a': 'max', 'synthetic/b': 'high', 'synthetic/c': 'medium'}, {'synthetic/c': 'medium'}),
+            ({'synthetic/c': 'medium'}, {'synthetic/c': 'medium'}),
+        ):
+            with self.subTest(first=first):
+                self.ledger.unlink(missing_ok=True)
+                self.seed({'modelThinkingLevels': first})
+                self.merge()
+                self.assertEqual(self.read(), {'modelThinkingLevels': migrated})
+                # The user saves levels equal to the migrated ones through /thinking.
+                self.seed({'modelThinkingLevels': {'synthetic/a': 'max', 'synthetic/b': 'low', 'synthetic/c': 'medium'}})
+                before = self.settings.read_bytes()
+                self.merge()
+                self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_refuses_malformed_or_conflicting_declarations(self):
+        self.seed()
+        entry = {'path': OWN_PATH, 'key': 'id', 'entries': [model('a')]}
+        for document in (
+            {'ownEntries': entry},
+            {'ownEntries': [dict(entry, extra=1)]},
+            {'ownEntries': [dict(entry, path=[])]},
+            {'ownEntries': [dict(entry, entries=[{'name': 'no id'}])]},
+            {'ownEntries': [dict(entry, entries=[{'id': 1}])]},
+            {'ownEntries': [dict(entry, entries=[model('a'), model('a')])]},
+            {'ownEntries': [dict(entry, entries={'a': {}})]},
+            {'ownEntries': [{'path': OVERRIDE_PATH, 'entries': [model('a')]}]},
+            {'ownEntries': [dict(entry, preLedgerIds='a')]},
+            {'ownEntries': [entry, entry]},
+            {'ownEntries': [entry], 'set': {'providers': 1}},
+            {'ownEntries': [entry], 'upsertPaths': [{'path': OWN_PATH, 'key': 'id', 'value': model('b')}]},
+            {'ownEntries': [entry], 'removePaths': [{'path': ['providers', 'synthetic'], 'key': 'models'}]},
+        ):
+            with self.subTest(document=document):
+                self.declared.write_text(json.dumps(document))
+                before = self.settings.read_bytes()
+                with self.assertRaises(ValueError):
+                    self.merge()
+                self.assertEqual(self.settings.read_bytes(), before)
+                self.assertFalse(self.ledger.exists())
+        # Owned entries and migrations need somewhere to record what they did.
+        for document in ({'ownEntries': [entry]},
+                         {'removePaths': [{'path': ['a'], 'key': 'b', 'migration': 'm'}]}):
+            with self.subTest(document=document):
+                self.declared.write_text(json.dumps(document))
+                with self.assertRaises(ValueError):
+                    merger.merge(self.settings, self.declared)
+                self.assertEqual(self.read(), OWN_EXISTING)
 
 
 if __name__ == '__main__':
