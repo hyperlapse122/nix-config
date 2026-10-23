@@ -31,6 +31,10 @@
   - every pinned sentence appears exactly once and starts where a sentence
     starts, so a dropped, doubled, or negated ("Do not ...") rule fails. See
     .compound-engineering/artifacts/solutions/best-practices/substring-sentence-check-passes-a-negated-instruction.md
+  - the base-sync rules pin the ancestor check of the forge's head against
+    the local tip and the merge-commit tree comparison, and the Subagents
+    rules pin the same tree check before a task branch is fast-forwarded,
+    because a default rebase drops a change made only inside a merge commit.
   - every section holds only its pinned sentences, each once and in order,
     so a separate sentence that reverses a pinned rule fails wherever it is
     added.
@@ -303,8 +307,9 @@ let
   gitlabReadySentence = "On GitLab, call it ready only when `head_pipeline` passed on the current `sha`, `detailed_merge_status` is `mergeable`, and no discussion is unresolved.";
   rebaseUpdateSentence = "When you bring your own pushed pull or merge request branch up to date with its base, fetch the base, rebase the branch onto it, and push with `git push --force-with-lease=<branch>:<sha>`, and never merge the base into the branch, including through a skill's or forge tool's merge-based update such as GitHub's update-branch endpoint.";
   leaseShaSentence = "Before that rebase, record the request's current head SHA as the forge reports it, and use it as `<sha>` in the lease.";
-  localTipSentence = "Confirm that your local branch tip equals that SHA and that your checkout has no uncommitted changes, and when the tip differs, neither rebase nor reset, and report the branch, because a rebase of an older local tip would pass the lease and delete the forge-only commits.";
+  localTipSentence = "Confirm with `git merge-base --is-ancestor <sha> HEAD` that the forge's head is an ancestor of your local branch tip and that your checkout has no uncommitted changes, and when either fails, neither rebase nor reset, and report the branch, because a rebase of a tip that lacks forge-only commits would pass the lease and delete them.";
   localRebaseSentence = "Run that rebase locally with `git rebase`, never with `gh pr update-branch`, GitHub's update-branch endpoint, or `glab mr rebase`, because those rewrite commits on the server and drop your GPG signatures.";
+  mergeCommitCheckSentence = "When the commits since the base include a merge commit, compare the rebased tip's tree with the tree `git merge-tree --write-tree <base> <old-tip>` prints for the base and your pre-rebase tip before you push, and when it reports a conflict or the trees differ, return the branch to that tip with `git reset --hard <old-tip>`, push nothing, and report the branch, because a default rebase drops a change made only inside a merge commit.";
   signingAbortSentence = "When signing or a hook fails during the rebase, run ${rebaseAbortCommand} and report, and never disable signing or pass `--no-verify`.";
   rebaseConflictSentence = "When that rebase conflicts, resolve only conflicts confined to the request's own changes whose resolution you can verify, and otherwise run ${rebaseAbortCommand}, push nothing, and report the branch as a blocker for the user.";
   leaseRejectedSentence = "When the lease is rejected, never retry with `--force`; report the branch instead.";
@@ -356,6 +361,7 @@ let
   ++ leaseBullet
   ++ localRebaseBullet
   ++ [
+    mergeCommitCheckSentence
     rebaseConflictSentence
     leaseRejectedSentence
   ]
@@ -631,6 +637,7 @@ let
   worktreeCleanupSentence = "After you bring that branch back with ${fastForwardCommand} without a conflict, remove its worktree with ${worktreeRemoveCommand} and its branch with ${worktreeBranchCommand}, never with `--force` or `-D`; when the rebase conflicts, run ${rebaseAbortCommand} and keep the worktree and the branch.";
   worktreeRebaseSentence = "Run that rebase with `git rebase` inside the branch's worktree, because a branch checked out in a worktree can be rebased only there, and only once the subagent has finished and its worktree has no uncommitted changes.";
   fastForwardRefusedSentence = "When ${fastForwardCommand} is refused because your tip moved, rebase once more and retry; when it is refused for any other reason, such as uncommitted edits in your checkout, keep the worktree and the branch and report them, and never use `git stash`, `--autostash`, or `git reset` to get past it.";
+  taskBranchMergeCheckSentence = "When a task branch's commits since your tip include a merge commit, run the same tree check inside its worktree with your tip as the base before you fast-forward it, and when the check fails, return the branch to its pre-rebase tip, keep the worktree and the branch, and report them.";
   cherryPickSentence = "Use `git cherry-pick` only when you take some but not all of a task branch's commits, and then keep that branch and report it as holding unmerged commits.";
   leftoverUnmergedClause = " or unmerged commits";
   leftoverNativeClause = ", and for a kept native worktree name its branch as what survives, because removing the parent T3 Code worktree deletes the kept checkout and leaves the branch";
@@ -781,6 +788,7 @@ let
     worktreeCleanupSentence
     worktreeRebaseSentence
     fastForwardRefusedSentence
+    taskBranchMergeCheckSentence
     cherryPickSentence
     leftoverSentence
     foregroundSentence
@@ -2386,6 +2394,7 @@ let
   ++
     removedAndNegatedInBullet "Subagents" "fast-forward refusal sentence" worktreeRebaseBullet
       fastForwardRefusedSentence
+  ++ removedAndNegatedIn "Subagents" "task branch merge check sentence" taskBranchMergeCheckSentence
   ++ removedAndNegatedIn "Subagents" "cherry-pick sentence" cherryPickSentence
   ++ removedAndNegatedIn "Subagents" "leftover worktree report sentence" leftoverSentence
   ++
@@ -2407,6 +2416,9 @@ let
   ++
     removedAndNegatedInBullet "pull and merge requests" "signing abort sentence" localRebaseBullet
       signingAbortSentence
+  ++
+    removedAndNegatedIn "pull and merge requests" "merge commit tree check sentence"
+      mergeCommitCheckSentence
   ++ removedAndNegatedIn "pull and merge requests" "rebase conflict sentence" rebaseConflictSentence
   ++ removedAndNegatedIn "pull and merge requests" "rejected lease sentence" leaseRejectedSentence
   ++
@@ -2808,6 +2820,30 @@ let
       line = bulletLine leaseBullet;
       edit = replaceInLine "${lib.head (lib.splitString ", because" localTipSentence)}, because" "Because";
       expect = pinFailure localTipSentence;
+    }
+    {
+      name = "base-sync merge check drops its tree comparison";
+      line = "- ${mergeCommitCheckSentence}";
+      edit = replaceInLine "compare the rebased tip's tree with the tree `git merge-tree --write-tree <base> <old-tip>` prints for the base and your pre-rebase tip before you push, and when it reports a conflict or the trees differ, " "";
+      expect = pinFailure mergeCommitCheckSentence;
+    }
+    {
+      name = "base-sync merge check pushes after a failed tree check";
+      line = "- ${mergeCommitCheckSentence}";
+      edit = replaceInLine "push nothing" "push anyway";
+      expect = pinFailure mergeCommitCheckSentence;
+    }
+    {
+      name = "local-tip check reverts to exact equality";
+      line = bulletLine leaseBullet;
+      edit = replaceInLine "Confirm with `git merge-base --is-ancestor <sha> HEAD` that the forge's head is an ancestor of your local branch tip" "Confirm that your local branch tip equals that SHA";
+      expect = pinFailure localTipSentence;
+    }
+    {
+      name = "task-branch merge check fast-forwards after a failed check";
+      line = "- ${taskBranchMergeCheckSentence}";
+      edit = replaceInLine "keep the worktree and the branch, and report them" "fast-forward it anyway";
+      expect = pinFailure taskBranchMergeCheckSentence;
     }
     {
       name = "base-sync rebase conflict loses its abort";
