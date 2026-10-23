@@ -42,7 +42,6 @@ let
         claude = [ ];
         codex = [ ];
         antigravity = [ ];
-        opencode = [ ];
         pi = [ ];
       };
     };
@@ -51,10 +50,6 @@ let
   # Harness membership is declared separately from the source, so adding a
   # plugin to another agent is a row rather than a second source entry.
   membership = [
-    {
-      name = "compound-engineering";
-      harness = "opencode";
-    }
     {
       name = "compound-engineering";
       harness = "pi";
@@ -77,10 +72,9 @@ let
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
   # it; Codex's and agy's update overrides travel inside their wrappers
-  # instead. OpenCode has no plugin command that takes a path, so its "CLI" is
-  # the merger that writes the link into ~/.config/opencode/opencode.json.
-  # Pi's is the same merger, which writes the plugin's skills directory into
-  # the `skills` list of ~/.pi/agent/settings.json.
+  # instead. Pi has no plugin command that takes a path, so its "CLI" is the
+  # merger that writes the plugin's skills directory into the `skills` list of
+  # ~/.pi/agent/settings.json.
   harnesses = {
     claude = {
       cli = "${claudeCode}/bin/claude";
@@ -94,10 +88,6 @@ let
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";
-      env = "";
-    };
-    opencode = {
-      cli = "${agentTools.agentSettings}/bin/agent-settings";
       env = "";
     };
     pi = {

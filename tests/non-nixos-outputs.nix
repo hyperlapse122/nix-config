@@ -18,14 +18,13 @@
     changes and publish after the links, and bootstrap never does; both carry
     the user-mode identity installer, and ~/.ssh/config names the host key
     rather than the 1Password agent;
-  - activation merges the declared OpenCode config into
-    ~/.config/opencode/opencode.json after installPackages;
   - Codex is installed, allowed as a Compound Engineering peer, reads
     ~/.codex/AGENTS.md, and its settings merge targets ~/.codex/config.toml
     after installPackages;
-  - on fixtures of the builder's own architecture, the Tokscale and OpenCode
-    wrappers and the registry credential helper read the tokens host-secrets
-    publishes, not /run/secrets, which a non-NixOS host does not have;
+  - on fixtures of the builder's own architecture, the Tokscale wrapper,
+    Pi's key helper, and the registry credential helper read the tokens
+    host-secrets publishes, not /run/secrets, which a non-NixOS host does not
+    have;
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
@@ -148,15 +147,6 @@ let
         fi
       '')
       (check sshInstalled "${entry.name}: activation must install ~/.ssh/config as a user-owned copy, not a store link")
-      (check
-        (
-          lib.elem "installPackages" (activation.opencodeSettings.after or [ ])
-          && lib.hasInfix "--settings ${hm.home.homeDirectory}/.config/opencode/opencode.json" (
-            builtins.unsafeDiscardStringContext (activation.opencodeSettings.data or "")
-          )
-        )
-        "${entry.name}: activation must merge the OpenCode config into ~/.config/opencode/opencode.json after installPackages"
-      )
       (check (
         lib.elem "codex" pnames
         && lib.elem "codex" hm.my.agents.crossModelPeers
@@ -185,7 +175,6 @@ let
       hm = entry.host.home.config;
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
-      opencode = packageNamed "opencode";
       pi = packageNamed "pi";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
@@ -199,16 +188,6 @@ let
             ''
               if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/tokscale_token'"} ${tokscale}/bin/tokscale; then
                 ${fail "${entry.name}: the tokscale wrapper does not read ${state}/tokscale_token"}
-              fi
-            ''
-        )
-        (
-          if opencode == null then
-            fail "${entry.name}: no opencode wrapper in home.packages"
-          else
-            ''
-              if ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${state}/synthetic_api_key'"} ${opencode}/bin/opencode; then
-                ${fail "${entry.name}: the opencode wrapper does not read ${state}/synthetic_api_key"}
               fi
             ''
         )

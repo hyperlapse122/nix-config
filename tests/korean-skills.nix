@@ -8,7 +8,6 @@
   revision this repository expects:
 
     Claude Code               ~/.claude/skills/<name>
-    OpenCode                  ~/.config/opencode/skills/<name>
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/<name>
     Pi                        ~/.pi/agent/skills/<name>
@@ -19,7 +18,7 @@
   helper's guard fails the build when that list is empty.
 
   Verifies, per Home Manager user:
-  - each of the fifteen targets is exactly one enabled Home Manager file, found by
+  - each of the twelve targets is exactly one enabled Home Manager file, found by
     its resolved `target` rather than its attribute name, because either can
     move the file without changing its text.
   - each target exists in the materialized `home-files`, holds a SKILL.md whose
@@ -34,7 +33,7 @@
     directory itself, never its files with `recursive = true`.
   - no enabled target is ~/.codex/skills/.system or under it, which Codex
     owns.
-  - the enabled targets at or under each of the five roots are exactly the
+  - the enabled targets at or under each of the four roots are exactly the
     three skill directories plus test-audit, which tests/test-audit-skill.nix
     checks, so a skill dropped from or added to a module, or a file declared
     inside a skill directory, turns this red.
@@ -87,7 +86,6 @@ let
 
   roots = [
     ".claude/skills"
-    ".config/opencode/skills"
     ".gemini/antigravity-cli/skills"
     ".pi/agent/skills"
     ".codex/skills"

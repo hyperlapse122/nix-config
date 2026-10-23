@@ -25,9 +25,9 @@
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
-  - the opencode wrapper on PATH reads its key from the state directory
-    host-secrets publishes to, and activation merges the declared OpenCode
-    config into ~/.config/opencode/opencode.json after writeBoundary;
+  - pi on PATH has pi-synthetic-key beside it, which reads its key from the
+    state directory host-secrets publishes to, and activation merges the
+    declared Pi settings into ~/.pi/agent/settings.json after writeBoundary;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -233,14 +233,6 @@ let
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
 
-      # host-secrets publishes the OpenCode key into the state directory.
-      opencode=$(readlink -f "$gen/home-path/bin/opencode" || true)
-      if [ -z "$opencode" ] || [ ! -f "$opencode" ]; then
-        bad "no opencode on PATH"
-      elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
-        bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
-      fi
-
       # Pi's Synthetic provider runs the packaged key helper, which reads the
       # key host-secrets publishes into the state directory.
       pi=$(readlink -f "$gen/home-path/bin/pi" || true)
@@ -279,11 +271,11 @@ let
         bad "serve-html on PATH is not the packaged helper"
       fi
 
-      opencodeSettings=$(step opencodeSettings); opencodeSettings=''${opencodeSettings:-0}
-      if [ "$opencodeSettings" = 0 ] || [ "$opencodeSettings" -le "$boundary" ]; then
-        bad "the activation script has no opencodeSettings step after writeBoundary"
-      elif ! grep -qF -- ${lib.escapeShellArg "--settings ${config.my.user.home}/.config/opencode/opencode.json"} "$gen/activate"; then
-        bad "the OpenCode config merge does not target ${config.my.user.home}/.config/opencode/opencode.json"
+      piSettings=$(step piSettings); piSettings=''${piSettings:-0}
+      if [ "$piSettings" = 0 ] || [ "$piSettings" -le "$boundary" ]; then
+        bad "the activation script has no piSettings step after writeBoundary"
+      elif ! grep -qF -- ${lib.escapeShellArg "--settings ${config.my.user.home}/.pi/agent/settings.json"} "$gen/activate"; then
+        bad "the Pi settings merge does not target ${config.my.user.home}/.pi/agent/settings.json"
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \

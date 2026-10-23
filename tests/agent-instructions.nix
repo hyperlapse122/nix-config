@@ -661,15 +661,6 @@ let
       ];
     }
     {
-      name = "OpenCode";
-      attr = "opencode";
-      file = "libexec/opencode/opencode";
-      markers = [
-        "Set to 0 to disable the timeout"
-        "status:\"timeout\""
-      ];
-    }
-    {
       name = "Antigravity CLI";
       attr = "antigravity-cli";
       file = "libexec/antigravity-cli/agy";

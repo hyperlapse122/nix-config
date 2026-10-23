@@ -155,8 +155,6 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
-        opencode-release = agentTools.opencodeRelease;
-        opencode = import ./packages/opencode.nix { inherit pkgs; };
         pi-release = agentTools.piRelease;
         pi = import ./packages/pi.nix { inherit pkgs; };
         npm-release = agentTools.npmRelease;
@@ -534,7 +532,6 @@
           };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
-          opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;
           pi-sources = pinnedSources "pi-sources" ./packages/pi-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
@@ -551,8 +548,8 @@
           agent-plugin-sync =
             pkgs.runCommand "agent-plugin-sync-tests"
               {
-                # The opencode and pi cases drive the real merger, whose source
-                # imports tomlkit.
+                # The pi cases drive the real merger, whose source imports
+                # tomlkit.
                 nativeBuildInputs = [ (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettingsPython ];
               }
               ''
@@ -580,9 +577,6 @@
           codex-release =
             pythonScriptCheck "codex-release" ./scripts/codex-release
               ./tests/test_codex_release.py;
-          opencode-release =
-            pythonScriptCheck "opencode-release" ./scripts/opencode-release
-              ./tests/test_opencode_release.py;
           pi-release = pythonScriptCheck "pi-release" ./scripts/pi-release ./tests/test_pi_release.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           antigravity-cli-release =
@@ -1296,55 +1290,6 @@
               [ "$fail" = 0 ] || exit 1
               touch $out
             '';
-          opencode =
-            let
-              # The version is compared with the pin for the reason given on
-              # the claude-code check. The switches are read from the
-              # installed bin/opencode itself, because they are what hold
-              # under the inline config and config directories T3 Code
-              # supplies, and what keep a checkout's config and Claude Code's
-              # files away from the key.
-              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/opencode-release.json)).version;
-              switches = [
-                "export OPENCODE_DISABLE_AUTOUPDATE=true"
-                "export OPENCODE_DISABLE_PROJECT_CONFIG=true"
-                "export OPENCODE_CONFIG_PROJECT_DISABLE=true"
-                "export OPENCODE_DISABLE_CLAUDE_CODE=true"
-              ];
-              assertConfiguration =
-                entry:
-                let
-                  opencodePkg = userPackageOf "opencode" entry;
-                  versionMismatch =
-                    pkgs.lib.optionalString (opencodePkg != null && opencodePkg.version != pinnedVersion)
-                      ''
-                        echo "opencode on ${entry.name} is built from version '${opencodePkg.version}', expected pin ${pinnedVersion}" >&2
-                        fail=1
-                      '';
-                  switchesMissing = pkgs.lib.optionalString (opencodePkg != null) ''
-                    for switch in ${pkgs.lib.escapeShellArgs switches}; do
-                      if ! grep -qxF -- "$switch" ${opencodePkg}/bin/opencode; then
-                        echo "opencode on ${entry.name} lacks the wrapper line $switch" >&2
-                        fail=1
-                      fi
-                    done
-                  '';
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "opencode";
-                    executables = [ "opencode" ];
-                    desktopEntries = [ ];
-                  } entry}
-                  ${versionMismatch}
-                  ${switchesMissing}
-                '';
-            in
-            pkgs.runCommand "opencode-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
           antigravity-cli =
             let
               # The version is compared with the pin for the reason given on the
@@ -1571,12 +1516,7 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
-          opencode-settings = import ./tests/opencode.nix { inherit pkgs self; };
           pi-settings = import ./tests/pi.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
-          opencode-session-info = import ./tests/opencode-session-info.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
@@ -1606,115 +1546,6 @@
               bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
               touch $out
             '';
-          opencode-wrapper =
-            let
-              tokenFile = "/var/empty/opencode-test/synthetic_api_key";
-              packaged = import ./packages/opencode.nix { inherit pkgs tokenFile; };
-              # The token path lands inside single quotes in the wrapper.
-              guardCases = [
-                {
-                  label = "a relative token path";
-                  tokenFile = "run/secrets/cli-auth/synthetic_api_key";
-                  accept = false;
-                }
-                {
-                  label = "a quote in the token path";
-                  tokenFile = "/run/secrets/bad'path";
-                  accept = false;
-                }
-                {
-                  label = "a space in the token path";
-                  tokenFile = "/run/secrets/bad path";
-                  accept = false;
-                }
-                {
-                  label = "a plain absolute token path";
-                  tokenFile = "/home/test-user/.local/state/nix-config/secrets/synthetic_api_key";
-                  accept = true;
-                }
-              ];
-              guardChecks = lib.concatMapStrings (
-                case:
-                let
-                  evaluated =
-                    builtins.tryEval
-                      (import ./packages/opencode.nix {
-                        inherit pkgs;
-                        inherit (case) tokenFile;
-                      }).drvPath;
-                in
-                lib.optionalString (evaluated.success != case.accept) ''
-                  echo ${lib.escapeShellArg "packages/opencode.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"} >&2
-                  exit 1
-                ''
-              ) guardCases;
-            in
-            pkgs.runCommand "opencode-wrapper-tests"
-              {
-                nativeBuildInputs = [ pkgs.procps ];
-              }
-              ''
-                export HOME=$TMPDIR
-                ${guardChecks}
-                mkdir -p scripts tests
-                cp ${./scripts/opencode} scripts/opencode
-                cp ${./tests/opencode.sh} tests/opencode.sh
-                chmod +x scripts/opencode
-                patchShebangs scripts/opencode
-                bash tests/opencode.sh scripts/opencode
-                bash tests/opencode.sh --packaged ${packaged}/bin/opencode ${tokenFile}
-
-                # The shared instructions reach OpenCode only as
-                # ~/.config/opencode/AGENTS.md, which no config output reports.
-                # The pinned payload must keep global instruction discovery on
-                # unless a caller passes `global: false`, which no run here does.
-                if ! grep -aqE 'project:[A-Za-z_$]+\?\.project!==!1,global:[A-Za-z_$]+\?\.global!==!1' ${packaged}/libexec/opencode/opencode; then
-                  echo "the pinned OpenCode no longer loads ~/.config/opencode/AGENTS.md by default; recheck how the shared instructions reach it" >&2
-                  exit 1
-                fi
-
-                # The pinned binary, not only the wrapper's export, must keep a
-                # checkout's opencode.json out of the process holding the key.
-                # The bare binary loading the canary proves the probe can see it.
-                # debug config asks a server; with the service disabled each
-                # probe starts its own and stops it on exit, instead of leaving
-                # the detached background server running in the sandbox.
-                export XDG_CONFIG_HOME=$TMPDIR/config XDG_STATE_HOME=$TMPDIR/state XDG_DATA_HOME=$TMPDIR/data
-                mkdir -p "$XDG_CONFIG_HOME/opencode"
-                printf '{"disabled": true}\n' > "$XDG_CONFIG_HOME/opencode/service.json"
-                mkdir -p project
-                printf '{"username": "canary-project-config"}\n' > project/opencode.json
-                (cd project && ${packaged}/libexec/opencode/opencode debug config) > bare.json
-                (cd project && ${packaged}/bin/opencode debug config) > wrapped.json
-                # v2 reads OPENCODE_CONFIG_PROJECT_DISABLE first, so a caller's
-                # value for it must not turn project config back on either.
-                (cd project && OPENCODE_CONFIG_PROJECT_DISABLE=0 ${packaged}/bin/opencode debug config) > wrapped-override.json
-                if ! grep -qF canary-project-config bare.json; then
-                  echo "opencode debug config no longer reports a project opencode.json; the probe is blind" >&2
-                  exit 1
-                fi
-                if grep -qF canary-project-config wrapped.json; then
-                  echo "the pinned opencode loads a project opencode.json despite OPENCODE_DISABLE_PROJECT_CONFIG" >&2
-                  exit 1
-                fi
-                if grep -qF canary-project-config wrapped-override.json; then
-                  echo "a caller's OPENCODE_CONFIG_PROJECT_DISABLE=0 turns project config back on through the wrapper" >&2
-                  exit 1
-                fi
-                # A missing pgrep would read as "no server", so its absence fails.
-                # A per-run server may take a moment to exit after its client; the
-                # detached shared server never does.
-                command -v pgrep >/dev/null || { echo "pgrep is missing; the leftover-server probe is blind" >&2; exit 1; }
-                for _ in $(seq 50); do
-                  pgrep -f ${packaged}/libexec/opencode/opencode >/dev/null || break
-                  sleep 0.1
-                done
-                if pgrep -f ${packaged}/libexec/opencode/opencode; then
-                  echo "opencode debug config left a server running despite the disabled service" >&2
-                  exit 1
-                fi
-                touch $out
-              '';
           pi-wrapper =
             let
               syntheticKeyFile = "/var/empty/pi-test/synthetic_api_key";

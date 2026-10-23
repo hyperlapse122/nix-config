@@ -8,7 +8,6 @@
   generalized and attributed:
 
     Claude Code               ~/.claude/skills/test-audit
-    OpenCode                  ~/.config/opencode/skills/test-audit
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/test-audit
     Pi                        ~/.pi/agent/skills/test-audit
@@ -20,7 +19,7 @@
   of each root, test-audit included, is tests/korean-skills.nix's to check.
 
   Verifies, per Home Manager user:
-  - each of the five targets is exactly one enabled Home Manager file, found
+  - each of the four targets is exactly one enabled Home Manager file, found
     by its resolved `target` rather than its attribute name.
   - each target exists in the materialized `home-files`, holds a SKILL.md
     whose frontmatter `name` is test-audit and whose `description` is not
@@ -63,7 +62,6 @@ let
 
   roots = [
     ".claude/skills"
-    ".config/opencode/skills"
     ".gemini/antigravity-cli/skills"
     ".pi/agent/skills"
     ".codex/skills"

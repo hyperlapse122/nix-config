@@ -24,14 +24,13 @@
     is ordered so a refusal cannot strand installPackages, hands the helper the
     pinned source rather than some other path, and names the version segment
     the lock actually resolved.
-  - The OpenCode and Pi rows need no agent CLI, so this check runs them: the
-    packaged helper, with the flags the activation script hands it, against a
-    scratch home seeded with user entries (a string and a non-string plugin
-    for OpenCode, a skills path for Pi). Only --base is moved into the scratch
-    directory, because the rendered one sits under /home/h82. Each row must
+  - The Pi row needs no agent CLI, so this check runs it: the packaged
+    helper, with the flags the activation script hands it, against a scratch
+    home seeded with a user skills path. Only --base is moved into the scratch
+    directory, because the rendered one sits under /home/h82. The row must
     share Claude's base and run before Claude's, whose prune would otherwise
-    delete a link they still name. Pi's row lists the plugin's `skills`
-    directory in ~/.pi/agent/settings.json.
+    delete a link it still names. It lists the plugin's `skills` directory in
+    ~/.pi/agent/settings.json.
   - The Codex row runs its sync under `env -u CODEX_HOME` and the script sets
     no CODEX_HOME, so the row installs into ~/.codex, the home T3 Code's
     Codex sessions run on, even when the apply inherits a CODEX_HOME.
@@ -113,9 +112,8 @@ let
         }
       ];
 
-      # OpenCode's row is driven through the merger OpenCode's own settings
-      # merge runs, read from that activation script.
-      opencodeSettingsScript = userConfig.home.activation.opencodeSettings.data or "";
+      # Pi's row is driven through the merger Pi's own settings merge runs,
+      # read from that activation script.
       piSettingsScript = userConfig.home.activation.piSettings.data or "";
 
       activation = userConfig.home.activation.agentPlugins or null;
@@ -251,71 +249,7 @@ let
           fi
         '') harnessChecks}
 
-        opencodeBlock=$(blockForHarness ${esc script} ${esc pluginName} opencode)
         claudeBlock=$(blockForHarness ${esc script} ${esc pluginName} claude)
-        if [ -z "$opencodeBlock" ]; then
-          echo "the agentPlugins activation script never syncs ${pluginName} for opencode on ${hostName}" >&2
-          failed=1
-        else
-          sourceArg=$(argValue "$opencodeBlock" source)
-          if [ "$sourceArg" != ${esc pinnedSource} ]; then
-            echo "the opencode helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
-            failed=1
-          fi
-          segmentArg=$(argValue "$opencodeBlock" segment)
-          if [ "$segmentArg" != ${
-            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
-          } ]; then
-            echo "the opencode helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
-            failed=1
-          fi
-          cliArg=$(argValue "$opencodeBlock" cli)
-          merger=$(tr '\n' ' ' <<< ${esc opencodeSettingsScript} \
-            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
-          if [ -z "$merger" ]; then
-            echo 'home.activation.opencodeSettings invokes no packaged merger on ${hostName}' >&2
-            failed=1
-          elif [ "$cliArg" != "$merger" ]; then
-            echo "the opencode helper must be handed the merger OpenCode's settings merge runs on ${hostName}, got: '$cliArg'" >&2
-            failed=1
-          fi
-          baseArg=$(argValue "$opencodeBlock" base)
-          if [ "$baseArg" != "$(argValue "$claudeBlock" base)" ]; then
-            echo "the opencode and claude rows must share one base on ${hostName}, got: '$baseArg'" >&2
-            failed=1
-          fi
-          flat=$(tr '\n' ' ' <<< ${esc script})
-          beforeOpencode=''${flat%%--harness opencode*}
-          beforeClaude=''${flat%%--harness claude*}
-          if [ "''${#beforeOpencode}" -ge "''${#beforeClaude}" ]; then
-            echo 'the opencode row must run before the claude row on ${hostName}' >&2
-            failed=1
-          fi
-
-          helper=$(grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-plugin-sync' <<< "$flat" | head -1 || true)
-          scratch=$(mktemp -d)
-          mkdir -p "$scratch/home/.config/opencode"
-          printf '%s\n' '{"plugins": ["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}]]}' \
-            > "$scratch/home/.config/opencode/opencode.json"
-          if ! HOME="$scratch/home" "$helper" --harness opencode --cli "$cliArg" \
-            --source "$sourceArg" --base "$scratch/base" --segment "$segmentArg" \
-            --plugin "$(argValue "$opencodeBlock" plugin | tr -d "'")" \
-            --marketplace "$(argValue "$opencodeBlock" marketplace | tr -d "'")"; then
-            echo "the rendered opencode invocation failed on ${hostName}" >&2
-            failed=1
-          fi
-          listed=$(jq -c '.plugins' "$scratch/home/.config/opencode/opencode.json" 2>/dev/null || true)
-          want=$(jq -cn --arg link "$scratch/base/$segmentArg" '["opencode-user-plugin@1.2.0", ["opencode-tuple-plugin", {"x": 1}], $link]')
-          if [ "$listed" != "$want" ]; then
-            echo "opencode.json must list the user plugins and the pinned link on ${hostName}, got: '$listed'" >&2
-            failed=1
-          elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
-            echo "the link opencode.json names must point at the pinned source on ${hostName}" >&2
-            failed=1
-          fi
-          rm -rf "$scratch"
-        fi
-
         piBlock=$(blockForHarness ${esc script} ${esc pluginName} pi)
         if [ -z "$piBlock" ]; then
           echo "the agentPlugins activation script never syncs ${pluginName} for pi on ${hostName}" >&2
