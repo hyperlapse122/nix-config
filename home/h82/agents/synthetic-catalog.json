@@ -212,7 +212,7 @@
     },
     {
       "id": "infinite:small:vision",
-      "display_name": "DeepSeek V4.1 Flash",
+      "display_name": "DeepSeek V4.1 Flash 10/17",
       "input_modalities": [
         "text",
         "image"
