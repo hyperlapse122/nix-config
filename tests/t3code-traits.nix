@@ -45,9 +45,12 @@
     owns two model selections whole: the default, Claude Opus, and text
     generation, Claude Haiku 5.5, both on the claudeAgent instance with no
     option, so an effort an earlier generation wrote is dropped.
-    On a full configuration, the real merger also runs over a settings.json
-    that holds an enabled opencode instance: the merged file must hold it
-    disabled, and the declaration must carry no providerModelPreferences entry.
+    The declaration retires providerModelPreferences.opencode, which an
+    earlier generation wrote, and prunes the object it leaves empty. On a full
+    configuration, the real merger also runs over a settings.json that holds
+    an enabled opencode instance, that preference, and another provider's:
+    the merged file must hold the instance disabled and only the other
+    provider's preference left.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -164,6 +167,13 @@ let
       snoozeLimitedThreads = true;
     };
     remove = [ ];
+    removePaths = [
+      {
+        path = [ "providerModelPreferences" ];
+        key = "opencode";
+        prune = true;
+      }
+    ];
     migrateInstances = {
       from = "providers";
       to = "providerInstances";
@@ -807,10 +817,11 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   }
 
   # Merges the declared document into a settings.json that holds an enabled
-  # opencode instance with the real merger: the merged file must hold it
-  # disabled, also on a second run, and keep the keys the declaration does not
+  # opencode instance and OpenCode's hidden-model preference with the real
+  # merger: the merged file must hold the instance disabled and the preference
+  # gone, also on a second run, and keep the keys the declaration does not
   # touch. $2 is the packaged merger and $3 the declaration the activation
-  # passed it, which must carry no entry for OpenCode's hidden models.
+  # passed it.
   checkOpencodeDisabled() {
     local name=$1 realMerger=$2 declared=$3
     if ! python3 -I ${./t3code-opencode-disabled.py} "$realMerger" "$declared" 2> opencode-disabled.log; then

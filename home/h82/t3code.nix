@@ -139,6 +139,17 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
+  # Nested entries that used to be declared, retired the same way. An earlier
+  # generation hid OpenCode's text-generation alias here; prune drops the
+  # object once that leaves it empty.
+  retiredPaths = [
+    {
+      path = [ "providerModelPreferences" ];
+      key = "opencode";
+      prune = true;
+    }
+  ];
+
   # providers is the retired per-kind block T3 Code moves into
   # providerInstances on load, but only into an instance that does not exist
   # yet. The instances declared above would make it skip theirs and drop the
@@ -183,6 +194,7 @@ let
       values,
       owned ? { },
       remove ? [ ],
+      removePaths ? [ ],
       migrateInstances ? null,
     }:
     {
@@ -191,6 +203,7 @@ let
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
     }
+    // lib.optionalAttrs (removePaths != [ ]) { inherit removePaths; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
@@ -201,6 +214,7 @@ let
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
+          removePaths = retiredPaths;
           migrateInstances = instanceMigration;
         })
       );

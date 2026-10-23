@@ -8,9 +8,10 @@ declared document a configuration's activation passes to it:
 
 T3 Code's built-in opencode instance is already off, so the declared value alone
 proves nothing. The real merger runs on a settings.json an earlier generation
-wrote, with the instance enabled: the merged file must hold it disabled, also on
-a second run, and keep the keys the declaration does not touch. The declaration
-must carry no entry for the retired hidden-model preference.
+wrote, with the instance enabled and the hidden-model preference it declared
+for OpenCode: the merged file must hold the instance disabled and the
+preference gone, also on a second run, and keep another provider's preference
+and the keys the declaration does not touch.
 
 Every failure is printed, and the exit status is 1 when there is any.
 """
@@ -34,6 +35,10 @@ def main(merger, declared_path):
     seeded = {
         'unrelated': {'kept': True},
         'providerInstances': {'opencode': {'driver': 'opencode', 'enabled': True}},
+        'providerModelPreferences': {
+            'opencode': {'hiddenModels': ['synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash-1017@low']},
+            'codex': {'hiddenModels': ['gpt-6-luna']},
+        },
     }
     with tempfile.TemporaryDirectory() as work:
         target = os.path.join(work, 'settings.json')
@@ -51,6 +56,13 @@ def main(merger, declared_path):
             enabled = merged.get('providerInstances', {}).get('opencode', {}).get('enabled')
             if enabled is not False:
                 problems.append('after the {} merge opencode.enabled is {!r}, not False'.format(attempt, enabled))
+            preferences = merged.get('providerModelPreferences', {})
+            if 'opencode' in preferences:
+                problems.append('after the {} merge providerModelPreferences.opencode is still {!r}'.format(
+                    attempt, preferences['opencode']))
+            if preferences.get('codex') != {'hiddenModels': ['gpt-6-luna']}:
+                problems.append('the {} merge changed another provider\'s model preference: {!r}'.format(
+                    attempt, preferences.get('codex')))
             if merged.get('unrelated', {}).get('kept') is not True:
                 problems.append('the {} merge dropped a key the declaration does not touch'.format(attempt))
     return problems
