@@ -4,14 +4,12 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one. --harness picks the
-agent (claude, codex, antigravity, opencode or pi); each has its own adapter
+agent (claude, codex, antigravity or pi); each has its own adapter
 for commands, listings and manifest paths. antigravity has no marketplace: its
 adapter validates and installs the plugin directory, and reads the installed
-version back from disk. opencode has no plugin command that takes a path: its
---cli is the agent-settings merger, which writes the link path into the
-`plugins` list of ~/.config/opencode/opencode.json. pi works the same way
-for skills: the merger writes <link>/skills into the `skills` list of
-~/.pi/agent/settings.json.
+version back from disk. pi has no plugin command that takes a path: its --cli
+is the agent-settings merger, which writes <link>/skills into the `skills`
+list of ~/.pi/agent/settings.json.
 
 With --retire it does the reverse for a plugin the repository no longer
 declares: unregister it and delete its version-keyed base directory.
@@ -381,23 +379,24 @@ class Antigravity(Harness):
             return 1
 
 
-class OpenCode(Harness):
-    """OpenCode loads a local plugin from a path listed in opencode.json.
+class Pi(Harness):
+    """Pi reads extra skill directories from the `skills` list in settings.json.
 
-    The list is shared with `opencode plugin add` and the user, so the merger
-    replaces only entries under this plugin's base directory. OpenCode reads
-    the link on every start, so this adapter prunes nothing: the marketplace
-    rows, which run after it, remove superseded versions once they have
-    confirmed their own source.
+    Pi has no plugin, subagent or command format, so only the plugin's skills
+    directory is listed. The list is shared with the user, so the merger
+    replaces only entries under this plugin's base directory. Pi reads the
+    link on every start, so this adapter prunes nothing: the marketplace rows,
+    which run after it, remove superseded versions once they have confirmed
+    their own source.
     """
 
-    label = 'OpenCode plugins'
-    list_key = 'plugins'
-    required = 'index.js'
-    entry_suffix = ''
+    label = 'Pi skills'
+    list_key = 'skills'
+    required = 'skills'
+    entry_suffix = '/skills'
 
     def settings(self):
-        return Path.home() / '.config' / 'opencode' / 'opencode.json'
+        return Path.home() / '.pi' / 'agent' / 'settings.json'
 
     def write_entry(self, base, value, dry_run):
         if value is None and not dry_run and not self.settings().exists():
@@ -419,11 +418,8 @@ class OpenCode(Harness):
         return entries if isinstance(entries, list) else []
 
     def check_source(self, source):
-        # OpenCode skips a plugin directory without a root index.js
-        # without saying so, which would look like a converged run.
-        entry = source / self.required
-        if not entry.is_file():
-            raise Failure('pinned source is missing {}'.format(entry))
+        if not (source / self.required).is_dir():
+            raise Failure('pinned source is missing {}'.format(source / self.required))
 
     def sync(self, args):
         try:
@@ -449,32 +445,10 @@ class OpenCode(Harness):
             return 1
 
 
-class Pi(OpenCode):
-    """Pi reads extra skill directories from the `skills` list in settings.json.
-
-    Pi has no plugin, subagent or command format, so only the plugin's skills
-    directory is listed. The list is shared with the user, and the merge works
-    as it does for OpenCode.
-    """
-
-    label = 'Pi skills'
-    list_key = 'skills'
-    required = 'skills'
-    entry_suffix = '/skills'
-
-    def settings(self):
-        return Path.home() / '.pi' / 'agent' / 'settings.json'
-
-    def check_source(self, source):
-        if not (source / self.required).is_dir():
-            raise Failure('pinned source is missing {}'.format(source / self.required))
-
-
 HARNESSES = {
     'claude': Claude,
     'codex': Codex,
     'antigravity': Antigravity,
-    'opencode': OpenCode,
     'pi': Pi,
 }
 

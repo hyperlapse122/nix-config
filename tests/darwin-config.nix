@@ -85,9 +85,9 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills, ~/.config/opencode/skills,
-    ~/.gemini/antigravity-cli/skills, ~/.pi/agent/skills, and ~/.codex/skills,
-    each as exactly one enabled file, and the in-tree test-audit skill
+    ~/.claude/skills, ~/.gemini/antigravity-cli/skills, ~/.pi/agent/skills,
+    and ~/.codex/skills, each as exactly one enabled file, and the in-tree
+    test-audit skill
     directory beside them, and nothing else under those roots; nothing lands
     under ~/.agents/skills or ~/.gemini/config/skills; my.koreanSkills pins
     v1.0.0 with those skills.
@@ -382,7 +382,6 @@ let
       # literals, so a mutated registry or root cannot move the expectation.
       koreanRoots = [
         ".claude/skills"
-        ".config/opencode/skills"
         ".gemini/antigravity-cli/skills"
         ".pi/agent/skills"
         ".codex/skills"

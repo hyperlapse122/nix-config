@@ -1,5 +1,5 @@
 version = 1
-agents = ["claude", "opencode"]
+agents = ["claude"]
 
 [trust]
 allow_all = true

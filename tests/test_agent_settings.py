@@ -1218,12 +1218,12 @@ USER_PLUGIN = 'some-plugin@git+https://example.com/some-plugin.git'
 
 
 class PrefixEntryTests(unittest.TestCase):
-    """OpenCode's plugins list holds the user's specifiers beside the declared path."""
+    """A prefix-entry list holds the user's entries beside the declared path."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.settings = Path(self.tmp.name) / 'home/.config/opencode/opencode.json'
+        self.settings = Path(self.tmp.name) / 'home/.agent/settings.json'
         self.declared = Path(self.tmp.name) / 'declared.json'
         self.declare(PREFIX_VALUE)
 
@@ -1258,7 +1258,7 @@ class PrefixEntryTests(unittest.TestCase):
         self.assertEqual((before.st_ino, before.st_mtime_ns), (after.st_ino, after.st_mtime_ns))
 
     def test_collapses_repeated_entries_under_the_prefix(self):
-        # OpenCode loads a plugin listed twice twice.
+        # A harness loads an entry listed twice twice.
         self.seed({'plugins': [PREFIX_VALUE, USER_PLUGIN, PREFIX_VALUE]})
         self.merge()
         self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])
@@ -1360,7 +1360,7 @@ class PrefixEntryTests(unittest.TestCase):
         self.seed({'plugins': [USER_PLUGIN]})
         result = subprocess.run(
             [sys.executable, str(SCRIPT), '--settings', str(self.settings),
-             '--declared', str(self.declared), '--label', 'OpenCode'],
+             '--declared', str(self.declared), '--label', 'Agent'],
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read()['plugins'], [USER_PLUGIN, PREFIX_VALUE])

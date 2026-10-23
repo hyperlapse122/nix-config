@@ -118,23 +118,15 @@ jobs:
             git checkout -- packages/wifiman-desktop-version.json
           fi
 
-          # 10. Update OpenCode. The npm tag can move before every platform
-          # package is published, so a failure keeps the current pin and lets
-          # the other updates through, as T3 Code's does.
-          if ! nix run .#opencode-release -- --output packages/opencode-release.json; then
-            echo "::warning title=OpenCode update skipped::opencode-release failed; keeping the current pin in packages/opencode-release.json."
-            git checkout -- packages/opencode-release.json
-          fi
-
-          # 11. Update Pi. A release can be published before every platform
+          # 10. Update Pi. A release can be published before every platform
           # tarball or its SHA256SUMS line, so a failure keeps the current pin
-          # and lets the other updates through, as OpenCode's does.
+          # and lets the other updates through, as T3 Code's does.
           if ! nix run .#pi-release -- --output packages/pi-release.json; then
             echo "::warning title=Pi update skipped::pi-release failed; keeping the current pin in packages/pi-release.json."
             git checkout -- packages/pi-release.json
           fi
 
-          # 12. Update Pi's ACP adapter and client. Each pin moves with its
+          # 11. Update Pi's ACP adapter and client. Each pin moves with its
           # regenerated lock file, so a failure restores both and lets the
           # other updates through, as Pi's does.
           for npm_package in pi-acp acpx; do
@@ -146,7 +138,7 @@ jobs:
             fi
           done
 
-          # 13. Update Codex. A release can be published before every platform
+          # 12. Update Codex. A release can be published before every platform
           # tarball or its digest, so a failure keeps the current pin and lets
           # the other updates through, as Pi's does.
           if ! nix run .#codex-release -- --output packages/codex-release.json; then
@@ -154,7 +146,7 @@ jobs:
             git checkout -- packages/codex-release.json
           fi
 
-          # 14. Update the Antigravity ACP runtime on PATH. Google publishes
+          # 13. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.
@@ -238,12 +230,6 @@ jobs:
             NEW_VER=$(jq -r .version packages/codex-release.json)
             git add packages/codex-release.json
             git commit -m "chore(packages): bump codex to $NEW_VER"
-          fi
-
-          if [ -n "$(git status --porcelain packages/opencode-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/opencode-release.json)
-            git add packages/opencode-release.json
-            git commit -m "chore(packages): bump opencode to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain home/h82/agents/synthetic-catalog.json)" ]; then

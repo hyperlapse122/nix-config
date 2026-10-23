@@ -32,7 +32,6 @@ let
 
   selections = [
     "defaultModel"
-    "smallModel"
     "textGeneration"
   ];
 

@@ -25,9 +25,12 @@
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
-  - the opencode wrapper on PATH reads its key from the state directory
-    host-secrets publishes to, and activation merges the declared OpenCode
-    config into ~/.config/opencode/opencode.json after writeBoundary;
+  - pi on PATH has pi-synthetic-key beside it, which reads its key from the
+    state directory host-secrets publishes to, and activation merges the
+    declared Pi settings into ~/.pi/agent/settings.json after writeBoundary:
+    that step, run with its target moved to a scratch file, must write every
+    value its declared document sets, and tests/pi_declared.py checks that
+    document and the Pi models one against literals;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -75,6 +78,15 @@ let
   androidPin = import ./lib/android-pin.nix { inherit lib; };
   expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
 
+  # What tests/pi.nix hands tests/pi_declared.py.
+  piSnapshot = ../home/h82/agents/synthetic-catalog.json;
+  piModels = import ../home/h82/agents/synthetic-models.nix;
+  piIds = builtins.toJSON {
+    glm = piModels.glm.id;
+    glmFlash = piModels.glmFlash.id;
+    deepseek = piModels.deepseek.id;
+  };
+
   fontFamilies = [
     "JetBrainsMono Nerd Font"
     "D2CodingLigature Nerd Font"
@@ -115,6 +127,14 @@ let
 
       # The line an activation step starts on, or 0 when it is absent.
       step() { grep -n "_iNote \"Activating %s\" \"$1\"" "$gen/activate" | head -n1 | cut -d: -f1 || true; }
+      # The lines of an activation step, up to the next step's note.
+      stepBlock() {
+        awk -v note="_iNote \"Activating %s\" \"$1\"" '
+          $0 == note { on = 1; next }
+          on && /^_iNote "Activating %s" / { exit }
+          on { print }
+        ' "$gen/activate"
+      }
       stage=$(step nixConfigSecretsStage); stage=''${stage:-0}
       publish=$(step nixConfigSecretsPublish); publish=''${publish:-0}
       boundary=$(step writeBoundary); boundary=''${boundary:-0}
@@ -233,14 +253,6 @@ let
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
 
-      # host-secrets publishes the OpenCode key into the state directory.
-      opencode=$(readlink -f "$gen/home-path/bin/opencode" || true)
-      if [ -z "$opencode" ] || [ ! -f "$opencode" ]; then
-        bad "no opencode on PATH"
-      elif ! grep -Fxq -- ${lib.escapeShellArg "TOKEN_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$opencode"; then
-        bad "the opencode wrapper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
-      fi
-
       # Pi's Synthetic provider runs the packaged key helper, which reads the
       # key host-secrets publishes into the state directory.
       pi=$(readlink -f "$gen/home-path/bin/pi" || true)
@@ -279,11 +291,37 @@ let
         bad "serve-html on PATH is not the packaged helper"
       fi
 
-      opencodeSettings=$(step opencodeSettings); opencodeSettings=''${opencodeSettings:-0}
-      if [ "$opencodeSettings" = 0 ] || [ "$opencodeSettings" -le "$boundary" ]; then
-        bad "the activation script has no opencodeSettings step after writeBoundary"
-      elif ! grep -qF -- ${lib.escapeShellArg "--settings ${config.my.user.home}/.config/opencode/opencode.json"} "$gen/activate"; then
-        bad "the OpenCode config merge does not target ${config.my.user.home}/.config/opencode/opencode.json"
+      piSettings=$(step piSettings); piSettings=''${piSettings:-0}
+      if [ "$piSettings" = 0 ] || [ "$piSettings" -le "$boundary" ]; then
+        bad "the activation script has no piSettings step after writeBoundary"
+      else
+        # The piSettings step itself, run with its target moved to a scratch
+        # file: the file it writes must hold every value its declared document
+        # sets, and tests/pi_declared.py checks that document and the models
+        # one against literals, so an activation that only names the merger
+        # fails.
+        piBlock=$(stepBlock piSettings)
+        piMerger=$(grep -oE '/nix/store/[^[:space:]]+/bin/agent-settings' <<<"$piBlock" | head -n1 || true)
+        piDeclared=$(grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' <<<"$piBlock" | head -n1 | awk '{print $2}' || true)
+        piModelsDeclared=$(stepBlock piModels | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -n1 | awk '{print $2}' || true)
+        piTarget=${lib.escapeShellArg "${config.my.user.home}/.pi/agent/settings.json"}
+        piScratch=$TMPDIR/pi-$variant/settings.json
+        piRedirected=''${piBlock//"$piTarget"/"$piScratch"}
+        if [ -z "$piMerger" ] || [ -z "$piDeclared" ] || [ -z "$piModelsDeclared" ]; then
+          bad "the Pi activation steps do not run the packaged merger with a declared document"
+        elif [ "$piRedirected" = "$piBlock" ]; then
+          bad "the Pi settings merge does not target $piTarget"
+        else
+          mkdir -p "$TMPDIR/pi-$variant"
+          if ! output=$(python3 -I ${./pi_declared.py} "$piMerger" "$piModelsDeclared" "$piDeclared" ${piSnapshot} "$piKey" "$TMPDIR/pi-$variant/declared" ${lib.escapeShellArg piIds} 2>&1); then
+            bad "the declared Pi documents failed:"$'\n'"$output"
+          fi
+          if ! output=$(bash -euo pipefail -c "$piRedirected" 2>&1); then
+            bad "the piSettings step fails on a scratch settings file:"$'\n'"$output"
+          elif ! output=$(python3 -I ${./pi_settings_applied.py} "$piDeclared" "$piScratch" 2>&1); then
+            bad "the piSettings step does not write its declared settings:"$'\n'"$output"
+          fi
+        fi
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \
@@ -430,17 +468,24 @@ let
       fi
     '';
 in
-pkgs.runCommand "darwin-outputs" { nativeBuildInputs = [ pkgs.unzip ]; } ''
-  fail=0
-  bad() { echo "$name: $*" >&2; fail=1; }
-  ${lib.optionalString (darwinFixtures == [ ]) ''
-    echo "tests/fixtures/hosts holds no macOS fixture host" >&2
-    fail=1
-  ''}
-  ${lib.concatMapStrings (entry: ''
-    name_host=${lib.escapeShellArg entry.fixture}
-    ${assertEntry entry}
-  '') darwinFixtures}
-  [ "$fail" = 0 ] || exit 1
-  touch "$out"
-''
+pkgs.runCommand "darwin-outputs"
+  {
+    nativeBuildInputs = [
+      pkgs.python3
+      pkgs.unzip
+    ];
+  }
+  ''
+    fail=0
+    bad() { echo "$name: $*" >&2; fail=1; }
+    ${lib.optionalString (darwinFixtures == [ ]) ''
+      echo "tests/fixtures/hosts holds no macOS fixture host" >&2
+      fail=1
+    ''}
+    ${lib.concatMapStrings (entry: ''
+      name_host=${lib.escapeShellArg entry.fixture}
+      ${assertEntry entry}
+    '') darwinFixtures}
+    [ "$fail" = 0 ] || exit 1
+    touch "$out"
+  ''

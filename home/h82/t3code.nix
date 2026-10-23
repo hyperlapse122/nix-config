@@ -28,8 +28,6 @@ let
   linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
   t3 = cfg.cli.enable || cfg.desktop.enable;
 
-  syntheticModels = import ./agents/synthetic-models.nix;
-
   antigravityInstances = [ "antigravity" ];
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
@@ -57,8 +55,8 @@ let
   # on. A cleanup that drops default-valued settings must keep it, or the instance
   # would go back to following T3 Code's default. App state (onboarding marks,
   # folded panels, favorites, and every provider instance field not declared
-  # here) stays the app's. T3 Code leaves its built-in Antigravity, OpenCode,
-  # and Pi instances off until they are enabled, so none shows up on its own.
+  # here) stays the app's. T3 Code leaves its built-in Antigravity and Pi
+  # instances off until they are enabled, so none shows up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -81,10 +79,9 @@ let
         config.launchArgs = "";
       };
       # The codex on PATH is the packaged wrapper, so no binaryPath is needed.
-      # Codex reads the instructions from ~/.codex/AGENTS.md. The merge can
-      # retire only top-level keys, so the launch arguments an earlier
-      # generation wrote, which carried the old instructions, are overwritten
-      # with nothing.
+      # Codex reads the instructions from ~/.codex/AGENTS.md, so the launch
+      # arguments an earlier generation wrote, which carried the old
+      # instructions, are overwritten with nothing.
       #
       # T3 Code gives a Codex instance its own home only when its config names
       # one: a homePath, a shadowHomePath, or the "managed" setupMode. The
@@ -110,11 +107,11 @@ let
         driver = "grok";
         enabled = false;
       };
-      # The opencode on PATH is the wrapper that carries the API key, so no
-      # binaryPath is needed and the key never reaches this file.
+      # OpenCode is gone, but the merge keeps undeclared fields, so this stays
+      # declared to turn off the instance an earlier generation enabled.
       opencode = {
         driver = "opencode";
-        enabled = true;
+        enabled = false;
       };
       # The pi on PATH is the packaged wrapper, whose Synthetic provider reads
       # the key file per request, so no binaryPath is needed and no key reaches
@@ -143,6 +140,17 @@ let
   # the entry once every host has rebuilt past it.
   retiredKeys = [ ];
 
+  # Nested entries that used to be declared, retired the same way. An earlier
+  # generation hid OpenCode's text-generation alias here; prune drops the
+  # object once that leaves it empty.
+  retiredPaths = [
+    {
+      path = [ "providerModelPreferences" ];
+      key = "opencode";
+      prune = true;
+    }
+  ];
+
   # providers is the retired per-kind block T3 Code moves into
   # providerInstances on load, but only into an instance that does not exist
   # yet. The instances declared above would make it skip theirs and drop the
@@ -157,11 +165,6 @@ let
   # T3 Code writes a model selection whole, with options that belong to the
   # chosen model, so a selection is owned rather than merged leaf by leaf:
   # a leaf merge would keep a previous model's options.
-  #
-  # The Synthetic text-generation model stays only as the `@<effort>` alias
-  # that OpenCode's small_model names, which hiddenAlias hides.
-  textGeneration = syntheticModels.${syntheticModels.textGeneration};
-  textGenerationAlias = "synthetic/${textGeneration.id}@${textGeneration.roles.text-generation}";
   modelSelections = {
     defaultModelSelection = {
       instanceId = "claudeAgent";
@@ -173,22 +176,6 @@ let
       model = "claude-haiku-5-5";
       options = [ ];
     };
-  };
-
-  # opencode.nix declares the text-generation model twice, once as the model
-  # and once as the `@<effort>` alias that carries the effort. Text generation
-  # no longer selects the alias, but small_model still names it, and T3 Code's
-  # OpenCode picker would list both entries, so the alias stays hidden. The
-  # merge replaces only an entry under this model's `@` prefix, so the models
-  # the user hides stay hidden and an alias from an earlier effort is retired.
-  hiddenAlias = {
-    path = [
-      "providerModelPreferences"
-      "opencode"
-      "hiddenModels"
-    ];
-    prefix = "synthetic/${textGeneration.id}@";
-    value = textGenerationAlias;
   };
 
   clientSettings.fontFamilyCode = "JetBrains Mono";
@@ -208,7 +195,7 @@ let
       values,
       owned ? { },
       remove ? [ ],
-      prefixEntries ? [ ],
+      removePaths ? [ ],
       migrateInstances ? null,
     }:
     {
@@ -217,7 +204,7 @@ let
       setPaths = leaves [ ] (lib.filterAttrs (_: lib.isAttrs) values);
       own = owned;
     }
-    // lib.optionalAttrs (prefixEntries != [ ]) { inherit prefixEntries; }
+    // lib.optionalAttrs (removePaths != [ ]) { inherit removePaths; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
@@ -228,7 +215,7 @@ let
           values = settings;
           owned = modelSelections;
           remove = retiredKeys;
-          prefixEntries = [ hiddenAlias ];
+          removePaths = retiredPaths;
           migrateInstances = instanceMigration;
         })
       );

@@ -209,9 +209,9 @@ class ClassificationTest(WatchTestCase):
         self.assertEqual(len(result["findings"]), 1, result["findings"])
         finding = self.finding(result, "removed", "deepseek")
         self.assertEqual(finding["id"], DEEPSEEK)
-        self.assertEqual(finding["uses"], ["text-generation", "smallModel", "textGeneration"])
+        self.assertEqual(finding["uses"], ["text-generation", "textGeneration"])
         first = body.splitlines()[0]
-        for needle in (f"`{DEEPSEEK}`", "removed", "`text-generation`", "`smallModel`", "`textGeneration`",
+        for needle in (f"`{DEEPSEEK}`", "removed", "`text-generation`", "`textGeneration`",
                        f"`{SOURCE_FILE}`", DETECTED):
             self.assertIn(needle, first)
         for needle in (f"`{DEEPSEEK}`", "removed", SOURCE_FILE):
@@ -233,9 +233,9 @@ class ClassificationTest(WatchTestCase):
         finding = self.finding(result, "new-version", "deepseek")
         self.assertEqual(finding["id"], DEEPSEEK)
         self.assertEqual(finding["candidates"], [candidate])
-        self.assertEqual(finding["uses"], ["text-generation", "smallModel", "textGeneration"])
+        self.assertEqual(finding["uses"], ["text-generation", "textGeneration"])
         first = body.splitlines()[0]
-        for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`text-generation`", "`smallModel`", DETECTED):
+        for needle in (f"`{DEEPSEEK}`", f"`{candidate}`", "`text-generation`", DETECTED):
             self.assertIn(needle, first)
         self.assertIn(f"`{candidate}`", result["title"])
 

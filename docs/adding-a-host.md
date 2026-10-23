@@ -31,7 +31,7 @@ Create `hosts/<host>/` with three files.
 }
 ```
 
-Do not import `modules/nixos/profile.nix`. `mkHost` imports it for every host, and the profile imports every NixOS module under `modules/nixos/`. It also sets the shared defaults with `lib.mkDefault`: Podman, CLI authentication, the Tokscale token and the OpenCode and Pi API keys (Synthetic and Exa), Tailscale, and Proton VPN, the last three off on the bootstrap output. A host can override any of them.
+Do not import `modules/nixos/profile.nix`. `mkHost` imports it for every host, and the profile imports every NixOS module under `modules/nixos/`. It also sets the shared defaults with `lib.mkDefault`: Podman, CLI authentication, the Tokscale token and the Pi API keys (Synthetic and Exa), Tailscale, and Proton VPN, the last three off on the bootstrap output. A host can override any of them.
 
 ### Traits
 

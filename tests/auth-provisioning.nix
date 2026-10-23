@@ -15,7 +15,7 @@ let
         # tokscale_token, synthetic_api_key, and exa_api_key carry a space,
         # which publish-cli-auth rejects, so gh and glab publication fails here
         # if the publisher ever starts reading any of them.
-        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\ntokscale_token: FAKE tokscale\nsynthetic_api_key: FAKE opencode\nexa_api_key: FAKE exa\n' > plain.yaml
+        printf 'github_token: FAKE_github\ngitlab_token: FAKE_gitlab\njpi_token: FAKE_jpi\ntokscale_token: FAKE tokscale\nsynthetic_api_key: FAKE pi\nexa_api_key: FAKE exa\n' > plain.yaml
         sops --encrypt --age "$recipient" --input-type yaml --output-type yaml plain.yaml > $out/tokens.yaml
       '';
 in
@@ -93,9 +93,9 @@ pkgs.testers.nixosTest {
         tokscale = "/run/secrets/cli-auth/tokscale_token"
         machine.succeed("runuser -u h82 -- cat " + tokscale + " | grep -qx 'FAKE tokscale'")
         machine.succeed("test $(stat -L -c '%a:%U' " + tokscale + ") = 400:h82")
-        opencode = "/run/secrets/cli-auth/synthetic_api_key"
-        machine.succeed("runuser -u h82 -- cat " + opencode + " | grep -qx 'FAKE opencode'")
-        machine.succeed("test $(stat -L -c '%a:%U' " + opencode + ") = 400:h82")
+        pi_key = "/run/secrets/cli-auth/synthetic_api_key"
+        machine.succeed("runuser -u h82 -- cat " + pi_key + " | grep -qx 'FAKE pi'")
+        machine.succeed("test $(stat -L -c '%a:%U' " + pi_key + ") = 400:h82")
         exa = "/run/secrets/cli-auth/exa_api_key"
         machine.succeed("runuser -u h82 -- cat " + exa + " | grep -qx 'FAKE exa'")
         machine.succeed("test $(stat -L -c '%a:%U' " + exa + ") = 400:h82")
@@ -130,7 +130,7 @@ pkgs.testers.nixosTest {
     journal_output = machine.succeed("journalctl -u sops-install-secrets --no-pager")
     assert "FAKE_github" not in journal_output and "FAKE_gitlab" not in journal_output and "FAKE_jpi" not in journal_output
     assert "FAKE tokscale" not in journal_output
-    assert "FAKE opencode" not in journal_output
+    assert "FAKE pi" not in journal_output
     assert "FAKE exa" not in journal_output
   '';
 }

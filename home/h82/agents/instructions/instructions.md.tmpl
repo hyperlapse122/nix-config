@@ -72,7 +72,7 @@ Apply every finding that a review, verification, or check step of any Compound E
 - The second default candidate, the Codex candidate, is Codex, `gpt-6.1-sol` on the `codex` instance with `reasoningEffort` `xhigh`, of family `openai`.
 - Map a model ID to its family after removing one leading provider prefix such as `synthetic/`, `openai/`, or `openai.`: `claude-*` to `claude`, `gemini-*` to `gemini`, `gpt-*` to `openai`, an `hf:<org>/<name>` ID by its org, with `zai-org` to `glm`, `deepseek-ai` to `deepseek`, and `Qwen` to `qwen`, and a `syn:` alias or any other org to `unknown`.
 - Your own family comes from the model ID you run, not from your harness.
-- In Pi or OpenCode, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.
+- In Pi, call the `session_info` tool first and take that ID from its `model` field, so the family of the model you run is the host family that leaves out candidates of your own family.
 - In Pi, when `session_info` fails or names no model, print `PI_PROVIDER`, `PI_MODEL`, and `PI_REASONING_LEVEL` through the bash tool and take that ID from `PI_MODEL`.
 - Only when those fail or name no model, read the ID from `orchestrator_capabilities` and `t3_thread_configuration` when the session lists T3 Code's tools, and otherwise from the model section of your system prompt.
 - When none of them names your model, your family is `unknown`, and no peer finding in your reviews raises confidence.
@@ -119,7 +119,7 @@ Apply every finding that a review, verification, or check step of any Compound E
 # Subagents
 
 - When your own subagent tool can run Claude models, such as Claude Code's `Agent`, launch every Claude subagent through that tool, including the scouts, verifiers, reviewers, and workers a skill dispatches, and pass the role's alias as `model`, even when `orchestrator_capabilities` shows nonempty `inheritedOptions` and even where T3 Code's own guidance prefers `delegate_task` for same-provider work.
-- Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex, OpenCode, or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's effort as `effort` in `target.options` when its category names one, and no other `target.options`.
+- Launch through `delegate_task` only what that tool cannot run, such as the Codex review peer, and the Claude subagents of a session whose own subagent tool cannot run Claude models, such as a Codex or Pi session inside T3 Code, targeting the `claudeAgent` instance with the model ID, a `ce-work` worker's effort as `effort` in `target.options` when its category names one, and no other `target.options`.
 - When the session lists no T3 Code delegation tools, use your harness's own subagent tool.
 - When no skill or rule assigns a model to a subagent, launch it as `sonnet`, `claude-sonnet-5-5` on the `claudeAgent` instance, and use `opus` and `fable` only where a skill or these rules name them.
 - A fresh subagent sees none of your conversation, so put everything it needs in its prompt, including that it stays read-only when it only searches, reads, or reviews.
