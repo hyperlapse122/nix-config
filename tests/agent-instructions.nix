@@ -72,7 +72,7 @@
     `synthetic` or `hf:`, and `Kimi` and `moonshotai` appear nowhere as whole
     words outside a store path.
   - `t3_thread_wait`, `CROSS_MODEL_HARD_SECS`, `CROSS_MODEL_MODEL_OVERRIDE`,
-    `timeoutMs`, `childRunId`, `t3_thread_read`, `runtimeMode`,
+    `timeoutMs`, `childRunId`, `t3_thread_read`, `t3_thread_organize`, `runtimeMode`,
     `full-access`, `full access`,
     `approval-required`, `auto-accept-edits`, and `pendingApproval` appear
     only inside `# T3 Code` and `# Compound Engineering`, where every
@@ -116,7 +116,16 @@
     Claude unit or scout routed through `delegate_task` without the capability
     condition, the subagent ban, the foreground or secret rule narrowed to
     delegated tasks, the worktree launch without the parent commit, or its
-    cleanup forced, the pull request watch or preview rule moved under
+    cleanup forced, the leftover-worktree report rule removed, negated, or
+    stripped of its unmerged-commits or kept-native-branch clause, the rename
+    rule without its outside-T3-Code-worktree condition or with it inverted,
+    the keep-the-branch-name rule removed, negated, told to rename, to push
+    under another name, or stripped of its pull request, the branch collision
+    check removed, negated, stripped of its remote or open pull request leg,
+    moved after the push, or changed to renaming, the settle rule removed,
+    negated, changed to archive, moved before the result is read, stripped of
+    cancelled tasks, or turned on the caller's own thread, a
+    `t3_thread_organize` rule under `# Git`, the pull request watch or preview rule moved under
     `## Delegated tasks`, the sentence that limits `## Delegated tasks` to
     `delegate_task` tasks removed or negated, the family mapping without its `openai.` namespace or its
     `gpt-*` rule, each host family's default-peer sentence removed, negated,
@@ -234,10 +243,24 @@ let
 
   gitHeading = "# Git";
 
+  # The self-test below mutates these sentences, so they are named once.
+  renameCondition = "Outside a worktree T3 Code created, before the first push, rename";
+  renameSentence = "${renameCondition} a branch whose name does not describe the change, such as a worktree codename or random hex, with `git branch -m`.";
+  renameLine = "- ${renameSentence} ${renameNamingSentence} ${renameNeverSentence}";
+  renameNamingSentence = "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`.";
+  renameNeverSentence = "Never rename onto or push over an existing branch.";
+  keepNameSentence = "Inside a worktree T3 Code created, keep the branch name T3 Code gave it, push it under that name, and open the pull request from it, and never rename it with `git branch -m`.";
+  collisionCheckClause = "check whether that branch exists on the remote or has an open pull request";
+  collisionOutcomeClause = "stop and report the collision instead of pushing or renaming";
+  collisionSentence = "Before the first push from such a branch, ${collisionCheckClause}, and when either holds, ${collisionOutcomeClause}.";
+  keepNameLine = "- ${keepNameSentence} ${collisionSentence}";
+
   gitSentences = [
-    "Before the first push, rename a branch whose name does not describe the change, such as a worktree codename or random hex, with `git branch -m`."
-    "Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`."
-    "Never rename onto or push over an existing branch."
+    renameSentence
+    renameNamingSentence
+    renameNeverSentence
+    keepNameSentence
+    collisionSentence
     "When a commit hook fails because mise does not trust a `mise.toml` in a temporary copy the hook made, retry that commit once with `MISE_TRUSTED_CONFIG_PATHS=\"$(cd \"\${TMPDIR:-/tmp}\" && pwd -P)\"`."
     "Do not run `mise trust` on the copy or skip the hook with `--no-verify`."
     "Before each push, find the learnings under the project's Compound Engineering `solutions/` directory that cite a path or name the pushed commits delete, move, or rename."
@@ -500,6 +523,9 @@ let
   worktreeRemoveCommand = "`git worktree remove`";
   worktreeBranchCommand = "`git branch -d`";
   worktreeCleanupSentence = "After you merge that branch without a conflict, remove its worktree with ${worktreeRemoveCommand} and its branch with ${worktreeBranchCommand}, never with `--force` or `-D`; when the merge conflicts, abort it and keep the worktree and the branch.";
+  leftoverUnmergedClause = " or unmerged commits";
+  leftoverNativeClause = ", and for a kept native worktree name its branch as what survives, because removing the parent T3 Code worktree deletes the kept checkout and leaves the branch";
+  leftoverSentence = "When a run used worktrees, end your report by naming each worktree or branch it leaves with uncommitted changes${leftoverUnmergedClause}${leftoverNativeClause}.";
 
   t3CodeHeading = "# T3 Code";
 
@@ -516,6 +542,7 @@ let
   delegatedTasksHeading = "## Delegated tasks";
   delegatedTasksLimitSentence = "The rules under this heading apply only to tasks you launch with `delegate_task`, and the rules in the Subagents section cover every subagent.";
   delegatedToolLimitsSentence = "A delegated task has none of the tool limits its native agent type had, so state the limits it needs in its task prompt.";
+  settleSentence = "Once you have read a delegated task's result or counted the task failed, cancelled ones included, settle its thread with `t3_thread_organize` and action `settle`, and never settle your own thread.";
   delegatedDepthSentence = "Tell each delegated task to launch no subagents of its own, so delegation stays one level deep.";
   takeFromSessionSentence = "Otherwise, when the latest assistant message is finished, holds the whole result the task prompt asked for, and nothing in the session has changed since your previous check of it, use the message as the task's result, stop the task with `task_cancel`, and say that you took its result from the session.";
   prohibitionSentence = "In a run with a person present, never wait for a delegated task with `t3_thread_wait`; in any run, never call `task_status` in a loop, and never start a sleep, timer, or background command whose only purpose is to wake yourself later.";
@@ -623,6 +650,7 @@ let
     secretsSentence
     worktreeLaunchSentence
     worktreeCleanupSentence
+    leftoverSentence
     foregroundSentence
     slowCommandTimeoutSentence
     backgroundWaitSentence
@@ -672,6 +700,7 @@ let
     "In a run with no person present, when a task's `task_status` shows `pendingApproval`, nobody can approve it, so cancel it with `task_cancel` and count it as failed."
     "When a skill bounds a delegated task by time and the bound passes while it still runs, check it as above, and when its latest finished assistant message holds the whole result, take it as above even if the session changed since your previous check; otherwise cancel it with `task_cancel` and count it as failed."
     noRunSentence
+    settleSentence
   ];
 
   # A separate contradicting sentence could defeat a pinned rule in any
@@ -770,7 +799,7 @@ let
   # Terms of the in-turn delegated wait and the peer deadline, which apply
   # only to a run with no person present, of the Codex route's pinned model
   # outside T3 Code, of the session check that takes
-  # a stalled task's result, and of the launch mode and approvals. They may appear only
+  # a stalled task's result, of settling a delegated task's thread, and of the launch mode and approvals. They may appear only
   # inside the checked `# T3 Code` and `# Compound Engineering` sections,
   # where every sentence is pinned, so a rule added elsewhere cannot bring the
   # blocking wait back for a run with a person present, change when a session
@@ -784,6 +813,7 @@ let
     "timeoutMs"
     "childRunId"
     "t3_thread_read"
+    "t3_thread_organize"
     "runtimeMode"
     "full-access"
     "full access"
@@ -2117,12 +2147,134 @@ let
   ++ removedAndNegatedIn "Subagents" "subagent secret sentence" secretsSentence
   ++ removedAndNegatedIn "Subagents" "worktree launch sentence" worktreeLaunchSentence
   ++ removedAndNegatedIn "Subagents" "worktree cleanup sentence" worktreeCleanupSentence
+  ++ removedAndNegatedIn "Subagents" "leftover worktree report sentence" leftoverSentence
   ++ removedAndNegatedIn "T3 Code" "pull request watch sentence" pullRequestToolsSentence
   ++ removedAndNegatedIn "T3 Code" "Delegated tasks limiting sentence" delegatedTasksLimitSentence
   ++ removedAndNegatedIn "T3 Code" "delegated task tool-limits sentence" delegatedToolLimitsSentence
   ++ removedAndNegatedIn "T3 Code" "delegated task no-subagents sentence" delegatedDepthSentence
+  ++ removedAndNegatedIn "T3 Code" "settle sentence" settleSentence
   ++ lib.concatMap (sentence: removedAndNegatedIn "Pi over ACP" "ACP sentence" sentence) acpSentences
   ++ [
+    {
+      name = "keep-the-branch-name bullet removed";
+      line = keepNameLine;
+      edit = lineRemoved;
+      expect = "moves a Git sentence out of its section: ${keepNameSentence}";
+    }
+    {
+      name = "keep-the-branch-name sentence negated";
+      line = keepNameLine;
+      edit = replaceInLine "Inside a worktree T3 Code created, keep" "Inside a worktree T3 Code created, do not keep";
+      expect = pinFailure keepNameSentence;
+    }
+    {
+      name = "branch collision sentence removed";
+      line = keepNameLine;
+      edit = replaceInLine " ${collisionSentence}" "";
+      expect = "moves a Git sentence out of its section: ${collisionSentence}";
+    }
+    {
+      name = "branch collision sentence negated";
+      line = keepNameLine;
+      edit = replaceInLine "Before the first push from such a branch, check" "Before the first push from such a branch, do not check";
+      expect = pinFailure collisionSentence;
+    }
+    {
+      name = "rename rule applies inside T3 Code worktrees again";
+      line = renameLine;
+      edit = replaceInLine "Outside a worktree T3 Code created, before" "Before";
+      expect = pinFailure renameSentence;
+    }
+    {
+      name = "rename rule condition inverted to inside a T3 Code worktree";
+      line = renameLine;
+      edit = replaceInLine "Outside a worktree" "Inside a worktree";
+      expect = pinFailure renameSentence;
+    }
+    {
+      name = "keep-the-branch-name rule tells the agent to rename";
+      line = keepNameLine;
+      edit = replaceInLine "keep the branch name T3 Code gave it" "rename the branch T3 Code gave it";
+      expect = pinFailure keepNameSentence;
+    }
+    {
+      name = "keep-the-branch-name rule pushes under another name";
+      line = keepNameLine;
+      edit = replaceInLine "push it under that name" "push it under a descriptive name";
+      expect = pinFailure keepNameSentence;
+    }
+    {
+      name = "keep-the-branch-name rule no longer opens the pull request from it";
+      line = keepNameLine;
+      edit = replaceInLine ", and open the pull request from it" "";
+      expect = pinFailure keepNameSentence;
+    }
+    {
+      name = "branch collision check loses the open pull request";
+      line = keepNameLine;
+      edit = replaceInLine " or has an open pull request" "";
+      expect = pinFailure collisionSentence;
+    }
+    {
+      name = "branch collision check loses the remote";
+      line = keepNameLine;
+      edit = replaceInLine "exists on the remote or has" "has";
+      expect = pinFailure collisionSentence;
+    }
+    {
+      name = "branch collision outcome changed to renaming";
+      line = keepNameLine;
+      edit = replaceInLine collisionOutcomeClause "rename the branch and push it";
+      expect = pinFailure collisionSentence;
+    }
+    {
+      name = "branch collision check moved after the push";
+      line = keepNameLine;
+      edit = replaceInLine "Before the first push from such a branch" "After the first push from such a branch";
+      expect = pinFailure collisionSentence;
+    }
+    {
+      name = "settle rule changed to archive";
+      line = "- ${settleSentence}";
+      edit = replaceInLine "action `settle`" "action `archive`";
+      expect = pinFailure settleSentence;
+    }
+    {
+      name = "settle rule runs before the result is read";
+      line = "- ${settleSentence}";
+      edit = replaceInLine "Once you have read a delegated task's result or counted the task failed" "As soon as you launch a delegated task";
+      expect = pinFailure settleSentence;
+    }
+    {
+      name = "settle rule skips cancelled tasks";
+      line = "- ${settleSentence}";
+      edit = replaceInLine ", cancelled ones included" "";
+      expect = pinFailure settleSentence;
+    }
+    {
+      name = "settle rule turned on the caller's own thread";
+      line = "- ${settleSentence}";
+      edit = replaceInLine "never settle your own thread" "settle your own thread too";
+      expect = pinFailure settleSentence;
+    }
+    {
+      name = "t3_thread_organize rule added under # Git";
+      line = "- Settle a finished thread with `t3_thread_organize` before you push.";
+      edit = ''awk '{ print } $0 == "# Git" { print ENVIRON["line"] }' '';
+      expect = "names a delegation term outside the T3 Code and Compound Engineering sections: t3_thread_organize";
+    }
+    {
+      name = "leftover report loses the unmerged commits";
+      line = "- ${leftoverSentence}";
+      edit = replaceInLine leftoverUnmergedClause "";
+      expect = pinFailure leftoverSentence;
+    }
+    {
+      name = "leftover report loses the kept native worktree's branch";
+      line = "- ${leftoverSentence}";
+      edit = replaceInLine leftoverNativeClause "";
+      expect = pinFailure leftoverSentence;
+    }
     {
       name = "Delegated tasks heading removed";
       line = delegatedTasksHeading;
