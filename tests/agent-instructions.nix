@@ -324,6 +324,20 @@ let
     "Put that audit rule in the task prompt of every reviewer or cross-model peer you delegate the review to, because a delegated agent does not see these instructions."
   ];
 
+  testsHeading = "# Tests";
+
+  testsLoadSentence = "Load the `test-audit` skill before writing, changing, reviewing, or deleting a test.";
+  testsReviewSentence = "When `ce-code-review` or `ce-simplify-code` meets a changed test, audit it with `test-audit` and report each problem as a finding of that review.";
+  testsDelegateSentence = "Put that audit rule in the task prompt of every reviewer or cross-model peer the review is delegated to, because a delegated agent does not see these instructions.";
+  testsCampaignSentence = "Use the skill's `CAMPAIGN.md` only when the user asks to prune a whole subsystem's tests.";
+
+  testsSentences = [
+    testsLoadSentence
+    testsReviewSentence
+    testsDelegateSentence
+    testsCampaignSentence
+  ];
+
   reviewFindingsHeading = "# Review findings";
 
   # In section order: the structure pass compares the section to this list.
@@ -768,6 +782,11 @@ let
       sentences = koreanTextSentences;
     }
     {
+      name = "Tests";
+      heading = testsHeading;
+      sentences = testsSentences;
+    }
+    {
       name = "review-findings";
       heading = reviewFindingsHeading;
       sentences = reviewFindingsSentences;
@@ -807,6 +826,8 @@ let
   ++ markdownSentences
   ++ [ koreanTextHeading ]
   ++ koreanTextSentences
+  ++ [ testsHeading ]
+  ++ testsSentences
   ++ [ reviewFindingsHeading ]
   ++ reviewFindingsSentences
   ++ [ compoundEngineeringHeading ]
@@ -826,6 +847,7 @@ let
     "# Pull and merge requests"
     "# Markdown"
     "# Korean text"
+    "# Tests"
     "# Review findings"
     "# Compound Engineering"
     "# Subagents"
@@ -2153,6 +2175,24 @@ let
   ++ removedAndNegated "named peers sentence" namedPeersSentence
   ++ removedAndNegated "left-out named peer sentence" leftOutPeerSentence
   ++ removedAndNegated "Codex candidate sentence" codexCandidateSentence
+  ++ removedAndNegatedIn "Tests" "test-audit load sentence" testsLoadSentence
+  ++ removedAndNegatedIn "Tests" "test-audit review sentence" testsReviewSentence
+  ++ removedAndNegatedIn "Tests" "test-audit delegation sentence" testsDelegateSentence
+  ++ removedAndNegatedIn "Tests" "test-audit campaign sentence" testsCampaignSentence
+  ++ [
+    {
+      name = "Tests section moved after the review-findings section";
+      line = testsHeading;
+      edit = ''
+        awk '
+            /^# / { held = ($0 == ENVIRON["line"]) }
+            held { block = block $0 "\n"; next }
+            $0 == "# Compound Engineering" { printf "%s", block }
+            { print }
+          ' '';
+      expect = "carries top-level headings other than the expected list:";
+    }
+  ]
   ++ removedAndNegated "family-mapping sentence" familyMapSentence
   ++ removedAndNegated "Codex host-family sentence" codexHostFamilySentence
   ++ removedAndNegated "unknown host-family sentence" unknownHostFamilySentence
