@@ -1897,9 +1897,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000474",
+        "prompt": "0.0000000436",
         "completion": "0.00000045",
-        "input_cache_read": "0.0000000474"
+        "input_cache_read": "0.0000000436"
       },
       "reasoning": {
         "mandatory": false,
@@ -1995,9 +1995,9 @@
         "max_completion_tokens": 384000
       },
       "pricing": {
-        "prompt": "0.000000794136",
-        "completion": "0.000001588272",
-        "input_cache_read": "0.000000066178"
+        "prompt": "0.000000702786",
+        "completion": "0.000001405572",
+        "input_cache_read": "0.0000000585655"
       },
       "reasoning": {
         "mandatory": false,
@@ -10519,12 +10519,12 @@
       "context_length": 262144,
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 65536
+        "max_completion_tokens": 32768
       },
       "pricing": {
-        "prompt": "0.00000025",
+        "prompt": "0.0000002",
         "completion": "0.000002",
-        "input_cache_read": "0.000000025"
+        "input_cache_read": "0.0000002"
       },
       "reasoning": {
         "mandatory": false,
@@ -10772,12 +10772,12 @@
       "context_length": 1000000,
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 65536
+        "max_completion_tokens": 32768
       },
       "pricing": {
-        "prompt": "0.00000002",
-        "completion": "0.0000005",
-        "input_cache_read": "0.000000009"
+        "prompt": "0.000000035",
+        "completion": "0.0000022",
+        "input_cache_read": "0.0000000175"
       },
       "reasoning": {
         "mandatory": false,
@@ -12762,9 +12762,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000052",
-        "completion": "0.0000001985",
-        "input_cache_read": "0.0000000052"
+        "prompt": "0.0000000244",
+        "completion": "0.0000000987",
+        "input_cache_read": "0.0000000244"
       },
       "reasoning": {
         "mandatory": true,
@@ -13552,9 +13552,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000052",
-        "completion": "0.0000001985",
-        "input_cache_read": "0.0000000052"
+        "prompt": "0.0000000244",
+        "completion": "0.0000000987",
+        "input_cache_read": "0.0000000244"
       },
       "reasoning": {
         "mandatory": true,
