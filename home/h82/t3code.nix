@@ -79,10 +79,9 @@ let
         config.launchArgs = "";
       };
       # The codex on PATH is the packaged wrapper, so no binaryPath is needed.
-      # Codex reads the instructions from ~/.codex/AGENTS.md. The merge can
-      # retire only top-level keys, so the launch arguments an earlier
-      # generation wrote, which carried the old instructions, are overwritten
-      # with nothing.
+      # Codex reads the instructions from ~/.codex/AGENTS.md, so the launch
+      # arguments an earlier generation wrote, which carried the old
+      # instructions, are overwritten with nothing.
       #
       # T3 Code gives a Codex instance its own home only when its config names
       # one: a homePath, a shadowHomePath, or the "managed" setupMode. The
