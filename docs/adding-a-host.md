@@ -219,7 +219,7 @@ sops updatekeys -y secrets/tokens.yaml
 unset SOPS_AGE_KEY_CMD
 ```
 
-A non-NixOS production apply decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, `synthetic_api_key`, and `exa_api_key`. All six must be present in `tokens.yaml`, or the apply stops. `docker_token` is never published on a non-NixOS host, so `docker.io` pulls stay anonymous.
+A non-NixOS production apply decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`, `synthetic_api_key`, `exa_api_key`, and `openrouter_api_key`. All seven must be present in `tokens.yaml`, or the apply stops. `docker_token` is never published on a non-NixOS host, so `docker.io` pulls stay anonymous.
 
 ### Create the host SSH key file
 

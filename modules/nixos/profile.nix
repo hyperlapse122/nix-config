@@ -43,6 +43,7 @@
     cliAuth.enableTokscaleToken = lib.mkDefault true;
     cliAuth.enableSyntheticApiKey = lib.mkDefault true;
     cliAuth.enableExaApiKey = lib.mkDefault true;
+    cliAuth.enableOpenRouterApiKey = lib.mkDefault true;
     tailscale.enable = lib.mkDefault (!config.my.bootstrap);
     protonVpn.enable = lib.mkDefault (!config.my.bootstrap);
     wifiman.enable = lib.mkDefault true;

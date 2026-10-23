@@ -34,7 +34,7 @@ pkgs.runCommand "fake-non-nixos-secrets"
     recipient=$(age-keygen -y $out/key.txt)
     printf '%s\n' "$recipient" > $out/recipient.txt
 
-    printf 'github_token: FAKE-CANARY-github\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nsynthetic_api_key: FAKE-CANARY pi\nexa_api_key: FAKE-CANARY exa\n' > tokens.yaml
+    printf 'github_token: FAKE-CANARY-github\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nsynthetic_api_key: FAKE-CANARY pi\nexa_api_key: FAKE-CANARY exa\nopenrouter_api_key: FAKE-CANARY openrouter\n' > tokens.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml tokens.yaml > $out/tokens.yaml
 
     ssh-keygen -q -t ed25519 -N "" -C fake-non-nixos-host -f ssh_key
@@ -43,12 +43,14 @@ pkgs.runCommand "fake-non-nixos-secrets"
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml ssh.yaml > $out/ssh.yaml
 
     # Failure fixtures: the same SSH key encrypted to the other identity only,
-    # tokens whose github_token publish-cli-auth rejects, and an SSH key field
-    # that is not a private key.
+    # tokens whose github_token publish-cli-auth rejects, tokens that lack
+    # openrouter_api_key, and an SSH key field that is not a private key.
     other=$(age-keygen -y $out/other-key.txt)
     sops --encrypt --age "$other" --input-type yaml --output-type yaml ssh.yaml > $out/ssh-other.yaml
-    printf 'github_token: FAKE-CANARY has spaces\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nsynthetic_api_key: FAKE-CANARY pi\nexa_api_key: FAKE-CANARY exa\n' > bad-tokens.yaml
+    printf 'github_token: FAKE-CANARY has spaces\ngitlab_token: FAKE-CANARY-gitlab\njpi_token: FAKE-CANARY-jpi\ntokscale_token: FAKE-CANARY tokscale\nsynthetic_api_key: FAKE-CANARY pi\nexa_api_key: FAKE-CANARY exa\nopenrouter_api_key: FAKE-CANARY openrouter\n' > bad-tokens.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-tokens.yaml > $out/tokens-invalid.yaml
+    grep -v '^openrouter_api_key:' tokens.yaml > short-tokens.yaml
+    sops --encrypt --age "$recipient" --input-type yaml --output-type yaml short-tokens.yaml > $out/tokens-missing.yaml
     printf 'ssh_private_key: not a key\n' > bad-ssh.yaml
     sops --encrypt --age "$recipient" --input-type yaml --output-type yaml bad-ssh.yaml > $out/ssh-invalid.yaml
   ''

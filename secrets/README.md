@@ -58,6 +58,7 @@ docker_token: <Docker Hub token>     # opt-in: my.cliAuth.enableDockerToken
 tokscale_token: <Tokscale API token> # opt-in: my.cliAuth.enableTokscaleToken
 synthetic_api_key: <Synthetic API key> # opt-in: my.cliAuth.enableSyntheticApiKey
 exa_api_key: <Exa API key>            # opt-in: my.cliAuth.enableExaApiKey
+openrouter_api_key: <OpenRouter API key> # opt-in: my.cliAuth.enableOpenRouterApiKey
 ```
 
 The first three are always decrypted when `my.cliAuth` is enabled. The opt-in
@@ -73,9 +74,15 @@ profile turns `my.cliAuth.enableExaApiKey` on by default. The extension reads th
 file when a tool runs, so the key never enters Pi's environment or the
 environment of the commands its tools run.
 
+`openrouter_api_key` backs Pi's OpenRouter provider. Every host kind publishes
+it beside `synthetic_api_key`: a NixOS host at
+`/run/secrets/cli-auth/openrouter_api_key`, and a non-NixOS or macOS host at
+`~/.local/state/cli-auth/openrouter_api_key`. The shared profile turns
+`my.cliAuth.enableOpenRouterApiKey` on by default.
+
 A non-NixOS host, like a macOS host, has no `my.cliAuth` options. Its production apply always
 decrypts `github_token`, `gitlab_token`, `jpi_token`, `tokscale_token`,
-`synthetic_api_key`, and `exa_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
+`synthetic_api_key`, `exa_api_key`, and `openrouter_api_key`, and stops when any of them is missing. It never decrypts `docker_token`.
 
 The intended public accounts are `hyperlapse122` on GitHub and `hyperlapse` on
 GitLab.com and `git.jpi.app`.
