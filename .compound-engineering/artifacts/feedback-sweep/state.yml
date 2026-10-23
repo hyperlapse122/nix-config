@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-22T11:15:25Z"
+    cursor: "2026-10-22T17:08:43Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -133,12 +133,12 @@ items:
     author_class: "teammate"
     claimed_fix_ref: "#286"
     closeout_decision: "PR #286 closingIssuesReferences; merged to main"
-    existing_ack: false
+    existing_ack: true
     existing_closeout: true
     id: "hyperlapse122/nix-config#284"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/284"
-    updatedAt: "2026-10-21T13:43:39Z"
+    updatedAt: "2026-10-22T11:33:31Z"
   "gh-issues:hyperlapse122/nix-config#285":
     source: "gh-issues"
     status: "closed"
@@ -155,7 +155,7 @@ items:
     id: "hyperlapse122/nix-config#285"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/285"
-    updatedAt: "2026-10-21T22:57:55Z"
+    updatedAt: "2026-10-22T11:33:34Z"
   "gh-issues:hyperlapse122/nix-config#287":
     source: "gh-issues"
     status: "closed"
@@ -172,7 +172,7 @@ items:
     id: "hyperlapse122/nix-config#287"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/287"
-    updatedAt: "2026-10-21T22:57:56Z"
+    updatedAt: "2026-10-22T11:33:36Z"
   "gh-issues:hyperlapse122/nix-config#288":
     source: "gh-issues"
     status: "closed"
@@ -189,33 +189,35 @@ items:
     id: "hyperlapse122/nix-config#288"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/288"
-    updatedAt: "2026-10-21T22:57:56Z"
+    updatedAt: "2026-10-22T11:33:39Z"
   "gh-issues:hyperlapse122/nix-config#289":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Replace OpenCode with Pi for Synthetic models."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#289"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/289"
-    updatedAt: "2026-10-21T14:39:59Z"
+    source_gone_reason: "closed as not planned at source (wontfix), superseded by #308"
+    updatedAt: "2026-10-22T15:38:32Z"
   "gh-issues:hyperlapse122/nix-config#290":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Turn model-reconcile issues into PRs on Synthetic's infinite alias."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#290"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/290"
-    updatedAt: "2026-10-21T14:33:56Z"
+    source_gone_reason: "closed as not planned at source (wontfix), superseded by #308"
+    updatedAt: "2026-10-22T15:15:14Z"
   "gh-issues:hyperlapse122/nix-config#291":
     source: "gh-issues"
     status: "closed"
@@ -227,12 +229,12 @@ items:
     author_class: "teammate"
     claimed_fix_ref: "#306"
     closeout_decision: "PR #306 closingIssuesReferences; merged to main"
-    existing_ack: false
+    existing_ack: true
     existing_closeout: true
     id: "hyperlapse122/nix-config#291"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/291"
-    updatedAt: "2026-10-22T07:00:42Z"
+    updatedAt: "2026-10-22T11:33:48Z"
   "gh-issues:hyperlapse122/nix-config#296":
     source: "gh-issues"
     status: "closed"
@@ -244,38 +246,40 @@ items:
     author_class: "teammate"
     claimed_fix_ref: "#305"
     closeout_decision: "PR #305 closingIssuesReferences; merged to main"
-    existing_ack: false
+    existing_ack: true
     existing_closeout: true
     id: "hyperlapse122/nix-config#296"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/296"
-    updatedAt: "2026-10-22T06:00:18Z"
+    updatedAt: "2026-10-22T11:33:45Z"
   "gh-issues:hyperlapse122/nix-config#298":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Render the scout rule per harness instead of a prose condition."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#298"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/298"
-    updatedAt: "2026-10-22T02:03:01Z"
+    source_gone_reason: "closed as not planned at source (wontfix), superseded by #308"
+    updatedAt: "2026-10-22T15:38:36Z"
   "gh-issues:hyperlapse122/nix-config#299":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Measure and cut the wall time of delegated reviewer and worker roles."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#299"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/299"
-    updatedAt: "2026-10-22T02:14:07Z"
+    source_gone_reason: "closed as not planned at source (wontfix), superseded by #308"
+    updatedAt: "2026-10-22T15:38:41Z"
   "gh-issues:hyperlapse122/nix-config#301":
     source: "gh-issues"
     status: "closed"
@@ -287,25 +291,26 @@ items:
     author_class: "teammate"
     claimed_fix_ref: "#304"
     closeout_decision: "PR #304 closingIssuesReferences; merged to main"
-    existing_ack: false
+    existing_ack: true
     existing_closeout: true
     id: "hyperlapse122/nix-config#301"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/301"
-    updatedAt: "2026-10-22T05:56:13Z"
+    updatedAt: "2026-10-22T11:33:42Z"
   "gh-issues:hyperlapse122/nix-config#302":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Add pi-subagents, rpiv-ask-user-question, and rpiv-todo to Pi."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#302"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/302"
-    updatedAt: "2026-10-22T05:52:07Z"
+    source_gone_reason: "closed as not planned at source (wontfix), superseded by #308"
+    updatedAt: "2026-10-22T15:38:45Z"
   "gh-issues:hyperlapse122/nix-config#303":
     source: "gh-issues"
     status: "closed"
@@ -317,27 +322,31 @@ items:
     author_class: "teammate"
     claimed_fix_ref: "#307"
     closeout_decision: "PR #307 closingIssuesReferences; merged to main"
-    existing_ack: false
+    existing_ack: true
     existing_closeout: true
     id: "hyperlapse122/nix-config#303"
     media: [{"kind": "image", "name": "pytest run moved to background after timeout (screenshot)", "url": "https://github.com/user-attachments/assets/c6f01c50-ff90-46d0-a9fe-4289d47ffba3"}]
     media_attempts: 1
     media_finding: "Agent stopped a backgrounded pytest run and reran it in the foreground instead of waiting; fixed on main by PR #307."
     origin: "https://github.com/hyperlapse122/nix-config/issues/303"
-    updatedAt: "2026-10-22T08:28:03Z"
+    updatedAt: "2026-10-22T11:33:51Z"
   "gh-issues:hyperlapse122/nix-config#308":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Route delegated work to Claude and review to a Codex peer."
+    fix_ref: "#314"
+    verified_merge_sha: "880e52aca1976546a162c128045824a034c229eb"
+    verified_at: "2026-10-23T00:27:47Z"
     author_class: "teammate"
-    claimed_fix_ref: null
-    existing_ack: false
-    existing_closeout: false
+    claimed_fix_ref: "#314"
+    closeout_decision: "PR #314 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#308"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/308"
-    updatedAt: "2026-10-22T11:15:25Z"
+    updatedAt: "2026-10-22T17:08:43Z"
   "gh-issues:hyperlapse122/nix-config#309":
     source: "gh-issues"
     status: "in_plan"
@@ -345,21 +354,76 @@ items:
     body: "Delegate some roles to Codex when its usage allows; follow-up waiting on #308 and a usage measurement."
     author_class: "teammate"
     claimed_fix_ref: null
-    existing_ack: false
+    existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#309"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/309"
-    updatedAt: "2026-10-22T11:15:24Z"
+    updatedAt: "2026-10-22T16:43:29Z"
+  "gh-issues:hyperlapse122/nix-config#310":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Stop blocking T3 Code worktree cleanup with branch renames and leftover threads."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#310"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/310"
+    updatedAt: "2026-10-22T15:03:26Z"
+  "gh-issues:hyperlapse122/nix-config#311":
+    source: "gh-issues"
+    status: "source_gone"
+    sensitive: false
+    body: "Run Claude subagents natively and drop per-role effort."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#311"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/311"
+    source_gone_reason: "closed as not planned at source, superseded by #313; not acked (closed before ingest)"
+    updatedAt: "2026-10-22T15:38:48Z"
+  "gh-issues:hyperlapse122/nix-config#312":
+    source: "gh-issues"
+    status: "source_gone"
+    sensitive: false
+    body: "Keep Claude Code shell commands in the foreground instead of managing background waits."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: false
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#312"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/312"
+    source_gone_reason: "closed as not planned at source, superseded by #313; not acked (closed before ingest)"
+    updatedAt: "2026-10-22T15:38:50Z"
+  "gh-issues:hyperlapse122/nix-config#313":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Run Claude subagents natively at their default effort; supersedes #311."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#313"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/313"
+    updatedAt: "2026-10-22T15:38:27Z"
 last_run:
-  timestamp: "2026-10-22T11:35:15Z"
+  timestamp: "2026-10-23T00:28:18Z"
   outcome: "completed"
-  writer: "sweep-MS-7D91-t3-b18c0f25-2026-10-22"
+  writer: "sweep-MS-7D91-t3-dbe265a0-2026-10-23"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 12
-      closed: 8
-      in_plan: 7
-      ingested: 12
-      media_analyzed: 1
+      acknowledged: 2
+      closed: 1
+      in_plan: 3
+      ingested: 4
+      media_analyzed: 0
+      source_gone: 7
