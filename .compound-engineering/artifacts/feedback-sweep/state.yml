@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-22T17:08:43Z"
+    cursor: "2026-10-23T02:00:58Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -362,17 +362,21 @@ items:
     updatedAt: "2026-10-22T16:43:29Z"
   "gh-issues:hyperlapse122/nix-config#310":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Stop blocking T3 Code worktree cleanup with branch renames and leftover threads."
+    fix_ref: "#318"
+    verified_merge_sha: "719a02f920721299515e805b198f8a37d373212a"
+    verified_at: "2026-10-23T02:06:05Z"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#318"
+    closeout_decision: "PR #318 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#310"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/310"
-    updatedAt: "2026-10-22T15:03:26Z"
+    updatedAt: "2026-10-23T02:00:58Z"
   "gh-issues:hyperlapse122/nix-config#311":
     source: "gh-issues"
     status: "source_gone"
@@ -403,27 +407,71 @@ items:
     updatedAt: "2026-10-22T15:38:50Z"
   "gh-issues:hyperlapse122/nix-config#313":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Run Claude subagents natively at their default effort; supersedes #311."
+    fix_ref: "#318"
+    verified_merge_sha: "719a02f920721299515e805b198f8a37d373212a"
+    verified_at: "2026-10-23T02:06:05Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#318"
+    closeout_decision: "PR #318 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#313"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/313"
+    updatedAt: "2026-10-23T02:00:58Z"
+  "gh-issues:hyperlapse122/nix-config#316":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Run the live checks that a build cannot cover for native subagents and worktree cleanup, on a deployed host and a T3 Code session."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    decision: "postponed until #317 and #319 are done (user, 2026-10-23)"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#316"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/316"
+    updatedAt: "2026-10-23T01:23:13Z"
+  "gh-issues:hyperlapse122/nix-config#317":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Install a generalized test-audit skill in every harness and have shared agent instructions use it when tests are written, changed, reviewed, or pruned."
     author_class: "teammate"
     claimed_fix_ref: null
     existing_ack: true
     existing_closeout: false
-    id: "hyperlapse122/nix-config#313"
+    id: "hyperlapse122/nix-config#317"
     media: []
-    origin: "https://github.com/hyperlapse122/nix-config/issues/313"
-    updatedAt: "2026-10-22T15:38:27Z"
+    origin: "https://github.com/hyperlapse122/nix-config/issues/317"
+    updatedAt: "2026-10-23T01:57:10Z"
+  "gh-issues:hyperlapse122/nix-config#319":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Declare an install path for repository skills in Codex and verify that plugin installs reach every Codex home; #317 depends on it."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#319"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/319"
+    updatedAt: "2026-10-23T01:56:59Z"
 last_run:
-  timestamp: "2026-10-23T00:28:18Z"
+  timestamp: "2026-10-23T02:07:11Z"
   outcome: "completed"
-  writer: "sweep-MS-7D91-t3-dbe265a0-2026-10-23"
+  writer: "sweep-MS-7D91-t3-f1e07d4c-2026-10-23"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 2
-      closed: 1
-      in_plan: 3
-      ingested: 4
+      acknowledged: 3
+      closed: 2
+      in_plan: 4
+      ingested: 3
       media_analyzed: 0
-      source_gone: 7
+      source_gone: 0
