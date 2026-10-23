@@ -658,6 +658,12 @@ class CodexSyncTestCase(CodexCase):
             'plugin add ' + CE_ID,
         ])
 
+    def test_listing_warning_reaches_the_activation_log(self):
+        warning = 'Warning: failed to list remote marketplace plugins'
+        result = self.run_sync(env={'FAKE_LIST_WARNING': warning})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('agent-plugin-sync: plugin list: ' + warning, result.stderr)
+
     def test_plugin_removed_by_hand_comes_back_without_touching_the_marketplace(self):
         self.converge()
         self.reset_state(self.read_state()['markets'], [])

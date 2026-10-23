@@ -42,11 +42,15 @@ class Failure(Exception):
 
 
 def run(argv, dry_run):
-    code, stdout, stderr = run_streams(argv, dry_run)
-    return code, (stdout + stderr).strip()
+    code, stdout, stderr = run_split(argv, dry_run)
+    return code, combined(stdout, stderr)
 
 
-def run_streams(argv, dry_run):
+def combined(stdout, stderr):
+    return (stdout + stderr).strip()
+
+
+def run_split(argv, dry_run):
     if dry_run:
         print('would run: ' + ' '.join(argv))
         return 0, '', ''
@@ -121,11 +125,11 @@ def listing(harness, argv, what, key):
     `key` names the field an agent that wraps its listings in an object keeps
     the entries under.
     """
-    # Only stdout carries the JSON. Codex warns on stderr, for example when its
-    # remote catalog request fails, and still lists and exits 0.
-    code, stdout, stderr = run_streams([harness.cli] + argv, False)
+    code, stdout, stderr = run_split([harness.cli] + argv, False)
     if code != 0:
-        raise Failure('{} failed: {}'.format(what, (stdout + stderr).strip() or 'no output'))
+        raise Failure('{} failed: {}'.format(what, combined(stdout, stderr) or 'no output'))
+    if stderr.strip():
+        print('agent-plugin-sync: {}: {}'.format(what, stderr.strip()), file=sys.stderr)
     try:
         parsed = json.loads(stdout)
     except ValueError as exc:
