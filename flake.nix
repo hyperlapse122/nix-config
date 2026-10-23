@@ -1532,6 +1532,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          pi-models-load = import ./tests/pi-models-load.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           pi-extension = import ./tests/pi-extension.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;

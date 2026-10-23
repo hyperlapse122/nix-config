@@ -8,10 +8,10 @@
   gives h82 Pi and the declared merges of its model and settings files. It
   reads what the generations materialize -- home-path and the rendered
   activation script -- rather than the options they come from. The expected
-  values are literals stated in tests/pi_declared.py, independently of
-  home/h82/agents/pi.nix, except the model IDs, which come from
-  home/h82/agents/synthetic-models.nix, and the prices, which come from the
-  committed snapshot, home/h82/agents/synthetic-catalog.json.
+  values are derived in tests/pi_declared.py from the committed snapshots,
+  home/h82/agents/synthetic-catalog.json and openrouter-catalog.json, by the
+  rules it states, and from the OpenRouter models the installed Pi lists
+  offline as bundled, never from the rendered declaration.
 
   Verifies, on every user:
   - home-path/bin/pi is the packaged wrapper, and home-path/bin/pi-synthetic-key
@@ -21,26 +21,25 @@
     status (the script, run with a failing merger in its place, fails too),
     point it at ~/.pi/agent/models.json and ~/.pi/agent/settings.json
     respectively, and pass the declared document tests/pi_declared.py checks:
-    - the Synthetic provider's api, baseUrl, and an apiKey that is the `!`
-      command naming the installed key helper's store path, with no key and no
-      key-file path in the document;
-    - exactly one model per source entry, each carrying the catalog's name,
-      context window, output limit, input modalities, and prices times one
-      million, and a thinkingLevelMap that sends exactly the efforts the
-      snapshot lists (GLM 5.3 has no xhigh key; DeepSeek sends off as none);
+    - the Synthetic provider's api, baseUrl, and name, and an apiKey on each
+      of the synthetic and openrouter providers that is the `!` command naming
+      the installed helper, with no key and no key-file path in the document;
+    - every Synthetic snapshot row once as an owned models entry, and every
+      OpenRouter row once, as an owned modelOverrides entry when Pi bundles
+      it and as an owned models entry otherwise, each with its name, prices
+      per million tokens, context window, output limit, text and image input,
+      and thinking levels; fixture rows run through the renderer pin those
+      rules with literal values;
     - settings.json declaring the synthetic provider, the source's default
-      model, defaultProjectTrust never, and each model's startup level, with
-      DeepSeek at its text-generation effort.
-    - the retired-model list, hf:moonshotai/Kimi-K3 today, as one removeEntries entry over
-      providers.synthetic.models by id and one removePaths entry per ID
-      under modelThinkingLevels.
-  - running that exact merger over those documents keeps a hand-added model
-    and a second provider in models.json, reasserts the declared entries, is
-    idempotent, creates a missing file, and writes mode 0600 (AE4), and,
-    with a fixture ID added to a copy of each declaration, drops that ID's
-    model entry and thinking level while a hand-added model's stay; a
-    seeded hf:moonshotai/Kimi-K3 entry and thinking level go under the real
-    declaration.
+      model, and defaultProjectTrust never, with no startup level, and a
+      one-time migration removing the four startup levels earlier
+      generations wrote, each only while it holds the value written.
+  - running that exact merger over those documents prunes an OpenRouter model
+    and override an earlier apply wrote that the snapshot no longer has (AE1),
+    keeps a hand-added model and a second provider, is idempotent, creates a
+    missing file, and writes mode 0600; and removes the historical startup
+    levels while a user's level on another model, one changed from the
+    written value, and one saved after the cleanup stay (AE4).
   - no Home Manager file targets .pi/agent/models.json or .pi/agent/settings.json,
     because Pi rewrites both.
 
@@ -55,8 +54,9 @@
   a configuration is on comes from the helper's `bootstrap` field, never from
   the sops manifest under test.
 
-  This check never runs Pi: extension loading, thinking levels, and the
-  provider's behavior are covered by the live probes in docs/verification.md.
+  That Pi accepts the merged models.json is pi-models-load's subject
+  (tests/pi-models-load.nix); extension loading, thinking levels, and the
+  providers' behavior are covered by the live probes in docs/verification.md.
 
   Every lookup carries an `or` fallback so a mutation that removes an entry
   reaches the builder as shell rather than failing evaluation. See
@@ -79,12 +79,10 @@ let
   esc = value: lib.escapeShellArg (toString value);
 
   models = import ../home/h82/agents/synthetic-models.nix;
-  ids = builtins.toJSON {
-    glm = models.glm.id;
-    glmFlash = models.glmFlash.id;
-    deepseek = models.deepseek.id;
-  };
-  snapshot = ../home/h82/agents/synthetic-catalog.json;
+  defaultModel = models.${models.defaultModel}.id;
+  syntheticSnapshot = ../home/h82/agents/synthetic-catalog.json;
+  openrouterSnapshot = ../home/h82/agents/openrouter-catalog.json;
+  renderer = ../home/h82/agents/pi-declarations.py;
   checker = ./pi_declared.py;
 
   # The file each merge must target, below the user's home directory.
@@ -177,6 +175,8 @@ let
       declared_piModels=
       declared_piSettings=
       helper=
+      openrouterHelper=
+      pi=
       merger=
       ${
         if homePath == null then
@@ -190,7 +190,7 @@ let
             else
               resolved=$(readlink -f ${homePath}/bin/pi)
               case "$resolved" in
-                /nix/store/*-pi-*/bin/pi) ;;
+                /nix/store/*-pi-*/bin/pi) pi=$resolved ;;
                 *) fail ${host'}": bin/pi is not the packaged wrapper: $resolved" ;;
               esac
             fi
@@ -206,9 +206,10 @@ let
             if [ ! -x ${homePath}/bin/pi-openrouter-key ]; then
               fail ${host'}": home-path has no executable bin/pi-openrouter-key"
             else
-              case "$(readlink -f ${homePath}/bin/pi-openrouter-key)" in
+              openrouterHelper=$(readlink -f ${homePath}/bin/pi-openrouter-key)
+              case "$openrouterHelper" in
                 /nix/store/*-pi-*/bin/pi-openrouter-key) ;;
-                *) fail ${host'}": bin/pi-openrouter-key is not the packaged helper: $(readlink -f ${homePath}/bin/pi-openrouter-key)" ;;
+                *) fail ${host'}": bin/pi-openrouter-key is not the packaged helper: $openrouterHelper"; openrouterHelper= ;;
               esac
             fi
           ''
@@ -219,13 +220,23 @@ let
         fail ${host'}": Home Manager must not target .pi/agent/models.json or settings.json; Pi rewrites them"
       fi
 
-      # One run of the semantic checks per distinct merger, pair of documents
-      # and helper: users sharing them would repeat the same runs.
-      if [ -n "$declared_piModels" ] && [ -n "$declared_piSettings" ] && [ -n "$helper" ] && [ -n "$merger" ]; then
-        if [ -z "''${checked["$merger $declared_piModels $declared_piSettings $helper"]:-}" ]; then
-          checked["$merger $declared_piModels $declared_piSettings $helper"]=1
+      # One run of the semantic checks per distinct merger, pair of documents,
+      # helpers, and pi: users sharing them would repeat the same runs.
+      if [ -n "$declared_piModels" ] && [ -n "$declared_piSettings" ] && [ -n "$helper" ] \
+        && [ -n "$openrouterHelper" ] && [ -n "$pi" ] && [ -n "$merger" ]; then
+        key="$merger $declared_piModels $declared_piSettings $helper $openrouterHelper $pi"
+        if [ -z "''${checked["$key"]:-}" ]; then
+          checked["$key"]=1
           runs=$((runs + 1))
-          if ! output=$(python3 -I ${checker} "$merger" "$declared_piModels" "$declared_piSettings" ${snapshot} "$helper" "$TMPDIR/work-$runs" ${esc ids} 2>&1); then
+          work=$TMPDIR/work-$runs
+          mkdir -p "$work/home"
+          # The OpenRouter models the installed Pi bundles, listed offline;
+          # Pi lists them only when it holds a key.
+          HOME=$work/home PI_OFFLINE=1 OPENROUTER_API_KEY=sk-fake "$pi" --list-models > "$work/listed"
+          awk '$1 == "openrouter" { print $2 }' "$work/listed" > "$work/bundled"
+          if ! output=$(python3 -I ${checker} "$merger" "$declared_piModels" "$declared_piSettings" \
+            ${syntheticSnapshot} ${openrouterSnapshot} "$work/bundled" ${renderer} \
+            "$helper" "$openrouterHelper" "$work" ${esc defaultModel} 2>&1); then
             fail ${host'}": the declared Pi documents failed:"$'\n'"$output"
           fi
         fi
