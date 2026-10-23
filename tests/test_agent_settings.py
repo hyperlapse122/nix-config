@@ -1487,6 +1487,52 @@ class RemovePathTests(unittest.TestCase):
         self.merge()
         self.assertEqual(self.read()['scanner'], {'bucketTimezone': 'Asia/Seoul'})
 
+    def declare_pruned(self, **fields):
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel', 'prune': True}],
+                     **fields)
+
+    def test_prune_removes_each_object_the_removal_empties(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}}, 'colorPalette': 'blue'})
+        self.declare_pruned(assign={'colorPalette': 'blue'})
+        self.merge()
+        self.assertEqual(self.read(), {'colorPalette': 'blue'})
+
+    def test_prune_keeps_a_sibling_key_and_a_sibling_model(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium', 'other': 1}}})
+        self.declare_pruned()
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-opus-5-5': {'other': 1}}})
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}, 'claude-sonnet-5-5': {'x': 1}}})
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-sonnet-5-5': {'x': 1}}})
+
+    def test_prune_leaves_a_file_without_the_path_untouched(self):
+        self.seed({'colorPalette': 'blue'})
+        self.declare_pruned(assign={'colorPalette': 'blue'})
+        before = self.settings.read_bytes()
+        self.merge()
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_a_removal_without_prune_leaves_the_emptied_parent(self):
+        self.seed({'modelSettings': {'claude-opus-5-5': {'effortLevel': 'medium'}}})
+        self.declare([{'path': ['modelSettings', 'claude-opus-5-5'], 'key': 'effortLevel'}])
+        self.merge()
+        self.assertEqual(self.read(), {'modelSettings': {'claude-opus-5-5': {}}})
+
+    def test_refuses_a_prune_that_is_not_a_boolean(self):
+        self.seed()
+        entry = {'path': ['scanner'], 'key': 'retired'}
+        for prune in ('yes', 1, None, []):
+            with self.subTest(prune=prune):
+                self.assert_refused({'removePaths': [dict(entry, prune=prune)]})
+
+    def test_a_nested_leaf_is_assigned_beside_the_users_keys(self):
+        self.seed({'worktree': {'symlinkDirectories': ['node_modules']}})
+        self.declare([], setPaths=[{'path': ['worktree', 'baseRef'], 'value': 'head'}])
+        self.merge()
+        self.assertEqual(self.read()['worktree'],
+                         {'symlinkDirectories': ['node_modules'], 'baseRef': 'head'})
+
     def test_process_removes_the_named_leaf(self):
         self.seed()
         result = subprocess.run(

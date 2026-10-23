@@ -28,9 +28,10 @@
     exit status, so a symlinked or malformed file fails the rebuild instead of
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
-    and nested path at its declared value and lists every retired key for
-    removal. Asserting the rendered file rather than the Nix attribute set
-    keeps the check on what activation actually feeds the merger.
+    and nested path at its declared value, lists every retired key for
+    removal, and prunes the Opus effort setting that earlier rebuilds wrote.
+    Asserting the rendered file rather than the Nix attribute set keeps the
+    check on what activation actually feeds the merger.
   - no environment.etc entry declares claude-code/managed-settings.json, on
     each NixOS configuration (`entries`), the only kind with environment.etc.
   - no Home Manager file targets either merged file. An activation-time
@@ -94,11 +95,21 @@ let
     }
     {
       path = [
+        "worktree"
+        "baseRef"
+      ];
+      value = "head";
+    }
+  ];
+
+  removePaths = [
+    {
+      path = [
         "modelSettings"
         "claude-opus-5-5"
-        "effortLevel"
       ];
-      value = "medium";
+      key = "effortLevel";
+      prune = true;
     }
   ];
 
@@ -107,19 +118,30 @@ let
   };
 
   expectedDeclared =
-    name: set: remove: setPaths:
-    pkgs.writeText name (builtins.toJSON { inherit set remove setPaths; });
+    name: set: remove: setPaths: removePaths:
+    pkgs.writeText name (
+      builtins.toJSON {
+        inherit
+          set
+          remove
+          setPaths
+          removePaths
+          ;
+      }
+    );
 
   merges = [
     {
       attr = "claudeSettings";
       file = ".claude/settings.json";
-      expected = expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths;
+      expected =
+        expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths
+          removePaths;
     }
     {
       attr = "claudeGlobalConfig";
       file = ".claude.json";
-      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ];
+      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ] [ ];
     }
   ];
 

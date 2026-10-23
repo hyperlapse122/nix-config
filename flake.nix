@@ -428,6 +428,26 @@
                 exit 1
               fi
 
+              # A pruned removal through the packaged binary: the retired Opus
+              # effort is the only key under its model, so the whole
+              # modelSettings object goes, while the user's own worktree key
+              # beside the assigned leaf and the other model's entry stay.
+              mkdir -p home/.claude-pruned
+              printf '{"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"},"claude-sonnet-5-5":{"effortLevel":"low"}},"worktree":{"symlinkDirectories":["node_modules"]}}\n' \
+                > home/.claude-pruned/settings.json
+              printf '{"setPaths":[{"path":["worktree","baseRef"],"value":"head"}],"removePaths":[{"path":["modelSettings","claude-opus-5-5"],"key":"effortLevel","prune":true}]}\n' \
+                > pruned.json
+              env -i ${packaged}/bin/agent-settings --label 'Claude Code' \
+                --settings "$PWD/home/.claude-pruned/settings.json" --declared "$PWD/pruned.json"
+              ${pkgs.python3}/bin/python3 - <<'PY'
+              import json
+              merged = json.load(open('home/.claude-pruned/settings.json'))
+              assert merged == {
+                  'modelSettings': {'claude-sonnet-5-5': {'effortLevel': 'low'}},
+                  'worktree': {'symlinkDirectories': ['node_modules'], 'baseRef': 'head'},
+              }, merged
+              PY
+
               # An owned key through the packaged binary: the repository's entry
               # starts stale with an extra event, and another writer's entry
               # beside it must come through byte for byte.
