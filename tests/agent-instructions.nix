@@ -84,9 +84,11 @@
     without regard to case, carries no unescaped tilde outside a code span,
     and carries no template action (`{{`, `}}`, `<no value>`) or unrendered
     `@name@` placeholder.
-  - docs/provisioning.md keeps naming each later-turn and slow-command rule,
-    each slow-command phrase carrying its affirmative verb so a rewrite that
-    negates the rule drops the phrase.
+  - docs/provisioning.md keeps naming each later-turn and slow-command rule
+    and the release-notes step of a Claude Code version bump, each phrase
+    carrying its affirmative verb so a rewrite that negates the rule drops
+    the phrase, and a copy of the guide with one phrase deleted fails the same
+    check.
   - the background wait sentence's example loop keeps waiting on an output
     file without Claude Code's `[exited with code` line and ends once the
     line lands, and the packaged Claude Code, OpenCode, and Antigravity CLI
@@ -581,10 +583,30 @@ let
     "a wait without `runId` that returns at once without `timedOut`"
   ];
   slowCommandDocTerms = [
-    "It tells each delegated task to give a command that can take more than a minute"
+    "It tells each subagent to give a command that can take more than a minute"
     "the task waits for it inside the turn with blocking foreground calls"
     "The task is told never to stop and rerun a background command it waits on"
     "starts in the background on purpose instead of in the foreground"
+  ];
+  # Nothing declares a Claude effort, so a release that moves a default
+  # changes every session with no diff here; the guide's step is the only
+  # thing that looks for it.
+  releaseNotesDocTerms = [
+    "check the release notes of the new version for a changed default effort"
+  ];
+  docTermGroups = [
+    {
+      kind = "a later-turn rule";
+      terms = laterTurnDocTerms;
+    }
+    {
+      kind = "a slow-command rule";
+      terms = slowCommandDocTerms;
+    }
+    {
+      kind = "the release-notes step of a Claude Code version bump";
+      terms = releaseNotesDocTerms;
+    }
   ];
   # The binaries the slow-command rules describe, each with strings that
   # carry a fact the rules rest on, so a harness update that drops one
@@ -2536,6 +2558,26 @@ let
     fi
   '';
 
+  # A copy of the provisioning guide with one phrase deleted must fail the
+  # document check with that phrase in its message.
+  docTermCases = lib.concatMapStrings (
+    group:
+    lib.concatMapStrings (term: ''
+      docMutant="$scratch/doc-mutant"
+      term=${esc term} awk '{ i = index($0, ENVIRON["term"]); if (i) $0 = substr($0, 1, i - 1) substr($0, i + length(ENVIRON["term"])); print }' ${../docs/provisioning.md} > "$docMutant"
+      if cmp -s ${../docs/provisioning.md} "$docMutant"; then
+        echo ${esc "self-test: the guide mutation did not apply: ${term}"} >&2
+        selfTestFailed=1
+      elif docTerms "$docMutant" ${esc group.kind} ${lib.escapeShellArgs group.terms} 2> "$log"; then
+        echo ${esc "self-test: the guide check passed without: ${term}"} >&2
+        selfTestFailed=1
+      elif ! grep -qF -- ${esc "no longer describes ${group.kind}: ${term}"} "$log"; then
+        echo ${esc "self-test: the guide check failed without naming: ${term}"} >&2
+        selfTestFailed=1
+      fi
+    '') group.terms
+  ) docTermGroups;
+
   # Proves the per-file rules fire: the unmutated rendering must pass them and
   # every mutant must fail them with its expected message. Each run happens in
   # a subshell with its own `file` and `failed`, and its messages go to a log,
@@ -2607,7 +2649,8 @@ let
         selfTestFailed=1
       fi
     '') removedWordCases
-    + programCases;
+    + programCases
+    + docTermCases;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 in
@@ -2618,6 +2661,21 @@ pkgs.runCommand "agent-instructions-tests" { } ''
   fakeEntries=0
 
   ${removedWordsFunction}
+
+  # Reports each term the document lacks and fails when any is missing.
+  docTerms() {
+    docFile=$1
+    docKind=$2
+    shift 2
+    docMissing=0
+    for term in "$@"; do
+      if ! grep -qF -- "$term" "$docFile"; then
+        echo "docs/provisioning.md no longer describes $docKind: $term" >&2
+        docMissing=1
+      fi
+    done
+    return "$docMissing"
+  }
 
   ${lib.optionalString (unknownActions != [ ] || malformedAction) ''
     echo ${
@@ -2645,22 +2703,13 @@ pkgs.runCommand "agent-instructions-tests" { } ''
 
   ${repoCopyRules}
 
-  # The provisioning guide explains the later-turn rules in prose, so it
-  # must keep naming each one when the pinned sentences change.
-  for term in ${lib.escapeShellArgs laterTurnDocTerms}; do
-    if ! grep -qF -- "$term" ${../docs/provisioning.md}; then
-      echo "docs/provisioning.md no longer describes a later-turn rule: $term" >&2
-      failed=1
-    fi
-  done
-
-  # It also explains the slow-command rules, so it must keep naming each one.
-  for term in ${lib.escapeShellArgs slowCommandDocTerms}; do
-    if ! grep -qF -- "$term" ${../docs/provisioning.md}; then
-      echo "docs/provisioning.md no longer describes a slow-command rule: $term" >&2
-      failed=1
-    fi
-  done
+  # The provisioning guide explains the later-turn rules and the slow-command
+  # rules in prose, and carries the release-notes step of a Claude Code
+  # version bump, so it must keep naming each one when the pinned sentences
+  # change.
+  ${lib.concatMapStrings (group: ''
+    docTerms ${../docs/provisioning.md} ${esc group.kind} ${lib.escapeShellArgs group.terms} || failed=1
+  '') docTermGroups}
 
   # The background wait sentence's example loop must hold the turn until
   # Claude Code's exit line lands in the output file, and end once it does.
