@@ -41,18 +41,26 @@ class Failure(Exception):
     """A refusal that should stop activation with a readable message."""
 
 
-def run(argv, dry_run, capture=True):
+def run(argv, dry_run):
+    code, stdout, stderr = run_split(argv, dry_run)
+    return code, combined(stdout, stderr)
+
+
+def combined(stdout, stderr):
+    return (stdout + stderr).strip()
+
+
+def run_split(argv, dry_run):
     if dry_run:
         print('would run: ' + ' '.join(argv))
-        return 0, ''
+        return 0, '', ''
     proc = subprocess.run(
         argv,
         stdin=subprocess.DEVNULL,
-        capture_output=capture,
+        capture_output=True,
         text=True,
     )
-    output = ((proc.stdout or '') + (proc.stderr or '')).strip()
-    return proc.returncode, output
+    return proc.returncode, proc.stdout or '', proc.stderr or ''
 
 
 def require(argv, dry_run, what):
@@ -117,11 +125,13 @@ def listing(harness, argv, what, key):
     `key` names the field an agent that wraps its listings in an object keeps
     the entries under.
     """
-    code, output = run([harness.cli] + argv, False)
+    code, stdout, stderr = run_split([harness.cli] + argv, False)
     if code != 0:
-        raise Failure('{} failed: {}'.format(what, output or 'no output'))
+        raise Failure('{} failed: {}'.format(what, combined(stdout, stderr) or 'no output'))
+    if stderr.strip():
+        print('agent-plugin-sync: {}: {}'.format(what, stderr.strip()), file=sys.stderr)
     try:
-        parsed = json.loads(output)
+        parsed = json.loads(stdout)
     except ValueError as exc:
         raise Failure('{} did not return JSON: {}'.format(what, exc))
     return harness.entries(parsed, what, key)

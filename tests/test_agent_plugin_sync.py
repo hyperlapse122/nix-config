@@ -104,6 +104,9 @@ fail_on = os.environ.get('FAKE_FAIL_ON', '')
 fail_once = os.environ.get('FAKE_FAIL_ONCE', '')
 sticky = os.environ.get('FAKE_STICKY_SOURCE', '')
 list_shaped = os.environ.get('FAKE_LIST_SHAPED', '')
+# Codex 0.163.0 warns on stderr when its remote catalog request fails, and
+# still prints the listing on stdout and exits 0.
+list_warning = os.environ.get('FAKE_LIST_WARNING', '')
 
 with open(state) as handle:
     data = json.load(handle)
@@ -131,6 +134,9 @@ if fail_once and joined.startswith(fail_once) and not data.get('failed_once'):
     save()
     print('fake failure for ' + fail_once, file=sys.stderr)
     sys.exit(3)
+
+if list_warning and (argv[:2] == ['plugin', 'list'] or argv[:3] == ['plugin', 'marketplace', 'list']):
+    print(list_warning, file=sys.stderr)
 
 if argv[:3] == ['plugin', 'marketplace', 'list']:
     if list_shaped == 'markets':
@@ -636,6 +642,27 @@ class CodexSyncTestCase(CodexCase):
         result = self.run_sync()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.adds_and_removes(), [])
+
+    def test_listing_warning_on_stderr_does_not_break_the_json(self):
+        self.converge()
+        new_source = self.make_source('v3.29.0')
+        warning = 'Warning: failed to list remote marketplace plugins: 401 Unauthorized: {\n}'
+        result = self.run_sync(
+            segment='v3.29.0', source=new_source, env={'FAKE_LIST_WARNING': warning}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.adds_and_removes(), [
+            'plugin remove ' + CE_ID,
+            'plugin marketplace remove',
+            'plugin marketplace add',
+            'plugin add ' + CE_ID,
+        ])
+
+    def test_listing_warning_reaches_the_activation_log(self):
+        warning = 'Warning: failed to list remote marketplace plugins'
+        result = self.run_sync(env={'FAKE_LIST_WARNING': warning})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('agent-plugin-sync: plugin list: ' + warning, result.stderr)
 
     def test_plugin_removed_by_hand_comes_back_without_touching_the_marketplace(self):
         self.converge()
