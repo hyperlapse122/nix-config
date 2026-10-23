@@ -1474,6 +1474,22 @@
                   ${./.github/workflows/update-dependencies.yml}
                 touch $out
               '';
+          model-catalogs-reconcile =
+            pkgs.runCommand "model-catalogs-reconcile-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.jq
+                  pkgs.yq-go
+                  pkgs.gawk
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                bash ${./tests/model-catalogs-reconcile.sh} \
+                  ${./.github/workflows/model-catalogs.yml}
+                touch $out
+              '';
           ci-workflow-docs-skip =
             pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''

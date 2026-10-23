@@ -36,23 +36,6 @@ jobs:
           extra_nix_config: |
             system-features = nixos-test benchmark big-parallel kvm
 
-      # Its own step, so only this command's environment holds the optional
-      # SYNTHETIC_API_KEY secret, which the script sends as a bearer header on
-      # the fetch command's stdin, as synthetic-models.yml does. A catalog
-      # that lacks a model the source names, or an unreachable one, keeps the
-      # current snapshot and lets the updates below through; the model-watch
-      # issue reports the drift. The update step's change check sees the
-      # refreshed file.
-      - name: Refresh the Synthetic catalog snapshot
-        env:
-          SYNTHETIC_API_KEY: ${{ secrets.SYNTHETIC_API_KEY }}
-        run: |
-          set -euo pipefail
-          if ! nix run .#synthetic-models-watch -- --snapshot home/h82/agents/synthetic-catalog.json; then
-            echo "::warning title=Synthetic catalog snapshot skipped::synthetic-models-watch --snapshot failed; keeping the current home/h82/agents/synthetic-catalog.json."
-            git checkout -- home/h82/agents/synthetic-catalog.json
-          fi
-
       - name: Update flake inputs, agent plugins, and packages
         id: update
         run: |
@@ -232,9 +215,16 @@ jobs:
             git commit -m "chore(packages): bump codex to $NEW_VER"
           fi
 
+<<<<<<< HEAD
           if [ -n "$(git status --porcelain home/h82/agents/synthetic-catalog.json)" ]; then
             git add home/h82/agents/synthetic-catalog.json
             git commit -m "chore(agents): refresh the synthetic catalog snapshot"
+=======
+          if [ -n "$(git status --porcelain packages/opencode-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/opencode-release.json)
+            git add packages/opencode-release.json
+            git commit -m "chore(packages): bump opencode to $NEW_VER"
+>>>>>>> b3b9e46 (ci: refresh model catalog snapshots in their own workflow)
           fi
 
           if [ -n "$(git status --porcelain packages/pi-release.json)" ]; then
