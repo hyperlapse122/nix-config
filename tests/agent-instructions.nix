@@ -293,6 +293,9 @@ let
     "Refresh each with `ce-compound-refresh`, commit each refresh separately on the current branch, then push once."
   ];
 
+  fastForwardCommand = "`git merge --ff-only`";
+  rebaseAbortCommand = "`git rebase --abort`";
+
   pullRequestsHeading = "# Pull and merge requests";
 
   babysitSentence = "After you open or push to a pull or merge request, babysit it until it looks ready to merge, then leave the merge to the user.";
@@ -302,15 +305,14 @@ let
   leaseShaSentence = "Before that rebase, record the request's current head SHA as the forge reports it, and use it as `<sha>` in the lease.";
   localTipSentence = "Confirm that your local branch tip equals that SHA and that your checkout has no uncommitted changes, and when the tip differs, neither rebase nor reset, and report the branch, because a rebase of an older local tip would pass the lease and delete the forge-only commits.";
   localRebaseSentence = "Run that rebase locally with `git rebase`, never with `gh pr update-branch`, GitHub's update-branch endpoint, or `glab mr rebase`, because those rewrite commits on the server and drop your GPG signatures.";
-  signingAbortSentence = "When signing or a hook fails during the rebase, run `git rebase --abort` and report, and never disable signing or pass `--no-verify`.";
-  rebaseConflictSentence = "When that rebase conflicts, resolve only conflicts confined to the request's own changes whose resolution you can verify, and otherwise run `git rebase --abort`, push nothing, and report the branch as a blocker for the user.";
+  signingAbortSentence = "When signing or a hook fails during the rebase, run ${rebaseAbortCommand} and report, and never disable signing or pass `--no-verify`.";
+  rebaseConflictSentence = "When that rebase conflicts, resolve only conflicts confined to the request's own changes whose resolution you can verify, and otherwise run ${rebaseAbortCommand}, push nothing, and report the branch as a blocker for the user.";
   leaseRejectedSentence = "When the lease is rejected, never retry with `--force`; report the branch instead.";
   forcePushScopeSentence = "Force-push only the head branch of a pull or merge request you opened, in this or an earlier session and including a branch T3 Code created for its worktree, only with `--force-with-lease`, and never a base branch.";
   otherRequestSentence = "For any other request behind its base, report the branch as a blocker instead of rebasing or merging.";
   githubBabysitSentence = "On GitHub, `ce-babysit-pr` updates a behind branch through the host and repairs a conflicting one with a local merge; in place of both, keep its `branch_currency` trigger and its claim, outcome, and confirm bookkeeping, and run the rebase above, gated on your proven direct-push authority to the exact head ref rather than on `host_branch_update_capability`.";
   gitlabBabysitSentence = "On GitLab, run the rebase above when `glab mr view` reports `detailed_merge_status` as `need_rebase` or `conflict`, use the merge request's `sha` as `<sha>` in the lease, and report the outcome in your babysitting summary.";
 
-  # The bullets that hold several sentences, each as its sentence list.
   babysitBullet = [
     babysitSentence
     draftSentence
@@ -343,21 +345,22 @@ let
     "Prefix any other `gh` command, `gh api` included, with `GH_REPO=HOST/OWNER/REPO` and any other `glab` command, `glab api` included, with `GITLAB_REPO` set to the full URL, for that one command and never exported, and also pass `--hostname HOST` to `gh api`, which ignores the host in `GH_REPO`."
     "In the same way, prefix every `glab` command with `GITLAB_HOST=HOST`, because `glab repo clone` and `glab repo delete` send their requests to `gitlab.com` without it, even with a full URL or `GITLAB_REPO`."
     "Write a branch into an API endpoint yourself, because `{branch}` and `:branch` still come from the current checkout."
-    babysitSentence
-    draftSentence
-    gitlabReadySentence
+  ]
+  ++ babysitBullet
+  ++ [
     "Attach the screenshots or recordings a reader needs to see the change."
     "Before uploading, cover secrets, personal data, and internal hosts with opaque boxes, never blur, and strip metadata with `ffmpeg -map_metadata -1`."
     "Upload through `gh --attach` or the GitLab uploads API, never a browser."
     rebaseUpdateSentence
-    leaseShaSentence
-    localTipSentence
-    localRebaseSentence
-    signingAbortSentence
+  ]
+  ++ leaseBullet
+  ++ localRebaseBullet
+  ++ [
     rebaseConflictSentence
     leaseRejectedSentence
-    forcePushScopeSentence
-    otherRequestSentence
+  ]
+  ++ forcePushBullet
+  ++ [
     githubBabysitSentence
     gitlabBabysitSentence
   ];
@@ -503,7 +506,7 @@ let
   unitLaunchSentence = "When ${nativeToolClause}, ${unitNativeClause}, and otherwise, when ${delegationToolsClause}, ${unitDelegateClause}, instead of Compound Engineering's own delegation route.";
   outsideRouteSentence = "Outside T3 Code, in a session whose own subagent tool cannot run Claude models, Compound Engineering's own route keeps one recipient for a whole run, so give it only `claude` with `claude-sonnet-5-5` as its candidate.";
   workEngineSentence = "In `ce-work`, prefer delegating each implementation unit to a worker named below unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
-  workNoEditSentence = "When ${nativeToolClause}, or ${delegationToolsClause}, and you run `ce-work`, edit no file yourself: delegate every implementation unit, and keep bringing task branches back by rebase and `git merge --ff-only`, running the formatter, committing, and running checks, unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
+  workNoEditSentence = "When ${nativeToolClause}, or ${delegationToolsClause}, and you run `ce-work`, edit no file yourself: delegate every implementation unit, and keep bringing task branches back by rebase and ${fastForwardCommand}, running the formatter, committing, and running checks, unless the repository's Compound Engineering config explicitly sets `work_engine_mode: off`.";
   workFailTwiceSentence = "The other exception is a unit whose launch fails twice: you do that unit yourself and say so in your report, after relaunching it once as the launch-failure rule in the T3 Code section directs.";
   scoutDefinitionSentence = "When ${nativeToolClause}, or ${delegationToolsClause}, the scouts of `ce-plan` are its repository, learnings, framework-docs, best-practices, and web researchers, in its first research pass or in deepening, and no other subagent is a scout.";
   scoutHaikuClause = "a scout goes to `haiku`, `claude-haiku-5-5` on the `claudeAgent` instance";
@@ -617,16 +620,14 @@ let
   worktreeDelegateClause = ", and otherwise, when the session lists T3 Code's delegation tools, with `isolation: \"worktree\"` on `delegate_task`";
   worktreeLaunchSentence = "Launch a unit that needs its own checkout with `isolation: \"worktree\"` ${worktreeOwnToolClause}${worktreeDelegateClause}${worktreeParentCommitClause}, and tell it to commit its edits and report its branch.";
   overlappingEditSentence = "Before you edit a file that a still-running subagent also edits, in this checkout or in a worktree whose branch you will fast-forward into this checkout, wait until that subagent has finished and its edits are merged.";
-  parallelEditsSentence = "Never run two subagents that edit the same files in one checkout at the same time: from a clean checkout, launch each in its own worktree as the worktree rule above says, tell each to commit its edits and report its branch, and bring those branches back one at a time by rebasing each onto the tip the previous fast-forward left and merging it with `git merge --ff-only`; otherwise launch them one after another.";
+  parallelEditsSentence = "Never run two subagents that edit the same files in one checkout at the same time: from a clean checkout, launch each in its own worktree as the worktree rule above says, tell each to commit its edits and report its branch, and bring those branches back one at a time by rebasing each onto the tip the previous fast-forward left and merging it with ${fastForwardCommand}; otherwise launch them one after another.";
   rewriteTriggerExamples = "a formatter, a code generator, a dependency update, a branch switch, or a mutation test run inside the checkout";
-  rewriteTriggerSentence = "Launch a subagent in its own worktree, as the worktree rule above says, when it runs a command that rewrites files beyond the subagent's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and bring that branch back once it has finished by rebasing it onto your current branch and merging it with `git merge --ff-only`.";
+  rewriteTriggerSentence = "Launch a subagent in its own worktree, as the worktree rule above says, when it runs a command that rewrites files beyond the subagent's own, such as ${rewriteTriggerExamples}, tell it to commit its edits and report its branch, and bring that branch back once it has finished by rebasing it onto your current branch and merging it with ${fastForwardCommand}.";
   committedStateTriggerSentence = "Launch a subagent in its own worktree, as the worktree rule above says, when it needs the committed state while your checkout holds uncommitted edits it must not see, such as a baseline build or a test run against the last commit.";
   sharedCheckoutLeaveClause = ", and, while another subagent edits there, to leave formatting, builds, and checks to you";
   sharedCheckoutSentence = "Tell subagents that share one checkout not to commit, stage, or format files beyond their own${sharedCheckoutLeaveClause}; commit their results yourself.";
   worktreeRemoveCommand = "`git worktree remove`";
   worktreeBranchCommand = "`git branch -d`";
-  fastForwardCommand = "`git merge --ff-only`";
-  rebaseAbortCommand = "`git rebase --abort`";
   worktreeCleanupSentence = "After you bring that branch back with ${fastForwardCommand} without a conflict, remove its worktree with ${worktreeRemoveCommand} and its branch with ${worktreeBranchCommand}, never with `--force` or `-D`; when the rebase conflicts, run ${rebaseAbortCommand} and keep the worktree and the branch.";
   worktreeRebaseSentence = "Run that rebase with `git rebase` inside the branch's worktree, because a branch checked out in a worktree can be rebased only there, and only once the subagent has finished and its worktree has no uncommitted changes.";
   fastForwardRefusedSentence = "When ${fastForwardCommand} is refused because your tip moved, rebase once more and retry; when it is refused for any other reason, such as uncommitted edits in your checkout, keep the worktree and the branch and report them, and never use `git stash`, `--autostash`, or `git reset` to get past it.";
@@ -1611,29 +1612,26 @@ let
       name = "${name} negated";
       line = "- ${sentence}";
       edit = lineNegated;
-      expect = "does not hold this sentence exactly once, where a sentence starts: ${sentence}";
+      expect = pinFailure sentence;
     }
   ];
   removedAndNegated = removedAndNegatedIn "Compound Engineering";
 
-  # The same pair for the sentence at `index` of a bullet that holds several,
-  # so the edit works inside the bullet's line and takes one space with it.
   removedAndNegatedInBullet =
-    section: name: sentences: index:
+    section: name: bullet: sentence:
     let
-      sentence = lib.elemAt sentences index;
-      last = index == lib.length sentences - 1;
+      last = lib.last bullet == sentence;
     in
     [
       {
         name = "${name} removed";
-        line = bulletLine sentences;
+        line = bulletLine bullet;
         edit = replaceInLine (if last then " ${sentence}" else "${sentence} ") "";
         expect = "moves a ${section} sentence out of its section: ${sentence}";
       }
       {
         name = "${name} negated";
-        line = bulletLine sentences;
+        line = bulletLine bullet;
         edit = replaceInLine sentence "Do not ${sentence}";
         expect = pinFailure sentence;
       }
@@ -2382,23 +2380,41 @@ let
   ++ removedAndNegatedIn "Subagents" "committed-state trigger sentence" committedStateTriggerSentence
   ++ removedAndNegatedIn "Subagents" "shared-checkout sentence" sharedCheckoutSentence
   ++ removedAndNegatedIn "Subagents" "worktree cleanup sentence" worktreeCleanupSentence
-  ++ removedAndNegatedInBullet "Subagents" "worktree rebase sentence" worktreeRebaseBullet 0
-  ++ removedAndNegatedInBullet "Subagents" "fast-forward refusal sentence" worktreeRebaseBullet 1
+  ++
+    removedAndNegatedInBullet "Subagents" "worktree rebase sentence" worktreeRebaseBullet
+      worktreeRebaseSentence
+  ++
+    removedAndNegatedInBullet "Subagents" "fast-forward refusal sentence" worktreeRebaseBullet
+      fastForwardRefusedSentence
   ++ removedAndNegatedIn "Subagents" "cherry-pick sentence" cherryPickSentence
   ++ removedAndNegatedIn "Subagents" "leftover worktree report sentence" leftoverSentence
-  ++ removedAndNegatedInBullet "pull and merge requests" "draft babysitting sentence" babysitBullet 1
-  ++ removedAndNegatedInBullet "pull and merge requests" "GitLab readiness sentence" babysitBullet 2
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "draft babysitting sentence" babysitBullet
+      draftSentence
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "GitLab readiness sentence" babysitBullet
+      gitlabReadySentence
   ++ removedAndNegatedIn "pull and merge requests" "base-sync rebase sentence" rebaseUpdateSentence
-  ++ removedAndNegatedInBullet "pull and merge requests" "lease SHA sentence" leaseBullet 0
-  ++ removedAndNegatedInBullet "pull and merge requests" "local tip check sentence" leaseBullet 1
-  ++ removedAndNegatedInBullet "pull and merge requests" "local rebase sentence" localRebaseBullet 0
-  ++ removedAndNegatedInBullet "pull and merge requests" "signing abort sentence" localRebaseBullet 1
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "lease SHA sentence" leaseBullet
+      leaseShaSentence
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "local tip check sentence" leaseBullet
+      localTipSentence
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "local rebase sentence" localRebaseBullet
+      localRebaseSentence
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "signing abort sentence" localRebaseBullet
+      signingAbortSentence
   ++ removedAndNegatedIn "pull and merge requests" "rebase conflict sentence" rebaseConflictSentence
   ++ removedAndNegatedIn "pull and merge requests" "rejected lease sentence" leaseRejectedSentence
-  ++ removedAndNegatedInBullet "pull and merge requests" "force-push scope sentence" forcePushBullet 0
+  ++
+    removedAndNegatedInBullet "pull and merge requests" "force-push scope sentence" forcePushBullet
+      forcePushScopeSentence
   ++
     removedAndNegatedInBullet "pull and merge requests" "other-request blocker sentence" forcePushBullet
-      1
+      otherRequestSentence
   ++ removedAndNegatedIn "pull and merge requests" "GitHub babysitting sentence" githubBabysitSentence
   ++ removedAndNegatedIn "pull and merge requests" "GitLab babysitting sentence" gitlabBabysitSentence
   ++ removedAndNegatedIn "Git" "worktree signal sentence" worktreeSignalSentence
@@ -2722,15 +2738,9 @@ let
       expect = pinFailure worktreeCleanupSentence;
     }
     {
-      name = "worktree cleanup runs after a conflicting rebase";
+      name = "worktree cleanup drops its keep-on-conflict clause";
       line = "- ${worktreeCleanupSentence}";
       edit = replaceInLine "; when the rebase conflicts, run ${rebaseAbortCommand} and keep the worktree and the branch" "";
-      expect = pinFailure worktreeCleanupSentence;
-    }
-    {
-      name = "worktree cleanup loses its rebase abort";
-      line = "- ${worktreeCleanupSentence}";
-      edit = replaceInLine "run ${rebaseAbortCommand} and keep" "keep";
       expect = pinFailure worktreeCleanupSentence;
     }
     {
@@ -2796,13 +2806,13 @@ let
     {
       name = "base-sync rebase drops its local tip check";
       line = bulletLine leaseBullet;
-      edit = replaceInLine "Confirm that your local branch tip equals that SHA and that your checkout has no uncommitted changes, and when the tip differs, neither rebase nor reset, and report the branch, because" "Because";
+      edit = replaceInLine "${lib.head (lib.splitString ", because" localTipSentence)}, because" "Because";
       expect = pinFailure localTipSentence;
     }
     {
       name = "base-sync rebase conflict loses its abort";
       line = "- ${rebaseConflictSentence}";
-      edit = replaceInLine "otherwise run `git rebase --abort`, push nothing, and report" "otherwise report";
+      edit = replaceInLine "otherwise run ${rebaseAbortCommand}, push nothing, and report" "otherwise report";
       expect = pinFailure rebaseConflictSentence;
     }
     {
