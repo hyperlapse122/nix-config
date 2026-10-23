@@ -164,6 +164,7 @@
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         synthetic-models-watch = agentTools.syntheticModelsWatch;
+        openrouter-catalog-snapshot = agentTools.openrouterCatalogSnapshot;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
         antigravity-acp = import ./packages/antigravity-acp.nix {
@@ -612,6 +613,17 @@
                 export SYNTHETIC_MODELS_SOURCE_JSON=${realSource}
               '';
             } "synthetic-models-watch" ./scripts/synthetic-models-watch ./tests/test_synthetic_models_watch.py;
+          openrouter-catalog-snapshot =
+            pythonScriptCheckWith
+              {
+                setup = ''
+                  mkdir -p tests/fixtures
+                  cp -r ${./tests/fixtures/openrouter-models} tests/fixtures/openrouter-models
+                '';
+              }
+              "openrouter-catalog-snapshot"
+              ./scripts/openrouter-catalog-snapshot
+              ./tests/test_openrouter_catalog_snapshot.py;
           synthetic-models-reconcile =
             pkgs.runCommand "synthetic-models-reconcile-tests"
               {

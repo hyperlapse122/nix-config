@@ -112,6 +112,11 @@ let
   # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
   syntheticModelsWatch = pythonHelper "synthetic-models-watch" ../scripts/synthetic-models-watch;
 
+  # Rewrites the committed OpenRouter catalog snapshot from OpenRouter's
+  # /models/user endpoint. Its fetch goes through an overridable command so
+  # the sandboxed repository check can drive it with fixtures.
+  openrouterCatalogSnapshot = pythonHelper "openrouter-catalog-snapshot" ../scripts/openrouter-catalog-snapshot;
+
   # Runs from home activation and links the pinned Antigravity runtime into
   # T3 Code's managed runtime directory, which T3 Code checks on disk.
   t3codeAntigravityInstall = pythonHelper "t3code-antigravity-install" ../scripts/t3code-antigravity-install;
@@ -145,6 +150,7 @@ in
     antigravityAcpRelease
     t3codeRelease
     syntheticModelsWatch
+    openrouterCatalogSnapshot
     t3codeAntigravityInstall
     t3codeAntigravityLink
     androidSdkRelease

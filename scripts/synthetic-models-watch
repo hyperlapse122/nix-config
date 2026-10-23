@@ -33,12 +33,14 @@ the fingerprint, the body digest, and the latest catalog notice, and
 `--notice` prints the comment for a notice kind.
 
 `--snapshot FILE` rewrites the committed catalog snapshot instead of
-comparing: it keeps the catalog rows whose `id` the source names, trimmed to
-the fields Pi's model config renders, in the catalog's own shape, and leaves
-FILE untouched unless the content changes. `pricing` keeps only the four
-prices Pi's config reads, each a string home/h82/agents/pi.nix can parse. It
-refuses to write, and exits non-zero, when the catalog lacks a source ID or a
-kept row is malformed.
+comparing: it keeps every catalog row, `syn:` and alias rows included, sorted
+by `id` and trimmed to the fields Pi's model config renders, in the catalog's
+own shape, and leaves FILE untouched unless the content changes. `pricing`
+keeps only the four prices Pi's config reads, each a string
+home/h82/agents/pi.nix can parse. A row without `reasoning_parameters` keeps
+none. A malformed row is skipped with a warning naming it on stderr. It
+refuses to write, and exits non-zero, when no row is left or when a source ID
+is missing or malformed.
 """
 
 import argparse
@@ -339,8 +341,14 @@ def classify(models, rows, aliases):
 
 
 def snapshot_row(row):
-    """The trimmed row for one catalog entry, or a Failure naming the bad field."""
-    model_id = row["id"]
+    """The trimmed row for one catalog entry, or a Failure naming the bad field.
+
+    A row without `reasoning_parameters` keeps no such key, so a renderer can
+    tell it from a row that lists no efforts.
+    """
+    model_id = row.get("id") if isinstance(row, dict) else None
+    if not isinstance(model_id, str) or model_id == "":
+        raise Failure(f"catalog entry {json.dumps(row)[:120]} has no valid id")
     kept = {"id": model_id}
     for field, valid in SNAPSHOT_FIELDS.items():
         if field not in row or not valid(row[field]):
@@ -348,6 +356,8 @@ def snapshot_row(row):
         kept[field] = row[field]
     kept["pricing"] = {field: row["pricing"][field] for field in PRICE_FIELDS}
     params = row.get("reasoning_parameters")
+    if params is None:
+        return kept
     efforts = params.get("efforts") if isinstance(params, dict) else None
     if not isinstance(efforts, list) or not all(isinstance(e, str) and EFFORT_PATTERN.fullmatch(e) for e in efforts):
         raise Failure(f"catalog entry {model_id} has efforts that are not a list of strings")
@@ -355,13 +365,30 @@ def snapshot_row(row):
     return kept
 
 
-def catalog_snapshot(models, rows):
-    """The snapshot text for the models in use; refuses a missing ID."""
-    missing = sorted(m["id"] for m in models.values() if m["id"] not in rows)
+def catalog_snapshot(models, catalog):
+    """The snapshot text for every well-formed catalog row.
+
+    A malformed row is skipped with a warning naming it. Refuses a source ID
+    that is missing or malformed.
+    """
+    data = catalog.get("data") if isinstance(catalog, dict) else None
+    if not isinstance(data, list):
+        raise Failure("the catalog has no data list")
+    kept, problems = {}, {}
+    for row in data:
+        try:
+            entry = snapshot_row(row)
+        except Failure as exc:
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                problems[row["id"]] = str(exc)
+            print(f"synthetic-models-watch: skipping {exc}", file=sys.stderr)
+            continue
+        kept[entry["id"]] = entry
+    missing = sorted(m["id"] for m in models.values() if m["id"] not in kept)
+    # The source always names a model, so this also refuses an empty result.
     if missing:
-        raise Failure(f"the catalog lacks {', '.join(missing)}")
-    data = [snapshot_row(rows[model_id]) for model_id in sorted(m["id"] for m in models.values())]
-    return json.dumps({"data": data}, indent=2) + "\n"
+        raise Failure("; ".join(problems.get(i, f"the catalog lacks {i}") for i in missing))
+    return json.dumps({"data": [kept[i] for i in sorted(kept)]}, indent=2) + "\n"
 
 
 def write_if_changed(path, text):
@@ -546,10 +573,10 @@ def main(argv=None):
             return 0
         models = models_in_use(load_source(args.source, args.source_json, args.eval_timeout))
         catalog = read_json(args.catalog) if args.catalog else fetch(args.url, args.retry_wait)
-        rows, aliases, rejected = catalog_rows(catalog)
         if args.snapshot:
-            write_if_changed(args.snapshot, catalog_snapshot(models, rows))
+            write_if_changed(args.snapshot, catalog_snapshot(models, catalog))
             return 0
+        rows, aliases, rejected = catalog_rows(catalog)
         findings = classify(models, rows, aliases)
         mark = fingerprint(findings)
         result = {
