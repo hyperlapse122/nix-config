@@ -35,8 +35,9 @@
   - no enabled target is ~/.codex/skills/.system or under it, which Codex
     owns.
   - the enabled targets at or under each of the five roots are exactly the
-    three skill directories, so a skill dropped from or added to the module, or a file
-    declared inside a skill directory, turns this red.
+    three skill directories plus test-audit, which tests/test-audit-skill.nix
+    checks, so a skill dropped from or added to a module, or a file declared
+    inside a skill directory, turns this red.
   - nothing exists at ~/.agents/skills or ~/.gemini/config/skills in the
     materialized `home-files`: the Antigravity CLI lists skills under
     ~/.gemini/config/skills twice, and ~/.agents/skills is no harness's root
@@ -79,6 +80,10 @@ let
     "grammar-checker"
     "style-guide"
   ];
+
+  # Every other skill the roots hold. Only the root population below counts
+  # these; tests/test-audit-skill.nix checks their content.
+  otherSkillNames = [ "test-audit" ];
 
   roots = [
     ".claude/skills"
@@ -211,7 +216,7 @@ let
       root:
       let
         found = targetsUnder userConfig root;
-        expected = sorted (map (name: "${root}/${name}") skillNames);
+        expected = sorted (map (name: "${root}/${name}") (skillNames ++ otherSkillNames));
       in
       lib.optionalString (found != expected) ''
         echo ${esc "~/${root} on ${label} must hold exactly ${lib.concatStringsSep ", " expected}, got: ${lib.concatStringsSep ", " found}"} >&2

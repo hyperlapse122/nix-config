@@ -528,6 +528,10 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          test-audit-skill = import ./tests/test-audit-skill.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           opencode-sources = pinnedSources "opencode-sources" ./packages/opencode-release.json;

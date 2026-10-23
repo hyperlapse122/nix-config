@@ -207,7 +207,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
 
   fakeSkillsDir=$fakeHome/.gemini/antigravity-cli/skills
   mkdir -p "$fakeSkillsDir"
-  for skill in humanizer grammar-checker style-guide; do
+  for skill in humanizer grammar-checker style-guide test-audit; do
     printf 'fake-%s\n' "$skill" > "$fakeSkillsDir/$skill"
   done
 
@@ -244,14 +244,14 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   }
 
   # 1. Home under xmodel-cr-scratch-abc123: runtime sees fake token, mode 600 (AE1),
-  #    and gains the three Korean skills symlinked to fake HOME.
+  #    and gains the three Korean skills and test-audit symlinked to fake HOME.
   ce1=$(make_ce_home "$tmpdir/xmodel-cr-scratch-abc123")
   run_seed "xmodel-cr-scratch-abc123" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce1"
   [ "$(field token)" = "$expectedToken" ] || fail "xmodel-cr-scratch-abc123: runtime got token '$(field token)'"
   [ "$(field tokenmode)" = 600 ] || fail "xmodel-cr-scratch-abc123: token mode is '$(field tokenmode)', not 600"
   [ "$(cat "$ce1/antigravity-acp/settings.json")" = "$expectedSettings" ] || fail "xmodel-cr-scratch-abc123: settings.json changed"
   [ ! -s stderr ] || fail "xmodel-cr-scratch-abc123: unexpected stderr: $(cat stderr)"
-  for skill in humanizer grammar-checker style-guide; do
+  for skill in humanizer grammar-checker style-guide test-audit; do
     link=$ce1/antigravity-cli/skills/$skill
     [ -L "$link" ] || fail "xmodel-cr-scratch-abc123: $skill is not a symlink"
     [ "$(readlink "$link")" = "$fakeSkillsDir/$skill" ] \
@@ -306,7 +306,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   run_seed "existing token" TMPDIR="$tmpdir" HOME="$fakeHome" GEMINI_HOME="$ce5"
   [ "$(field token)" = "$existingToken" ] || fail "existing token: runtime got '$(field token)', expected '$existingToken'"
   [ ! -s stderr ] || fail "existing token: unexpected stderr: $(cat stderr)"
-  for skill in humanizer grammar-checker style-guide; do
+  for skill in humanizer grammar-checker style-guide test-audit; do
     link=$ce5/antigravity-cli/skills/$skill
     [ -L "$link" ] || fail "existing token: $skill is not a symlink"
     [ "$(readlink "$link")" = "$fakeSkillsDir/$skill" ] \
@@ -459,7 +459,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   noTokenHome=$PWD/no-token-home
   mkdir -p "$noTokenHome/.gemini/antigravity-acp"
   mkdir -p "$noTokenHome/.gemini/antigravity-cli/skills"
-  for skill in humanizer grammar-checker style-guide; do
+  for skill in humanizer grammar-checker style-guide test-audit; do
     printf 'no-token-%s\n' "$skill" > "$noTokenHome/.gemini/antigravity-cli/skills/$skill"
   done
   ce12=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
@@ -467,7 +467,7 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   [ "$(field token)" = "<none>" ] || fail "no source token: runtime got token '$(field token)'"
   [ ! -e "$ce12/antigravity-acp/acp_token.json" ] || fail "no source token: token file created"
   [ ! -s stderr ] || fail "no source token: unexpected stderr: $(cat stderr)"
-  for skill in humanizer grammar-checker style-guide; do
+  for skill in humanizer grammar-checker style-guide test-audit; do
     link=$ce12/antigravity-cli/skills/$skill
     [ -L "$link" ] || fail "no source token: $skill is not a symlink"
     [ "$(readlink "$link")" = "$noTokenHome/.gemini/antigravity-cli/skills/$skill" ] \
