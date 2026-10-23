@@ -1,91 +1,91 @@
 {
-  "version": "0.1.3-nightly.20261023.3566",
-  "tag": "v0.1.3-nightly.20261023.3566",
+  "version": "0.1.3-nightly.20261023.3579",
+  "tag": "v0.1.3-nightly.20261023.3579",
   "platforms": {
     "x86_64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.1.3-nightly.20261023.3566-x86_64.AppImage",
-        "sha256": "9695318e92008b5600f0088ce723f200675d29988ea35e64baa0541ff523f9c2",
-        "hash": "sha256-lpUxjpIAi1YA8AiM5yPyAGddKZiOo15kuqBUH/Uj+cI="
+        "asset": "T3-Code-0.1.3-nightly.20261023.3579-x86_64.AppImage",
+        "sha256": "d8a3c792b799ac79ee2b1e37dc665a2b50dfe74a37e6b69337c2102a418f5194",
+        "hash": "sha256-2KPHkreZrHnuKx433GZaK1Df50o35raTN8IQKkGPUZQ="
       },
       "cli": {
-        "asset": "t3-0.1.3-nightly.20261023.3566-linux-x64.tar.gz",
-        "sha256": "493186771806e43219f0d90ec27e6888cf9e04e2ff66f507170786a692d8e96c",
-        "hash": "sha256-STGGdxgG5DIZ8NkOwn5oiM+eBOL/ZvUHFweGppLY6Ww="
+        "asset": "t3-0.1.3-nightly.20261023.3579-linux-x64.tar.gz",
+        "sha256": "d684d2b0406b2e6386fde666c5e330131d4938f5715dacf930cd8120e8156956",
+        "hash": "sha256-1oTSsEBrLmOG/eZmxeMwEx1JOPVxXaz5MM2BIOgVaVY="
       }
     },
     "aarch64-linux": {
       "desktop": {
-        "asset": "T3-Code-0.1.3-nightly.20261023.3566-arm64.AppImage",
-        "sha256": "d4e8ba8941867c82c6070c469b5fdebe9479f1954568180786ff8cfb309d07fa",
-        "hash": "sha256-1Oi6iUGGfILGBwxGm1/evpR58ZVFaBgHhv+M+zCdB/o="
+        "asset": "T3-Code-0.1.3-nightly.20261023.3579-arm64.AppImage",
+        "sha256": "eb4586e71700b6e954c11f1e43d7d210f5c60b860319b6e442bb370038d59f25",
+        "hash": "sha256-60WG5xcAtulUwR8eQ9fSEPXGC4YDGbbkQrs3ADjVnyU="
       },
       "cli": {
-        "asset": "t3-0.1.3-nightly.20261023.3566-linux-arm64.tar.gz",
-        "sha256": "b90b58db5851f04de3b2a2c4c3de1335ef6912664429e521634633b48e748751",
-        "hash": "sha256-uQtY21hR8E3jsqLEw94TNe9pEmZEKeUhY0YztI50h1E="
+        "asset": "t3-0.1.3-nightly.20261023.3579-linux-arm64.tar.gz",
+        "sha256": "27033014c4ef489442e4c7e108ffa417af25458dba019b954f698ddd4d4bb19e",
+        "hash": "sha256-JwMwFMTvSJRC5MfhCP+kF68lRY26AZuVT2mN3U1LsZ4="
       }
     },
     "aarch64-darwin": {
       "desktop": {
-        "asset": "T3-Code-0.1.3-nightly.20261023.3566-arm64.zip",
-        "sha256": "40aa70644fa5d99f4d7d7cb6f466596c43a9b95184779a5be2d4cad76b8333d9",
-        "hash": "sha256-QKpwZE+l2Z9NfXy29GZZbEOpuVGEd5pb4tTK12uDM9k="
+        "asset": "T3-Code-0.1.3-nightly.20261023.3579-arm64.zip",
+        "sha256": "0e04db4c88e6a9921d57141d766650d329e28e52231440b457d8b484370ec99f",
+        "hash": "sha256-DgTbTIjmqZIdVxQddmZQ0ynijlIjFEC0V9i0hDcOyZ8="
       },
       "cli": {
-        "asset": "t3-0.1.3-nightly.20261023.3566-darwin-arm64.tar.gz",
-        "sha256": "34d1c32727d8719d78387dd8449e23a476609085ee73de006378ecf3a1272a57",
-        "hash": "sha256-NNHDJyfYcZ14OH3YRJ4jpHZgkIXuc94AY3js86EnKlc="
+        "asset": "t3-0.1.3-nightly.20261023.3579-darwin-arm64.tar.gz",
+        "sha256": "2d16ad164cf4bb23464b800fcfd0dc884a03dbf1ece81e142356b71f92a0fdb0",
+        "hash": "sha256-LRatFkz0uyNGS4APz9DciEoD2/Hs6B4UI1a3H5Kg/bA="
       }
     }
   },
   "antigravity": {
     "x86_64-linux": {
       "platform": "linux-x64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.1-linux-x86_64.zip",
-      "sha256": "2e37012ceb2a5c7fc7309b6e6596234fb637ee3c62a5199f65d4cbe777871384",
-      "hash": "sha256-LjcBLOsqXH/HMJtuZZYjT7Y37jxipRmfZdTL53eHE4Q=",
-      "archiveBytes": 336170339,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.2-linux-x86_64.zip",
+      "sha256": "599e5c0fcd3d290d07c11350df8b1071225d03dedf0981a8840d9fd760584440",
+      "hash": "sha256-WZ5cD809KQ0HwRNQ34sQcSJdA97fCYGohA2f12BYREA=",
+      "archiveBytes": 336002048,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 930826753
+        "bytes": 925605630
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 131187512
+        "bytes": 133899064
       }
     },
     "aarch64-linux": {
       "platform": "linux-arm64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.1-linux-arm64.zip",
-      "sha256": "609336a1c97545487e3ddd55dbd153dc0f40f4e6534486cc1c5f4c0ebb85c2da",
-      "hash": "sha256-YJM2ocl1RUh+Pd1V29FT3A9A9OZTRIbMHF9MDruFwto=",
-      "archiveBytes": 321922507,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.2-linux-arm64.zip",
+      "sha256": "da141ec9108750619cc5b0a75686cf9da1236ed2bccec13cbff55cd97b57f002",
+      "hash": "sha256-2hQeyRCHUGGcxbCnVobPnaEjbtK8zsE8v/Vc2XtX8AI=",
+      "archiveBytes": 321919737,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 933416796
+        "bytes": 930638249
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 124895000
+        "bytes": 127481728
       }
     },
     "aarch64-darwin": {
       "platform": "darwin-arm64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.1-darwin-arm64.zip",
-      "sha256": "f9bdd68291ae78c38d2141e63bc86b84e6cc7b9f60f71652c68435a7943deb17",
-      "hash": "sha256-+b3WgpGueMONIUHmO8hrhObMe59g9xZSxoQ1p5Q96xc=",
-      "archiveBytes": 112737434,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.2-darwin-arm64.zip",
+      "sha256": "4b6577fb0d84a6490c866efac8061d6c6ef01210b61ead9a1eecb30a2c8c15bc",
+      "hash": "sha256-S2V3+w2EpkkMhm76yAYdbG7wEhC2Hq2aHuyzCiyMFbw=",
+      "archiveBytes": 114145063,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 280996576
+        "bytes": 282408608
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 120246928
+        "bytes": 122941328
       }
     }
   }

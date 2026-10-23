@@ -1,52 +1,52 @@
 {
-  "version": "1.4.1",
+  "version": "1.4.2",
   "platforms": {
     "x86_64-linux": {
       "platform": "linux-x64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.1-linux-x86_64.zip",
-      "sha256": "2e37012ceb2a5c7fc7309b6e6596234fb637ee3c62a5199f65d4cbe777871384",
-      "hash": "sha256-LjcBLOsqXH/HMJtuZZYjT7Y37jxipRmfZdTL53eHE4Q=",
-      "archiveBytes": 336170339,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.2-linux-x86_64.zip",
+      "sha256": "599e5c0fcd3d290d07c11350df8b1071225d03dedf0981a8840d9fd760584440",
+      "hash": "sha256-WZ5cD809KQ0HwRNQ34sQcSJdA97fCYGohA2f12BYREA=",
+      "archiveBytes": 336002048,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 930826753
+        "bytes": 925605630
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 131187512
+        "bytes": 133899064
       }
     },
     "aarch64-linux": {
       "platform": "linux-arm64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.1-linux-arm64.zip",
-      "sha256": "609336a1c97545487e3ddd55dbd153dc0f40f4e6534486cc1c5f4c0ebb85c2da",
-      "hash": "sha256-YJM2ocl1RUh+Pd1V29FT3A9A9OZTRIbMHF9MDruFwto=",
-      "archiveBytes": 321922507,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-1.4.2-linux-arm64.zip",
+      "sha256": "da141ec9108750619cc5b0a75686cf9da1236ed2bccec13cbff55cd97b57f002",
+      "hash": "sha256-2hQeyRCHUGGcxbCnVobPnaEjbtK8zsE8v/Vc2XtX8AI=",
+      "archiveBytes": 321919737,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 933416796
+        "bytes": 930638249
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 124895000
+        "bytes": 127481728
       }
     },
     "aarch64-darwin": {
       "platform": "darwin-arm64",
-      "version": "1.4.1",
-      "url": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.1-darwin-arm64.zip",
-      "sha256": "f9bdd68291ae78c38d2141e63bc86b84e6cc7b9f60f71652c68435a7943deb17",
-      "hash": "sha256-+b3WgpGueMONIUHmO8hrhObMe59g9xZSxoQ1p5Q96xc=",
-      "archiveBytes": 112737434,
+      "version": "1.4.2",
+      "url": "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-1.4.2-darwin-arm64.zip",
+      "sha256": "4b6577fb0d84a6490c866efac8061d6c6ef01210b61ead9a1eecb30a2c8c15bc",
+      "hash": "sha256-S2V3+w2EpkkMhm76yAYdbG7wEhC2Hq2aHuyzCiyMFbw=",
+      "archiveBytes": 114145063,
       "executable": {
         "name": "agy_acp_server.par",
-        "bytes": 280996576
+        "bytes": 282408608
       },
       "harness": {
         "name": "localharness_external",
-        "bytes": 120246928
+        "bytes": 122941328
       }
     }
   }
