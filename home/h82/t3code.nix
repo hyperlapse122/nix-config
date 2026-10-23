@@ -76,10 +76,22 @@ let
       # retire only top-level keys, so the launch arguments an earlier
       # generation wrote, which carried the old instructions, are overwritten
       # with nothing.
+      #
+      # T3 Code gives a Codex instance its own home only when its config names
+      # one: a homePath, a shadowHomePath, or the "managed" setupMode. The
+      # merge keeps every field not declared here, so one set in the app would
+      # survive every apply. Declaring an empty homePath and the non-managed
+      # "existing" setupMode keeps the sessions on ~/.codex, where the plugin
+      # sync and home/h82/agents/skills.nix install. shadowHomePath stays
+      # undeclared: a shadow home shares skills and plugins with ~/.codex.
       codex = {
         driver = "codex";
         enabled = true;
-        config.launchArgs = "";
+        config = {
+          homePath = "";
+          launchArgs = "";
+          setupMode = "existing";
+        };
       };
       # T3 Code enables its built-in Grok instance unless one is declared.
       grok = {

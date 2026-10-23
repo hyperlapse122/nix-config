@@ -34,8 +34,10 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pkgs.writableTmpDirAsHomeHook
   ];
 
-  # The update flags hold under any CODEX_HOME, including the per-provider
-  # homes T3 Code sets, whose config.toml never receives the declared settings.
+  # The update flags hold under any CODEX_HOME, including a home a T3 Code
+  # instance gets when it declares one, whose config.toml never receives the
+  # declared settings. The wrapper keeps them although home/h82/t3code.nix
+  # declares no such home, because a user can still declare one.
   # daemon_auto_start would install and update a background copy of Codex
   # outside the store; nixpkgs patches it off, which a prebuilt pin cannot.
   # Codex spawns codex-code-mode-host from beside its own executable, never
