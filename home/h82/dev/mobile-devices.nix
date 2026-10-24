@@ -59,10 +59,6 @@ in
     );
     default = [
       {
-        platform = "ios";
-        model = "iPhone 18 Pro";
-      }
-      {
         platform = "android";
         model = "pixel_10_pro";
       }

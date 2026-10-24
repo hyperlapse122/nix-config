@@ -93,7 +93,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
      switch --flake ".#$host-bootstrap"
    ```
 
-   This apply also installs Homebrew, the casks, Xcode, and KakaoTalk, downloads an iOS Simulator runtime, creates the Podman machine, and creates the declared mobile devices, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
+   This apply also installs Homebrew, the casks, Xcode, and KakaoTalk, creates the Podman machine, and creates the declared Android Virtual Device, so it takes a while and needs network. It writes `/etc/nix-config-host`, which records the host from now on, and installs GPG, the card tools, `install-user-age-identity`, and `nr`. Open a new terminal afterwards, so they are on `PATH`.
 
 8. Give the terminal you apply from the App Management permission, in System Settings > Privacy & Security > App Management. From the second apply on, Home Manager updates the app bundles it copied into `~/Applications/Home Manager Apps`, and its `copyApps` check aborts the activation when the terminal cannot modify them. Apply from a local GUI session, not over SSH: over SSH, the same check aborts unless remote users have Full Disk Access.
 
@@ -220,13 +220,13 @@ brew uninstall --zap orbstack
 
 ### Mobile devices
 
-The option `my.mobileDevices`, in `home/h82/dev/mobile-devices.nix`, lists the iOS Simulators and Android Virtual Devices (AVDs) a Mac gets. The default list is one `iPhone 18 Pro` and one `pixel_10_pro`. Each entry has three fields:
+The option `my.mobileDevices`, in `home/h82/dev/mobile-devices.nix`, lists the iOS Simulators and Android Virtual Devices (AVDs) a Mac gets. The default list contains only one `pixel_10_pro` AVD. iOS simulators and runtimes are left to Xcode unless you explicitly add an iOS entry. Previously created simulators, including `iPhone 18 Pro (iOS 27.0)`, remain; seeing them after an apply is expected. Each entry has three fields:
 
 - `platform`: `"ios"` or `"android"`.
 - `model`: for iOS, a device type name from `xcrun simctl list devicetypes`, such as `iPhone 18 Pro`; for Android, a device id from `avdmanager list device -c`, such as `pixel_10_pro`.
 - `version`: optional. For iOS, an iOS version such as `"27.0"`; left out, it is the newest installed iOS Simulator runtime that supports the model, which is usually the newest SDK's; a runtime that supports only some models, such as Xcode 27.1's iOS 27.1 runtime, which supports only the iPhone Duo, is passed over for the others. When no installed runtime supports the model, the device is skipped with a message: install an older iOS Simulator runtime in Xcode's Components settings, or set `version`, and apply again. For Android, a pinned API key from `packages/android-sdk-repo.json`, such as `"36"` or `"37.0"`; left out, it is the newest pinned API level.
 
-Every apply, bootstrap included, runs `mobile-devices` as your user and creates each listed device that does not exist yet. The name carries the version: an iOS Simulator is named `<model> (iOS <version>)`, such as `iPhone 18 Pro (iOS 27.0)`, with the runtime's major and minor version when the entry gives none, and an AVD `<model>_API_<api>`, such as `pixel_10_pro_API_37.0`. A device with that name is left as it is. When the newest iOS Simulator runtime is missing, the apply downloads it first. It downloads no other iOS version, so an entry pinned to an older iOS version whose runtime is not installed is skipped with a message. A device that cannot be created is reported and the apply continues.
+Every apply, bootstrap included, runs `mobile-devices` as your user and creates each listed device that does not exist yet. The name carries the version: an iOS Simulator is named `<model> (iOS <version>)`, such as `iPhone 18 Pro (iOS 27.0)`, with the runtime's major and minor version when the entry gives none, and an AVD `<model>_API_<api>`, such as `pixel_10_pro_API_37.0`. A device with that name is left as it is. With an explicit iOS entry targeting the newest SDK, the apply downloads that SDK's runtime first if it is missing. It downloads no other iOS version, so an entry pinned to an older iOS version whose runtime is not installed is skipped with a message. A device that cannot be created is reported and the apply continues.
 
 To add a device, add an entry to the option's `default` list in `home/h82/dev/mobile-devices.nix` and apply. These two entries add an iPad on the newest iOS and a Pixel on API 36:
 
@@ -242,7 +242,7 @@ To add a device, add an entry to the option's `default` list in `home/h82/dev/mo
 }
 ```
 
-The apply never deletes, erases, or renames a device. A device you remove from the list, or one you created by hand, stays. When an App Store upgrade of Xcode brings a newer iOS runtime, or the SDK pin gains a newer API level, the next apply creates the listed devices again on the new version, and the old devices and runtimes stay. Each iOS runtime takes about 8 GB. Remove what you no longer need by hand:
+The apply never deletes, erases, or renames a device. A device you remove from the list, or one you created by hand, stays. For explicit unversioned iOS entries, an App Store upgrade of Xcode can cause the next apply to create the listed devices on a newer compatible runtime; existing devices and runtimes stay. Likewise, an unversioned Android entry gets a new AVD when the SDK pin gains a newer API level. Each iOS runtime takes about 8 GB. Remove what you no longer need by hand:
 
 ```sh
 xcrun simctl list devices            # names and UDIDs
