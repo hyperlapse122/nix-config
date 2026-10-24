@@ -239,6 +239,41 @@ let
             contract = {
               file = merge.file;
               declared = merge.declared;
+            }
+            // lib.optionalAttrs (merge.attr == "claudeSettings") {
+              seed = {
+                activationUnmanaged = "keep";
+                advisorModel = "retired";
+                autoCompactWindow = "retired";
+                effortLevel = "retired";
+                model = "divergent";
+                enabledPlugins.custom = false;
+                worktree.custom = "keep";
+                modelSettings = {
+                  claude-opus-5-5.effortLevel = "medium";
+                  custom.effortLevel = "high";
+                };
+              };
+              expected = {
+                activationUnmanaged = "keep";
+                model = "opus[1m]";
+                language = "korean";
+                theme = "auto";
+                preferredNotifChannel = "ghostty";
+                agentPushNotifEnabled = false;
+                inputNeededNotifEnabled = false;
+                cleanupPeriodDays = 30;
+                disableClaudeAiConnectors = true;
+                enabledPlugins = {
+                  custom = false;
+                  "cc-plugin-you-should-know@builtin" = true;
+                };
+                worktree = {
+                  custom = "keep";
+                  baseRef = "head";
+                };
+                modelSettings.custom.effortLevel = "high";
+              };
             };
           }}
           # Read the flags the merger is actually invoked with, not merely whether

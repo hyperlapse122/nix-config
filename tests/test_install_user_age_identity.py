@@ -28,7 +28,6 @@ class InstallUserIdentityTests(unittest.TestCase):
         self.home = Path(self.directory.name) / "home"
         self.home.mkdir()
         self.keygen = Path(self.directory.name) / "age-keygen"
-        # Two parseable identities derive distinct recipients; corrupt bytes fail parsing.
         self.keygen.write_text(
             f"#!{sys.executable}\n"
             "import pathlib, sys\n"

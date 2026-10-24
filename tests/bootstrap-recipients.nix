@@ -12,8 +12,6 @@
     directory.
   - Each secrets/bootstrap/<host>/ directory holds both age-key.asc and
     recipient.txt.
-  - Each recorded recipient is valid and is an exact age recipient in the
-    first .sops.yaml creation rule applicable to secrets/tokens.yaml.
 
   secrets/tokens.yaml is encrypted to the recipients .sops.yaml names, so a
   host whose recipient is missing there installs a valid-looking identity and
@@ -108,7 +106,6 @@ pkgs.runCommand "bootstrap-recipients-tests"
     def permitted(recipient, config):
         if not re.fullmatch(r"age1[023456789acdefghjklmnpqrstuvwxyz]{58}", recipient):
             return False
-        # Validate the checksum with the real age parser, using empty fake data.
         valid = subprocess.run(["age", "--encrypt", "--recipient", recipient],
                                input=b"", stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL).returncode == 0

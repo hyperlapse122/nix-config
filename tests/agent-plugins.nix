@@ -24,11 +24,6 @@
     is ordered so a refusal cannot strand installPackages, hands the helper the
     pinned source rather than some other path, and names the version segment
     the lock actually resolved.
-  - The complete activation block runs with a scratch home and a recording
-    synchronizer. Only Pi is forwarded to the real synchronizer, so no signed-in
-    agent CLI runs. Its settings and exact source link are checked, and each
-    harness's refusal must fail the complete activation block. The dry-run
-    branch must pass --dry-run to every row.
   - The Codex row runs its sync under `env -u CODEX_HOME` and the script sets
     no CODEX_HOME, so the row installs into ~/.codex, the home T3 Code's
     Codex sessions run on, even when the apply inherits a CODEX_HOME.

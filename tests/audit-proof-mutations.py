@@ -2,8 +2,8 @@
 """Temporary U9 Linux evidence venue; remove after recording CI evidence.
 
 Every row drives the real owner, not a replay of an extracted assertion.
-Only scratch archives have an index. JSON lines and full owner logs go to CI
-stdout so the parent can preserve evidence without an artifact upload action.
+Only scratch archives have an index. Structured records and full command
+transcripts are retained together in the uploaded CI evidence artifact.
 """
 import argparse
 from dataclasses import asdict, dataclass
@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 import platform
 import re
+import selectors
+import sys
+from types import SimpleNamespace
 import subprocess
 import tarfile
 import tempfile
@@ -37,8 +40,6 @@ def mutation(id, finding, owner, path, before, after, diagnostic):
 
 AGENTS = 'home/h82/agents/'
 CASES = []
-# Echo leaves the declaration, destination, ordering and helper path intact,
-# while preventing the actual merge. Each independently owned declaration runs.
 for id, owner, module, label in [
     ('claude-settings', 'claude', 'claude', 'Claude Code'),
     ('claude-global', 'claude', 'claude', 'Claude Code'),
@@ -46,12 +47,11 @@ for id, owner, module, label in [
     ('antigravity-settings', 'gemini', 'gemini', 'Antigravity CLI'),
     ('tokscale-settings', 'tokscale', 'tokscale', 'Tokscale'),
 ]:
-    # Claude's two blocks share a label; distinguish their actual destinations.
-    before = '${merger} \\\n      --label ' + ("'" + label + "'" if ' ' in label else label)
+    before = '${merger} \\\n        --label ' + ("'" + label + "'" if ' ' in label else label)
     if module == 'claude':
-        before += ' ' + chr(92) + '\n      --settings ${config.home.homeDirectory}/' + ('.claude.json' if id == 'claude-global' else '.claude/settings.json')
+        before += ' ' + chr(92) + '\n        --settings ${config.home.homeDirectory}/' + ('.claude.json' if id == 'claude-global' else '.claude/settings.json')
     if module == 'codex':
-        before = '${merger} ' + chr(92) + '\n      --format toml'
+        before = '${merger} ' + chr(92) + '\n        --format toml'
     CASES.append(mutation(id, 'F1', owner, AGENTS + module + '.nix', before,
                           'echo ' + before, 'activation did not execute exactly one merger'))
 CASES += [
@@ -67,7 +67,6 @@ CASES += [
              '  home.file.".gemini/settings.json".target = ".gemini/audit-misplaced.json";\n  home.file.".gemini/settings.json".text',
              'missing or incorrect delivered Gemini settings'),
 ]
-# Standalone-only regressions must not be masked by the NixOS user matrix.
 for id, owner, module, before, diagnostic in [
     ('standalone-codex', 'codex-settings', 'codex', '${merger} \\', 'activation did not execute exactly one merger'),
     ('standalone-antigravity', 'gemini', 'gemini', '${merger} \\', 'activation did not execute exactly one merger'),
@@ -114,7 +113,6 @@ CASES += [
              'if false && [ ! -e "$AUTH_FILE" ] && [ ! -L "$AUTH_FILE" ]; then',
              'containersAuth did not create auth.json'),
 ]
-# Delivery mutations affect the exact entries Home Manager already declares.
 for id, owner, path, anchor, field, diagnostic in [
     ('gpg', 'gpg-agent-no-cache', 'home/h82/security/gpg.nix', '  programs.gpg = {',
      'home.file."${config.programs.gpg.homedir}/gpg-agent.conf"', 'gpg-agent.conf no longer sets default-cache-ttl 0'),
@@ -149,7 +147,7 @@ CASES += [
              'org.audit.missing.icontasks|org.audit.missing.taskmanager)',
              'taskbar activation did not reconcile'),
     mutation('vscodium-echo', 'F20', 'vscodium', 'home/h82/dev/vscodium.nix',
-             '    ${merger} \\', '    echo ${merger} \\',
+             '      ${merger} \\', '      echo ${merger} \\',
              'merging the seeded settings file lost a declared value or a key VSCodium wrote'),
     mutation('tailscale-existing-contact', 'F21', 'vmChecks.tailscale-provisioning', 'scripts/tailscale-dedup-device',
              'if [ -e "$TAILSCALE_STATE_FILE" ]; then',
@@ -167,28 +165,98 @@ CASES += [
              '"fs.inotify.max_user_watches" = 524288;', '"fs.inotify.max_user_watches" = 524289;',
              "missing the line 'fs.inotify.max_user_watches=524288'"),
 ]
-# One row per owner keeps a finite list and shares its clean closure locally.
+CASES += [
+    mutation('settings-dry-run', 'review-dry-run', 'gemini', AGENTS + 'gemini.nix',
+             '    if [[ ! -v DRY_RUN ]]; then', '    if true; then',
+             'settings dry-run invoked a writing helper'),
+    mutation('vscodium-dry-run', 'review-dry-run', 'vscodium', 'home/h82/dev/vscodium.nix',
+             '    if [[ ! -v DRY_RUN ]]; then', '    if true; then',
+             'settings dry-run changed protected bytes'),
+    mutation('plugin-unset-variable', 'review-shell', 'agent-plugins', AGENTS + 'agent-plugins.nix',
+             'if [[ -v DRY_RUN ]]; then', 'if [ -n "$DRY_RUN" ]; then',
+             r'block[.]sh:.*DRY_RUN:'),
+    mutation('auth-embedded-credential', 'review-credentials', 'podman-containers', 'home/h82/dev/containers.nix',
+             '          AUTH_DIR="$HOME/.config/containers"',
+             '          AUDIT_PASSWORD="fake-embedded-credential"\n          AUTH_DIR="$HOME/.config/containers"',
+             'containersAuth activation embeds credential material'),
+]
 GROUPS = sorted({case.owner for case in CASES})
 NIX = ['nix', '--extra-experimental-features', 'nix-command flakes']
 
 
 def emit(**record):
-    print('AUDIT_PROOF_JSON ' + json.dumps(record, sort_keys=True), flush=True)
+    encoded = json.dumps(record, sort_keys=True)
+    if LOG_DIR is not None:
+        LOG_DIR.mkdir(exist_ok=True, parents=True)
+        with (LOG_DIR / 'evidence.jsonl').open('a') as stream:
+            stream.write(encoded + '\n')
+    print('AUDIT_PROOF_JSON ' + encoded, flush=True)
 
 
-def command(args, cwd, timeout=5400):
+LOG_DIR = None
+
+
+def command(args, cwd, timeout=5400, capture=False):
     start = time.monotonic()
-    result = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, timeout=timeout)
-    emit(command=args, exit=result.returncode, seconds=round(time.monotonic() - start, 2))
-    print(result.stdout, flush=True)
-    print(result.stderr, flush=True)
-    return result
+    directory = LOG_DIR or Path(tempfile.mkdtemp(prefix='audit-transcripts-'))
+    directory.mkdir(exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix='command-', dir=directory)
+    os.close(descriptor)
+    transcript = Path(name)
+    captured = {"stdout": bytearray(), "stderr": bytearray()}
+    process = subprocess.Popen(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        with transcript.open('wb') as log, selectors.DefaultSelector() as ready:
+            for name, pipe in (("stdout", process.stdout), ("stderr", process.stderr)):
+                ready.register(pipe, selectors.EVENT_READ, name)
+            while ready.get_map():
+                remaining = timeout - (time.monotonic() - start)
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, timeout)
+                for event, _ in ready.select(min(remaining, 1)):
+                    chunk = os.read(event.fd, 65536)
+                    if not chunk:
+                        ready.unregister(event.fileobj)
+                        continue
+                    log.write(chunk)
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+                    if capture:
+                        data = captured[event.data]
+                        if len(data) + len(chunk) > 65536:
+                            raise RuntimeError('bounded command capture exceeded 64 KiB')
+                        data.extend(chunk)
+            process.wait(timeout=max(0.001, timeout - (time.monotonic() - start)))
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        process.stdout.close()
+        process.stderr.close()
+    emit(command=args, exit=process.returncode, seconds=round(time.monotonic() - start, 2),
+         transcript=transcript.name)
+    return SimpleNamespace(returncode=process.returncode, transcript=transcript,
+                           stdout=captured['stdout'].decode(), stderr=captured['stderr'].decode())
+
+
+def diagnostic_evidence(path, pattern):
+    digest = hashlib.sha256()
+    tail = ''
+    excerpt = None
+    with path.open('rb') as stream:
+        while chunk := stream.read(65536):
+            digest.update(chunk)
+            text = tail + chunk.decode(errors='replace')
+            match = re.search(pattern, text)
+            if match and excerpt is None:
+                excerpt = text[max(0, match.start() - 256):match.end() + 256]
+            tail = text[-8192:]
+    return excerpt, digest.hexdigest()
 
 
 def evaluate(root, owner):
     attr = 'legacyPackages.x86_64-linux.' + owner if owner.startswith('vmChecks.') else 'checks.x86_64-linux.' + owner
-    result = command(NIX + ['eval', '--raw', 'path:' + str(root) + '#' + attr + '.drvPath'], root, 600)
+    result = command(NIX + ['eval', '--raw', 'path:' + str(root) + '#' + attr + '.drvPath'], root, 600, capture=True)
     if result.returncode:
         raise RuntimeError('owner evaluation failed; no caught evidence')
     drv = result.stdout.strip()
@@ -232,13 +300,13 @@ def run(root, group, revision):
             if drv == baseline:
                 raise RuntimeError('mutation did not change owner derivation')
             result = build(root, drv)
-            # Full log of the *owner*, not its failed dependency or eval stderr.
             log = command(NIX + ['log', drv], root, 120)
+            excerpt, digest = diagnostic_evidence(log.transcript, case.diagnostic)
             record.update(mutant_exit=result.returncode, owner_log_exit=log.returncode,
-                          owner_log=log.stdout + log.stderr)
-            if result.returncode == 0 or log.returncode != 0 or not re.search(case.diagnostic, log.stdout + log.stderr):
+                          owner_log_excerpt=excerpt, owner_log_sha256=digest,
+                          owner_log_transcript=log.transcript.name)
+            if result.returncode == 0 or log.returncode != 0 or excerpt is None:
                 raise RuntimeError('mutation not caught by intended owner builder diagnostic')
-            # These messages only occur after the revised assertions are reached.
             record['caught'] = True
         except (RuntimeError, subprocess.TimeoutExpired) as error:
             problem = str(error)
@@ -276,17 +344,18 @@ def main():
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
     archive = subprocess.check_output(['git', 'archive', revision], cwd=source)
     with tempfile.TemporaryDirectory(prefix='audit-proof-') as directory:
-        root = Path(directory).resolve()
+        global LOG_DIR
+        base = Path(directory).resolve()
+        LOG_DIR = Path(os.environ['AUDIT_PROOF_LOG_DIR']).resolve() if 'AUDIT_PROOF_LOG_DIR' in os.environ else base / 'transcripts'
+        root = base / 'source'
+        root.mkdir()
         with tarfile.open(fileobj=io.BytesIO(archive)) as stream:
             stream.extractall(root, filter='data')
         if (root / '.git').exists():
             raise RuntimeError('archive unexpectedly has .git')
-        # An independent index, never a copied linked-worktree .git pointer.
         for git_args in (['git', 'init', '--initial-branch=audit-proof'], ['git', 'add', '--all']):
             if command(git_args, root, 30).returncode:
                 raise RuntimeError('scratch index initialization failed')
-        # path: intentionally includes the temporary runner without relying on
-        # shared-worktree staging, and every source mutation is read afresh.
         run(root, args.case, revision)
 
 

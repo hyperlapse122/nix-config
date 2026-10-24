@@ -1611,7 +1611,7 @@
               {
                 nativeBuildInputs = [
                   pkgs.gnugrep
-                  pkgs.python3
+                  (pkgs.python3.withPackages (p: [ p.pyyaml ]))
                   pkgs.nix
                 ];
               }

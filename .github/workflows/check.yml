@@ -297,14 +297,12 @@ jobs:
           nix build --no-link --print-build-logs "${args[@]}"
 
   audit-proof-names:
-    # Temporary U9 R3 evidence venue. Remove both jobs and the runner after
-    # preserving per-class JSON/log evidence; normal clean-head jobs stay above.
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       owners: ${{ steps.list.outputs.owners }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: List finite mutation owners
         id: list
         run: |
@@ -321,7 +319,7 @@ jobs:
       matrix:
         owner: ${{ fromJSON(needs.audit-proof-names.outputs.owners) }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - name: Make room for Linux mutation closures
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
@@ -335,4 +333,12 @@ jobs:
       - name: Record real Linux owner mutation evidence
         env:
           OWNER: ${{ matrix.owner }}
+          AUDIT_PROOF_LOG_DIR: ${{ runner.temp }}/audit-proof
         run: python3 -u tests/audit-proof-mutations.py --case "$OWNER"
+      - name: Preserve complete mutation transcripts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: audit-proof-${{ matrix.owner }}
+          path: ${{ runner.temp }}/audit-proof/
+          if-no-files-found: error

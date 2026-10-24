@@ -125,7 +125,7 @@ in
 
   home.sessionVariables = environmentTier;
 
-  # Unguarded on purpose, unlike the KDE activation blocks. Those test their
+  # No executable-existence guard, unlike the KDE activation blocks. Those test their
   # tool with `[ -x ]` because it comes from a package that may be absent; this
   # merger is a store path built from this module, so the test could only ever
   # be true -- and if it somehow were not, the false branch would skip the
@@ -138,18 +138,22 @@ in
   # generation is not linked and packages are missing. A file another program
   # owns should not be able to do that.
   home.activation.claudeSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label 'Claude Code' \
-      --settings ${config.home.homeDirectory}/.claude/settings.json \
-      --declared ${declared}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label 'Claude Code' \
+        --settings ${config.home.homeDirectory}/.claude/settings.json \
+        --declared ${declared}
+    fi
   '';
 
   # Its own entry, so each merge names exactly one file and a refusal reports
-  # which one.  Ordered and left unguarded as claudeSettings is, above.
+  # which one. It shares claudeSettings' ordering and dry-run behavior.
   home.activation.claudeGlobalConfig = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label 'Claude Code' \
-      --settings ${config.home.homeDirectory}/.claude.json \
-      --declared ${declaredGlobalConfig}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label 'Claude Code' \
+        --settings ${config.home.homeDirectory}/.claude.json \
+        --declared ${declaredGlobalConfig}
+    fi
   '';
 }

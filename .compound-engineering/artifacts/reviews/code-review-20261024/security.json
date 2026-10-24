@@ -1,0 +1,9 @@
+{
+  "reviewer": "security",
+  "findings": [],
+  "residual_risks": [],
+  "testing_gaps": [
+    "Matching-platform execution remains pending: this read-only review did not run the Linux bootstrap-recipients, installed pinentry-card, gpg-agent-no-cache, podman-containers, or tailscale-provisioning owners and their mutation controls. Linux/KVM is unavailable here; the new audit-proof-mutations CI venue must provide baseline-pass, intended-mutant-failure, and restored-control evidence before these proof repairs are considered verified.",
+    "The new Darwin containersAuth and Codex activation effect checks were inspected but not executed during this review; obtain successful current-head darwin-outputs evidence on a macOS builder."
+  ]
+}

@@ -1,0 +1,93 @@
+[
+  {
+    "reviewer": "correctness",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-correctness-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "project-standards",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-project-standards-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "testing",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-testing-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "maintainability",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-maintainability-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "learnings-researcher",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-learnings-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "security",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-security-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  },
+  {
+    "reviewer": "reliability",
+    "taskId": "node:delegated-task:command%3Amcp%3A5bde532f-b226-4032-9896-507ccf44b743%3Adelegate-task%3Aaudit-review-reliability-r1",
+    "status": "completed",
+    "providerInstanceId": "codex",
+    "model": "gpt-6.1-sol",
+    "options": [
+      {
+        "id": "reasoningEffort",
+        "value": "low"
+      }
+    ]
+  }
+]

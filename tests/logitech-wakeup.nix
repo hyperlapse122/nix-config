@@ -3,15 +3,6 @@
 
     import ./tests/logitech-wakeup.nix { inherit pkgs self; }
 
-  Asserts that the materialized udev rules directory contains the udev
-  rule that disables USB remote wakeup for the Logitech Unifying and Logi Bolt
-  wireless receivers.
-
-  Verifies:
-  - every configuration `tests/lib/configurations.nix` yields, production and
-    bootstrap alike, installs the exact uncommented rule line at the path
-    udev consumes. Disabled or retargeted declarations do not count.
-
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
 */

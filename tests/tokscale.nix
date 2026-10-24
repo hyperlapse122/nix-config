@@ -21,9 +21,6 @@
     packaged merger without swallowing its exit status, points it at
     ~/.config/tokscale/settings.json, and passes a declared document equal to
     the one stated here.
-  - running that full activation block against a
-    seeded, divergent settings file reasserts the five declared values and
-    leaves every other key, nested siblings included, as it was.
   - no Home Manager file targets .config/tokscale/settings.json.
   - .config/tokscale/custom-pricing.json parses to the dotfiles document.
   - a production configuration's sops manifest carries cli-auth/tokscale_token

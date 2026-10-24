@@ -263,8 +263,6 @@ class ProvisionTests(unittest.TestCase):
         password = self.wallet.entries[desktop_ssh.fingerprint(declared)]
         mismatched = Ed25519PrivateKey.generate().public_key()
         self.wallet.entries[desktop_ssh.fingerprint(mismatched)] = password
-        # This password decrypts the existing key, so rejection must compare
-        # the decrypted identity with the independently declared public key.
         with self.assertRaisesRegex(desktop_ssh.WorkingKeyUnavailable, "do not match"):
             desktop_ssh.load_working_key(self.key_file, mismatched, self.wallet)
         self.wallet.entries[desktop_ssh.fingerprint(declared)] = "wrong-password"

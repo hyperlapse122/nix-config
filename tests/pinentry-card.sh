@@ -279,8 +279,6 @@ yubikey5_desc() {
   printf 'Please unlock the card%%0A%%0A\x1eNumber:\x1f 14 963 605%%0AHolder: Jo Doe'
 }
 
-# Answered grammar table: preserve every independent SETDESC byte layout,
-# including the no-holder form formerly used only by the encoding scenario.
 answered_labels=(yubikey5 older-firmware non-yubikey invalid-utf8-holder no-holder alignment)
 answered_descs=(
   "$(yubikey5_desc)"
@@ -486,9 +484,6 @@ run_wrapper "$scratch/functional-fallback.py" "$input" "$out" "$err" -u WAYLAND_
 [[ ! -s "$fallback_log" ]] || fail '19 display-fallback: the fallback delegate ran despite DISPLAY being set'
 pass '19: the Linux DISPLAY/WAYLAND_DISPLAY fallback picks the right delegate'
 
-# The raw relay fixture above deliberately substitutes fake delegates. This
-# separate boundary starts both installed entry points through their real main
-# function, intercepting process creation before any real dialog can open.
 if [[ $# -eq 5 ]]; then
   "$python3_bin" - "$2" "$3" "$4" "$5" "$scratch" <<'PYINSTALLED'
 import os

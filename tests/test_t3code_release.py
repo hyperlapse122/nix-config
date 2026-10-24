@@ -1,9 +1,3 @@
-"""Drive t3code-release against fake GitHub release-list fixtures.
-
-The helper's network calls go through an overridable command, so these tests
-feed it release lists instead of network calls.
-"""
-
 import base64
 import json
 import os
@@ -159,7 +153,6 @@ def sri(hex_digest):
     return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
 
 
-# Logs each call's stdin and arguments as one JSON line.
 FAKE_FETCH = """#!/usr/bin/env python3
 import json, os, sys
 with open(os.environ['FAKE_STDIN_LOG'], 'a') as f:
@@ -368,7 +361,6 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.assertNotIn(FAKE_TOKEN, result.stdout + result.stderr)
 
     def test_preserves_existing_antigravity_section_on_nightly_bump(self):
-        # The ACP updater owns the runtime identity; a nightly bump keeps it.
         custom_antigravity = {
             "x86_64-linux": {"version": "release-N", "sha256": "1234"},
         }

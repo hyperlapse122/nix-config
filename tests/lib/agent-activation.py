@@ -1,8 +1,3 @@
-"""Execute complete agent activation blocks with scratch destinations.
-
-Only the external helper boundary is substituted. Recording observes argument
-boundaries and refusal propagation; settings also exercise the packaged merger.
-"""
 import json
 import os
 from pathlib import Path
@@ -11,6 +6,17 @@ import shlex
 import subprocess
 import sys
 import tempfile
+
+def assert_types(actual, expected):
+    assert type(actual) is type(expected), 'activation changed consumer value type'
+    if isinstance(expected, dict):
+        for key, value in expected.items():
+            assert_types(actual[key], value)
+    elif isinstance(expected, list):
+        assert len(actual) == len(expected)
+        for value, want in zip(actual, expected):
+            assert_types(value, want)
+
 
 mode, script_path, original_home, contract_path, bash = sys.argv[1:]
 script = Path(script_path).read_text()
@@ -42,8 +48,6 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
 ''')
     recorder.chmod(0o755)
     redirected = redirected.replace(helper, shlex.quote(str(recorder)))
-    # All executable store paths in plugin blocks are helper arguments; the
-    # replaced synchronizer never invokes a signed-in agent CLI.
     block = root / 'block.sh'
     block.write_text(redirected)
     env = dict(os.environ, HOME=str(home), ACTIVATION_LOG=str(log),
@@ -58,7 +62,7 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
             current['FAIL_HARNESS'] = fail
         if dry:
             current['DRY_RUN'] = '1'
-        result = subprocess.run([bash, '-e', str(block)], env=current,
+        result = subprocess.run([bash, '-euo', 'pipefail', str(block)], env=current, cwd=home,
                                 capture_output=True, text=True)
         calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return result, calls
@@ -84,6 +88,13 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
             target.write_text(tomlkit.dumps(seed))
         else:
             target.write_text(json.dumps(seed))
+        seeded_bytes = target.read_bytes()
+        seeded_files = sorted(str(path.relative_to(home)) for path in home.rglob('*'))
+        result, calls = run(dry=True)
+        assert result.returncode == 0, result.stderr
+        assert not calls, 'settings dry-run invoked a writing helper'
+        assert target.read_bytes() == seeded_bytes, 'settings dry-run changed protected bytes'
+        assert sorted(str(path.relative_to(home)) for path in home.rglob('*')) == seeded_files, 'settings dry-run created state'
         result, calls = run()
         assert result.returncode == 0, result.stderr
         assert len(calls) == 1, 'activation did not execute exactly one merger'
@@ -94,15 +105,18 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
             assert args[args.index('--format') + 1] == 'toml'
         actual = tomlkit.parse(target.read_text()).unwrap() if toml else json.loads(target.read_text())
         if 'expected' in contract:
+            assert_types(actual, contract['expected'])
             assert actual == contract['expected'], 'activation did not preserve the seeded document'
         else:
             assert actual['activationUnmanaged'] == 'keep', 'activation lost unmanaged state'
         for key, value in declared.get('set', {}).items():
+            assert_types(actual[key], value)
             assert actual[key] == value, 'activation did not reassert ' + key
         for row in declared.get('setPaths', []):
             value = actual
             for key in row['path']:
                 value = value[key]
+            assert_types(value, row['value'])
             assert value == row['value'], 'activation did not reassert nested setting'
         for key in declared.get('remove', []):
             assert key not in actual, 'activation did not retire ' + key

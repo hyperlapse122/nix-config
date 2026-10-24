@@ -9,7 +9,6 @@
 
   Verifies, on every configuration `tests/lib/configurations.nix` yields,
   production and bootstrap alike:
-  - sysctl.d/60-nixos.conf exists at its consumer path in the built /etc.
   - the rendered file carries the inotify limits and IPv4/IPv6 forwarding
     lines exactly, matched as whole lines so a longer value cannot satisfy
     the assertion.

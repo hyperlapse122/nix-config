@@ -381,12 +381,16 @@ let
       assert rewritten != body and target not in rewritten
       open(output, "w").write(rewritten)
         ' "$settingsArg" "$seeded" "$redirected" "$script"
+        if ! DRY_RUN=1 ${pkgs.bash}/bin/bash -euo pipefail "$redirected"; then
+          fail ${host'}": settings dry-run failed"
+        elif ! cmp -s "$seeded" ${seededSettings}; then
+          fail ${host'}": settings dry-run changed protected bytes"
+        fi
         if ! ${pkgs.bash}/bin/bash -eu "$redirected"; then
           fail ${host'}": the activation merger refused the seeded settings file"
         elif ! python3 ${checkMerged} "$seeded"; then
           fail ${host'}": merging the seeded settings file lost a declared value or a key VSCodium wrote"
         fi
-        # A directory is refused by the real merger; activation must propagate it.
         rm -f "$seeded"
         mkdir "$seeded"
         if ${pkgs.bash}/bin/bash -eu "$redirected"; then

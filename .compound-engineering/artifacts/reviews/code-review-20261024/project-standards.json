@@ -1,0 +1,8 @@
+{
+  "reviewer": "project-standards",
+  "findings": [],
+  "residual_risks": [],
+  "testing_gaps": [
+    "Matching-platform execution remains pending for the changed x86_64-linux checks and tests/audit-proof-mutations.py owner matrix, including vmChecks.tailscale-provisioning with KVM. Source review and native replays cannot establish that these owner builders pass or that every mutation fails at its intended diagnostic; require current-revision Linux/KVM evidence before readiness."
+  ]
+}

@@ -74,18 +74,15 @@ job_block() {
   ' "$file"
 }
 
-# Read only a job-level scalar, including YAML quoting, never a step condition.
 job_condition() {
   job_block "$1" "$file" | python3 -c '
-import json, sys
-lines = [line[8:].strip() for line in sys.stdin if line.startswith("    if:")]
-if len(lines) != 1:
+import sys, yaml
+text = sys.stdin.read()
+if sum(line.startswith("    if:") for line in text.splitlines()) != 1:
     sys.exit(0)
-value = lines[0]
-if value.startswith(chr(34)):
-    value = json.loads(value)
-elif value.startswith(chr(39)):
-    value = value[1:-1].replace(chr(39) * 2, chr(39))
+value = yaml.safe_load(text).get("if", "")
+if not isinstance(value, str):
+    sys.exit(0)
 if value.startswith("${{") and value.endswith("}}"):
     value = value[3:-2].strip()
 print(value)
@@ -117,11 +114,6 @@ assert_gated() {
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  # Compare the entire decoded job scalar, connectives included --
-  # three independent substring checks would each still match a mutation
-  # that swaps || for && (a real, verified false pass): only an exact match
-  # on the whole expression proves the clauses are joined the way R1/R6/R7
-  # require, not just present somewhere in the line.
   expected="!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
   if [ "$if_line" != "$expected" ]; then
     fail "job '$job' if: does not match the expected fail-open condition exactly (R1/R6/R7/KTD4); got: $if_line"
@@ -162,9 +154,6 @@ assert_docs_only_only() {
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  # Exact match on the whole job scalar, connectives included -- see the
-  # comment in assert_gated for why independent substring checks do not
-  # prove the clauses are joined with &&.
   expected="!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
   if [ "$if_line" != "$expected" ]; then
     fail "job '$job' if: does not match the expected docs-only-only condition exactly; got: $if_line"
@@ -253,8 +242,6 @@ assert_darwin_targets() {
   local hosts build
   hosts=$(job_block hosts "$file")
   build=$(job_block build-darwin "$file")
-  # Execute the actual list expression against independent fixture names, then
-  # execute the actual consumer with a recording nix function in scratch state.
   python3 - "$file" <<'PYTHON'
 import json
 import os
@@ -287,7 +274,7 @@ fixture = """{
 }"""
 expr, count = re.subn(r"builtins\.getFlake \(toString \./\.\)", lambda _: fixture, expr)
 assert count == 1, "fixture did not replace actual flake read"
-result = subprocess.run(["nix", "eval", "--json", "--expr", expr], text=True, capture_output=True)
+result = subprocess.run(["nix", "--extra-experimental-features", "nix-command", "eval", "--json", "--expr", expr], text=True, capture_output=True)
 assert result.returncode == 0, result.stderr
 lists = json.loads(result.stdout)
 expected_linux = [
@@ -306,7 +293,6 @@ expected_darwin = [
 assert lists == {"targets": ["north", "south-bootstrap"], "linux_targets": expected_linux,
                  "darwin_targets": expected_darwin}, f"hosts matrix outputs differ: {lists}"
 with tempfile.TemporaryDirectory() as tmp:
-    # A matching file exposes accidental expansion of the wildcard sentinel.
     Path(tmp, "checks.aarch64-darwin.darwin-expanded").touch()
     for job, entries in [("build", lists["targets"]), ("build-linux", expected_linux),
                          ("build-darwin", expected_darwin)]:

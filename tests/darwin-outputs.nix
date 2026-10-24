@@ -102,43 +102,7 @@ let
         assert target.read_bytes() == protected, "Codex activation altered protected malformed input"
   '';
 
-  authEffects = pkgs.writeText "containers-auth-effects.py" ''
-    import json, os, stat, subprocess, sys, tempfile
-    from pathlib import Path
-    body = Path(sys.argv[1]).read_text()
-    with tempfile.TemporaryDirectory() as work:
-        home = Path(work) / "home"
-        home.mkdir()
-        redirected = body.replace('$HOME', str(home))
-        assert redirected != body and '$HOME' not in redirected, "containersAuth destination was not redirected"
-        env = dict(os.environ, HOME=str(home))
-        env.pop("DRY_RUN", None)
-        def run(dry=False):
-            current = dict(env)
-            if dry:
-                current["DRY_RUN"] = "1"
-            result = subprocess.run(["bash", "-euo", "pipefail", "-c",
-                'run() { if [[ ! -v DRY_RUN ]]; then "$@"; fi; };\n' + redirected], env=current, capture_output=True, text=True)
-            assert result.returncode == 0, result.stderr
-        target = home / ".config/containers/auth.json"
-        run(True)
-        assert list(home.iterdir()) == [], "containersAuth dry-run changed fresh home"
-        run()
-        assert target.is_file(), "containersAuth did not create auth.json"
-        assert json.loads(target.read_text()) == {"credHelpers": {key: "sops" for key in
-            ["docker.io", "ghcr.io", "registry.gitlab.com", "registry.jpi.app"]}}, "containersAuth wrote incorrect JSON"
-        assert stat.S_IMODE(target.stat().st_mode) == 0o600, "auth.json mode is not 0600"
-        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700, "containers directory mode is not 0700"
-        custom = b'{ "custom": "preserve exact bytes" }\n'
-        target.write_bytes(custom)
-        target.chmod(0o640)
-        target.parent.chmod(0o750)
-        for dry in (False, True):
-            run(dry)
-            assert target.read_bytes() == custom, "containersAuth overwrote existing bytes"
-            assert stat.S_IMODE(target.stat().st_mode) == 0o640, "containersAuth changed existing file mode"
-            assert stat.S_IMODE(target.parent.stat().st_mode) == 0o750, "containersAuth changed existing directory mode"
-  '';
+  authEffects = ./lib/containers-auth-effects.py;
 
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
@@ -415,6 +379,25 @@ let
           fi
         fi
       fi
+
+      dryHome=$TMPDIR/pi-dry-$variant
+      mkdir -p "$dryHome/.pi/agent"
+      printf '%s\n' '{"activationUnmanaged":"keep"}' > "$dryHome/seed.json"
+      for file in models settings; do cp "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json"; done
+      for piName in piModels piSettings; do
+        dryBlock=$(stepBlock "$piName")
+        dryOriginal=${lib.escapeShellArg config.my.user.home}
+        dryRedirected=''${dryBlock//"$dryOriginal"/"$dryHome"}
+        if [ "$dryRedirected" = "$dryBlock" ] || [[ "$dryRedirected" == *"$dryOriginal"* ]]; then
+          bad "Pi dry-run destination was not redirected"
+        elif ! DRY_RUN=1 HOME="$dryHome" bash -euo pipefail -c "$dryRedirected"; then
+          bad "Pi settings dry-run failed"
+        fi
+      done
+      for file in models settings; do
+        cmp -s "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json" || bad "Pi settings dry-run changed protected bytes"
+      done
+      [ ! -e "$dryHome/.local/state/nix-config/agent-settings-ledger" ] || bad "Pi settings dry-run created a ledger"
 
       codexBlock=$TMPDIR/codex-settings-$variant.sh
       stepBlock codexSettings > "$codexBlock"

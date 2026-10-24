@@ -219,8 +219,6 @@ let
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         body = pathlib.Path(script).read_text()
-        # Replace commands in the complete generated body, including lpstat's
-        # command substitution. Never reach the host CUPS service.
         import re
         for command in ["lpstat", "lpadmin"]:
             body, replacements = re.subn(r"(?<![A-Za-z0-9_/.-])" + command + r"(?= )", str(root / command), body)

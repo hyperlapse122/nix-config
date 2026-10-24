@@ -45,14 +45,16 @@ in
     };
   };
 
-  # Unguarded and after installPackages for the same reasons as the Claude Code
+  # No executable-existence guard; ordered after installPackages as in Claude Code
   # merge in claude.nix: the merger is a store path built from this module, so a
   # guard could only ever be true, and a refusal ordered before linkGeneration
   # would strand the rest of home activation.
   home.activation.antigravitySettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label 'Antigravity CLI' \
-      --settings ${config.home.homeDirectory}/.gemini/antigravity-cli/settings.json \
-      --declared ${declared}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label 'Antigravity CLI' \
+        --settings ${config.home.homeDirectory}/.gemini/antigravity-cli/settings.json \
+        --declared ${declared}
+    fi
   '';
 }
