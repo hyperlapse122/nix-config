@@ -117,6 +117,14 @@
           "wifiman"
           "winbox"
           "yubikey-fido"
+          "gemini"
+          "ghostty-font"
+          "gpg-agent-no-cache"
+          "kernel-sysctl"
+          "logitech-wakeup"
+          "podman-containers"
+          "zsh-prezto"
+          "python3-runtime"
         ]
         ++ lib.attrNames (fixtureChecksFor system);
         lightCount = 3;
@@ -307,7 +315,10 @@
               }
               ''
                 cp ${./scripts/pinentry-card} ./pinentry-card
-                bash ${./tests/pinentry-card.sh} ./pinentry-card
+                bash ${./tests/pinentry-card.sh} ./pinentry-card \
+                  ${(import ./packages/gpg-tools.nix { inherit pkgs; }).pinentryCard}/bin/pinentry-card \
+                  ${pkgs.pinentry-qt}/bin/pinentry-qt ${pkgs.pinentry-curses}/bin/pinentry-curses \
+                  ${pkgs.libsecret}/bin/secret-tool
                 touch $out
               '';
           podman-machine-resources = pkgs.runCommand "podman-machine-resources-tests" { } ''
@@ -844,13 +855,13 @@
               assertConfiguration =
                 entry:
                 let
-                  files = entry.user.home.file or { };
+                  homeFiles = entry.user.home-files or null;
                   # A missing file fails inside the builder with its name, rather
                   # than aborting evaluation on a null coercion.
                   assertSource =
                     file: pattern:
                     let
-                      source = files.${file}.source or null;
+                      source = if homeFiles == null then null else "${homeFiles}/${file}";
                     in
                     if source == null then
                       ''
@@ -859,19 +870,19 @@
                       ''
                     else
                       ''
-                        if ! grep -q ${pkgs.lib.escapeShellArg pattern} ${source}; then
+                        if [ ! -f ${pkgs.lib.escapeShellArg source} ] || ! grep -q ${pkgs.lib.escapeShellArg pattern} ${pkgs.lib.escapeShellArg source}; then
                           echo ${pkgs.lib.escapeShellArg "${file} does not contain ${pattern} on ${entry.name}"} >&2
                           fail=1
                         fi
                       '';
-                  dotzshenv = files.".zshenv".text or "";
+                  dotzshenv = if homeFiles == null then "/nonexistent/.zshenv" else "${homeFiles}/.zshenv";
                   zshenv = "${entry.user.home.homeDirectory or "/nonexistent"}/.config/zsh/.zshenv";
                 in
                 ''
                   ${assertSource ".config/zsh/.zpreztorc" "zstyle ':prezto:load' pmodule"}
                   ${assertSource ".config/zsh/.zshenv" "runcoms/zshenv"}
                   ${assertSource ".config/zsh/.zshrc" "runcoms/zshrc"}
-                  if ! grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"} <<<${pkgs.lib.escapeShellArg dotzshenv}; then
+                  if [ ! -f ${pkgs.lib.escapeShellArg dotzshenv} ] || ! grep -qF ${pkgs.lib.escapeShellArg "source ${zshenv}"} ${pkgs.lib.escapeShellArg dotzshenv}; then
                     echo ${pkgs.lib.escapeShellArg ".zshenv does not source ${zshenv} on ${entry.name}"} >&2
                     fail=1
                   fi
@@ -886,7 +897,8 @@
               assertConfiguration =
                 entry:
                 let
-                  ghosttyConfig = entry.user.xdg.configFile."ghostty/config".source or null;
+                  ghosttyConfig =
+                    if entry.user ? home-files then "${entry.user.home-files}/.config/ghostty/config" else null;
                   monospaceFonts = builtins.toJSON entry.config.fonts.fontconfig.defaultFonts.monospace;
                 in
                 ''
@@ -897,7 +909,7 @@
                   ${pkgs.lib.optionalString (ghosttyConfig != null) (
                     pkgs.lib.concatMapStrings
                       (font: ''
-                        if ! grep -Fxq "font-family = ${font}" ${ghosttyConfig}; then
+                        if [ ! -f ${pkgs.lib.escapeShellArg ghosttyConfig} ] || ! grep -Fxq "font-family = ${font}" ${pkgs.lib.escapeShellArg ghosttyConfig}; then
                           echo 'ghostty config does not set font-family = ${font} on ${entry.name}' >&2
                           fail=1
                         fi
@@ -940,50 +952,62 @@
             let
               assertConfiguration =
                 entry:
+                let
+                  profile = entry.user.home.path or null;
+                in
                 pkgs.lib.concatMapStrings
                   (
                     pname:
                     assertUserPackage {
                       inherit pname;
-                      executables = [ ];
+                      executables = [ pname ];
                       desktopEntries = [ ];
                     } entry
+                    + (
+                      if profile == null then
+                        ''
+                          echo 'missing user profile on ${entry.name}' >&2
+                          fail=1
+                        ''
+                      else
+                        ''
+                          if [ ! -x ${profile}/bin/${pname} ] || ! env -i HOME="$TMPDIR" PATH=${profile}/bin ${profile}/bin/${pname} --version; then
+                            echo 'installed ${pname} runtime failed on ${entry.name}' >&2
+                            fail=1
+                          fi
+                        ''
+                    )
                   )
                   [
                     "python3"
                     "uv"
                   ];
             in
-            pkgs.runCommand "python3-runtime-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.python3
-                  pkgs.uv
-                ];
-              }
-              ''
-                ${forEveryConfiguration assertConfiguration}
-                python3 --version
-                uv --version
-                touch $out
-              '';
+            pkgs.runCommand "python3-runtime-tests" { } ''
+              ${forEveryUser assertConfiguration}
+              touch $out
+            '';
           gpg-agent-no-cache =
             let
               assertConfiguration =
                 entry:
                 let
                   homedir = entry.user.programs.gpg.homedir or null;
-                  text =
-                    if homedir == null then null else entry.user.home.file."${homedir}/gpg-agent.conf".text or null;
-                  gpgAgentConf = pkgs.writeText "gpg-agent-${entry.name}.conf" text;
+                  home = entry.user.home.homeDirectory or "";
+                  homeFiles = entry.user.home-files or null;
+                  gpgAgentConf =
+                    if homedir == null || homeFiles == null then
+                      null
+                    else
+                      "${homeFiles}/${pkgs.lib.removePrefix "${home}/" homedir}/gpg-agent.conf";
                 in
                 ''
-                  ${pkgs.lib.optionalString (text == null) ''
+                  ${pkgs.lib.optionalString (gpgAgentConf == null) ''
                     echo 'missing gpg-agent.conf on ${entry.name}' >&2
                     fail=1
                   ''}
-                  ${pkgs.lib.optionalString (text != null) ''
-                    if ! grep -Fxq 'default-cache-ttl 0' ${gpgAgentConf}; then
+                  ${pkgs.lib.optionalString (gpgAgentConf != null) ''
+                    if [ ! -f ${pkgs.lib.escapeShellArg gpgAgentConf} ] || ! grep -Fxq 'default-cache-ttl 0' ${pkgs.lib.escapeShellArg gpgAgentConf}; then
                       echo 'gpg-agent.conf no longer sets default-cache-ttl 0 on ${entry.name}' >&2
                       fail=1
                     fi
@@ -1583,7 +1607,14 @@
                 touch $out
               '';
           ci-workflow-docs-skip =
-            pkgs.runCommand "ci-workflow-docs-skip-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; }
+            pkgs.runCommand "ci-workflow-docs-skip-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  pkgs.python3
+                  pkgs.nix
+                ];
+              }
               ''
                 bash ${./tests/check-workflow-docs-skip.sh} ${./.github/workflows/check.yml}
                 touch $out
