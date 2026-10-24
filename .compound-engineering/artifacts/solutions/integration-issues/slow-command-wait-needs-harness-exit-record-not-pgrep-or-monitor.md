@@ -1,7 +1,7 @@
 ---
 title: A delegated agent's in-turn wait for a slow command needs the harness's exit record, not pgrep or Monitor
 date: "2026-10-22"
-last_updated: "2026-10-23"
+last_updated: "2026-10-24"
 category: integration-issues
 module: Shared agent instructions (Subagents section)
 problem_type: integration_issue
@@ -20,6 +20,8 @@ tags: ["slow-command", "background-command", "foreground-timeout", "in-turn-wait
 ---
 
 # A delegated agent's in-turn wait for a slow command needs the harness's exit record, not pgrep or Monitor
+
+> Historical record: the `# T3 Code`, `# Compound Engineering`, and `# Subagents` sections described here, along with their associated instruction tests, were removed on 2026-10-24. Incidents and former guard behavior below are retained as history; they do not describe current shared instructions or tests.
 
 ## Problem
 
@@ -52,7 +54,7 @@ Wait on the harness's own record of that one command, in blocking foreground cal
 - **Antigravity CLI 1.4.5.** `run_command` waits at most `WaitMsBeforeAsync` (500 to 10000 ms) and then backgrounds the command; its arguments seen in the binary are `CommandLine`, `Cwd`, and `WaitMsBeforeAsync`, with no timeout. Wait with `command_status` on the returned background command ID; the live runs also read the task log Antigravity keeps in its own data directory for the session. For a deliberate background start, use a short `WaitMsBeforeAsync` instead of `&`.
 - **OpenCode 2.1.2** (removed from this repository on 2026-10-23; the rerun-once rule below came from it and still covers any harness that kills a command at its timeout). The shell tool kills a foreground command at its timeout (default 120000 ms; `timeout: 0` disables it) instead of backgrounding it. Set the timeout up front. Its description also tells the agent, while a background command runs, to end its response when it has nothing else to do, which the instructions override.
 
-The `# Subagents` section of `home/h82/agents/instructions/instructions.md.tmpl` carries these as four rules, right after the bullet that starts "Tell each subagent to run the commands its report depends on in the foreground" a parent passes to each subagent, native or delegated. Set the timeout before the command. Wait in the turn on the harness's record, never on a process name. Never stop and rerun a background command, except a wrong command, one still running at twice its expected time, or one that reaches the task prompt's time limit; report afterwards. Start a command longer than the foreground limit through the tool's own background option. The self-wake rule under `## Delegated tasks` in the `# T3 Code` section, the bullet that starts "In a run with a person present, never wait for a delegated task", also allows a foreground wait inside the turn on a command the agent runs.
+Historically, the `# Subagents` section of `home/h82/agents/instructions/instructions.md.tmpl` carried these as four rules, right after the bullet that starts "Tell each subagent to run the commands its report depends on in the foreground" a parent passes to each subagent, native or delegated. Set the timeout before the command. Wait in the turn on the harness's record, never on a process name. Never stop and rerun a background command, except a wrong command, one still running at twice its expected time, or one that reaches the task prompt's time limit; report afterwards. Start a command longer than the foreground limit through the tool's own background option. The self-wake rule under `## Delegated tasks` in the `# T3 Code` section, the bullet that starts "In a run with a person present, never wait for a delegated task", also allows a foreground wait inside the turn on a command the agent runs.
 
 ## Why This Works
 
@@ -60,7 +62,7 @@ A wait holds the turn only while a tool call is in flight, so the blocking call 
 
 ## Prevention
 
-- `tests/agent-instructions.nix` pins the four sentences, like the foreground sentence before them, with removal and negation mutants. It also runs the background wait sentence's example loop (the check that prints "the example wait loop ends before the exit line appears"). The loop must keep waiting on an output file without the exit line and end once the line lands.
-- The same check's `harnessFacts` list greps the packaged Claude Code and Antigravity CLI binaries for the strings these facts rest on: `[exited with code`, `moved to the background`, `run_in_background`, ``Foreground `sleep` is blocked``, `WaitMsBeforeAsync`, and the `command_status` description. A harness update that drops one turns the check red, so someone rereads the harness before the rules go stale.
+- Historically, `tests/agent-instructions.nix` pinned the four sentences, like the foreground sentence before them, with removal and negation mutants. It also runs the background wait sentence's example loop (the check that prints "the example wait loop ends before the exit line appears"). The loop must keep waiting on an output file without the exit line and end once the line lands.
+- The former check's `harnessFacts` list grepped the packaged Claude Code and Antigravity CLI binaries for the strings these facts rest on: `[exited with code`, `moved to the background`, `run_in_background`, ``Foreground `sleep` is blocked``, `WaitMsBeforeAsync`, and the `command_status` description. At the time, a harness update that dropped one turned the check red, prompting a reread of the harness before the rules went stale.
 - To test the harness-backgrounded path live, tell the child to pass no `timeout`; describing the command as short is not enough. Judge the child from its T3 Code session's `activity` view, which shows every tool call. A child's own summary can leave out a rerun that the activity view shows.
 - Read [T3 Code delegated waits end the turn because t3_thread_wait cannot carry them in-turn](t3-thread-wait-cannot-carry-in-turn-delegation-waits-alone.md) for the parent's side of the same wait.

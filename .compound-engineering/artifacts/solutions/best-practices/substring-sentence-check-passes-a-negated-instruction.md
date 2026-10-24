@@ -1,7 +1,7 @@
 ---
 title: "A substring check for a required instruction sentence passes when the sentence is negated"
 date: 2026-10-12
-last_updated: 2026-10-19
+last_updated: "2026-10-24"
 category: best-practices
 module: "Agent instructions render check (tests/agent-instructions.nix)"
 problem_type: best_practice
@@ -30,7 +30,7 @@ tags:
 
 ## Context
 
-`tests/agent-instructions.nix` renders the shared agent instructions for each harness and requires a list of literal sentences in every rendered file. Until this change, its helper `requireSentences` tested each one with `grep -qF -- "$sentence" "$file"`. The check had been mutation-tested by deleting each guarded sentence, and every deletion turned it red.
+Historically, `tests/agent-instructions.nix` rendered the shared agent instructions for each harness and required a list of literal sentences in every rendered file. Until the first fix described here, its helper `requireSentences` tested each one with `grep -qF -- "$sentence" "$file"`. The check had been mutation-tested by deleting each guarded sentence, and every deletion turned it red.
 
 While rewriting the `# Review findings` section (plan `.compound-engineering/artifacts/plans/2026-10-12-0908-feat-review-findings-override-plan.md`), a cross-model adversarial review ran a mutation the deletion rounds never tried: it prefixed the guarded coverage sentence with "Do not". Every assertion still passed for Claude Code, Antigravity, and Codex. The sentence was still a substring of the line, so the check stayed green while the rendered instruction now told agents the opposite of the rule. The same review found that the new stop for a fix that would reverse a user decision had no guard at all; deleting that bullet also left the check green.
 
@@ -40,7 +40,7 @@ A deletion round proves only that the check notices the text is gone. Prose inst
 
 Match a required sentence only where a sentence begins, and add a negation round to the mutation list.
 
-The helper now accepts a sentence only when it occurs exactly once in the file and the text before that occurrence is empty, a list marker (a hyphen and a space, optionally indented), or ends with the full stop and space of the previous sentence (`requireSentences` in `tests/agent-instructions.nix`):
+The historical Nix helper accepted a sentence only when it occurred exactly once in the file and the text before that occurrence was empty, a list marker (a hyphen and a space, optionally indented), or ended with the full stop and space of the previous sentence (`requireSentences` in `tests/agent-instructions.nix`):
 
 ```nix
 requireSentences = message: sentences: ''
@@ -71,7 +71,7 @@ Counting every occurrence also makes a doubled sentence fail, which the first ve
 
 A sentence-start match still passes when the reversal is a separate sentence. Adding the Antigravity cross-model peer for issue #206, a cross-model adversarial review kept the pinned "also delegate that pass to Antigravity" sentence and added "Do not delegate the pass to Antigravity." after it. The pinned sentence still began where a sentence begins, so the check stayed green while the section now said both things. No list of forbidden phrases closes this, because a reversal can be worded any way.
 
-Close it with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (the helper lived in `tests/agent-instructions.nix` until 83002d4). The pinned subset is derived from the required list, so there is one list to maintain:
+The historical Nix check closed this with an allowlist over the section instead. The allowlist is necessary but not sufficient, as the order section below shows: every sentence in the named section that mentions the guarded subject must be one of the pinned sentences, and the section heading must exist, or the allowlist checks nothing (the helper lived in `tests/agent-instructions.nix` until 83002d4). The pinned subset is derived from the required list, so there is one list to maintain:
 
 ```nix
 peerPattern = "Antigravity|Argon|OpenCode|opencode";
@@ -84,7 +84,7 @@ extraPeerSentences = lib.filter (
 
 Membership in both directions still cannot see order or count. The `# Pull and merge requests` section is pinned whole: `onlyPinnedSentences` with pattern `.` checks that every sentence in it is pinned, and `sentencesInSection` checked that every pinned sentence is in it. Both are set checks. In the T3 Code PR watch work (plan `.compound-engineering/artifacts/plans/2026-10-15-1937-fix-t3-code-pr-watch-handoff-plan.md`), a cross-model adversarial review showed two edits that change meaning and pass both: repeating a pinned sentence, and moving "This holds when you babysit a request directly, through `ce-commit-push-pr`'s babysit handoff, and in `lfg` step 10." away from the sentence it qualifies. Moved after a different bullet, "This" binds to another rule.
 
-For a section pinned whole, compare the section's sentence stream to the pinned list in order, as `sentencesInOrder` did:
+For a section pinned whole, the historical Nix check compared the section's sentence stream to the pinned list in order, as `sentencesInOrder` did:
 
 ```nix
 sentencesInOrder = message: heading: sentences: ''
@@ -107,7 +107,9 @@ sentencesInOrder = message: heading: sentences: ''
 
 The pinned list must then be written in section order, which also makes it read as the section does. `grep -E -- .` drops the blank lines the awk split leaves. The diff names the lines out of place.
 
-83002d4 slimmed the instructions into one file and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder`. They are back: `tests/agent-instructions.nix` applies all three to every section in `checkedSections` (originally `# Review findings` and `# Compound Engineering`, and today every top-level section in the file), and checks the rendered file's top-level headings against the literal `topLevelHeadings` list, so a reversal cannot hide under a new heading either. `removedTerms`, matched without regard to case (`grep -qiF`), catches retired headings, rules, and terms anywhere in the file.
+Later, 83002d4 slimmed the instructions into one file and removed `onlyPinnedSentences`, `sentencesInSection`, and `sentencesInOrder`; a subsequent Nix implementation restored those helpers and related heading and removed-term inventories. Those Nix helpers and inventories were removed on 2026-10-24.
+
+The current `content_problems` in `tests/agent-instructions.py` selects the `POLICIES` once and checks anchored occurrences, expected `HEADINGS`, and removed terms in `REMOVED`. Its self-tests cover deletion, negation, duplication, removed headings, and harmless prose edits; it is not a complete sentence allowlist. `delivery_problems` compares every materialized delivery with an independent render, while the Nix check verifies materialized delivery, recipient behavior, and Git/config guards.
 
 When a rule has a safety stop, guard the stop as its own sentence. The review-findings rule tells autonomous runs to apply the recommended fix. Without a guarded sentence for the stop that protects user decisions, deleting the stop leaves the permissive half guarded and green.
 
@@ -135,7 +137,7 @@ The mutation runner used for this change applied each edit in a scratch copy bui
 
 Twelve lines means three harnesses times four host generations: the NixOS host and its bootstrap twin, and the x86_64 fixture host and its twin.
 
-The first version of the helper checked only the first occurrence of a sentence on each line, so a line holding a negated copy before a real one was reported as missing. That error failed red, the safe direction. The current helper counts every occurrence and fails the same line because the sentence appears twice.
+The first version of the historical Nix helper checked only the first occurrence of a sentence on each line, so a line holding a negated copy before a real one was reported as missing. That error failed red, the safe direction. A later version counted every occurrence and failed the same line because the sentence appeared twice.
 
 For the Antigravity peer, the same runner showed:
 

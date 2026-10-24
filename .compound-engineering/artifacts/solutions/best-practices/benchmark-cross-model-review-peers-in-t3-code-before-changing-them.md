@@ -1,7 +1,7 @@
 ---
 title: Benchmark a cross-model review peer in T3 Code before changing its model or effort, and never rank models on one sample
 date: "2026-10-22"
-last_updated: "2026-10-23"
+last_updated: "2026-10-24"
 category: best-practices
 module: "Cross-model review peers (home/h82/agents/synthetic-models.nix, home/h82/agents/instructions/instructions.md.tmpl)"
 problem_type: best_practice
@@ -89,7 +89,7 @@ Without these, the next change repeats the guess the original `max` pin was: a h
 
 ## When to Apply
 
-- Before changing a `reviewer` role effort or a candidate in `home/h82/agents/synthetic-models.nix` or the candidate sentences in the instructions template.
+- Before changing a `reviewer` role effort or a candidate in `home/h82/agents/synthetic-models.nix` or wherever peer model and effort are configured for the workflow under review.
 - When a reviewer model is bumped (the `synthetic-models-watch` workflow reports a newer build), to re-measure rather than assume the new build times like the old one.
 - When adding a peer family, to confirm it is in the live catalog and finishes inside the deadline.
 

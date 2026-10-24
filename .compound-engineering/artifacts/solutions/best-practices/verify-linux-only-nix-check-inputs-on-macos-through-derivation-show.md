@@ -1,7 +1,7 @@
 ---
 title: Verify a Linux-only Nix check's text inputs on macOS through nix derivation show
 date: "2026-10-16"
-last_updated: "2026-10-19"
+last_updated: "2026-10-24"
 category: best-practices
 module: "Nix flake checks (local verification on macOS)"
 problem_type: best_practice
@@ -66,6 +66,20 @@ For `t3code-traits` this is a check of the inputs, not of the check. The compari
 - You are on the macOS host and need red-green or mutation evidence before pushing.
 
 It does not apply to a check whose inputs are built outputs rather than text derivations, such as a host closure. Two exceptions follow: a check whose builder script reads text derivations and built paths it can be pointed away from, so the script can run locally, and a fetched upstream artifact.
+
+## Current agent-instructions check
+
+The current `agent-instructions` check uses `tests/agent-instructions.py`. Run its local content checks and self-tests with:
+
+```sh
+python3 tests/agent-instructions.py home/h82/agents/instructions/instructions.md.tmpl
+```
+
+This command proves the Python content checks and self-tests only. The Nix `agent-instructions` check proves materialized delivery, independent rendering-to-delivery comparison, host recipient behavior, and Git/config guards.
+
+## Historical builder-script replay (obsolete since 2026-10-24)
+
+The following recipe and results describe the former `agent-instructions` test implementation and are retained as a historical record; do not use them as current verification instructions.
 
 ## A check whose assertions live in its builder script
 

@@ -16,20 +16,13 @@ let
       text-template ${template} ${context} > $out
     '';
 
-  # Pi reads the shared body alone, because the ACP section tells an agent
-  # how to start Pi. Every other harness reads the body, a blank line, and
-  # that section.
-  shared = render "agent-instructions-shared.md" ./instructions.md.tmpl;
-  acp = render "agent-instructions-acp.md" ./acp.md.tmpl;
-  instructions = pkgs.runCommand "agent-instructions.md" { } ''
-    { cat ${shared}; echo; cat ${acp}; } > $out
-  '';
+  instructions = render "agent-instructions.md" ./instructions.md.tmpl;
 in
 {
   home.file = {
     agent-instructions-pi = {
       target = ".pi/agent/AGENTS.md";
-      source = shared;
+      source = instructions;
     };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
