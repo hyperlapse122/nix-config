@@ -372,11 +372,27 @@ let
         seeded=$TMPDIR/${entry.name}-settings.json
         cp ${seededSettings} "$seeded"
         chmod 600 "$seeded"
-        if ! env -i "$merger" --label VSCodium --settings "$seeded" --declared "$declaredPath"; then
+        redirected="$TMPDIR/${entry.name}-activation.sh"
+        python3 -c '
+      import sys
+      target, scratch, output, body = sys.argv[1:]
+      assert target and target in body, "activation destination was not redirected"
+      rewritten = body.replace(target, scratch)
+      assert rewritten != body and target not in rewritten
+      open(output, "w").write(rewritten)
+        ' "$settingsArg" "$seeded" "$redirected" "$script"
+        if ! ${pkgs.bash}/bin/bash -eu "$redirected"; then
           fail ${host'}": the activation merger refused the seeded settings file"
         elif ! python3 ${checkMerged} "$seeded"; then
           fail ${host'}": merging the seeded settings file lost a declared value or a key VSCodium wrote"
         fi
+        # A directory is refused by the real merger; activation must propagate it.
+        rm -f "$seeded"
+        mkdir "$seeded"
+        if ${pkgs.bash}/bin/bash -eu "$redirected"; then
+          fail ${host'}": activation swallowed a settings refusal"
+        fi
+        rmdir "$seeded"
       fi
     '';
 in
