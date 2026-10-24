@@ -24,7 +24,7 @@ POLICIES = {
     "File I/O": [
         "Use the harness's native read, write, edit, or patch tools for routine file reads, writes, and edits when a suitable tool is available.",
         "Use shell commands or scripts such as Python and `sed` for file I/O only when the harness has no suitable native tool or the operation requires a command-line tool.",
-        "The GPG and encryption rules take precedence for secrets: pipe decrypted output straight into the consuming command without opening decrypted files with file tools.",
+        "The GPG and encryption rules take precedence for decrypted output: pipe it straight into the consuming command without opening decrypted files with file tools.",
     ],
     "Git": ["Never rename onto or push over an existing branch."],
     "Pull and merge requests": [
