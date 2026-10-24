@@ -28,7 +28,11 @@ The [implementation plan](.compound-engineering/artifacts/plans/2026-09-21-0149-
 - `nix build --no-link .#vmChecks.all`: build every NixOS VM test; needs `/dev/kvm`. Build one with `.#vmChecks.<name>`.
 - Pre-commit hook: `.githooks/pre-commit` runs `mise run lint-staged-markdown` to lint staged Markdown with `markdownlint-cli2`. The T3 Code `Setup` script enables it automatically; on other checkouts, run `mise trust && mise install`, then enable it with `git config core.hooksPath .githooks`. Skip it for a single commit with `git commit --no-verify`.
 
-Before shipping, run `nix flake check`, build the VM tests, and build every output under `nixosConfigurations`, `homeConfigurations`, `systemConfigs`, and `darwinConfigurations`, production and bootstrap. List them, then build each:
+Before each push, run `git diff --check`, lint changed Markdown, run `nix fmt -- --ci` where the flake exposes a formatter, and run relevant checks that the local platform supports. Classify the complete branch diff from the PR merge-base, not just the last commit, using the policy in [verification](docs/verification.md#publishing-and-merge-readiness). Record local results and checks deferred to CI separately. A missing builder or unavailable output is pending evidence, never a pass, and does not by itself block publishing for CI.
+
+Inert documentation, plans, and sweep state need no unrelated host or VM builds. When documentation is an input to a declared check, that affected consumer check must still pass before readiness, even if docs-only CI skips it; obtain the result on a supported builder and record the revision. Runtime instructions and configuration require verification of their affected behavior even when their paths match CI's docs-only filter. Before declaring a PR ready, require successful current-head CI and all required platform evidence: for changes beyond inert documentation/state, flake evaluation, all declared checks, VM tests, and every production/bootstrap host output. CI may supply this evidence after push; if its path filter skips required checks, obtain them on supported builders before readiness. Preserve the separate hardware checks in `docs/verification.md`; builds do not prove hardware behavior.
+
+For full verification on supported builders, list the outputs, then build each (run the VM command from Linux, never as a native Darwin output):
 
 ```sh
 nix build --no-link .#vmChecks.all
