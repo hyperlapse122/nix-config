@@ -259,13 +259,15 @@ in
     '')
   ];
 
-  # Unguarded and after installPackages for the reasons given on
+  # No executable-existence guard; ordered after installPackages as on
   # claudeSettings in agents/claude.nix: a refusal must fail the rebuild
   # loudly without stranding linkGeneration or installPackages behind it.
   home.activation.vscodiumSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label VSCodium \
-      --settings ${settingsArg} \
-      --declared ${declared}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label VSCodium \
+        --settings ${settingsArg} \
+        --declared ${declared}
+    fi
   '';
 }

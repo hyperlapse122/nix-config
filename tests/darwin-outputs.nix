@@ -72,6 +72,38 @@
 let
   inherit (pkgs) lib;
 
+  codexEffects = pkgs.writeText "codex-activation-effects.py" ''
+    import os, subprocess, sys, tempfile, tomllib
+    from pathlib import Path
+    body = Path(sys.argv[1]).read_text()
+    original = sys.argv[2]
+    with tempfile.TemporaryDirectory() as work:
+        home = Path(work) / "home"
+        target = home / ".codex/config.toml"
+        target.parent.mkdir(parents=True)
+        redirected = body.replace(original, str(home))
+        assert redirected != body and original not in redirected, "Codex destination was not redirected"
+        env = dict(os.environ, HOME=str(home), CODEX_HOME=str(home / ".codex"))
+        env.pop("DRY_RUN", None)
+        def run():
+            return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
+        target.write_text('check_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n')
+        result = run()
+        assert result.returncode == 0, result.stderr
+        actual = tomllib.loads(target.read_text())
+        assert actual == {"check_for_update_on_startup": False, "custom": "keep",
+            "features": {"in_app_updates": False, "daemon_auto_start": False, "memories": False, "custom": True}}, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
+        assert actual["check_for_update_on_startup"] is False
+        assert all(actual["features"][key] is False for key in ["in_app_updates", "daemon_auto_start", "memories"]), "Codex settings must be TOML booleans"
+        protected = b'[features\nmalformed = true\n'
+        target.write_bytes(protected)
+        result = run()
+        assert result.returncode != 0, "Codex activation swallowed malformed-input refusal"
+        assert target.read_bytes() == protected, "Codex activation altered protected malformed input"
+  '';
+
+  authEffects = ./lib/containers-auth-effects.py;
+
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
@@ -148,6 +180,12 @@ let
           || bad "bootstrap must run no host-secrets step"
       fi
       [ "$(step dockerCredHelpers)" = "" ] || bad "the OrbStack credHelpers merge still runs"
+      authBlock=$TMPDIR/containers-auth-$variant.sh
+      stepBlock containersAuth > "$authBlock"
+      if ! python3 ${authEffects} "$authBlock"; then
+        bad "containersAuth effect contract failed"
+      fi
+
 
       vars=$gen/home-path/etc/profile.d/hm-session-vars.sh
       [ -f "$vars" ] || bad "no hm-session-vars.sh in the profile"
@@ -340,6 +378,31 @@ let
             bad "the piSettings step does not write its declared settings:"$'\n'"$output"
           fi
         fi
+      fi
+
+      dryHome=$TMPDIR/pi-dry-$variant
+      mkdir -p "$dryHome/.pi/agent"
+      printf '%s\n' '{"activationUnmanaged":"keep"}' > "$dryHome/seed.json"
+      for file in models settings; do cp "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json"; done
+      for piName in piModels piSettings; do
+        dryBlock=$(stepBlock "$piName")
+        dryOriginal=${lib.escapeShellArg config.my.user.home}
+        dryRedirected=''${dryBlock//"$dryOriginal"/"$dryHome"}
+        if [ "$dryRedirected" = "$dryBlock" ] || [[ "$dryRedirected" == *"$dryOriginal"* ]]; then
+          bad "Pi dry-run destination was not redirected"
+        elif ! DRY_RUN=1 HOME="$dryHome" bash -euo pipefail -c "$dryRedirected"; then
+          bad "Pi settings dry-run failed"
+        fi
+      done
+      for file in models settings; do
+        cmp -s "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json" || bad "Pi settings dry-run changed protected bytes"
+      done
+      [ ! -e "$dryHome/.local/state/nix-config/agent-settings-ledger" ] || bad "Pi settings dry-run created a ledger"
+
+      codexBlock=$TMPDIR/codex-settings-$variant.sh
+      stepBlock codexSettings > "$codexBlock"
+      if ! python3 ${codexEffects} "$codexBlock" ${lib.escapeShellArg config.my.user.home}; then
+        bad "Codex activation effect contract failed"
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \

@@ -555,7 +555,7 @@ let
       (check (lib.elem "docker-podman-compat" pnames) "${entry.name}: docker must be the Podman link")
       (check (
         activation ? containersAuth
-      ) "${entry.name}: auth.json with the credential helpers must be written")
+      ) "${entry.name}: containersAuth must be wired; native darwin-outputs verifies its effects")
       (check (dropIns == [ ]) "${entry.name}: the store-linked registries.conf.d drop-in reached macOS")
       (check
         (

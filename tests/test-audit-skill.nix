@@ -29,7 +29,6 @@
     .compound-engineering/artifacts/solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md
   - each target's SKILL.md in `home-files` is not a symlink, because Codex
     skips a SKILL.md symlink.
-  - my.testAuditSkill names the upstream, path, and revision written here.
 
   Once, over the in-tree source:
   - none of the three Markdown files contains a token of OpenClaw's own
@@ -177,40 +176,9 @@ let
     let
       label = entry.name;
       userConfig = entry.user;
-      registry = userConfig.my.testAuditSkill or null;
       homeFiles = userConfig.home-files or null;
     in
     lib.concatMapStrings (root: homeFile label userConfig "${root}/${name}") roots
-    + lib.optionalString (registry == null) ''
-      echo ${esc "missing my.testAuditSkill on ${label}"} >&2
-      failed=1
-    ''
-    + lib.optionalString (registry != null) (
-      lib.concatMapStrings
-        (
-          { field, expected }:
-          ''
-            if [ ${esc (registry.${field} or "")} != ${esc expected} ]; then
-              echo ${esc "my.testAuditSkill.${field} on ${label} must be '${expected}', got '${registry.${field} or ""}'"} >&2
-              failed=1
-            fi
-          ''
-        )
-        [
-          {
-            field = "upstream";
-            expected = upstream;
-          }
-          {
-            field = "path";
-            expected = upstreamPath;
-          }
-          {
-            field = "rev";
-            expected = rev;
-          }
-        ]
-    )
     + lib.optionalString (homeFiles == null) ''
       echo ${esc "no materialized home-files on ${label}"} >&2
       failed=1

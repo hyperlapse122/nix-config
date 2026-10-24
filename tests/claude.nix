@@ -62,6 +62,8 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
   environmentTier = {
     DISABLE_AUTOUPDATER = "1";
     CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
@@ -136,6 +138,12 @@ let
     {
       attr = "claudeSettings";
       file = ".claude/settings.json";
+      declared = {
+        set = settingsTier;
+        remove = retiredKeys;
+        setPaths = settingsPaths;
+        inherit removePaths;
+      };
       expected =
         expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths
           removePaths;
@@ -143,6 +151,12 @@ let
     {
       attr = "claudeGlobalConfig";
       file = ".claude.json";
+      declared = {
+        set = globalConfigTier;
+        remove = [ ];
+        setPaths = [ ];
+        removePaths = [ ];
+      };
       expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ] [ ];
     }
   ];
@@ -195,7 +209,7 @@ let
               failed=1
             fi
 
-            if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
+            if ! printf '%s' ${esc script} | grep -F '/bin/agent-settings' >/dev/null; then
               echo 'the ${merge.attr} activation script must invoke the packaged merger on ${hostName}' >&2
               failed=1
             fi
@@ -211,7 +225,7 @@ let
             # lines are stripped first, because the block documents why the swallow
             # is absent and matching that sentence would fail the honest script.
             if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-              | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+              | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
               echo 'the ${merge.attr} activation script must not swallow the merger exit status on ${hostName}' >&2
               failed=1
             fi
@@ -219,6 +233,49 @@ let
         in
         ''
           ${activationAbsent}${activationPresent}
+          ${executeActivation {
+            inherit script;
+            home = userConfig.home.homeDirectory or "";
+            contract = {
+              file = merge.file;
+              declared = merge.declared;
+            }
+            // lib.optionalAttrs (merge.attr == "claudeSettings") {
+              seed = {
+                activationUnmanaged = "keep";
+                advisorModel = "retired";
+                autoCompactWindow = "retired";
+                effortLevel = "retired";
+                model = "divergent";
+                enabledPlugins.custom = false;
+                worktree.custom = "keep";
+                modelSettings = {
+                  claude-opus-5-5.effortLevel = "medium";
+                  custom.effortLevel = "high";
+                };
+              };
+              expected = {
+                activationUnmanaged = "keep";
+                model = "opus[1m]";
+                language = "korean";
+                theme = "auto";
+                preferredNotifChannel = "ghostty";
+                agentPushNotifEnabled = false;
+                inputNeededNotifEnabled = false;
+                cleanupPeriodDays = 30;
+                disableClaudeAiConnectors = true;
+                enabledPlugins = {
+                  custom = false;
+                  "cc-plugin-you-should-know@builtin" = true;
+                };
+                worktree = {
+                  custom = "keep";
+                  baseRef = "head";
+                };
+                modelSettings.custom.effortLevel = "high";
+              };
+            };
+          }}
           # Read the flags the merger is actually invoked with, not merely whether
           # the script mentions a path somewhere. A check that greps for the store
           # path anywhere in the text passes a script that names the right file in
@@ -230,7 +287,7 @@ let
           # round with evidence about a single assertion.
           settingsArg=$(printf '%s' ${esc script} \
             | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-            | head -1 | awk '{print $2}' || true)
+            | sed -n '1p' | awk '{print $2}' || true)
           if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/${merge.file}"} ]; then
             echo "${merge.attr} must point the merger at ~/${merge.file} on ${hostName}, got: '$settingsArg'" >&2
             failed=1
@@ -238,7 +295,7 @@ let
 
           declaredPath=$(printf '%s' ${esc script} \
             | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-            | head -1 | awk '{print $2}' || true)
+            | sed -n '1p' | awk '{print $2}' || true)
           if [ -z "$declaredPath" ]; then
             echo 'the ${merge.attr} activation script passes no declared-settings file on ${hostName}' >&2
             failed=1

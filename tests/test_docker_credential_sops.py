@@ -63,16 +63,6 @@ class DockerCredentialSopsTests(unittest.TestCase):
         )
         self.assertEqual(proc.stderr, "")
 
-    def test_mapped_registry_valid_secret(self):
-        proc = self.run_helper("get", stdin_data="ghcr.io\n")
-        self.assertEqual(proc.returncode, 0)
-        self.assertEqual(proc.stderr, "")
-        data = json.loads(proc.stdout)
-        self.assertEqual(set(data.keys()), {"ServerURL", "Username", "Secret"})
-        self.assertEqual(data["ServerURL"], "ghcr.io")
-        self.assertEqual(data["Username"], "octocat")
-        self.assertEqual(data["Secret"], self.tokens["ghcr.io"])
-
     def test_unmapped_registry(self):
         proc = self.run_helper("get", stdin_data="unmapped.docker.io\n")
         self.assert_miss(proc)
@@ -128,6 +118,7 @@ class DockerCredentialSopsTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0)
                 self.assertEqual(proc.stderr, "")
                 data = json.loads(proc.stdout)
+                self.assertEqual(set(data), {"ServerURL", "Username", "Secret"})
                 self.assertEqual(data["ServerURL"], reg)
                 self.assertEqual(data["Username"], self.usernames[reg])
                 self.assertEqual(data["Secret"], expected_token)

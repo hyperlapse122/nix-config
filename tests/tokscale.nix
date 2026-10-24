@@ -21,9 +21,6 @@
     packaged merger without swallowing its exit status, points it at
     ~/.config/tokscale/settings.json, and passes a declared document equal to
     the one stated here.
-  - running that exact merger with that exact declared document against a
-    seeded, divergent settings file reasserts the five declared values and
-    leaves every other key, nested siblings included, as it was.
   - no Home Manager file targets .config/tokscale/settings.json.
   - .config/tokscale/custom-pricing.json parses to the dotfiles document.
   - a production configuration's sops manifest carries cli-auth/tokscale_token
@@ -55,6 +52,8 @@ let
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: lib.escapeShellArg (toString value);
+
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   declaredExpected = pkgs.writeText "tokscale-expected-settings.json" (
     builtins.toJSON {
@@ -171,39 +170,61 @@ let
       # Comment lines are stripped so an explanatory sentence cannot match.
       # The merger call spans several lines, so the whole block is searched.
       if printf '%s' "$script" | grep -v '^[[:space:]]*#' \
-        | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+        | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
         fail ${host'}": the tokscaleSettings activation script swallows the merger exit status"
       fi
 
       merger=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | sed -n '1p' || true)
       if [ -z "$merger" ]; then
         fail ${host'}": the tokscaleSettings activation script does not invoke the packaged merger"
       fi
 
       settingsArg=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
-      if [ "$settingsArg" != /home/h82/.config/tokscale/settings.json ]; then
+        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | sed -n '1p' | awk '{print $2}' || true)
+      if [ "$settingsArg" != ${esc "${hm.home.homeDirectory or ""}/.config/tokscale/settings.json"} ]; then
         fail ${host'}": the merger must be pointed at ~/.config/tokscale/settings.json, got: '$settingsArg'"
       fi
 
       declaredPath=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -1 | awk '{print $2}' || true)
+        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | sed -n '1p' | awk '{print $2}' || true)
       if [ -z "$declaredPath" ]; then
         fail ${host'}": the tokscaleSettings activation script passes no declared document"
       elif ! python3 "$compareJson" "$declaredPath" ${declaredExpected}; then
         fail ${host'}": the declared settings drifted from the asserted values"
       elif [ -n "$merger" ]; then
-        # AE3: runtime state and TUI-only keys survive while declared keys
-        # return, driven through the exact merger and document activation uses.
-        seeded=$TMPDIR/${hostName}-settings.json
-        cp ${seededSettings} "$seeded"
-        chmod 600 "$seeded"
-        if ! env -i "$merger" --label Tokscale --settings "$seeded" --declared "$declaredPath"; then
-          fail ${host'}": the activation merger refused the seeded settings file"
-        elif ! python3 "$compareJson" "$seeded" ${mergedExpected}; then
-          fail ${host'}": merging the seeded settings file did not yield the expected document"
-        fi
+        ${executeActivation {
+          inherit script;
+          home = hm.home.homeDirectory or "";
+          contract = {
+            file = ".config/tokscale/settings.json";
+            seed = seededSettings;
+            expected = mergedExpected;
+            declared = {
+              set = {
+                colorPalette = "blue";
+                autoRefreshEnabled = true;
+                autoRefreshMs = 30000;
+              };
+              setPaths = [
+                {
+                  path = [
+                    "scanner"
+                    "bucketTimezone"
+                  ];
+                  value = "Asia/Seoul";
+                }
+                {
+                  path = [
+                    "autosubmit"
+                    "enabled"
+                  ];
+                  value = false;
+                }
+              ];
+            };
+          };
+        }}
       fi
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
@@ -242,7 +263,7 @@ let
             if [ "$tokscaleSecrets" != "cli-auth/tokscale_token tokscale_token h82 0400" ]; then
               fail ${host'}": expected cli-auth/tokscale_token owned by h82 with mode 0400, got: '$tokscaleSecrets'"
             fi
-            publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
+            publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | sed -n '1p' || true)
             if [ -z "$publisher" ]; then
               fail ${host'}": sops-install-secrets no longer runs publish-cli-auth"
             elif grep -q tokscale "$publisher"; then
@@ -258,43 +279,39 @@ let
       }
     '';
 
-  seededSettings = pkgs.writeText "tokscale-seeded-settings.json" (
-    builtins.toJSON {
-      colorPalette = "green";
-      autoRefreshEnabled = false;
-      autoRefreshMs = 60000;
-      tuiLightMode = true;
-      usage.disabledProviders = [ "x" ];
-      scanner = {
-        opencodeDbPaths = [ "/tmp/db" ];
-        bucketTimezone = "UTC";
-      };
-      autosubmit = {
-        enabled = true;
-        lastRunAtMs = 1700000000000;
-        lastError = "boom";
-      };
-    }
-  );
+  seededSettings = {
+    colorPalette = "green";
+    autoRefreshEnabled = false;
+    autoRefreshMs = 60000;
+    tuiLightMode = true;
+    usage.disabledProviders = [ "x" ];
+    scanner = {
+      opencodeDbPaths = [ "/tmp/db" ];
+      bucketTimezone = "UTC";
+    };
+    autosubmit = {
+      enabled = true;
+      lastRunAtMs = 1700000000000;
+      lastError = "boom";
+    };
+  };
 
-  mergedExpected = pkgs.writeText "tokscale-merged-settings.json" (
-    builtins.toJSON {
-      colorPalette = "blue";
-      autoRefreshEnabled = true;
-      autoRefreshMs = 30000;
-      tuiLightMode = true;
-      usage.disabledProviders = [ "x" ];
-      scanner = {
-        opencodeDbPaths = [ "/tmp/db" ];
-        bucketTimezone = "Asia/Seoul";
-      };
-      autosubmit = {
-        enabled = false;
-        lastRunAtMs = 1700000000000;
-        lastError = "boom";
-      };
-    }
-  );
+  mergedExpected = {
+    colorPalette = "blue";
+    autoRefreshEnabled = true;
+    autoRefreshMs = 30000;
+    tuiLightMode = true;
+    usage.disabledProviders = [ "x" ];
+    scanner = {
+      opencodeDbPaths = [ "/tmp/db" ];
+      bucketTimezone = "Asia/Seoul";
+    };
+    autosubmit = {
+      enabled = false;
+      lastRunAtMs = 1700000000000;
+      lastError = "boom";
+    };
+  };
 
   # Each case states whether packages/tokscale.nix must accept the pair.
   # tryEval catches the package's assertMsg, so a guard that stops rejecting

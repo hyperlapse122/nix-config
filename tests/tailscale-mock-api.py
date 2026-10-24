@@ -15,10 +15,18 @@ import sys
 TOKEN = "FAKE_test_api_token"
 STATE_DIR = "/var/lib/tailscale-mock-api"
 DEVICES_PATH = os.path.join(STATE_DIR, "devices.json")
+REQUESTS_LOG_PATH = os.path.join(STATE_DIR, "requests.log")
 DELETES_LOG_PATH = os.path.join(STATE_DIR, "deletes.log")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    def parse_request(self):
+        parsed = super().parse_request()
+        if parsed:
+            with open(REQUESTS_LOG_PATH, "a") as log:
+                log.write(f"{self.command} {self.path}\n")
+        return parsed
+
     def _authorized(self):
         return self.headers.get("Authorization") == f"Bearer {TOKEN}"
 

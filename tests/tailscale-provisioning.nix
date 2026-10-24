@@ -206,7 +206,10 @@ pkgs.testers.nixosTest {
       # or delete anything, even though a same-hostname device is listed.
       router.succeed(f"mkdir -p $(dirname {state_file}) && touch {state_file}")
       mockapi.succeed("rm -f /var/lib/tailscale-mock-api/deletes.log && touch /var/lib/tailscale-mock-api/deletes.log")
+      mockapi.succeed("truncate -s 0 /var/lib/tailscale-mock-api/requests.log")
       router.succeed(run_dedup)
+      requests = mockapi.succeed("cat /var/lib/tailscale-mock-api/requests.log")
+      assert requests == "", "existing state contacted API: " + requests
       deletes = mockapi.succeed("cat /var/lib/tailscale-mock-api/deletes.log").split()
       assert deletes == [], deletes
       router.succeed(f"rm -f {state_file}")

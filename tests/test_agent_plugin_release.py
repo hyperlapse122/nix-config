@@ -20,9 +20,10 @@ PREFIX = 'compound-engineering-'
 FAKE_FETCH = '''#!/usr/bin/env python3
 import os, sys
 status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
-if status:
-    sys.exit(status)
 sys.stdout.write(os.environ['FAKE_FETCH_BODY'])
+if status:
+    sys.stderr.write(os.environ['FAKE_FETCH_BODY'])
+    sys.exit(status)
 '''
 
 
@@ -51,14 +52,6 @@ class ReleaseTestCase(unittest.TestCase):
             text=True,
             env=env,
         )
-
-    def test_picks_the_plugin_train_over_a_strictly_newer_other_train(self):
-        result = self.run_release([
-            release('cli-v9.9.9'),
-            release('compound-engineering-v3.28.0'),
-        ])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), 'compound-engineering-v3.28.0')
 
     def test_every_train_distinct_and_only_the_plugin_train_wins(self):
         result = self.run_release([
@@ -122,9 +115,12 @@ class ReleaseTestCase(unittest.TestCase):
         self.assertNotIn(secret, result.stderr)
 
     def test_fetch_failure_does_not_echo_the_payload(self):
-        result = self.run_release([release('compound-engineering-v3.28.0')], status=4)
+        sentinel = 'FAILED-FETCH-PAYLOAD-MUST-STAY-PRIVATE'
+        result = self.run_release(sentinel, status=4)
         self.assertEqual(result.returncode, 1)
         self.assertIn('failed with status 4', result.stderr)
+        self.assertNotIn(sentinel, result.stdout)
+        self.assertNotIn(sentinel, result.stderr)
 
     def test_feed_that_is_not_a_list_is_refused(self):
         result = self.run_release({'message': 'Not Found'})

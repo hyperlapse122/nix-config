@@ -21,6 +21,8 @@
 let
   inherit (pkgs) lib;
 
+  authEffects = ./lib/containers-auth-effects.py;
+
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
   podman = configurations.withTrait "my.podman.enable" (config: config.my.podman.enable);
 
@@ -158,11 +160,12 @@ let
       userSessionDocker = hm.systemd.user.sessionVariables.DOCKER_HOST or "";
 
       activationScript = hm.home.activation.containersAuth.data or "";
-      registriesConfEntry =
-        hm.xdg.configFile."containers/registries.conf.d/10-unqualified-search.conf" or null;
-      registriesConf = if registriesConfEntry != null then (registriesConfEntry.text or "") else "";
-      registriesConfEnabled =
-        if registriesConfEntry != null then (registriesConfEntry.enable or true) else false;
+      authBlock = pkgs.writeText "containers-auth-block.sh" activationScript;
+      registryFile =
+        if hm ? home-files then
+          "${hm.home-files}/.config/containers/registries.conf.d/10-unqualified-search.conf"
+        else
+          "";
     in
     ''
       # 1. Verify systemPackages contains podman, podman-docker-compat, and docker-credential-sops
@@ -197,31 +200,19 @@ let
         failed=1
       fi
 
-      # 4. Verify home.activation.containersAuth has credHelpers mappings and no embedded tokens
-      activationScriptData=${pkgs.lib.escapeShellArg activationScript}
-      for reg in "docker.io" "ghcr.io" "registry.gitlab.com" "registry.jpi.app"; do
-        if echo "$activationScriptData" | grep -q "\"$reg\":\"sops\""; then
-          :
-        else
-          echo "home.activation.containersAuth missing $reg helper mapping on ${hostName}" >&2
-          failed=1
-        fi
-      done
-
-      if echo "$activationScriptData" | grep -q -E '(auths|token|password)'; then
-        echo "home.activation.containersAuth contains embedded tokens on ${hostName}" >&2
+      if ! python3 ${authEffects} ${authBlock}; then
+        echo "containersAuth effect contract failed on ${hostName}" >&2
         failed=1
       fi
-
-      # 5. Verify registries search drop-in is enabled and sets unqualified-search-registries
-      if [ '${if registriesConfEnabled then "1" else "0"}' != "1" ]; then
-        echo "registries search drop-in is disabled on ${hostName}" >&2
-        failed=1
-      fi
-      if echo '${registriesConf}' | grep -q 'unqualified-search-registries = \["docker.io"\]'; then
-        :
-      else
-        echo "registries.conf drop-in missing unqualified-search-registries on ${hostName}: '${registriesConf}'" >&2
+      if ! python3 - ${esc registryFile} <<'PYREGISTRY'
+      import sys, tomllib
+      from pathlib import Path
+      path = Path(sys.argv[1])
+      assert path.is_file(), "missing materialized registry search drop-in"
+      assert tomllib.loads(path.read_text()).get("unqualified-search-registries") == ["docker.io"], "incorrect materialized registry search policy"
+      PYREGISTRY
+      then
+        echo "registry consumer configuration failed on ${hostName}" >&2
         failed=1
       fi
     '';
@@ -229,6 +220,7 @@ in
 pkgs.runCommand "podman-containers-tests"
   {
     nativeBuildInputs = [
+      pkgs.python3
       pkgs.gnugrep
     ];
   }

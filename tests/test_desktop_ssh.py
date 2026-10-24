@@ -260,6 +260,14 @@ class ProvisionTests(unittest.TestCase):
         loaded = desktop_ssh.load_working_key(self.key_file, declared, self.wallet)
         self.assertEqual(desktop_ssh.public_bytes(loaded.public_key()),
                          desktop_ssh.public_bytes(self.source_key.public_key()))
+        password = self.wallet.entries[desktop_ssh.fingerprint(declared)]
+        mismatched = Ed25519PrivateKey.generate().public_key()
+        self.wallet.entries[desktop_ssh.fingerprint(mismatched)] = password
+        with self.assertRaisesRegex(desktop_ssh.WorkingKeyUnavailable, "do not match"):
+            desktop_ssh.load_working_key(self.key_file, mismatched, self.wallet)
+        self.wallet.entries[desktop_ssh.fingerprint(declared)] = "wrong-password"
+        with self.assertRaisesRegex(desktop_ssh.WorkingKeyUnavailable, "do not match"):
+            desktop_ssh.load_working_key(self.key_file, declared, self.wallet)
         self.wallet.entries.clear()
         with self.assertRaisesRegex(desktop_ssh.DesktopSSHError, "missing from KWallet"):
             desktop_ssh.load_working_key(self.key_file, declared, self.wallet)

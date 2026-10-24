@@ -39,40 +39,41 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
   settingsFile = ".codex/config.toml";
 
-  expected = pkgs.writeText "codex-expected-settings.json" (
-    builtins.toJSON {
-      setPaths = [
-        {
-          path = [ "check_for_update_on_startup" ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "in_app_updates"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "daemon_auto_start"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "memories"
-          ];
-          value = false;
-        }
-      ];
-      remove = [ "developer_instructions" ];
-    }
-  );
+  declared = {
+    setPaths = [
+      {
+        path = [ "check_for_update_on_startup" ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "in_app_updates"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "daemon_auto_start"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "memories"
+        ];
+        value = false;
+      }
+    ];
+    remove = [ "developer_instructions" ];
+  };
+  expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
   assertHost =
     entry:
@@ -99,14 +100,14 @@ let
           failed=1
         fi
 
-        if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
+        if ! printf '%s' ${esc script} | grep -F '/bin/agent-settings' >/dev/null; then
           echo 'the codexSettings activation script must invoke the packaged merger on ${hostName}' >&2
           failed=1
         fi
 
         formatArg=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--format[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+          | sed -n '1p' | awk '{print $2}' || true)
         if [ "$formatArg" != toml ]; then
           echo "codexSettings must run the merger with --format toml on ${hostName}, got: '$formatArg'" >&2
           failed=1
@@ -115,14 +116,14 @@ let
         # Comment lines are stripped first, as in tests/claude.nix, so a comment
         # explaining why the swallow is absent cannot fail the honest script.
         if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+          | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
           echo 'the codexSettings activation script must not swallow the merger exit status on ${hostName}' >&2
           failed=1
         fi
 
         settingsArg=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+          | sed -n '1p' | awk '{print $2}' || true)
         if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/${settingsFile}"} ]; then
           echo "codexSettings must point the merger at ~/${settingsFile} on ${hostName}, got: '$settingsArg'" >&2
           failed=1
@@ -130,7 +131,7 @@ let
 
         declaredPath=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+          | sed -n '1p' | awk '{print $2}' || true)
         if [ -z "$declaredPath" ]; then
           echo 'the codexSettings activation script passes no declared-settings file on ${hostName}' >&2
           failed=1
@@ -142,6 +143,15 @@ let
     in
     ''
       ${activationAbsent}${activationPresent}
+      ${executeActivation {
+        inherit script;
+        home = userConfig.home.homeDirectory or "";
+        contract = {
+          file = settingsFile;
+          format = "toml";
+          inherit declared;
+        };
+      }}
       if [ ${esc (lib.boolToString targeted)} != "false" ]; then
         echo 'Home Manager must not target ~/${settingsFile} on ${hostName}; Codex owns it' >&2
         failed=1
@@ -149,10 +159,10 @@ let
     '';
 in
 pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertHost configurations.userEntries}
 
   if [ "$failed" != "0" ]; then
     exit 1

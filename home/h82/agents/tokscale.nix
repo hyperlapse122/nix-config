@@ -86,13 +86,15 @@ in
   # Tokscale only reads its custom prices, so a store symlink is enough.
   xdg.configFile."tokscale/custom-pricing.json".text = builtins.toJSON customPricing;
 
-  # Unguarded and after installPackages for the reasons given on
+  # No executable-existence guard; ordered after installPackages as on
   # claudeSettings in claude.nix: a refusal must fail the rebuild loudly
   # without stranding linkGeneration or installPackages behind it.
   home.activation.tokscaleSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --label Tokscale \
-      --settings ${config.home.homeDirectory}/.config/tokscale/settings.json \
-      --declared ${declared}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label Tokscale \
+        --settings ${config.home.homeDirectory}/.config/tokscale/settings.json \
+        --declared ${declared}
+    fi
   '';
 }

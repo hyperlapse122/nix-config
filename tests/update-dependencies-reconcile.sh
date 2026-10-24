@@ -292,7 +292,12 @@ for minute in "${minute_list[@]}"; do
   ((10#$minute != 0)) || fail "the cron fires at minute 0: $crons"
 done
 ((${#minute_list[@]} == 2)) || fail "the cron fires ${#minute_list[@]} times an hour, not twice: $crons"
-pass "the cron fires twice an hour, never on the hour ($crons)"
+first_minute=$((10#${minute_list[0]}))
+second_minute=$((10#${minute_list[1]}))
+((first_minute != second_minute)) || fail "the cron repeats the same minute: $crons"
+minute_gap=$(( (second_minute - first_minute + 60) % 60 ))
+((minute_gap == 30)) || fail "the cron minutes are not 30 minutes apart: $crons"
+pass "the cron fires every 30 minutes, never on the hour ($crons)"
 
 # --- T3 Code bump commit ----------------------------------------------------
 
