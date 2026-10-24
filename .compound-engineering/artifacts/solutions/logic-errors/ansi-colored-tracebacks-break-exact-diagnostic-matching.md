@@ -1,6 +1,7 @@
 ---
 title: "ANSI colors break exact traceback matching in mutation evidence"
 date: "2026-10-25"
+last_updated: "2026-10-25"
 category: logic-errors
 module: "CI mutation evidence"
 problem_type: test_failure
@@ -36,7 +37,7 @@ plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw_text)
 
 For streamed logs, retain raw overlap between reads so a split escape sequence can be joined before normalization. Continue requiring the specific owner diagnostic, a nonzero mutant result, and a passing restored control. Store the readable excerpt beside the raw transcript hash and run identity.
 
-The [captured evidence](../../reviews/code-review-20261024/test-audit-evidence.json) retains the printing failure, baseline and restored derivations, raw-log checksum, tested merge revision, and CI job/artifact links. All 40 mutation cases subsequently passed their intended-failure and restored-control requirements in [the proof run](https://github.com/hyperlapse122/nix-config/actions/runs/40121639574).
+The [proof run](https://github.com/hyperlapse122/nix-config/actions/runs/40121639574) retains the printing failure and full transcripts in its mutation artifacts. [PR #342](https://github.com/hyperlapse122/nix-config/pull/342) records the per-case diagnostics, baseline and restored outcomes, raw-log checksums, tested merge revision, and job/artifact links. All 40 mutation cases passed their intended-failure and restored-control requirements. Review artifacts were removed from the repository at the user's request.
 
 ## Prevention
 
