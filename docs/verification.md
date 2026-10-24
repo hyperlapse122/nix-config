@@ -1,8 +1,27 @@
 # Verification
 
+## Publishing and merge readiness
+
+Publishing a branch makes CI evidence available; it does not establish merge readiness. Before a push, run `git diff --check`, lint changed Markdown, run `nix fmt -- --ci` where the flake exposes a formatter, and run relevant checks supported locally. Report each local result and each deferred check separately, with its intended builder or CI job. Failures in checks that ran must be resolved; unavailable outputs remain pending rather than passed. Do not run an apply or switch as validation.
+
+Classify the entire PR diff from its merge-base. Inert prose, implementation plans, and feedback-sweep state qualify for the documentation path. Executable examples that change a supported procedure, runtime agent instructions, consumed templates, configuration, scripts, packages, tests, and workflow changes require the affected behavior's verification regardless of file extension. A policy edit about publishing needs classification and publishing-path evidence, not unrelated host builds; changes to runtime agent policy need evidence for that runtime behavior.
+
+The actual CI classifier is `scripts/ci-docs-only-paths`, called by `changes` in `.github/workflows/check.yml`. It returns true only for a nonempty list entirely under `docs/`, `.compound-engineering/artifacts/`, or root-level `*.md`. It is a path filter, not a semantic policy check: `AGENTS.md` also returns true. Run it on the merge-base diff to predict CI, then inspect content for runtime effects. Do not move runtime content into these paths to avoid verification.
+
+On a docs-only pull request, `fmt`, `changes`, and standalone `markdown-lint` run; flake evaluation, check shards, VM jobs, and host builds skip. Inert docs/state may become ready with that successful current-head run and the local checks above. For changes beyond inert docs/state, readiness requires flake evaluation, all declared checks, every VM test, and every production/bootstrap host output. Normally `flake-check`, `check-shards`, `vm-checks`, `build`, `build-linux`, and `build-darwin` supply those results. If a runtime instruction or configuration change matches the docs filter, the skipped jobs provide no evidence: run the full required checks on supported builders and record commands, revision, and results before readiness. Pushes to `main` run the full matrix even for docs; that later run cannot substitute for pre-merge evidence.
+
+This flake has no `formatter.aarch64-darwin`; record that local formatting command as unavailable and require the Linux `fmt` CI job instead.
+
+From macOS, publish after the local gate and leave unavailable Linux evidence pending for PR CI. `vmChecks` lives under `legacyPackages.x86_64-linux`; the shorthand `.#vmChecks.all` resolves on x86_64 Linux and is not a native Darwin attribute. Use a Linux checkout of the same commit with `/dev/kvm`, disposable VM disks, and Nix system features `nixos-test` and `kvm` for VM tests. Alternatively, from macOS use `nix build --no-link .#legacyPackages.x86_64-linux.vmChecks.all` with a configured x86_64 Linux remote builder that has KVM and the required system features. The explicit attribute selects the Linux derivations; it does not make them native Darwin outputs. A Linux VM on the Mac is suitable only if it supplies the required architecture and working KVM; an ordinary container without KVM is not VM-test proof. CI's `vm-checks` uses x86_64 Linux with KVM. Linux host outputs need builders matching their system; `build` covers NixOS, and `build-linux` covers non-NixOS outputs and aarch64 Linux fixture checks on native runners. `build-darwin` covers macOS systems and checks on Apple Silicon. Never expose Linux VM attributes as Darwin outputs to bypass this boundary.
+
+Before readiness, every workflow triggered for the PR must have a terminal successful run on the current head, with only intentional skips for the applicable classification, and no unresolved review or branch-currency blockers. Keep required hardware verification separate: CI or VM success does not prove card, firmware, boot, or device behavior. Record applicable hardware results or their outstanding status without claiming them passed.
+
 ## Repository checks
 
+The full verification commands below are divided by builder capability. Run Linux checks and VM commands on Linux; run the final macOS commands on Apple Silicon macOS. These are readiness evidence, not a blanket local pre-push gate.
+
 ```sh
+# On Linux:
 nix fmt -- --ci
 nix flake check --no-build
 nix flake check
