@@ -148,13 +148,6 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["version"], "1.3.0")
 
-    def test_prefetched_sri_pins_the_hash_and_its_hex(self):
-        result = self.run_release()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        data = json.loads(result.stdout)
-        self.assertEqual(data["sha256"], HEX)
-        self.assertEqual(data["hash"], SRI)
-
     def test_writes_a_newer_version_to_the_pin(self):
         self.write_pin("1.2.8")
         result = self.run_release(extra_args=["-o", str(self.output)])

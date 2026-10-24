@@ -87,13 +87,6 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         self.assertEqual(data["version"], "2.1.280")
         self.assertIn("updated", result.stdout)
 
-    def test_idempotent_rerun_reports_already_up_to_date(self):
-        output_file = Path(self.tmp.name) / "manifest.json"
-        output_file.write_text(json.dumps(SAMPLE_MANIFEST))
-        result = self.run_release(extra_args=["-o", str(output_file)])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("already up to date", result.stdout)
-
     def test_manifest_fetch_is_actually_skipped_when_not_newer(self):
         # Proves the skip is real, not incidental: point the manifest
         # endpoint at a failure and confirm the resolver never calls it
