@@ -8,6 +8,12 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 - Leave card administration and key management to the user.
 - For a new SOPS setup or secret file, use the card key `{{ .user.gpgKey }}` as the user's recipient, plus a machine's own recipient when it must decrypt without the card. Keep the existing method in a project that already has one.
 
+# File I/O
+
+- Use the harness's native read, write, edit, or patch tools for routine file reads, writes, and edits when a suitable tool is available.
+- Use shell commands or scripts such as Python and `sed` for file I/O only when the harness has no suitable native tool or the operation requires a command-line tool.
+- The GPG and encryption rules take precedence for secrets: pipe decrypted output straight into the consuming command without opening decrypted files with file tools.
+
 # Git
 
 - Before the first push, rename a branch whose name does not describe the change, such as a worktree codename or random hex, with `git branch -m`. Follow the project's documented naming rule; otherwise name it `<kind>/short-kebab-slug` with a full-word GitHub Flow kind: `feature/`, `fix/`, `docs/`, `chore/`, or `refactor/`. Never rename onto or push over an existing branch.
