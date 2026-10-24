@@ -1991,13 +1991,13 @@
       },
       "context_length": 1048576,
       "top_provider": {
-        "context_length": 1024000,
-        "max_completion_tokens": 384000
+        "context_length": 1048576,
+        "max_completion_tokens": 393216
       },
       "pricing": {
-        "prompt": "0.000000216108",
-        "completion": "0.000000432216",
-        "input_cache_read": "0.000000018009"
+        "prompt": "0.00000020787",
+        "completion": "0.00000041574",
+        "input_cache_read": "0.00000001722"
       },
       "reasoning": {
         "mandatory": false,
@@ -6129,27 +6129,6 @@
       }
     },
     {
-      "id": "openai/gpt-3.5-turbo",
-      "name": "OpenAI: GPT-3.5 Turbo",
-      "architecture": {
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 16385,
-      "top_provider": {
-        "context_length": 16385,
-        "max_completion_tokens": 4096
-      },
-      "pricing": {
-        "prompt": "0.0000005",
-        "completion": "0.0000015"
-      }
-    },
-    {
       "id": "openai/gpt-3.5-turbo-0613",
       "name": "OpenAI: GPT-3.5 Turbo (older v0613)",
       "architecture": {
@@ -6189,48 +6168,6 @@
       "pricing": {
         "prompt": "0.000003",
         "completion": "0.000004"
-      }
-    },
-    {
-      "id": "openai/gpt-3.5-turbo-instruct",
-      "name": "OpenAI: GPT-3.5 Turbo Instruct",
-      "architecture": {
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 4095,
-      "top_provider": {
-        "context_length": 4095,
-        "max_completion_tokens": 3685
-      },
-      "pricing": {
-        "prompt": "0.0000015",
-        "completion": "0.000002"
-      }
-    },
-    {
-      "id": "openai/gpt-3.5-turbo:batch",
-      "name": "OpenAI: GPT-3.5 Turbo (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 16385,
-      "top_provider": {
-        "context_length": 16385,
-        "max_completion_tokens": 4096
-      },
-      "pricing": {
-        "prompt": "0.00000025",
-        "completion": "0.00000075"
       }
     },
     {
@@ -10523,7 +10460,7 @@
       },
       "pricing": {
         "prompt": "0.0000002",
-        "completion": "0.0000014",
+        "completion": "0.000002",
         "input_cache_read": "0.0000002"
       },
       "reasoning": {
@@ -11487,9 +11424,9 @@
         "max_completion_tokens": 128000
       },
       "pricing": {
-        "prompt": "0.000000132",
-        "completion": "0.000000528",
-        "input_cache_read": "0.000000033"
+        "prompt": "0.0000000825",
+        "completion": "0.00000033",
+        "input_cache_read": "0.000000020625"
       },
       "reasoning": {
         "mandatory": false,
@@ -11547,13 +11484,13 @@
       },
       "context_length": 1048576,
       "top_provider": {
-        "context_length": 262144,
-        "max_completion_tokens": 131072
+        "context_length": 1048576,
+        "max_completion_tokens": 64000
       },
       "pricing": {
-        "prompt": "0.000000834",
-        "completion": "0.000002501",
-        "input_cache_read": "0.000000042"
+        "prompt": "0.0000007506",
+        "completion": "0.0000022509",
+        "input_cache_read": "0.0000000378"
       },
       "reasoning": {
         "mandatory": false,
@@ -12762,7 +12699,7 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000512",
+        "prompt": "0.0000000509",
         "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
@@ -13552,7 +13489,7 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000512",
+        "prompt": "0.0000000509",
         "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
