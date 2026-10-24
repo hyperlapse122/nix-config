@@ -247,10 +247,12 @@ def diagnostic_evidence(path, pattern):
         while chunk := stream.read(65536):
             digest.update(chunk)
             text = tail + chunk.decode(errors='replace')
+            # Keep the raw tail so CSI sequences split across reads reassemble.
+            tail = text[-8192:]
+            text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
             match = re.search(pattern, text)
             if match and excerpt is None:
                 excerpt = text[max(0, match.start() - 256):match.end() + 256]
-            tail = text[-8192:]
     return excerpt, digest.hexdigest()
 
 
