@@ -1,7 +1,7 @@
 /*
   Check interface:
 
-    import ./tests/darwin-outputs.nix { inherit pkgs darwinFixtures; }
+    import ./tests/darwin-outputs.nix { inherit pkgs darwinFixtures darwinConfigurations; }
 
   `pkgs` is nixpkgs for aarch64-darwin and `darwinFixtures` is
   tests/lib/darwin-fixtures.nix. Builds on a macOS builder only, and reads
@@ -68,9 +68,20 @@
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason.
 */
-{ pkgs, darwinFixtures }:
+{
+  pkgs,
+  darwinFixtures,
+  darwinConfigurations,
+}:
 let
   inherit (pkgs) lib;
+  instructionDelivery = import ./agent-instructions.nix {
+    inherit pkgs;
+    entries = map (entry: {
+      inherit (entry) name;
+      user = entry.host.config.home-manager.users.${entry.host.config.my.user.name} or { };
+    }) (darwinFixtures ++ lib.mapAttrsToList (name: host: { inherit name host; }) darwinConfigurations);
+  };
 
   codexEffects = pkgs.writeText "codex-activation-effects.py" ''
     import os, subprocess, sys, tempfile, tomllib
@@ -559,6 +570,7 @@ pkgs.runCommand "darwin-outputs"
     ];
   }
   ''
+    test -e ${instructionDelivery}
     fail=0
     bad() { echo "$name: $*" >&2; fail=1; }
     ${lib.optionalString (darwinFixtures == [ ]) ''

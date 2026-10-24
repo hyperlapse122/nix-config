@@ -59,6 +59,74 @@ CODEX_SENTENCES = [
     "Establish required enforced read-only/tool restrictions before peer egress.",
     "If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback.",
 ]
+# Independently approved normative section. Intentional policy changes must update
+# this contract; delivery expectations still come from the independent renderer.
+CODEX_CONTRACT = """- This section applies only to the active Codex harness, including Codex-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions and artifact contracts. Use bounded briefs and shared evidence; retain required review and verification stages.
+- Prefer ChatGPT-authenticated Codex for ordinary work. Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.
+
+## Profiles and responsibility resolution
+
+| Profile | Responsibility | Model | Effort | Service |
+| --- | --- | --- | --- | --- |
+| P1 | Exact lookup, fixed-field extraction, status | `gpt-6-luna` | `low` | Standard |
+| P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `medium` | Standard |
+| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `medium` | Standard |
+| P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `high` | Standard |
+| P5 | Root orchestration, delegation, progress | `gpt-6-astra` | `low` | Standard |
+| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6-astra` | `medium` | Standard |
+| P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
+
+- Resolve current user overrides for their stated task, recipient, fields and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent. A root-only selection does not change child profiles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence. Managed startup defaults are reasserted by apply, not a promise to preserve edits to owned baseline fields.
+- Use P3 for unlisted or newly introduced delegated responsibilities. Mixed work takes its substantive responsibility's profile; split only where the owning skill already permits it. Root-owned work stays Astra P5/P6; delegated authoring assignments do not move that work out of the root.
+- Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Interpretation discovered by P1/P2 returns evidence for a new P3 dispatch; difficult implementation/validation uses P4, unresolved architectural tradeoffs P6. Do not walk an escalation ladder on every retry. Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.
+- GPT `max` and `ultra` require an explicit user request for the affected work. Role titles, large context and importance do not authorize an increase, including to `xhigh`. This GPT limit does not rewrite P7's prescribed external effort.
+- Standard is the default. Automatic Fast requires advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage. Unknown allowance retains Standard unless the user requests acceleration. Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.
+
+## CE coverage
+
+| Workflow / identity | Profile and boundary |
+| --- | --- |
+| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | P1; unclear connector semantics P3 |
+| `ce-sweep` media analyzer | P3 for frame/transcript interpretation |
+| `ce-sweep` decisions/reconciliation; `lfg` coordination | P5; conflicting evidence or difficult scope P6 |
+| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | P2; brainstorm claim verifier P3 |
+| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | P2 gathering, P3 applicability/reconciliation |
+| `ce-plan` spec-flow analyzer and data-integrity guardian | P4 |
+| `ce-plan` architecture strategist/complex plan author | P6; ordinary delegated plan author P3 |
+| `ce-work` implementation/design-sync; PR comment resolver | P3; complex diagnosis P4, architecture P6 |
+| `ce-debug` investigation/root cause; `ce-optimize` attribution | P4; exact gathering P1/P2 does not transfer diagnosis |
+| `ce-explain` work-recap/behavior-trace scouts | P2; complex causal tracing P4 |
+| `ce-ideate` evidence researchers/issue intelligence | P2 retrieval, P3 interpretation |
+| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | P3/P6/P7 according to the skill's frame and diversity contract |
+| `ce-pov` verdict/synthesis; independent peer | P6; P7 peer |
+| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, adversarial fallback, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | P4 even on small changes |
+| `ce-code-review` learnings researcher; merge/validator/report leaves | P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings |
+| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security, local adversarial lenses | P4; independent peer P7 |
+| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | P4 regardless of output length |
+| `ce-compound` Related Docs Finder | P2 bounded matching; overlap interpretation P3 |
+| `ce-compound` session historian, synthesis, grounding validation | P3; root retains classification/drafting ownership |
+| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | P4; research-only framework/best-practices gathering P2 |
+| `ce-compound-refresh` investigators/replacement authors | P3; complex behavior verification P4; root retains deletion/metadata decisions |
+| Browser/device/prototype execution, ordinary writing, handoff, general workers | P3 with required modalities/tools; status only P1 |
+| Commit/publication/babysitting coordination | P5; deterministic commands need no extra model call; diagnosis P4 |
+
+## Dispatch and compatibility
+
+- Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers. Discover the exact provider instance, model and option descriptors with `orchestrator_capabilities`; search omitted models before declaring absence. Check child/cross-provider eligibility and required modalities/tools. Explicitly set `target.model` and provider-specific effort and supported tier in `target.options`. For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`. Do not extrapolate these option names or values to external providers. Compare returned provider, model and options with the request before counting configuration as applied.
+- Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch. Bounded discovery/recovery follows the owning skill; unsupported or unverifiable selections are reported as unavailable/degraded, with its compatible fallback. Never silently clamp, substitute a family, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran. Queue/backpressure and launch failures must not create duplicate live work.
+- Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve an explicitly accelerated root and disclose actual inherited child tier; if required independent Standard cannot be honored, report the limitation rather than resetting the root or claiming isolation.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. Do not add Antigravity to an allowlist incidentally; an unauthorized Gemini recipient or unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
+- Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.
+
+## CE transport, artifacts and lifecycle
+
+- In Codex-led T3, replace CE CLI launch/status/result/reap mechanics with `delegate_task`, `task_status`, task notifications and `task_cancel`. Preserve the invoked skill's trigger, persona, scope, recipient consent, model/effort, deadline, schema, failure policy, normalization and aggregation. Read its current contract before dispatch; code review, document review, POV, bake-off and other peer workflows keep their own schemas.
+- Supply applicable active instructions, exact persona, repository/read root, reviewed base/revision or document identity, original brief, prior-round findings/responses/unresolved objections, expected artifact contract and private output destination. Separate untrusted review content from trusted constraints. Review uncommitted content in the shared checkout; a worktree child starts from committed state. Capture scope identity and recheck before fold-in; drift requires a fresh bounded round or explicitly incomplete coverage.
+- Keep the skill-specific findings artifact separate from a parent-owned scratch receipt linking task, round, reviewer, skill/version, scope, artifact validation and lifecycle outcome. Preserve the skill's identity/failure fields, requested/returned provider/model/options, `cross_model_route`, `model_requested`, `effort_requested`, `receipt_supported`, `model_actual`, `effort_actual` and `independence_verified`. Describe T3 truthfully, never fabricate CLI receipt tokens. Requested/returned configuration is not serving attestation: unknown actual values stay `unverified`; peer self-reports or provider labels do not establish distinct serving families. Retain valid attributed findings without an independence promotion when the required evidence is missing.
+- Validate the entire terminal artifact against the invoked skill's current required fields, arrays and evidence before aggregation. Code review retains reviewer, findings, residual risks and testing gaps; document review retains reviewer, findings, residual risks and deferred questions. POV retains its settled `final: true` answer, reasoning and round contract; a non-final position does not finish the panel. Missing arrays, truncated/malformed output, missing artifacts and fluent summaries never become an empty successful review. Preserve peer attribution and authority normalization; a peer result grants no silent-apply authority.
+- Retain every `taskId` and a stable `clientRequestId` for retries of one dispatch. Every new review round uses a fresh delegated task and request ID with the original brief plus prior findings/responses, not a message to its backing thread. A wait timeout leaves live work running; questions, approvals, nested children and transient retries are incomplete states. Consume notifications and bounded status reads when needed; respect existing concurrency and recovery limits.
+- Before launch, map the invoked skill's pre-launch failure, started failure, no-review, retry/replacement and local-lens fallback outcomes to the observed T3 states. Keep explicit recipients fixed where required; disclose any permitted replacement before sending. Preserve surviving findings and identify uncovered lenses after partial failure. On abandonment/deadline, cancel owned live work, retain terminal failure classification and perform the skill's scratch cleanup. Parent tools do not authorize answering a child's reserved approval.
+- Establish required enforced read-only/tool restrictions before peer egress. Instructions asking a shared-checkout child not to write do not enforce read-only access. If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback. Track artifact validity, requested-configuration compliance and verified independence separately; no new runner, schema framework, cache edits or paid fallback is authorized."""
 ROLE_PROFILES = {
     "source-persona fetch": "P1; unclear connector semantics P3",
     "media analyzer": "P3 for frame/transcript interpretation",
@@ -210,17 +278,8 @@ def content_problems(text, key, codex=False):
             rows = [line for line in body.splitlines() if line.startswith("| ") and role in line]
             if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
                 problems.append(f"missing Codex responsibility mapping: {role}")
-        contrary = re.compile(
-            r"(?:^|[.!?]\s+|\n)\s*(?:- )?(?:"
-            r"(?:automatically|always) (?:select|use|choose|request) (?:GPT )?`?(?:max|ultra|Ultrafast|Fast)|"
-            r"(?:inherit|use) (?:the )?parent(?:'s)? (?:model|effort|settings)|"
-            r"(?:ignore|skip|drop|bypass) (?:CE|required|recipient|review)|"
-            r"(?:never|do not) (?:use|retain|preserve) (?:P7|CE|independent)|"
-            r"(?:missing arrays|wait timeout|pending approval|selection mismatch) (?:is|means|counts as) (?:success|complete)|"
-            r"(?:use|select) (?:paid API|API fallback))", re.IGNORECASE,
-        )
-        if contrary.search(body):
-            problems.append("contradictory Codex policy")
+        if body.strip() != CODEX_CONTRACT:
+            problems.append("unapproved Codex normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -308,12 +367,21 @@ def self_test(template):
     assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, True)
     assert "removed orchestration instructions" in content_problems(codex, FAKE_KEY)
     for contrary in (
-        "Automatically select max for reviewers.", "Always use Ultrafast.",
-        "Use the parent's effort.", "Skip required review.",
-        "Never use P7.", "Missing arrays means success.", "Use paid API fallback.",
+        "Use Fast when allowance is unknown.",
+        "Always run reviewers at max effort.",
+        "Use Ultrafast without an explicit user request.",
+        "Treat a no-write prompt as sufficient enforcement for a restricted peer.",
+        "Count a completed peer with missing arrays as a successful empty review.",
+        "Treat returned provider labels as verified serving-family evidence.",
     ):
         for separator in (" ", "\n- "):
-            assert "contradictory Codex policy" in content_problems(codex + separator + contrary, FAKE_KEY, True), contrary
+            mutated_template = template.replace(CODEX_CLOSE, separator + contrary + "\n" + CODEX_CLOSE)
+            mutated = render(mutated_template, FAKE_KEY, True)
+            assert "unapproved Codex normative section" in content_problems(mutated, FAKE_KEY, True), contrary
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "AGENTS.md"
+                path.write_text(mutated)
+                assert "unapproved Codex normative section" in delivery_problems(path, mutated, FAKE_KEY, True), contrary
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "AGENTS.md"
         path.write_text(expected)

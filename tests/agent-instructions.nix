@@ -2,15 +2,19 @@
   Read each Home Manager generation's four delivered instruction files.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
+  Linux callers supply self/fixtures; native Darwin callers supply explicit
+  entries, each { name, user }, from production/bootstrap and fixture hosts.
 */
 {
   pkgs,
-  self,
-  fixtures,
+  self ? { },
+  fixtures ? [ ],
+  entries ? null,
 }:
 let
   inherit (pkgs) lib;
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
+  userEntries = if entries == null then configurations.userEntries else entries;
   esc = value: lib.escapeShellArg (toString value);
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
   deliveryPaths = [
@@ -55,7 +59,7 @@ let
     '';
   presentEntries = lib.filter (
     entry: (entry.user.home-files or null) != null && (entry.user.my.user.gpgKey or null) != null
-  ) configurations.userEntries;
+  ) userEntries;
   manifest = pkgs.writeText "agent-instructions-deliveries.json" (
     builtins.toJSON (
       map (entry: {
@@ -71,13 +75,17 @@ let
   );
 in
 pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-  ${configurations.userGuard}
+  ${lib.optionalString (entries == null) configurations.userGuard}
+  ${lib.optionalString (userEntries == [ ]) ''
+    echo 'no user environments to check instruction delivery' >&2
+    exit 1
+  ''}
   failed=0
-  ${lib.concatMapStrings assertEntry configurations.userEntries}
+  ${lib.concatMapStrings assertEntry userEntries}
   ${lib.optionalString
     (
       pkgs.stdenv.hostPlatform.system == "x86_64-linux"
-      && !(lib.any (entry: (entry.user.my.user.gpgKey or null) == fakeKey) configurations.userEntries)
+      && !(lib.any (entry: (entry.user.my.user.gpgKey or null) == fakeKey) userEntries)
     )
     ''
       echo 'no user entry carries the fake my.user.gpgKey, so a literal fingerprint would pass' >&2

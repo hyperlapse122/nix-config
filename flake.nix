@@ -139,6 +139,7 @@
       checks.aarch64-darwin.darwin-outputs = import ./tests/darwin-outputs.nix {
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
         inherit darwinFixtures;
+        darwinConfigurations = darwinHosts;
       };
       darwinConfigurations = darwinHosts;
 
