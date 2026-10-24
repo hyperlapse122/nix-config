@@ -12699,7 +12699,7 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000509",
+        "prompt": "0.0000000507",
         "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
@@ -13489,7 +13489,7 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000509",
+        "prompt": "0.0000000507",
         "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
