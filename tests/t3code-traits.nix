@@ -42,9 +42,9 @@
     home, or declares `managed`, since
     T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
     the skills land. The Pi instance declares no binaryPath and no launch arguments. It
-    owns two model selections whole: the default, Claude Opus, and text
-    generation, Claude Haiku 5.5, both on the claudeAgent instance with no
-    option, so an effort an earlier generation wrote is dropped.
+    owns two model selections whole: the default, Codex GPT-6.1 Sol with low
+    reasoning effort, and text generation, Claude Haiku 5.5 with no option,
+    so options from an earlier model are dropped.
     The declaration retires providerModelPreferences.opencode, which an
     earlier generation wrote, and prunes the object it leaves empty. On a full
     configuration, the real merger also runs over a settings.json that holds
@@ -387,9 +387,14 @@ let
     ];
     own = {
       defaultModelSelection = {
-        instanceId = "claudeAgent";
-        model = "claude-opus-5-5";
-        options = [ ];
+        instanceId = "codex";
+        model = "gpt-6.1-sol";
+        options = [
+          {
+            id = "reasoningEffort";
+            value = "low";
+          }
+        ];
       };
       textGenerationModelSelection = {
         instanceId = "claudeAgent";
