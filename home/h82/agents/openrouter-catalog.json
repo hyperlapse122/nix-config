@@ -1893,13 +1893,13 @@
       },
       "context_length": 1048576,
       "top_provider": {
-        "context_length": 1048576,
-        "max_completion_tokens": 943718
+        "context_length": 1024000,
+        "max_completion_tokens": 384000
       },
       "pricing": {
-        "prompt": "0.0000000379",
-        "completion": "0.00000045",
-        "input_cache_read": "0.0000000379"
+        "prompt": "0.00000002968",
+        "completion": "0.00000005936",
+        "input_cache_read": "0.000000005936"
       },
       "reasoning": {
         "mandatory": false,
@@ -3845,6 +3845,31 @@
       }
     },
     {
+      "id": "liquid/lfm-2.5-2.6b",
+      "name": "LiquidAI: LFM2.5-2.6B",
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "context_length": 128000,
+      "top_provider": {
+        "context_length": 128000,
+        "max_completion_tokens": 8192
+      },
+      "pricing": {
+        "prompt": "0.00000035",
+        "completion": "0.0000005",
+        "input_cache_read": "0.00000004"
+      },
+      "reasoning": {
+        "mandatory": true
+      }
+    },
+    {
       "id": "liquid/lfm-2.5-2.6b:free",
       "name": "LiquidAI: LFM2.5-2.6B (free)",
       "architecture": {
@@ -5513,9 +5538,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.00000019",
-        "completion": "0.00000894",
-        "input_cache_read": "0.00000019"
+        "prompt": "0.000000213",
+        "completion": "0.000016",
+        "input_cache_read": "0.000000203"
       },
       "reasoning": {
         "mandatory": false,
@@ -12699,9 +12724,9 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000507",
-        "completion": "0.0000000702",
-        "input_cache_read": "0.00000003"
+        "prompt": "0.0000000254",
+        "completion": "0.0000001425",
+        "input_cache_read": "0.0000000254"
       },
       "reasoning": {
         "mandatory": true,
@@ -13210,9 +13235,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.00000019",
-        "completion": "0.00000894",
-        "input_cache_read": "0.00000019"
+        "prompt": "0.000000213",
+        "completion": "0.000016",
+        "input_cache_read": "0.000000203"
       },
       "reasoning": {
         "mandatory": false,
@@ -13489,9 +13514,9 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000507",
-        "completion": "0.0000000702",
-        "input_cache_read": "0.00000003"
+        "prompt": "0.0000000254",
+        "completion": "0.0000001425",
+        "input_cache_read": "0.0000000254"
       },
       "reasoning": {
         "mandatory": true,
