@@ -1,7 +1,0 @@
-# Supplemental preservation review
-
-The parent independently compared security C1 with `tests/pinentry-card.sh:277-299,470-476,534-546`. Retain the simple no-holder prompt variant as well as alignment and holder-bearing variants. A shared prompt table may absorb case 16, with its raw-PIN-negative assertion applied to answered rows. Do not remove a distinct SETDESC grammar row merely because its encoded response is the same. This consolidation reduces repeated setup; no runtime reduction is claimed. The root versus user installer, provision versus key loading, and raw relay versus installed render boundaries remain separate.
-
-Security F1 is supported by full control/mutant runner evidence. F2 has a current production comparison and a missing valid-mismatch fixture; local Linux behavior proof remains unavailable. F3 is an assertion-free success report, confirmed by reading lines 513-515 and its raw-source caller. None authorizes production seam removal. No repository edits occurred.
-
-The parent also verified desktop D1: `my.testAuditSkill` is internal/read-only provenance declared only for checks. Its only executable consumer is `tests/test-audit-skill.nix`; the actual shipped source attribution, license, enabled targets, byte comparison, and frontmatter checks remain independent keepers. Removing this option and its repeated literal assertions is justified; update the documentation sentence that names it. No change was applied.

@@ -66,7 +66,7 @@ A new generic test framework or production injection interface is unnecessary: e
 
 ### Sources
 
-The durable audit evidence is in `.compound-engineering/artifacts/reviews/2026-10-24-2029-fix-test-audit-proof-repairs-plan/audit/report.txt`, with lane ledgers and `inventory.json` alongside it.
+The audit evidence was reviewed during this implementation. Matching-platform mutation results and full verification are preserved in [PR #342](https://github.com/hyperlapse122/nix-config/pull/342) and [its proof run](https://github.com/hyperlapse122/nix-config/actions/runs/40121639574); review artifacts were removed from the repository at the user's request.
 The global F numbers below follow report order; lane-local F numbers are retained in the Source column.
 Global C and D numbers are assigned in report order and cross-reference their lane-local candidate names.
 The report's baseline is revision `09e9f5aaf56f3bb549c69bc8499de9c208737e4d`.
@@ -185,7 +185,7 @@ The full verification obligation includes Linux/KVM and matching architecture bu
 - **Dependencies:** None.
 - **Files:** `tests/test_agent_plugin_release.py`, `tests/update-dependencies-reconcile.sh`, `tests/test_claude_code_release.py`, `tests/test_t3code_release.py`, `tests/test_wifiman_desktop_release.py`.
 - **Approach:** Extend existing failed-fetch and schedule fixtures, then consolidate the listed same-owner replay cases under KTD2.
-- **Patterns:** Existing complete expected-pin assertions and process fixtures in these files; `.compound-engineering/artifacts/reviews/2026-10-24-2029-fix-test-audit-proof-repairs-plan/audit/releases.md`.
+- **Patterns:** Existing complete expected-pin assertions and process fixtures in these files, with the accepted release findings recorded in the repair register.
 - **Execution note:** Prove the repaired assertions catch payload printing and duplicated schedule minutes before consolidating.
 - **Test scenarios:**
   1. A failed fetch emits a sentinel body internally, returns failure, and neither captured stream contains the sentinel.

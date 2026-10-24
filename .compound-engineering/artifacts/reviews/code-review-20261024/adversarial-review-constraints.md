@@ -1,1 +1,0 @@
-Review only; never edit production or tests or index. Preserve independent protocol, security, platform and lifecycle contracts. Findings require concrete evidence; report all valid findings and verification limits. Native Darwin replays do not prove Linux/KVM execution.

@@ -1,8 +1,0 @@
-{
-  "reviewer": "reliability",
-  "findings": [],
-  "residual_risks": [
-    "Matching-platform execution remains pending: this review could inspect tests/audit-proof-mutations.py and the audit-proof-mutations CI jobs but could not execute the real x86_64-linux owner baselines, intended-diagnostic mutants, restored controls, or vmChecks.tailscale-provisioning without Linux/KVM. Static review does not establish that those owners build or that every mutation is caught. Require successful current-revision CI results and preserved mutation transcripts before treating the temporary venue as completed evidence."
-  ],
-  "testing_gaps": []
-}
