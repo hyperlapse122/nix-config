@@ -247,9 +247,10 @@
               setup ? "",
               extra ? "",
               modules ? [ ],
+              nativeBuildInputs ? [ ],
             }:
             name: script: test:
-            pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            pkgs.runCommand "${name}-tests" { nativeBuildInputs = [ pkgs.python3 ] ++ nativeBuildInputs; } ''
               export PYTHONDONTWRITEBYTECODE=1
               mkdir -p scripts tests
               cp ${script} scripts/${baseNameOf script}${
@@ -574,9 +575,9 @@
           agent-plugin-release =
             pythonScriptCheck "agent-plugin-release" ./scripts/agent-plugin-release
               ./tests/test_agent_plugin_release.py;
-          chatgpt-release =
-            pythonScriptCheck "chatgpt-release" ./scripts/chatgpt-release
-              ./tests/test_chatgpt_release.py;
+          chatgpt-release = pythonScriptCheckWith {
+            nativeBuildInputs = [ pkgs.curl ];
+          } "chatgpt-release" ./scripts/chatgpt-release ./tests/test_chatgpt_release.py;
           claude-desktop-release =
             pythonScriptCheck "claude-desktop-release" ./scripts/claude-desktop-release
               ./tests/test_claude_desktop_release.py;
@@ -1136,12 +1137,37 @@
                       echo 'the chatgpt wrapper on ${entry.name} carries an ozone flag' >&2
                       fail=1
                     fi
-                    # The bundled Codex sandboxes with bwrap, which NixOS has nowhere
-                    # else on PATH.
-                    if ! grep -qF -- '-bubblewrap-' ${chatgptPkg}/bin/chatgpt; then
-                      echo 'the chatgpt wrapper on ${entry.name} puts no bubblewrap on PATH' >&2
+                    # Exercise the generated environment without starting the GUI.
+                    # Replace only the final application target in a temporary copy.
+                    python - ${chatgptPkg}/bin/chatgpt "$PWD/chatgpt-probe" "$PWD/chatgpt-record" <<'PY'
+                    import pathlib, sys
+                    source, probe, recorder = map(pathlib.Path, sys.argv[1:])
+                    wrapper = source.read_text()
+                    target = '"${chatgptPkg}/lib/chatgpt/ChatGPT"'
+                    if wrapper.count(target) != 1:
+                        sys.exit("cannot identify the final ChatGPT exec target")
+                    probe.write_text(wrapper.replace(target, '"' + str(recorder) + '"'))
+                    probe.chmod(0o755)
+                    PY
+                    cat > chatgpt-record <<'SH'
+                    #!${pkgs.runtimeShell}
+                    command -v bwrap
+                    SH
+                    chmod +x chatgpt-record
+                    mkdir -p empty-path
+                    if ! bwrap=$(PATH="$PWD/empty-path" ./chatgpt-probe) \
+                      || [ "$bwrap" != '${pkgs.bubblewrap}/bin/bwrap' ]; then
+                      echo 'the chatgpt wrapper on ${entry.name} does not resolve the packaged bwrap' >&2
                       fail=1
                     fi
+                    python - ${chatgptPkg}/share/applications/chatgpt.desktop ${chatgptPkg}/bin/chatgpt <<'PY'
+                    import configparser, shlex, sys
+                    desktop = configparser.ConfigParser(interpolation=None, strict=False)
+                    desktop.read(sys.argv[1])
+                    command = shlex.split(desktop.get("Desktop Entry", "Exec", fallback=""))
+                    if not command or command[0] not in ("chatgpt", sys.argv[2]):
+                        sys.exit("ChatGPT desktop entry does not launch bin/chatgpt")
+                    PY
                     # Run, not just inspect: autoPatchelf adding a runpath to these
                     # static-pie binaries leaves them segfaulting while every file
                     # still exists.
@@ -1151,10 +1177,14 @@
                         fail=1
                       fi
                     done
+                    if ! HOME="$TMPDIR" ${chatgptPkg}/lib/chatgpt/resources/codex-code-mode-host --help > /dev/null 2>&1; then
+                      echo 'the bundled codex-code-mode-host in chatgpt on ${entry.name} does not run' >&2
+                      fail=1
+                    fi
                   ''}
                 '';
             in
-            pkgs.runCommand "chatgpt-tests" { } ''
+            pkgs.runCommand "chatgpt-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out

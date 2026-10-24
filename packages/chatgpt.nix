@@ -88,7 +88,6 @@ pkgs.stdenv.mkDerivation {
     mkdir -p $out/{bin,share,lib}
     cp -r usr/share/* $out/share/
     # Native module prebuilds ship for every platform; keep only glibc x86_64.
-    # Pruned in the unpacked tree, which is then moved rather than copied.
     find usr/lib/chatgpt -type d -path '*/prebuilds/*' -prune ! -name '*linux-x64' -exec rm -rf {} +
     find usr/lib/chatgpt -path '*/prebuilds/*' -name '*musl*' -exec rm -rf {} +
 

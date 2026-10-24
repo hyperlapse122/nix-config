@@ -11,34 +11,26 @@ reaches the pin file as a downgrade.
 import argparse
 import base64
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages"
-DEFAULT_FETCH = "curl -s"
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
 SHA256_HEX_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class Failure(Exception):
-    """A refusal that should stop the caller with a readable message."""
+    pass
 
 
 def fetch(source_url):
-    """Run the overridable fetch command and return text.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command = shlex.split(os.environ.get("CHATGPT_RELEASE_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("CHATGPT_RELEASE_FETCH is empty")
     proc = subprocess.run(
-        command + [source_url],
+        [
+            "curl", "--fail", "--silent", "--show-error", "--location",
+            "--connect-timeout", "10", "--max-time", "60", source_url,
+        ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -49,7 +41,6 @@ def fetch(source_url):
 
 
 def hex_to_sri(sha256_hex):
-    """Convert a 64-character hex sha256 string to Nix SRI format."""
     return "sha256-" + base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
 
 
@@ -60,7 +51,6 @@ def version_tuple(version):
 
 
 def parse_packages(content):
-    """Parse Debian Packages index text into a list of amd64 chatgpt candidates."""
     candidates = []
     for stanza in re.split(r"\n\s*\n", content.strip()):
         fields = {}
@@ -100,20 +90,18 @@ def parse_packages(content):
 
 
 def resolve_latest(candidates):
-    """Return the candidate with the numerically highest version."""
     if not candidates:
         raise Failure("no valid chatgpt packages found in index")
     return max(candidates, key=lambda c: c[0])[1]
 
 
-def pinned_version(path):
-    """Read the pinned version, treating a missing or malformed pin as absent."""
+def pinned_metadata(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             current = json.load(f)
-        return current.get("version")
-    except Exception:
-        return None
+        return current if isinstance(current, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def main(argv=None):
@@ -143,10 +131,21 @@ def main(argv=None):
             sys.stdout.write(out_json)
             return 0
 
-        current_version = pinned_version(args.output)
+        current = pinned_metadata(args.output)
+        current_version = current.get("version")
         if current_version is not None:
             try:
-                is_newer = version_tuple(resolved["version"]) > version_tuple(current_version)
+                resolved_version = version_tuple(resolved["version"])
+                existing_version = version_tuple(current_version)
+                if resolved_version == existing_version and any(
+                    current.get(field) != resolved[field]
+                    for field in ("filename", "sha256", "hash")
+                ):
+                    raise Failure(
+                        f"version {current_version} identity changed; "
+                        "refusing to replace the pinned filename or hashes"
+                    )
+                is_newer = resolved_version > existing_version
             except ValueError:
                 is_newer = True
             if not is_newer:

@@ -1,11 +1,9 @@
-"""Drive chatgpt-release against Debian Packages fixtures.
-
-The helper's network call goes through an overridable command, so these tests
-feed it Packages text fixtures instead of network calls.
-"""
+"""Drive the release CLI through real curl against local Packages fixtures."""
 
 import json
-import os
+import http.server
+import threading
+import time
 import subprocess
 import sys
 import tempfile
@@ -41,42 +39,39 @@ SAMPLE_PACKAGES = "\n".join(
     ]
 )
 
-FAKE_FETCH = """#!/usr/bin/env python3
-import os, sys
-status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
-if status:
-    sys.exit(status)
-sys.stdout.write(os.environ['FAKE_FETCH_BODY'])
-"""
-
-
 class ChatgptReleaseTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.source = root / "Packages"
         self.output = root / "chatgpt-version.json"
 
-    def run_release(self, body=SAMPLE_PACKAGES, extra_args=None, status=0):
-        env = dict(os.environ)
-        env["CHATGPT_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
-        env["FAKE_FETCH_BODY"] = body
-        env["FAKE_FETCH_STATUS"] = str(status)
-        args = [sys.executable, str(SCRIPT)]
+    def run_release(self, body=SAMPLE_PACKAGES, extra_args=None, source_url=None):
+        self.source.write_text(body)
+        args = [sys.executable, str(SCRIPT), "--source-url", source_url or self.source.as_uri()]
         args.extend(extra_args if extra_args else ["--dry-run"])
-        return subprocess.run(args, capture_output=True, text=True, env=env)
+        return subprocess.run(args, capture_output=True, text=True, timeout=75)
 
-    def write_pin(self, version):
+    def serve(self, handler):
+        server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.handle_request, daemon=True)
+        thread.start()
+        def cleanup():
+            server.server_close()
+            thread.join(timeout=2)
+        self.addCleanup(cleanup)
+        return f"http://127.0.0.1:{server.server_port}/Packages"
+
+    def write_pin(self, version, **overrides):
         self.output.write_text(
             json.dumps(
                 {
                     "version": version,
                     "filename": f"pool/main/c/chatgpt/chatgpt_{version}_amd64.deb",
-                    "sha256": "2" * 64,
-                    "hash": "sha256-unused",
+                    "sha256": NEWEST_HEX,
+                    "hash": NEWEST_SRI,
+                    **overrides,
                 },
                 indent=2,
             )
@@ -161,11 +156,68 @@ class ChatgptReleaseTestCase(unittest.TestCase):
         self.assertIn("no valid chatgpt packages found", result.stderr)
 
     def test_fetch_error_fails(self):
-        result = self.run_release(body="", status=2, extra_args=["-o", str(self.output)])
+        self.write_pin("26.928.9")
+        before = self.output.read_bytes()
+        result = self.run_release(
+            source_url=self.source.with_name("missing").as_uri(),
+            extra_args=["-o", str(self.output)],
+        )
         self.assertEqual(result.returncode, 1)
-        self.assertIn("chatgpt-release:", result.stderr)
-        self.assertIn("failed with status 2", result.stderr)
-        self.assertFalse(self.output.exists())
+        self.assertIn("fetching", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_same_version_identity_drift_fails_without_rewriting(self):
+        for field, value in [("filename", "pool/changed.deb"), ("sha256", "2" * 64),
+                             ("hash", "sha256-changed")]:
+            with self.subTest(field=field):
+                self.write_pin("26.928.31416", **{field: value})
+                before = self.output.read_bytes()
+                result = self.run_release(extra_args=["-o", str(self.output)])
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("identity changed", result.stderr)
+                self.assertEqual(self.output.read_bytes(), before)
+
+    def test_http_error_with_valid_package_body_preserves_pin(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(503)
+                self.end_headers()
+                self.wfile.write(SAMPLE_PACKAGES.encode())
+
+            def log_message(self, *args):
+                pass
+
+        self.write_pin("26.928.9")
+        before = self.output.read_bytes()
+        result = self.run_release(source_url=self.serve(Handler),
+                                  extra_args=["-o", str(self.output)])
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("fetching", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
+
+    def test_stalled_response_is_bounded_and_preserves_pin(self):
+        release = threading.Event()
+        entered = threading.Event()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                entered.set()
+                release.wait(90)
+
+            def log_message(self, *args):
+                pass
+
+        url = self.serve(Handler)
+        self.addCleanup(release.set)
+        self.write_pin("26.928.9")
+        before = self.output.read_bytes()
+        started = time.monotonic()
+        result = self.run_release(source_url=url, extra_args=["-o", str(self.output)])
+        self.assertTrue(entered.is_set(), "fixture never accepted the request")
+        self.assertLess(time.monotonic() - started, 75)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("failed with status 28", result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
 
 
 if __name__ == "__main__":
