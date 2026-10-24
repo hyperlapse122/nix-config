@@ -9,7 +9,7 @@
 
   Verifies, on every configuration `tests/lib/configurations.nix` yields,
   production and bootstrap alike:
-  - the sysctl.d/60-nixos.conf etc entry stays enabled.
+  - sysctl.d/60-nixos.conf exists at its consumer path in the built /etc.
   - the rendered file carries the inotify limits and IPv4/IPv6 forwarding
     lines exactly, matched as whole lines so a longer value cannot satisfy
     the assertion.
@@ -31,17 +31,16 @@ let
   assertEntry =
     entry:
     let
-      sysctlEntry = entry.config.environment.etc."sysctl.d/60-nixos.conf" or { };
-      sysctlFile = sysctlEntry.source or "/dev/null";
+      sysctlFile = "${entry.config.system.build.etc}/etc/sysctl.d/60-nixos.conf";
     in
     ''
-      if [ "${pkgs.lib.boolToString (sysctlEntry.enable or false)}" != "true" ]; then
-        echo "sysctl.d/60-nixos.conf is not enabled on ${entry.name}" >&2
+      if [ ! -f ${pkgs.lib.escapeShellArg sysctlFile} ]; then
+        echo "sysctl.d/60-nixos.conf is missing from the built /etc on ${entry.name}" >&2
         failed=1
       fi
     ''
     + pkgs.lib.concatMapStrings (line: ''
-      if ! grep -Fxq -- '${line}' "${sysctlFile}"; then
+      if ! grep -Fxq -- '${line}' ${pkgs.lib.escapeShellArg sysctlFile}; then
         echo "${entry.name}: sysctl.d/60-nixos.conf is missing the line '${line}'" >&2
         failed=1
       fi

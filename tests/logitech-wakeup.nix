@@ -3,13 +3,14 @@
 
     import ./tests/logitech-wakeup.nix { inherit pkgs self; }
 
-  Asserts that the merged `services.udev.extraRules` value contains the udev
+  Asserts that the materialized udev rules directory contains the udev
   rule that disables USB remote wakeup for the Logitech Unifying and Logi Bolt
   wireless receivers.
 
   Verifies:
   - every configuration `tests/lib/configurations.nix` yields, production and
-    bootstrap alike, declares the exact rule line.
+    bootstrap alike, installs the exact uncommented rule line at the path
+    udev consumes. Disabled or retargeted declarations do not count.
 
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
@@ -23,12 +24,17 @@ let
   assertEntry =
     entry:
     let
-      extraRules = entry.config.services.udev.extraRules;
-      rulesFile = pkgs.writeText "${entry.name}-udev-extra-rules" extraRules;
+      rules = "${entry.config.system.build.etc}/etc/udev/rules.d";
     in
     ''
-      if ! grep -Fq -- '${expectedRule}' "${rulesFile}"; then
-        echo "Logitech wakeup-disable udev rule is missing from services.udev.extraRules on ${entry.name}" >&2
+      ruleFound=0
+      for ruleFile in ${pkgs.lib.escapeShellArg rules}/*.rules; do
+        if [ -f "$ruleFile" ] && grep -Fxq -- '${expectedRule}' "$ruleFile"; then
+          ruleFound=1
+        fi
+      done
+      if [ "$ruleFound" = 0 ]; then
+        echo "Logitech wakeup-disable rule is missing from the installed udev rules on ${entry.name}" >&2
         failed=1
       fi
     '';
