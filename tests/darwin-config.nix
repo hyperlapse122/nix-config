@@ -74,7 +74,7 @@
     path, and the PATH assignment gains its emulator directory; the linked
     SDK builds one arm64-v8a Google APIs image per pinned platform and no
     x86_64 image.
-  - Mobile devices: my.mobileDevices defaults to one ios and one android
+  - Mobile devices: my.mobileDevices defaults to one android and no ios
     device and rejects an empty model or version; the mobileDevices step runs
     after linkGeneration and calls the mobile-devices helper only outside a
     dry run, from an `elif !` condition whose branch only echoes, so a
@@ -786,8 +786,8 @@ let
       ) "${entry.name}: activation must run the mobileDevices step after linkGeneration")
       (check devicesGuarded "${entry.name}: a dry run must not run the mobile-devices helper")
       (check devicesContained "${entry.name}: the mobile-devices helper call must be an elif ! condition whose branch only echoes, so a non-zero exit cannot abort activation")
-      (check (platformCount "ios" == 1 && platformCount "android" == 1)
-        "${entry.name}: my.mobileDevices must default to one ios and one android device, got ${builtins.toJSON devices}"
+      (check (platformCount "ios" == 0 && platformCount "android" == 1)
+        "${entry.name}: my.mobileDevices must default to one android and no ios device, got ${builtins.toJSON devices}"
       )
       (check
         (
