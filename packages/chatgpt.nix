@@ -15,6 +15,8 @@ pkgs.stdenv.mkDerivation {
 
   nativeBuildInputs = [
     pkgs.dpkg
+    # Newer patchelf creates overlapping LOAD segments in cua_node/bin/node.
+    (import ./patchelf-0-16.nix { inherit pkgs; })
     pkgs.autoPatchelfHook
     pkgs.makeWrapper
     pkgs.file
