@@ -39,40 +39,41 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
   settingsFile = ".codex/config.toml";
 
-  expected = pkgs.writeText "codex-expected-settings.json" (
-    builtins.toJSON {
-      setPaths = [
-        {
-          path = [ "check_for_update_on_startup" ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "in_app_updates"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "daemon_auto_start"
-          ];
-          value = false;
-        }
-        {
-          path = [
-            "features"
-            "memories"
-          ];
-          value = false;
-        }
-      ];
-      remove = [ "developer_instructions" ];
-    }
-  );
+  declared = {
+    setPaths = [
+      {
+        path = [ "check_for_update_on_startup" ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "in_app_updates"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "daemon_auto_start"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
+          "memories"
+        ];
+        value = false;
+      }
+    ];
+    remove = [ "developer_instructions" ];
+  };
+  expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
   assertHost =
     entry:
@@ -142,6 +143,15 @@ let
     in
     ''
       ${activationAbsent}${activationPresent}
+      ${executeActivation {
+        inherit script;
+        home = userConfig.home.homeDirectory or "";
+        contract = {
+          file = settingsFile;
+          format = "toml";
+          inherit declared;
+        };
+      }}
       if [ ${esc (lib.boolToString targeted)} != "false" ]; then
         echo 'Home Manager must not target ~/${settingsFile} on ${hostName}; Codex owns it' >&2
         failed=1
@@ -149,10 +159,10 @@ let
     '';
 in
 pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertHost configurations.userEntries}
 
   if [ "$failed" != "0" ]; then
     exit 1

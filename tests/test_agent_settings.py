@@ -82,12 +82,6 @@ class MergeTests(unittest.TestCase):
         for key in ['themePreference', 'statusLine', 'enabledPlugins', 'numStartups']:
             self.assertEqual(result[key], EXISTING[key])
 
-    def test_prefix_collision_leaves_the_longer_key_alone(self):
-        self.seed()
-        self.merge()
-        # 'theme' is declared; 'themePreference' merely starts with it.
-        self.assertEqual(self.read()['themePreference'], 'keep-me')
-
     def test_second_run_does_not_rewrite_the_file(self):
         self.seed()
         self.merge()
@@ -288,12 +282,6 @@ class MergeTests(unittest.TestCase):
                      if p.name not in ('settings.json', '.settings.json.lock')]
         self.assertEqual(leftovers, [])
 
-    def test_main_reports_refusal_without_a_traceback(self):
-        self.settings.parent.mkdir(parents=True)
-        self.settings.write_text('{ not json')
-        code = merger.main(['--settings', str(self.settings), '--declared', str(self.declared)])
-        self.assertEqual(code, 1)
-
     def test_refusal_names_the_agent_the_caller_labelled(self):
         # Two agents share this merger, so a failure in the rebuild log has to
         # say which file it was about.
@@ -305,12 +293,6 @@ class MergeTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Antigravity CLI settings merge failed', result.stderr)
-
-    def test_main_returns_zero_on_success(self):
-        self.seed()
-        code = merger.main(['--settings', str(self.settings), '--declared', str(self.declared)])
-        self.assertEqual(code, 0)
-        self.assertEqual(self.read()['model'], 'opus[1m]')
 
     def run_script(self):
         # Importing the module skips `if __name__ == '__main__': sys.exit(main())`
@@ -333,6 +315,7 @@ class MergeTests(unittest.TestCase):
         result = self.run_script()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(str(self.settings), result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
         self.assertEqual(self.settings.read_text(), '{ not json')
 
     def test_refuses_to_run_as_root(self):

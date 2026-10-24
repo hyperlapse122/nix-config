@@ -49,13 +49,14 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
   assertHost =
     entry:
     let
       hostName = entry.name;
       userConfig = entry.user;
-      geminiJson = userConfig.home.file.".gemini/settings.json".text or null;
-      gemini = if geminiJson == null then null else builtins.fromJSON geminiJson;
+      homeFiles = userConfig.home-files or null;
 
       activation = userConfig.home.activation.antigravitySettings or null;
       script = if activation == null then "" else (activation.data or "");
@@ -71,17 +72,16 @@ let
         file: (file.target or "") == ".gemini/antigravity-cli/settings.json"
       ) (lib.attrValues (userConfig.home.file or { }));
 
-      geminiAbsent = lib.optionalString (gemini == null) ''
-        echo 'missing ~/.gemini/settings.json on ${hostName}' >&2
-        failed=1
-      '';
-      geminiPresent = lib.optionalString (gemini != null) ''
-        geminiAutoMem=${esc (builtins.toJSON (gemini.experimental.autoMemory or null))}
-        if [ "$geminiAutoMem" != "false" ]; then
-          echo "Expected experimental.autoMemory to be false on ${hostName}, got: '$geminiAutoMem'" >&2
-          failed=1
-        fi
-      '';
+      geminiDelivery =
+        if homeFiles == null then
+          "echo 'missing Gemini home-files on ${hostName}' >&2; failed=1"
+        else
+          ''
+            if ! ${pkgs.jq}/bin/jq -e '.experimental.autoMemory == false' ${homeFiles}/.gemini/settings.json >/dev/null; then
+              echo 'missing or incorrect delivered Gemini settings on ${hostName}' >&2
+              failed=1
+            fi
+          '';
 
       activationAbsent = lib.optionalString (activation == null) ''
         echo 'missing home.activation.antigravitySettings on ${hostName}' >&2
@@ -142,8 +142,19 @@ let
       '';
     in
     ''
-      ${geminiAbsent}${geminiPresent}
+      ${geminiDelivery}
       ${activationAbsent}${activationPresent}${symlinkPresent}
+      ${executeActivation {
+        inherit script;
+        home = userConfig.home.homeDirectory or "";
+        contract = {
+          file = ".gemini/antigravity-cli/settings.json";
+          declared = {
+            set.disableAutoGenerateMemories = true;
+            remove = [ ];
+          };
+        };
+      }}
     '';
 
   declaredExpected = pkgs.writeText "antigravity-expected-settings.json" (
@@ -157,11 +168,11 @@ let
 in
 pkgs.runCommand "gemini-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   set -x
-  ${configurations.guard}
+  ${configurations.userGuard}
   failed=0
   declaredExpected=${declaredExpected}
 
-  ${lib.concatMapStringsSep "\n" assertHost configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertHost configurations.userEntries}
 
   if [ "$failed" != "0" ]; then
     exit 1

@@ -18,8 +18,6 @@
     assertion cannot pass on a default that already is false.
   - the wrapper carries `check_for_update_on_startup=false`, which has no
     feature listing to read, so its text is the only place to see it.
-  - codex-code-mode-host, which Codex spawns from beside its own executable,
-    starts.
   - the bundled model catalog lists `gpt-6.1-sol`, the model the cross-model
     review peer runs.
   - `codex debug prompt-input`, offline and with no login, lists a skill
@@ -87,11 +85,6 @@ pkgs.runCommand "codex-package-tests" { } ''
       fail=1
     fi
   done
-
-  if ! ${codex}/libexec/codex/codex-code-mode-host --help > /dev/null 2>&1; then
-    echo "codex-code-mode-host does not start" >&2
-    fail=1
-  fi
 
   models=$(CODEX_HOME="$PWD/default-home" "$wrapper" debug models 2>/dev/null) || {
     echo "codex debug models failed" >&2

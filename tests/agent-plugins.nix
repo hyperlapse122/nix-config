@@ -24,13 +24,11 @@
     is ordered so a refusal cannot strand installPackages, hands the helper the
     pinned source rather than some other path, and names the version segment
     the lock actually resolved.
-  - The Pi row needs no agent CLI, so this check runs it: the packaged
-    helper, with the flags the activation script hands it, against a scratch
-    home seeded with a user skills path. Only --base is moved into the scratch
-    directory, because the rendered one sits under /home/h82. The row must
-    share Claude's base and run before Claude's, whose prune would otherwise
-    delete a link it still names. It lists the plugin's `skills` directory in
-    ~/.pi/agent/settings.json.
+  - The complete activation block runs with a scratch home and a recording
+    synchronizer. Only Pi is forwarded to the real synchronizer, so no signed-in
+    agent CLI runs. Its settings and exact source link are checked, and each
+    harness's refusal must fail the complete activation block. The dry-run
+    branch must pass --dry-run to every row.
   - The Codex row runs its sync under `env -u CODEX_HOME` and the script sets
     no CODEX_HOME, so the row installs into ~/.codex, the home T3 Code's
     Codex sessions run on, even when the apply inherits a CODEX_HOME.
@@ -63,6 +61,8 @@ let
   inherit (pkgs) lib;
 
   esc = value: lib.escapeShellArg (toString value);
+
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   pluginName = "compound-engineering";
 
@@ -290,31 +290,7 @@ let
             failed=1
           fi
 
-          helper=$(grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-plugin-sync' <<< "$flat" | head -1 || true)
-          scratch=$(mktemp -d)
-          mkdir -p "$scratch/home/.pi/agent"
-          printf '%s\n' '{"skills": ["/home/user/skills/mine"], "theme": "dark"}' \
-            > "$scratch/home/.pi/agent/settings.json"
-          if ! HOME="$scratch/home" "$helper" --harness pi --cli "$cliArg" \
-            --source "$sourceArg" --base "$scratch/base" --segment "$segmentArg" \
-            --plugin "$(argValue "$piBlock" plugin | tr -d "'")" \
-            --marketplace "$(argValue "$piBlock" marketplace | tr -d "'")"; then
-            echo "the rendered pi invocation failed on ${hostName}" >&2
-            failed=1
-          fi
-          listed=$(jq -c '.skills' "$scratch/home/.pi/agent/settings.json" 2>/dev/null || true)
-          want=$(jq -cn --arg link "$scratch/base/$segmentArg/skills" '["/home/user/skills/mine", $link]')
-          if [ "$listed" != "$want" ]; then
-            echo "settings.json must list the user skills and the pinned skills directory on ${hostName}, got: '$listed'" >&2
-            failed=1
-          elif [ "$(jq -r '.theme' "$scratch/home/.pi/agent/settings.json")" != dark ]; then
-            echo "the pi sync must keep the other settings keys on ${hostName}" >&2
-            failed=1
-          elif [ "$(readlink "$scratch/base/$segmentArg")" != ${esc pinnedSource} ]; then
-            echo "the link settings.json names must point at the pinned source on ${hostName}" >&2
-            failed=1
-          fi
-          rm -rf "$scratch"
+
         fi
 
         # T3 Code's Codex sessions run on ~/.codex, so the Codex plugin sync
@@ -351,6 +327,36 @@ let
     ''
       ${registryAbsent}${registryPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}${agyLinkPresent}
+      ${executeActivation {
+        mode = "plugins";
+        inherit script;
+        home = userConfig.home.homeDirectory or "";
+        contract =
+          map
+            (harness: {
+              harness = harness.name;
+              cli = harness.expectedCli;
+              source = pinnedSource;
+              base = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${pluginName}";
+              segment = lib.removePrefix (
+                if registry == null then "" else (registry.tagPrefix or "")
+              ) originalRef;
+              plugin = pluginName;
+              marketplace = "compound-engineering-plugin";
+            })
+            (
+              [
+                {
+                  name = "pi";
+                  expectedCli = "${
+                    (import ../packages/agent-tools.nix { inherit pkgs; }).agentSettings
+                  }/bin/agent-settings";
+                }
+              ]
+              ++ harnessChecks
+            );
+
+      }}
     '';
 in
 pkgs.runCommand "agent-plugins-tests"
@@ -362,7 +368,7 @@ pkgs.runCommand "agent-plugins-tests"
   }
   ''
     set -x
-    ${configurations.guard}
+    ${configurations.userGuard}
     failed=0
 
     # Reads one flag's value out of a rendered activation script. The `|| true`
@@ -401,7 +407,7 @@ pkgs.runCommand "agent-plugins-tests"
       failed=1
     fi
 
-    ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+    ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
     if [ "$failed" != "0" ]; then
       exit 1

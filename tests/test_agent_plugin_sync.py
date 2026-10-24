@@ -359,14 +359,6 @@ class SyncTestCase(FakeCliCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('plugin enable failed', result.stderr)
 
-    def test_rerun_is_quiet_and_keeps_the_link(self):
-        self.assertEqual(self.run_sync().returncode, 0)
-        markets = self.read_state()['markets']
-        self.reset_state(markets)
-        result = self.run_sync()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(os.readlink(self.base / 'v3.28.0'), str(self.source))
-
     def test_converged_rerun_does_not_touch_the_registration(self):
         """Re-registering would end in the same state while briefly leaving none."""
         self.assertEqual(self.run_sync().returncode, 0)
@@ -377,6 +369,7 @@ class SyncTestCase(FakeCliCase):
         verbs = self.verbs()
         self.assertNotIn('plugin marketplace remove', verbs)
         self.assertNotIn('plugin marketplace add', verbs)
+        self.assertEqual(os.readlink(self.base / 'v3.28.0'), str(self.source))
 
     def test_converged_rerun_still_reasserts_the_plugin(self):
         """A plugin removed by hand between rebuilds has to come back."""

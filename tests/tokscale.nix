@@ -21,7 +21,7 @@
     packaged merger without swallowing its exit status, points it at
     ~/.config/tokscale/settings.json, and passes a declared document equal to
     the one stated here.
-  - running that exact merger with that exact declared document against a
+  - running that full activation block against a
     seeded, divergent settings file reasserts the five declared values and
     leaves every other key, nested siblings included, as it was.
   - no Home Manager file targets .config/tokscale/settings.json.
@@ -55,6 +55,8 @@ let
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   esc = value: lib.escapeShellArg (toString value);
+
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   declaredExpected = pkgs.writeText "tokscale-expected-settings.json" (
     builtins.toJSON {
@@ -183,7 +185,7 @@ let
 
       settingsArg=$(printf '%s' "$script" | tr '\n' ' ' \
         | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
-      if [ "$settingsArg" != /home/h82/.config/tokscale/settings.json ]; then
+      if [ "$settingsArg" != ${esc "${hm.home.homeDirectory or ""}/.config/tokscale/settings.json"} ]; then
         fail ${host'}": the merger must be pointed at ~/.config/tokscale/settings.json, got: '$settingsArg'"
       fi
 
@@ -194,16 +196,38 @@ let
       elif ! python3 "$compareJson" "$declaredPath" ${declaredExpected}; then
         fail ${host'}": the declared settings drifted from the asserted values"
       elif [ -n "$merger" ]; then
-        # AE3: runtime state and TUI-only keys survive while declared keys
-        # return, driven through the exact merger and document activation uses.
-        seeded=$TMPDIR/${hostName}-settings.json
-        cp ${seededSettings} "$seeded"
-        chmod 600 "$seeded"
-        if ! env -i "$merger" --label Tokscale --settings "$seeded" --declared "$declaredPath"; then
-          fail ${host'}": the activation merger refused the seeded settings file"
-        elif ! python3 "$compareJson" "$seeded" ${mergedExpected}; then
-          fail ${host'}": merging the seeded settings file did not yield the expected document"
-        fi
+        ${executeActivation {
+          inherit script;
+          home = hm.home.homeDirectory or "";
+          contract = {
+            file = ".config/tokscale/settings.json";
+            seed = seededSettings;
+            expected = mergedExpected;
+            declared = {
+              set = {
+                colorPalette = "blue";
+                autoRefreshEnabled = true;
+                autoRefreshMs = 30000;
+              };
+              setPaths = [
+                {
+                  path = [
+                    "scanner"
+                    "bucketTimezone"
+                  ];
+                  value = "Asia/Seoul";
+                }
+                {
+                  path = [
+                    "autosubmit"
+                    "enabled"
+                  ];
+                  value = false;
+                }
+              ];
+            };
+          };
+        }}
       fi
 
       if [ ${esc (lib.boolToString settingsTargeted)} != "false" ]; then
@@ -258,43 +282,39 @@ let
       }
     '';
 
-  seededSettings = pkgs.writeText "tokscale-seeded-settings.json" (
-    builtins.toJSON {
-      colorPalette = "green";
-      autoRefreshEnabled = false;
-      autoRefreshMs = 60000;
-      tuiLightMode = true;
-      usage.disabledProviders = [ "x" ];
-      scanner = {
-        opencodeDbPaths = [ "/tmp/db" ];
-        bucketTimezone = "UTC";
-      };
-      autosubmit = {
-        enabled = true;
-        lastRunAtMs = 1700000000000;
-        lastError = "boom";
-      };
-    }
-  );
+  seededSettings = {
+    colorPalette = "green";
+    autoRefreshEnabled = false;
+    autoRefreshMs = 60000;
+    tuiLightMode = true;
+    usage.disabledProviders = [ "x" ];
+    scanner = {
+      opencodeDbPaths = [ "/tmp/db" ];
+      bucketTimezone = "UTC";
+    };
+    autosubmit = {
+      enabled = true;
+      lastRunAtMs = 1700000000000;
+      lastError = "boom";
+    };
+  };
 
-  mergedExpected = pkgs.writeText "tokscale-merged-settings.json" (
-    builtins.toJSON {
-      colorPalette = "blue";
-      autoRefreshEnabled = true;
-      autoRefreshMs = 30000;
-      tuiLightMode = true;
-      usage.disabledProviders = [ "x" ];
-      scanner = {
-        opencodeDbPaths = [ "/tmp/db" ];
-        bucketTimezone = "Asia/Seoul";
-      };
-      autosubmit = {
-        enabled = false;
-        lastRunAtMs = 1700000000000;
-        lastError = "boom";
-      };
-    }
-  );
+  mergedExpected = {
+    colorPalette = "blue";
+    autoRefreshEnabled = true;
+    autoRefreshMs = 30000;
+    tuiLightMode = true;
+    usage.disabledProviders = [ "x" ];
+    scanner = {
+      opencodeDbPaths = [ "/tmp/db" ];
+      bucketTimezone = "Asia/Seoul";
+    };
+    autosubmit = {
+      enabled = false;
+      lastRunAtMs = 1700000000000;
+      lastError = "boom";
+    };
+  };
 
   # Each case states whether packages/tokscale.nix must accept the pair.
   # tryEval catches the package's assertMsg, so a guard that stops rejecting
