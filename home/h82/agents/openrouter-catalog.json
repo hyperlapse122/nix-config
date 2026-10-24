@@ -1897,9 +1897,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000436",
+        "prompt": "0.0000000407",
         "completion": "0.00000045",
-        "input_cache_read": "0.0000000436"
+        "input_cache_read": "0.0000000407"
       },
       "reasoning": {
         "mandatory": false,
@@ -1929,8 +1929,8 @@
       },
       "pricing": {
         "prompt": "0.0000000422",
-        "completion": "0.0000001729",
-        "input_cache_read": "0.0000000275"
+        "completion": "0.0000001694",
+        "input_cache_read": "0.000000028"
       },
       "reasoning": {
         "mandatory": false,
@@ -1991,13 +1991,13 @@
       },
       "context_length": 1048576,
       "top_provider": {
-        "context_length": 1024000,
-        "max_completion_tokens": 384000
+        "context_length": 1048576,
+        "max_completion_tokens": 393216
       },
       "pricing": {
-        "prompt": "0.000000702786",
-        "completion": "0.000001405572",
-        "input_cache_read": "0.0000000585655"
+        "prompt": "0.00000065065",
+        "completion": "0.0000013013",
+        "input_cache_read": "0.0000000539"
       },
       "reasoning": {
         "mandatory": false,
@@ -2056,12 +2056,12 @@
       "context_length": 1048576,
       "top_provider": {
         "context_length": 1048576,
-        "max_completion_tokens": 393216
+        "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000537",
-        "completion": "0.0000002148",
-        "input_cache_read": "0.000000001074"
+        "prompt": "0.00000002",
+        "completion": "0.000001",
+        "input_cache_read": "0.000000015"
       },
       "reasoning": {
         "mandatory": false,
@@ -2093,9 +2093,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.00000007",
-        "completion": "0.0000005",
-        "input_cache_read": "0.000000008"
+        "prompt": "0.00000002",
+        "completion": "0.000001",
+        "input_cache_read": "0.000000015"
       },
       "reasoning": {
         "mandatory": false,
@@ -5514,7 +5514,7 @@
       },
       "pricing": {
         "prompt": "0.000000238",
-        "completion": "0.000024",
+        "completion": "0.000016",
         "input_cache_read": "0.000000228"
       },
       "reasoning": {
@@ -6070,12 +6070,12 @@
       "context_length": 1048576,
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 235929
+        "max_completion_tokens": 32768
       },
       "pricing": {
-        "prompt": "0.0000001",
-        "completion": "0.0000004",
-        "input_cache_read": "0.00000008"
+        "prompt": "0.00000006",
+        "completion": "0.00000035",
+        "input_cache_read": "0.00000001"
       },
       "reasoning": {
         "mandatory": false
@@ -10772,12 +10772,12 @@
       "context_length": 1000000,
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 32768
+        "max_completion_tokens": 65536
       },
       "pricing": {
-        "prompt": "0.000000035",
-        "completion": "0.0000022",
-        "input_cache_read": "0.0000000175"
+        "prompt": "0.00000002",
+        "completion": "0.0000005",
+        "input_cache_read": "0.000000009"
       },
       "reasoning": {
         "mandatory": false,
@@ -11487,9 +11487,9 @@
         "max_completion_tokens": 128000
       },
       "pricing": {
-        "prompt": "0.0000000825",
-        "completion": "0.00000033",
-        "input_cache_read": "0.000000020625"
+        "prompt": "0.000000132",
+        "completion": "0.000000528",
+        "input_cache_read": "0.000000033"
       },
       "reasoning": {
         "mandatory": false,
@@ -11547,13 +11547,13 @@
       },
       "context_length": 1048576,
       "top_provider": {
-        "context_length": 1048576,
-        "max_completion_tokens": 64000
+        "context_length": 262144,
+        "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000007506",
-        "completion": "0.0000022509",
-        "input_cache_read": "0.0000000378"
+        "prompt": "0.000000834",
+        "completion": "0.000002501",
+        "input_cache_read": "0.000000042"
       },
       "reasoning": {
         "mandatory": false,
@@ -12759,12 +12759,12 @@
       "context_length": 1048576,
       "top_provider": {
         "context_length": 1048576,
-        "max_completion_tokens": 943718
+        "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000244",
-        "completion": "0.0000000987",
-        "input_cache_read": "0.0000000244"
+        "prompt": "0.0000000274",
+        "completion": "0.0000000974",
+        "input_cache_read": "0.0000000274"
       },
       "reasoning": {
         "mandatory": true,
@@ -13100,9 +13100,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.00000007",
-        "completion": "0.0000005",
-        "input_cache_read": "0.000000008"
+        "prompt": "0.00000002",
+        "completion": "0.000001",
+        "input_cache_read": "0.000000015"
       },
       "reasoning": {
         "mandatory": false,
@@ -13166,8 +13166,8 @@
       },
       "pricing": {
         "prompt": "0.0000000422",
-        "completion": "0.0000001729",
-        "input_cache_read": "0.0000000275"
+        "completion": "0.0000001694",
+        "input_cache_read": "0.000000028"
       },
       "reasoning": {
         "mandatory": false,
@@ -13274,7 +13274,7 @@
       },
       "pricing": {
         "prompt": "0.000000238",
-        "completion": "0.000024",
+        "completion": "0.000016",
         "input_cache_read": "0.000000228"
       },
       "reasoning": {
@@ -13549,12 +13549,12 @@
       "context_length": 1048576,
       "top_provider": {
         "context_length": 1048576,
-        "max_completion_tokens": 943718
+        "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000244",
-        "completion": "0.0000000987",
-        "input_cache_read": "0.0000000244"
+        "prompt": "0.0000000274",
+        "completion": "0.0000000974",
+        "input_cache_read": "0.0000000274"
       },
       "reasoning": {
         "mandatory": true,
