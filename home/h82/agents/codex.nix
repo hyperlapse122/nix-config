@@ -22,6 +22,32 @@ let
   # such as a home a T3 Code instance gets when it declares one.
   declaredPaths = [
     {
+      path = [ "model" ];
+      value = "gpt-6-astra";
+    }
+    {
+      path = [ "model_reasoning_effort" ];
+      value = "low";
+    }
+    {
+      path = [ "service_tier" ];
+      value = "default";
+    }
+    {
+      path = [
+        "agents"
+        "default_subagent_model"
+      ];
+      value = "gpt-6.1-sol";
+    }
+    {
+      path = [
+        "agents"
+        "default_subagent_reasoning_effort"
+      ];
+      value = "medium";
+    }
+    {
       path = [ "check_for_update_on_startup" ];
       value = false;
     }

@@ -19,9 +19,12 @@
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
   - the `--declared` store file is identical to the declaration restated as
-    literals here: the four update-off keys, and `developer_instructions`
+    literals here: the startup and native child defaults, four update-off
+    keys, and `developer_instructions`
     retired because ~/.codex/AGENTS.md carries the instructions now, so a
     dropped or changed key turns this red.
+  - executing its generated command against divergent scratch TOML applies
+    those defaults and retains unrelated keys, comments, trust, and plugins.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
@@ -45,6 +48,32 @@ let
 
   declared = {
     setPaths = [
+      {
+        path = [ "model" ];
+        value = "gpt-6-astra";
+      }
+      {
+        path = [ "model_reasoning_effort" ];
+        value = "low";
+      }
+      {
+        path = [ "service_tier" ];
+        value = "default";
+      }
+      {
+        path = [
+          "agents"
+          "default_subagent_model"
+        ];
+        value = "gpt-6.1-sol";
+      }
+      {
+        path = [
+          "agents"
+          "default_subagent_reasoning_effort"
+        ];
+        value = "medium";
+      }
       {
         path = [ "check_for_update_on_startup" ];
         value = false;
@@ -74,6 +103,60 @@ let
     remove = [ "developer_instructions" ];
   };
   expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
+
+  # Execute the generated command, redirecting only its destination. Independent
+  # expectations and divergent input make an echo-only activation fail here.
+  activationProbe = pkgs.writeText "codex-settings-activation.py" ''
+    import pathlib
+    import subprocess
+    import sys
+    import tempfile
+    import tomllib
+
+    script = pathlib.Path(sys.argv[1]).read_text()
+    destination = sys.argv[2]
+    seeded = """# user comment survives
+    model = "old-model"
+    model_reasoning_effort = "high"
+    service_tier = "priority"
+    developer_instructions = "retired"
+    unrelated = "keep me"
+    [agents]
+    default_subagent_model = "old-child"
+    default_subagent_reasoning_effort = "low"
+    max_threads = 3
+    [projects."/scratch/project"]
+    trust_level = "trusted"
+    [plugins."example@local"]
+    enabled = true
+    """
+    with tempfile.TemporaryDirectory() as work:
+        target = pathlib.Path(work) / "config.toml"
+        target.write_text(seeded)
+        redirected = script.replace(destination, str(target))
+        assert redirected != script, "activation does not target the expected config.toml"
+        for attempt in range(2):
+            subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], check=True)
+            raw = target.read_text()
+            actual = tomllib.loads(raw)
+            assert actual.get("model") == "gpt-6-astra", "activation did not write Astra"
+            assert actual.get("model_reasoning_effort") == "low"
+            assert actual.get("service_tier") == "default"
+            assert actual.get("agents") == {
+                "default_subagent_model": "gpt-6.1-sol",
+                "default_subagent_reasoning_effort": "medium",
+                "max_threads": 3,
+            }
+            assert actual.get("unrelated") == "keep me"
+            assert actual.get("projects") == {"/scratch/project": {"trust_level": "trusted"}}
+            assert actual.get("plugins") == {"example@local": {"enabled": True}}
+            assert "# user comment survives" in raw
+            assert "developer_instructions" not in actual
+            assert actual.get("check_for_update_on_startup") is False
+            assert actual.get("features") == {
+                "in_app_updates": False, "daemon_auto_start": False, "memories": False,
+            }
+  '';
 
   assertHost =
     entry:
@@ -139,6 +222,11 @@ let
           echo 'the declared keys codexSettings renders drifted from the asserted values on ${hostName}' >&2
           failed=1
         fi
+        printf '%s' ${esc script} > activation-script
+        if ! python3 -I ${activationProbe} activation-script ${esc "${userConfig.home.homeDirectory or ""}/${settingsFile}"}; then
+          echo 'codexSettings did not apply the expected settings on ${hostName}' >&2
+          failed=1
+        fi
       '';
     in
     ''
@@ -158,15 +246,15 @@ let
       fi
     '';
 in
-pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
+pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils pkgs.python3 ]; } ''
   ${configurations.userGuard}
   failed=0
 
   ${lib.concatMapStringsSep "\n" assertHost configurations.userEntries}
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
 
-  touch $out
-''
+    touch $out
+  ''
