@@ -8,15 +8,18 @@ let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
 
-  context = pkgs.writeText "agent-instructions.json" (builtins.toJSON (hostFacts.of config.my));
-
   render =
-    name: template:
-    pkgs.runCommand name { nativeBuildInputs = [ renderer ]; } ''
-      text-template ${template} ${context} > $out
+    delivery:
+    let
+      context = pkgs.writeText "agent-instructions-${delivery}.json" (
+        builtins.toJSON ((hostFacts.of config.my) // { codex = delivery == "codex"; })
+      );
+    in
+    pkgs.runCommand "agent-instructions-${delivery}.md" { nativeBuildInputs = [ renderer ]; } ''
+      text-template ${./instructions.md.tmpl} ${context} > $out
     '';
 
-  instructions = render "agent-instructions.md" ./instructions.md.tmpl;
+  instructions = render "common";
 in
 {
   home.file = {
@@ -30,7 +33,7 @@ in
     };
     agent-instructions-codex = {
       target = ".codex/AGENTS.md";
-      source = instructions;
+      source = render "codex";
     };
     agent-instructions-antigravity = {
       target = ".gemini/config/AGENTS.md";

@@ -9,6 +9,70 @@ from pathlib import Path
 CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
+CODEX_OPEN = "{{ if .codex }}"
+CODEX_CLOSE = "{{ end -}}"
+CODEX_HEADING = "Codex role orchestration"
+# Independent normative selection/limits, not values read back from the template.
+PROFILES = {
+    "P1": ("gpt-6-luna", "low", "Standard"),
+    "P2": ("gpt-6-luna", "medium", "Standard"),
+    "P3": ("gpt-6.1-sol", "medium", "Standard"),
+    "P4": ("gpt-6.1-sol", "high", "Standard"),
+    "P5": ("gpt-6-astra", "low", "Standard"),
+    "P6": ("gpt-6-astra", "medium", "Standard"),
+    "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
+}
+CODEX_SENTENCES = [
+    "This section applies only to the active Codex harness, including Codex-led T3 sessions.",
+    "Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.",
+    "Fill unspecified fields from that profile, never implicitly from the parent.",
+    "Use P3 for unlisted or newly introduced delegated responsibilities.",
+    "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
+    "Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.",
+    "GPT `max` and `ultra` require an explicit user request for the affected work.",
+    "Standard is the default.",
+    "Automatic Fast requires advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage.",
+    "Unknown allowance retains Standard unless the user requests acceleration.",
+    "Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.",
+    "Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers.",
+    "Compare returned provider, model and options with the request before counting configuration as applied.",
+    "Explicitly set `target.model` and provider-specific effort and supported tier in `target.options`.",
+    "Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch.",
+    "For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`.",
+    "Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`.",
+    "Before launch, map the invoked skill's pre-launch failure, started failure, no-review, retry/replacement and local-lens fallback outcomes to the observed T3 states.",
+    "On abandonment/deadline, cancel owned live work, retain terminal failure classification and perform the skill's scratch cleanup.",
+    "Code review retains reviewer, findings, residual risks and testing gaps; document review retains reviewer, findings, residual risks and deferred questions.",
+    "POV retains its settled `final: true` answer, reasoning and round contract; a non-final position does not finish the panel.",
+    "Requested/returned configuration is not serving attestation: unknown actual values stay `unverified`; peer self-reports or provider labels do not establish distinct serving families.",
+    "Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control.",
+    "Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
+    "This exception assigns no blanket Claude effort and changes no Claude settings or session environment.",
+    "In Codex-led T3, replace CE CLI launch/status/result/reap mechanics with `delegate_task`, `task_status`, task notifications and `task_cancel`.",
+    "Capture scope identity and recheck before fold-in; drift requires a fresh bounded round or explicitly incomplete coverage.",
+    "Retain valid attributed findings without an independence promotion when the required evidence is missing.",
+    "Missing arrays, truncated/malformed output, missing artifacts and fluent summaries never become an empty successful review.",
+    "Every new review round uses a fresh delegated task and request ID with the original brief plus prior findings/responses, not a message to its backing thread.",
+    "A wait timeout leaves live work running; questions, approvals, nested children and transient retries are incomplete states.",
+    "Preserve surviving findings and identify uncovered lenses after partial failure.",
+    "Parent tools do not authorize answering a child's reserved approval.",
+    "Instructions asking a shared-checkout child not to write do not enforce read-only access.",
+]
+# Coverage rows assert responsibility/profile associations, independently of prose.
+ROLE_PROFILES = {
+    "source-persona fetch": "P1", "media analyzer": "P3",
+    "decisions/reconciliation": "P5", "`ce-brainstorm` grounding": "P2",
+    "repo/history/learnings/framework-docs/web/best-practices": "P2",
+    "spec-flow analyzer": "P4", "architecture strategist/complex plan author": "P6",
+    "implementation/design-sync": "P3", "investigation/root cause": "P4",
+    "work-recap/behavior-trace": "P2", "evidence researchers/issue intelligence": "P2",
+    "generation/ceiling": "P3/P6/P7", "verdict/synthesis": "P6",
+    "correctness, standards": "P4", "merge/validator/report": "P3/P4/P3",
+    "whole-doc, coherence": "P4", "reuse, quality": "P4",
+    "Related Docs Finder": "P2", "session historian": "P3",
+    "security sentinel": "P4", "investigators/replacement authors": "P3",
+    "Browser/device/prototype": "P3", "Commit/publication/babysitting": "P5",
+}
 HEADINGS = [
     "GPG and encryption", "File I/O", "Git", "Pull and merge requests", "Markdown",
     "Korean text", "Tests", "Review findings",
@@ -68,8 +132,15 @@ REMOVED = re.compile(
 )
 
 
-def render(template, key):
-    """Independent of text-template: this contract permits one field action."""
+def render(template, key, codex=False):
+    """Independent renderer for a field and one terminal delivery conditional."""
+    if template.count(CODEX_OPEN) != 1 or template.count(CODEX_CLOSE) != 1:
+        raise ValueError("missing or repeated delivery conditional")
+    common, conditional = template.split(CODEX_OPEN)
+    extra, trailing = conditional.split(CODEX_CLOSE)
+    if trailing != "\n":
+        raise ValueError("delivery conditional must end the template")
+    template = common + (extra if codex else "")
     actions = re.findall(r"{{.*?}}", template, flags=re.DOTALL)
     if not actions or any(action != ACTION for action in actions):
         raise ValueError("unknown or missing template action")
@@ -91,10 +162,10 @@ def sentence_once(text, sentence):
     )
 
 
-def content_problems(text, key):
+def content_problems(text, key, codex=False):
     problems = []
     matches = list(re.finditer(r"^# (.+)$", text, re.MULTILINE))
-    if [m[1] for m in matches] != HEADINGS or not text.startswith("# "):
+    if [m[1] for m in matches] != HEADINGS + ([CODEX_HEADING] if codex else []) or not text.startswith("# "):
         problems.append("unexpected instruction sections")
     sections = {
         match[1]: text[match.end(): matches[i + 1].start() if i + 1 < len(matches) else len(text)]
@@ -112,8 +183,36 @@ def content_problems(text, key):
         problems.append("literal card key in fake-key instructions")
     # Store paths are opaque identifiers, not prose or policy.
     prose = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", text)
-    if REMOVED.search(prose):
+    common = prose.split("# " + CODEX_HEADING)[0] if codex else prose
+    if REMOVED.search(common):
         problems.append("removed orchestration instructions")
+    if codex:
+        body = sections.get(CODEX_HEADING, "")
+        for sentence in CODEX_SENTENCES:
+            if not sentence_once(body, sentence):
+                problems.append(f"missing, repeated or negated Codex policy: {sentence}")
+        for profile, values in PROFILES.items():
+            rows = re.findall(rf"^\| {profile} \| (.+)$", body, re.MULTILINE)
+            fields = [field.strip().strip("`") for field in rows[0].split("|")[1:-1]] if len(rows) == 1 else []
+            if fields != list(values):
+                problems.append(f"incorrect Codex profile {profile}")
+        for role, profile in ROLE_PROFILES.items():
+            rows = [line for line in body.splitlines() if line.startswith("| ") and role in line]
+            if len(rows) != 1 or profile not in rows[0].split(" | ")[-1]:
+                problems.append(f"missing Codex responsibility mapping: {role}")
+        # Extra policy can reverse a guarded sentence while leaving it present.
+        # Reject contrary dispatch instructions, including separate bullets.
+        contrary = re.compile(
+            r"(?:^|[.!?]\s+|\n)\s*(?:- )?(?:"
+            r"(?:automatically|always) (?:select|use|choose|request) (?:GPT )?`?(?:max|ultra|Ultrafast|Fast)|"
+            r"(?:inherit|use) (?:the )?parent(?:'s)? (?:model|effort|settings)|"
+            r"(?:ignore|skip|drop|bypass) (?:CE|required|recipient|review)|"
+            r"(?:never|do not) (?:use|retain|preserve) (?:P7|CE|independent)|"
+            r"(?:missing arrays|wait timeout|pending approval|selection mismatch) (?:is|means|counts as) (?:success|complete)|"
+            r"(?:use|select) (?:paid API|API fallback))", re.IGNORECASE,
+        )
+        if contrary.search(body):
+            problems.append("contradictory Codex policy")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -124,12 +223,12 @@ def content_problems(text, key):
     return problems
 
 
-def delivery_problems(path, expected, key):
+def delivery_problems(path, expected, key, codex=False):
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError:
         return ["missing delivered instructions"]
-    problems = content_problems(text, key)
+    problems = content_problems(text, key, codex)
     if text != expected:
         problems.append("delivered instructions differ from independent rendering")
     return problems
@@ -176,6 +275,45 @@ def self_test(template):
         assert "delivered instructions differ from independent rendering" in delivery_problems(path, expected, FAKE_KEY)
         path.write_text(render(template, CARD_KEY))
         assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY)
+    codex = render(template, FAKE_KEY, True)
+    errors = content_problems(codex, FAKE_KEY, True)
+    assert not errors, errors
+    # Guard policy, not just delivery equality against the same edited template.
+    for sentence in CODEX_SENTENCES:
+        for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
+            mutated = codex.replace(sentence, replacement, 1)
+            assert mutated != codex
+            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, True)), sentence
+    for profile, (_, effort, _) in PROFILES.items():
+        row = next(line for line in codex.splitlines() if line.startswith(f"| {profile} |"))
+        mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
+        assert mutant != row
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
+        mutant = row.replace("Standard", "Fast") if profile != "P7" else row.replace("Provider default", "Ultrafast")
+        assert mutant != row
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
+    for role in ROLE_PROFILES:
+        row = next(line for line in codex.splitlines() if line.startswith("| ") and role in line)
+        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, ""), FAKE_KEY, True)
+        wrong = row.rsplit(" | ", 1)[0] + " | inherit root |"
+        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, True)
+    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, True)
+    assert "removed orchestration instructions" in content_problems(codex, FAKE_KEY)
+    for contrary in (
+        "Automatically select max for reviewers.", "Always use Ultrafast.",
+        "Use the parent's effort.", "Skip required review.",
+        "Never use P7.", "Missing arrays means success.", "Use paid API fallback.",
+    ):
+        for separator in (" ", "\n- "):
+            assert "contradictory Codex policy" in content_problems(codex + separator + contrary, FAKE_KEY, True), contrary
+    # Variant wiring mutations exercise the same delivered-file boundary.
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "AGENTS.md"
+        path.write_text(expected)
+        assert "unexpected instruction sections" in delivery_problems(path, codex, FAKE_KEY, True)
+        path.write_text(codex)
+        assert not delivery_problems(path, codex, FAKE_KEY, True)
+        assert "removed orchestration instructions" in delivery_problems(path, expected, FAKE_KEY)
 
 
 # Reuse the installed policy contracts for the repository's own instructions.
@@ -236,9 +374,10 @@ def main():
     failed = bool(problems)
     for entry in entries:
         key = entry["key"]
-        expected = render(template, key)
-        for path in entry["paths"]:
-            for problem in delivery_problems(Path(path), expected, key):
+        for delivery in entry["paths"]:
+            path, codex = delivery["path"], delivery["codex"]
+            expected = render(template, key, codex)
+            for problem in delivery_problems(Path(path), expected, key, codex):
                 print(f"{entry['name']} {path}: {problem}", file=sys.stderr)
                 failed = True
         git = Path(entry["git"])

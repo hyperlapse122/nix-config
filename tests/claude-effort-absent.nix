@@ -7,7 +7,7 @@
   session environments. Read the materialized files and the declarations
   named by activation, rather than detached option values. Instruction
   sentences that pair Claude or a role alias with an effort are rejected;
-  there are no exempt orchestration rules. Codex reasoningEffort remains
+  only the exact Codex CE-prescribed peer exception is exempt. Codex reasoningEffort remains
   allowed, and store paths are excluded from the word search.
 
   - the declaration JSON that the Claude Code settings merge and the Claude
@@ -33,6 +33,8 @@
   - instruction copies: appended assignments pair Claude, a model or a role
     alias with an effort, or give the claudeAgent instance a knob. All fail.
     A Codex reasoningEffort and a store path spelling effort must pass.
+    The exact CE peer exception passes only in the Codex copy; leaking it
+    elsewhere or appending a blanket Claude effort assignment still fails.
   - the Claude declaration: the Opus `effortLevel` path set again, `effortLevel`
     in the settings tier, either retirement dropped, the `prune` flag or the
     `value` dropped or changed, and an `effortLevel` in the global config
@@ -80,7 +82,7 @@ let
     ".gemini/config/AGENTS.md"
   ];
 
-  # Reject explicit Claude effort instructions; no orchestration exceptions remain.
+  # Only these exact lines in Codex delivery can prescribe CE peer effort.
   sentenceProgram = pkgs.writeText "claude-effort-absent-sentences.awk" ''
     function hasWord(line, term,    from, pos, before, after) {
       from = 1
@@ -94,6 +96,7 @@ let
       return 0
     }
     {
+      if (codex && ($0 == "| P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |" || $0 == "- Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.")) next
       count = split($0, sentences, /\. /)
       for (i = 1; i <= count; i++) {
         original = sentences[i]
@@ -191,7 +194,9 @@ let
           echo ${esc "~/${target} on ${label} is missing or empty in home-files"} >&2
           failed=1
         else
-          instructionProblems "$file" > "$scratch/problems" || {
+          instructionProblems "$file" ${
+            if target == ".codex/AGENTS.md" then "1" else "0"
+          } > "$scratch/problems" || {
             sed ${esc "s|^|the instructions at ~/${target} on ${label}: |"} "$scratch/problems" >&2
             failed=1
           }
@@ -240,6 +245,14 @@ let
             else
               expectPass 'the real Claude Code copy' instructionProblems "$claudeCopy"
               expectPass 'the real Pi copy' instructionProblems "$piCopy"
+              codexCopy=${baseFiles}/.codex/AGENTS.md
+              expectPass 'the real Codex CE peer exception' instructionProblems "$codexCopy" 1
+              expectFail 'the Codex exception leaked into common delivery' \
+                'a sentence gives a Claude model an effort' instructionProblems "$codexCopy" 0
+              codexMutant=$(mktemp)
+              { cat "$codexCopy"; printf '%s\n' '- Give every Claude task high effort.'; } > "$codexMutant"
+              expectFail 'blanket effort appended to the Codex exception' \
+                'a sentence gives a Claude model an effort' instructionProblems "$codexMutant" 1
               appended() { # name, expected message, line; expected message empty means it must pass
                 local name=$1 expect=$2 mutated
                 mutated=$(mktemp)
@@ -415,7 +428,7 @@ pkgs.runCommand "claude-effort-absent-tests"
     # Prints the sentences of an instruction copy that give a Claude model an
     # effort; the status is 1 when there are any.
     instructionProblems() {
-      awk -f ${sentenceProgram} "$1"
+      awk -v codex="''${2:-0}" -f ${sentenceProgram} "$1"
     }
 
     # The declared-settings file an activation script hands the merger.

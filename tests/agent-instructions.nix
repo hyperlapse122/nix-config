@@ -1,8 +1,8 @@
 /*
   Read each Home Manager generation's four delivered instruction files.
-  The Python check substitutes the sole allowed template action independently
-  of the production Go renderer, checks the host recipient and retained policy
-  boundaries, and exercises missing, changed, negated and wrong-key inputs.
+  The Python check independently renders the field and delivery conditional,
+  checks recipient and variant-specific policy boundaries, and exercises
+  missing, leaked, changed, negated, contradictory and wrong-key inputs.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
 */
@@ -64,7 +64,10 @@ let
       map (entry: {
         inherit (entry) name;
         key = entry.user.my.user.gpgKey;
-        paths = map (target: "${entry.user.home-files}/${target}") deliveryPaths;
+        paths = map (target: {
+          path = "${entry.user.home-files}/${target}";
+          codex = target == ".codex/AGENTS.md";
+        }) deliveryPaths;
         git = "${entry.user.home-files}/.config/git/config";
       }) presentEntries
     )
