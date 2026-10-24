@@ -1897,9 +1897,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000000386",
+        "prompt": "0.0000000379",
         "completion": "0.00000045",
-        "input_cache_read": "0.0000000386"
+        "input_cache_read": "0.0000000379"
       },
       "reasoning": {
         "mandatory": false,
@@ -1929,8 +1929,8 @@
       },
       "pricing": {
         "prompt": "0.0000000422",
-        "completion": "0.0000001694",
-        "input_cache_read": "0.000000028"
+        "completion": "0.0000001763",
+        "input_cache_read": "0.000000027"
       },
       "reasoning": {
         "mandatory": false,
@@ -1995,9 +1995,9 @@
         "max_completion_tokens": 384000
       },
       "pricing": {
-        "prompt": "0.00000031755",
-        "completion": "0.0000006351",
-        "input_cache_read": "0.0000000264625"
+        "prompt": "0.000000216108",
+        "completion": "0.000000432216",
+        "input_cache_read": "0.000000018009"
       },
       "reasoning": {
         "mandatory": false,
@@ -10523,7 +10523,7 @@
       },
       "pricing": {
         "prompt": "0.0000002",
-        "completion": "0.000002",
+        "completion": "0.0000014",
         "input_cache_read": "0.0000002"
       },
       "reasoning": {
@@ -12762,8 +12762,8 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000393",
-        "completion": "0.0000001028",
+        "prompt": "0.0000000512",
+        "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
       "reasoning": {
@@ -13166,8 +13166,8 @@
       },
       "pricing": {
         "prompt": "0.0000000422",
-        "completion": "0.0000001694",
-        "input_cache_read": "0.000000028"
+        "completion": "0.0000001763",
+        "input_cache_read": "0.000000027"
       },
       "reasoning": {
         "mandatory": false,
@@ -13552,8 +13552,8 @@
         "max_completion_tokens": 131072
       },
       "pricing": {
-        "prompt": "0.0000000393",
-        "completion": "0.0000001028",
+        "prompt": "0.0000000512",
+        "completion": "0.0000000702",
         "input_cache_read": "0.00000003"
       },
       "reasoning": {
