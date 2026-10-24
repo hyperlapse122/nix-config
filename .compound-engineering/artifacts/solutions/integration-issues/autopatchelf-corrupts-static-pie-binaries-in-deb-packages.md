@@ -2,7 +2,7 @@
 title: "autoPatchelfHook corrupts static-pie and prebuilt Go binaries bundled in a .deb, and postFixup runs before the hook"
 date: "2026-10-01"
 category: integration-issues
-module: "T3 Code CLI and WiFiman Desktop packages (packages/t3code-cli.nix, packages/wifiman-desktop.nix); first found in the since-removed ChatGPT desktop package"
+module: "ChatGPT, T3 Code CLI, and WiFiman Desktop packages (packages/chatgpt.nix, packages/t3code-cli.nix, packages/wifiman-desktop.nix)"
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -24,7 +24,7 @@ retire_when: "auto-patchelf in nixpkgs skips static-pie executables (ET_DYN with
 
 ## Problem
 
-The problem first appeared in the ChatGPT desktop package, which this repository no longer carries: the package was removed on 2026-10-17, and `packages/t3code-cli.nix` now carries the workaround. That package repackaged the upstream `.deb` with `autoPatchelfHook` and set `appendRunpaths` to libGL and libpulseaudio so Chromium could `dlopen` them. The ChatGPT 26.928.31416 `.deb` also bundled three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
+The problem first appeared in the ChatGPT desktop package. It was removed on 2026-10-17 and restored on 2026-10-24 with the static-pie workaround intact; `packages/t3code-cli.nix` also carries the workaround. The original ChatGPT package repackaged the upstream `.deb` with `autoPatchelfHook` and set `appendRunpaths` to libGL and libpulseaudio so Chromium could `dlopen` them. The ChatGPT 26.928.31416 `.deb` also bundled three static-pie binaries under `lib/chatgpt` in the built package output: `resources/codex`, `resources/rg`, and `resources/codex-code-mode-host`. autoPatchelf gave each of them a `RUNPATH`, and they segfaulted.
 
 autoPatchelf's static-binary skip does not cover static-pie, so the binaries have to be protected by hand. The first attempt at that also failed, because of the order in which stdenv runs a `postFixup` attribute and the `postFixupHooks` array.
 
