@@ -173,6 +173,13 @@ let
       [ "$(readlink -f "$gen/home-path/bin/docker")" = "$(readlink -f "$gen/home-path/bin/podman")" ] \
         || bad "docker on PATH is not the profile's podman"
 
+      if [ -d "$gen/LaunchAgents" ]; then
+        if find -L "$gen/LaunchAgents" -type f -iname '*chatgpt*' -print | grep . >/dev/null \
+          || grep -Riq -- 'chatgpt' "$gen/LaunchAgents"; then
+          bad "ChatGPT login startup is unsupported but a launch agent exists"
+        fi
+      fi
+
       # A plist with its whitespace removed, so a key and its value are adjacent.
       agent() { tr -d ' \t\n' 2>/dev/null < "$gen/LaunchAgents/org.nix-community.home.$1.plist" || true; }
       watchdog=$(agent podman-machine-podman-machine-default)

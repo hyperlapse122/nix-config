@@ -71,6 +71,14 @@ The macOS checks run against one fixture host under `tests/fixtures/hosts/`, wit
 
 None of these activates a Mac. A nix-darwin activation that exits 0 is not proof that every step applied, so on real hardware confirm the state itself, as the list under [macOS hosts](#macos-hosts) does.
 
+### ChatGPT startup evidence
+
+On 2026-10-24, static inspection covered Linux ChatGPT `26.1021.22027` (the pinned amd64 Debian package) and macOS ChatGPT `26.1021.31345` (the current Homebrew archive), plus installed macOS version `26.1013.31256`, build `20586`. In all three Electron bundles, `CODEX_ELECTRON_START_IN_BACKGROUND` takes a path that calls `showInactive`, which still displays a window. The `isBackgroundLaunch` path depends on a Windows `startup-task` activation; the native shell activation lookup is gated to Windows. The macOS bundle had no `wasOpenedAsHidden` or `setLoginItemSettings` handler establishing a no-window launch path. `open -j` therefore supplies no verified app-supported silent launch.
+
+Both platforms remain manual-launch installations, including bootstrap outputs. This is static evidence for withholding login startup, not a live login or desktop test. Recheck new builds before enabling it, and verify any candidate mechanism in a real login session before claiming it is silent.
+
+`desktop-autostart` checks materialized autostart files and user units from Home Manager and the system packages on every NixOS production and bootstrap output for ChatGPT entries. `darwin-outputs` checks generated launch agents for the same absence. Package and host checks cover installation separately; absence of login startup does not mean absence of the app. After applying on hardware, open ChatGPT from the application launcher, sign in manually, and confirm that a fresh login does not open a ChatGPT window. Existing login items or app-owned preferences are outside these generated-file checks.
+
 ## Hardware checks after installation
 
 A successful VM test or build does not replace these checks. The person who performs them must record the results.

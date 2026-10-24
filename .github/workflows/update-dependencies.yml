@@ -79,7 +79,14 @@ jobs:
           # 6. Update mise
           nix run .#mise-release -- --output packages/mise-release.json
 
-          # 7. Update T3 Code. A nightly can be published before its assets
+          # 7. Update ChatGPT. A feed failure or changed release identity keeps
+          # the current pin and lets the other updates through.
+          if ! nix run .#chatgpt-release -- --output packages/chatgpt-version.json; then
+            echo "::warning title=ChatGPT update skipped::chatgpt-release failed; keeping the current pin in packages/chatgpt-version.json."
+            git checkout -- packages/chatgpt-version.json
+          fi
+
+          # 8. Update T3 Code. A nightly can be published before its assets
           # and digests are, so a failure here keeps the current pin and lets
           # the other updates through.
           if ! nix run .#t3code-release -- --output packages/t3code-release.json; then
@@ -87,21 +94,21 @@ jobs:
             git checkout -- packages/t3code-release.json
           fi
 
-          # 8. Update the Antigravity CLI. A feed failure keeps the current
+          # 9. Update the Antigravity CLI. A feed failure keeps the current
           # pin and lets the other updates through, as T3 Code's does.
           if ! nix run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json; then
             echo "::warning title=Antigravity CLI update skipped::antigravity-cli-release failed; keeping the current pin in packages/antigravity-cli-release.json."
             git checkout -- packages/antigravity-cli-release.json
           fi
 
-          # 9. Update WiFiman Desktop. An API failure keeps the current pin
+          # 10. Update WiFiman Desktop. An API failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
           if ! nix run .#wifiman-desktop-release -- --output packages/wifiman-desktop-version.json; then
             echo "::warning title=WiFiman Desktop update skipped::wifiman-desktop-release failed; keeping the current pin in packages/wifiman-desktop-version.json."
             git checkout -- packages/wifiman-desktop-version.json
           fi
 
-          # 10. Update Pi. A release can be published before every platform
+          # 11. Update Pi. A release can be published before every platform
           # tarball or its SHA256SUMS line, so a failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
           if ! nix run .#pi-release -- --output packages/pi-release.json; then
@@ -109,7 +116,7 @@ jobs:
             git checkout -- packages/pi-release.json
           fi
 
-          # 11. Update Pi's ACP adapter and client. Each pin moves with its
+          # 12. Update Pi's ACP adapter and client. Each pin moves with its
           # regenerated lock file, so a failure restores both and lets the
           # other updates through, as Pi's does.
           for npm_package in pi-acp acpx; do
@@ -121,7 +128,7 @@ jobs:
             fi
           done
 
-          # 12. Update Codex. A release can be published before every platform
+          # 13. Update Codex. A release can be published before every platform
           # tarball or its digest, so a failure keeps the current pin and lets
           # the other updates through, as Pi's does.
           if ! nix run .#codex-release -- --output packages/codex-release.json; then
@@ -129,7 +136,7 @@ jobs:
             git checkout -- packages/codex-release.json
           fi
 
-          # 13. Update the Antigravity ACP runtime on PATH. Google publishes
+          # 14. Update the Antigravity ACP runtime on PATH. Google publishes
           # no pointer, so the helper probes candidate versions and downloads
           # only a newer complete release. A failure keeps the current pin and
           # lets the other updates through, as T3 Code's does.
@@ -266,6 +273,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/antigravity-acp-release.json)
             git add packages/antigravity-acp-release.json
             git commit -m "chore(packages): bump antigravity-acp to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then
+            NEW_VER=$(jq -r .version packages/chatgpt-version.json)
+            git add packages/chatgpt-version.json
+            git commit -m "chore(packages): bump chatgpt to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/wifiman-desktop-version.json)" ]; then
