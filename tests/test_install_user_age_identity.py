@@ -18,7 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/install-user-age-identity"
-RECIPIENT = "age1testrecipient"
+RECIPIENT = "age1mzqjkevvl4zvp272ecmpvjmp77espnaxz9uedjsmahkz7eecsdeqxkayjk"
+OTHER_RECIPIENT = "age15qrswvhypr4567stux59nc2gx8xt7hujtxd7pkqn8v8shyqh2d9ql6y4zg"
 
 
 class InstallUserIdentityTests(unittest.TestCase):
@@ -27,13 +28,15 @@ class InstallUserIdentityTests(unittest.TestCase):
         self.home = Path(self.directory.name) / "home"
         self.home.mkdir()
         self.keygen = Path(self.directory.name) / "age-keygen"
-        # Derives the fixed recipient only for the one valid payload.
+        # Two parseable identities derive distinct recipients; corrupt bytes fail parsing.
         self.keygen.write_text(
             f"#!{sys.executable}\n"
             "import pathlib, sys\n"
             "data = pathlib.Path(sys.argv[2]).read_bytes()\n"
-            "if data != b'VALID-ID\\n': raise SystemExit(1)\n"
-            "print('age1testrecipient')\n"
+            f"recipients = {{b'VALID-ID\\n': {RECIPIENT!r}, "
+            f"b'OTHER-ID\\n': {OTHER_RECIPIENT!r}}}\n"
+            "if data not in recipients: raise SystemExit(1)\n"
+            "print(recipients[data])\n"
         )
         self.keygen.chmod(0o755)
         self.target = self.home / ".config/nix-config/age/key.txt"
@@ -65,6 +68,15 @@ class InstallUserIdentityTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"recipient mismatch", result.stderr)
         self.assertEqual(self.target.read_bytes(), b"OLD\n")
+        self.assertEqual([p.name for p in self.target.parent.iterdir()], ["key.txt"])
+
+    def test_refuses_corrupt_identity_and_keeps_existing(self):
+        self.target.parent.mkdir(parents=True, mode=0o700)
+        self.target.write_bytes(b"OLD\n")
+        result = self.run_installer(b"CORRUPT-ID\n")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.target.read_bytes(), b"OLD\n")
+        self.assertEqual([p.name for p in self.target.parent.iterdir()], ["key.txt"])
 
     def test_refuses_symlinked_target(self):
         self.target.parent.mkdir(parents=True, mode=0o700)

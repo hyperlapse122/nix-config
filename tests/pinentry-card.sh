@@ -2,8 +2,8 @@
 set -euo pipefail
 
 wrapper=${1:-}
-if [[ $# -ne 1 || -z $wrapper || ! -f $wrapper ]]; then
-  printf 'usage: %s WRAPPER\n' "${0##*/}" >&2
+if [[ ( $# -ne 1 && $# -ne 5 ) || -z $wrapper || ! -f $wrapper ]]; then
+  printf 'usage: %s RAW_WRAPPER [INSTALLED_WRAPPER QT CURSES SECRET_TOOL]\n' "${0##*/}" >&2
   exit 2
 fi
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/pinentry-card.XXXXXX")
@@ -251,6 +251,13 @@ run_wrapper() {
   if (( rc != 0 )); then
     printf 'pinentry-card: wrapper exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
   fi
+  if [[ -f $out ]]; then
+    for raw_pin in "$stored_pin" "$pin_nfc" "$pin_nano"; do
+      if grep -qF -- "$raw_pin" "$out"; then
+        fail 'raw PIN appeared in the Assuan response'
+      fi
+    done
+  fi
   return "$rc"
 }
 
@@ -272,31 +279,31 @@ yubikey5_desc() {
   printf 'Please unlock the card%%0A%%0A\x1eNumber:\x1f 14 963 605%%0AHolder: Jo Doe'
 }
 
-# 1. YubiKey 5 form (alignment bytes included): answered directly, delegate
-#    never sees GETPIN.
-out="$scratch/out1" err="$scratch/err1"
-rm -f "$gnome_log"
-input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(yubikey5_desc)")
-run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
-assert_contains "$out" "D $stored_pin_encoded" '1 yubikey5-form'
-assert_contains "$out" $'\nOK\n' '1 yubikey5-form'
-assert_contains "$gnome_log" 'SETPROMPT PIN' '1 yubikey5-form'
-assert_contains "$gnome_log" 'SETDESC' '1 yubikey5-form'
-assert_not_contains "$gnome_log" 'GETPIN' '1 yubikey5-form'
-pass '1: YubiKey 5 SETDESC form (alignment bytes) is answered from the keyring, delegate never sees GETPIN'
-
-# 2. Older firmware ("14963605") and non-YubiKey ("0006 14963605") forms
-#    normalize to the same serial and are answered the same way.
-for number_value in '14963605' '0006 14963605'; do
-  out="$scratch/out2" err="$scratch/err2"
+# Answered grammar table: preserve every independent SETDESC byte layout,
+# including the no-holder form formerly used only by the encoding scenario.
+answered_labels=(yubikey5 older-firmware non-yubikey invalid-utf8-holder no-holder alignment)
+answered_descs=(
+  "$(yubikey5_desc)"
+  'Please unlock the card%0A%0ANumber: 14963605%0AHolder: Jo Doe'
+  'Please unlock the card%0A%0ANumber: 0006 14963605%0AHolder: Jo Doe'
+  'Please unlock the card%0A%0ANumber: 14 963 605%0AHolder: Jo%FFhn'
+  'Please unlock the card%0A%0ANumber: 14 963 605'
+  "$(printf 'Please unlock the card%%0A%%0A\x1e\x1fNumber:\x1e 14 963 605\x1f')"
+)
+for index in "${!answered_labels[@]}"; do
+  label=${answered_labels[$index]}
+  out="$scratch/out-answered-$label" err="$scratch/err-answered-$label"
   rm -f "$gnome_log"
-  desc=$(printf 'Please unlock the card%%0A%%0ANumber: %s%%0AHolder: Jo Doe' "$number_value")
-  input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
+  input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "${answered_descs[$index]}")
   run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
-  assert_contains "$out" "D $stored_pin_encoded" "2 number-form '$number_value'"
-  assert_not_contains "$gnome_log" 'GETPIN' "2 number-form '$number_value'"
+  assert_contains "$out" "D $stored_pin_encoded" "$label"
+  assert_contains "$out" $'\nOK\n' "$label"
+  assert_not_contains "$out" "$stored_pin" "$label raw PIN"
+  assert_contains "$gnome_log" 'SETPROMPT PIN' "$label"
+  assert_contains "$gnome_log" 'SETDESC' "$label"
+  assert_not_contains "$gnome_log" 'GETPIN' "$label"
+  pass "answered grammar: $label"
 done
-pass '2: older-firmware and non-YubiKey Number forms normalize to the same serial'
 
 # 3. A second "Number:" line (injected, after the holder) disables the match.
 out="$scratch/out3" err="$scratch/err3"
@@ -307,16 +314,6 @@ run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
 assert_contains "$gnome_log" 'GETPIN' '3 second-number-line'
 assert_not_contains "$out" "D $stored_pin_encoded" '3 second-number-line'
 pass '3: a second Number line (holder data) is passed through, never answered'
-
-# 4. A holder name with an invalid UTF-8 byte does not stop classification.
-out="$scratch/out4" err="$scratch/err4"
-rm -f "$gnome_log"
-desc=$(printf 'Please unlock the card%%0A%%0ANumber: 14 963 605%%0AHolder: Jo%%FFhn')
-input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
-run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
-assert_contains "$out" "D $stored_pin_encoded" '4 invalid-utf8-holder'
-assert_not_contains "$gnome_log" 'GETPIN' '4 invalid-utf8-holder'
-pass '4: an invalid UTF-8 byte in the holder name still classifies the prompt'
 
 # 5. An encoded newline, a raw carriage return, a malformed % escape, and an
 #    overlong SETDESC: each forwarded raw and never answered.
@@ -465,27 +462,6 @@ ok_count=$(grep -c '^OK$' "$out")
 [[ $ok_count -ge 7 ]] || fail "15 forward-verbatim: expected at least 7 relayed OK replies, saw $ok_count"
 pass '15: OPTION/SETKEYINFO/SETTITLE/SETOK/SETCANCEL/GETINFO/SETQUALITYBAR forward and relay verbatim'
 
-# 16. A stored PIN containing '%' and a space is emitted percent-encoded
-#     (exercised by every "answered" scenario above via $stored_pin).
-out="$scratch/out16" err="$scratch/err16"
-desc='Please unlock the card%0A%0ANumber: 14 963 605'
-input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
-run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
-assert_contains "$out" "D $stored_pin_encoded" '16 percent-encoded-pin'
-assert_not_contains "$out" "D $stored_pin" '16 percent-encoded-pin (raw PIN must never appear unescaped)'
-pass '16: a stored PIN containing % and a space is emitted percent-encoded'
-
-# 17. Alignment control bytes around "Number:" still match (a distinct byte
-#     layout from case 1: bytes on both sides of the label AND the value).
-out="$scratch/out17" err="$scratch/err17"
-rm -f "$gnome_log"
-desc=$(printf 'Please unlock the card%%0A%%0A\x1e\x1fNumber:\x1e 14 963 605\x1f')
-input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
-run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0
-assert_contains "$out" "D $stored_pin_encoded" '17 alignment-bytes'
-assert_not_contains "$gnome_log" 'GETPIN' '17 alignment-bytes'
-pass '17: alignment control bytes around the Number label still match'
-
 # 18. A localized SETDESC (German) passes through.
 out="$scratch/out18" err="$scratch/err18"
 rm -f "$gnome_log"
@@ -510,9 +486,51 @@ run_wrapper "$scratch/functional-fallback.py" "$input" "$out" "$err" -u WAYLAND_
 [[ ! -s "$fallback_log" ]] || fail '19 display-fallback: the fallback delegate ran despite DISPLAY being set'
 pass '19: the Linux DISPLAY/WAYLAND_DISPLAY fallback picks the right delegate'
 
-# 20. Render variants naming the right binaries, each compiling, is the
-#     RENDER half above (variant checks + py_compile loop).
-pass '20: gnome/kde/none/darwin renders name the matching delegate and each compiles (render half)'
+# The raw relay fixture above deliberately substitutes fake delegates. This
+# separate boundary starts both installed entry points through their real main
+# function, intercepting process creation before any real dialog can open.
+if [[ $# -eq 5 ]]; then
+  "$python3_bin" - "$2" "$3" "$4" "$5" "$scratch" <<'PYINSTALLED'
+import os
+from pathlib import Path
+import py_compile
+import re
+import runpy
+import sys
+from unittest.mock import patch
+
+installed, qt, curses, secret_tool, scratch = sys.argv[1:]
+class SpawnObserved(BaseException):
+    pass
+
+for entry in (Path(installed), Path(installed).with_name("pinentry")):
+    assert entry.is_file() and os.access(entry, os.X_OK), f"missing executable entry point: {entry}"
+    text = entry.read_text()
+    assert not re.search(r"@[A-Z_]+@", text), f"unresolved package substitution: {entry}"
+    assert text.startswith("#!/nix/store/"), f"unpatched interpreter: {entry}"
+    interpreter = text.splitlines()[0][2:].split()[0]
+    assert os.access(interpreter, os.X_OK), f"missing packaged interpreter: {entry}"
+    py_compile.compile(str(entry), cfile=str(Path(scratch) / "installed.pyc"), doraise=True)
+    declaration = runpy.run_path(str(entry))
+    assert declaration["SECRET_TOOL_PATH"] == secret_tool, "wrong packaged keyring delegate"
+    for display, wayland, expected in (("", "", curses), (":0", "", qt), ("", "wayland-0", qt)):
+        observed = []
+        def spawn(argv, **kwargs):
+            observed.append(argv)
+            raise SpawnObserved()
+        with patch.dict(os.environ, {"DISPLAY": display, "WAYLAND_DISPLAY": wayland}), \
+                patch.object(sys, "argv", [str(entry)]), \
+                patch("subprocess.Popen", side_effect=spawn):
+            try:
+                runpy.run_path(str(entry), run_name="__main__")
+            except SpawnObserved:
+                pass
+        assert observed == [[expected]], f"{entry} selected {observed}, expected {expected}"
+print("pinentry-card: installed Linux entry points compile and select packaged delegates")
+PYINSTALLED
+else
+  pass 'installed Linux package proof not requested; raw relay proof only'
+fi
 
 # 21. A Number value the documented forms do not cover (letters, punctuation,
 #     or an odd grouping) passes through; the stored PIN never appears.
