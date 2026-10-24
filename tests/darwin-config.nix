@@ -216,6 +216,7 @@ let
     (lib.concatMapStrings
       (cask: check (lib.elem cask mapping.casks) "${cask} is not among the macOS casks")
       [
+        "chatgpt"
         "ghostty"
         "1password"
         "parallels"

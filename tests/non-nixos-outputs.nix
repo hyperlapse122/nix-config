@@ -55,6 +55,7 @@ let
     "telegram-desktop"
     "winbox"
     "yubioath-flutter"
+    "chatgpt"
     "claude-desktop"
     "wifiman-desktop"
     "t3code-desktop"

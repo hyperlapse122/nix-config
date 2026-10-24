@@ -79,6 +79,9 @@ jobs:
           # 6. Update mise
           nix run .#mise-release -- --output packages/mise-release.json
 
+          # Update the ChatGPT desktop pin from the upstream APT index.
+          nix run .#chatgpt-release -- --output packages/chatgpt-version.json
+
           # 7. Update T3 Code. A nightly can be published before its assets
           # and digests are, so a failure here keeps the current pin and lets
           # the other updates through.
@@ -266,6 +269,12 @@ jobs:
             NEW_VER=$(jq -r .version packages/antigravity-acp-release.json)
             git add packages/antigravity-acp-release.json
             git commit -m "chore(packages): bump antigravity-acp to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/chatgpt-version.json)" ]; then
+            NEW_VER=$(jq -r .version packages/chatgpt-version.json)
+            git add packages/chatgpt-version.json
+            git commit -m "chore(packages): bump chatgpt to $NEW_VER"
           fi
 
           if [ -n "$(git status --porcelain packages/wifiman-desktop-version.json)" ]; then
