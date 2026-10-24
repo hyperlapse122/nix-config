@@ -1,0 +1,16 @@
+{
+  "reviewer": "security-lens-claude",
+  "cross_model_route": "claude",
+  "cross_model_target": "claude",
+  "cross_model_harness": "claude",
+  "serving_family": "claude",
+  "independence_verified": true,
+  "model_requested": "claude-opus-5-5",
+  "model_actual": "claude-opus-5-5",
+  "effort_requested": "high",
+  "findings": [],
+  "residual_risks": [],
+  "deferred_questions": [
+    "The embedded document contains only the Product Contract slice. A later planning stage should confirm that each U1-U9 implementation unit carries R5 (fake credentials and scratch state only, no host activation, no card-administration changes) into its fixtures and runners, so that no repaired activation or consumer-path check (AE1, AE2) runs against real host state or real credentials."
+  ]
+}
