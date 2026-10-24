@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-23T03:53:14Z"
+    cursor: "2026-10-24T06:28:11Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -482,16 +482,76 @@ items:
     origin: "https://github.com/hyperlapse122/nix-config/issues/320"
     source_gone_reason: "closed as not planned at source (wontfix): priority tier costs 2.5x subscription usage, over the 2x adoption bar"
     updatedAt: "2026-10-23T02:56:10Z"
+  "gh-issues:hyperlapse122/nix-config#327":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Prefer harness-native file I/O in shared agent instructions while preserving secret handling."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#327"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/327"
+    updatedAt: "2026-10-23T07:46:12Z"
+  "gh-issues:hyperlapse122/nix-config#328":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Remove provisioning and verification documents and repair their references, checks, and captured learnings."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#328"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/328"
+    updatedAt: "2026-10-23T07:50:15Z"
+  "gh-issues:hyperlapse122/nix-config#329":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Audit repository tests in owner-based batches, preserving independent contracts and verifying repaired proof with mutations."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#329"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/329"
+    updatedAt: "2026-10-23T07:51:08Z"
+  "gh-issues:hyperlapse122/nix-config#330":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Use OpenRouter free through Pi for T3 Code text generation while preserving the default conversation model; verify availability and rate limits."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#330"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/330"
+    updatedAt: "2026-10-23T08:02:33Z"
+  "gh-issues:hyperlapse122/nix-config#332":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Explore Apple's Foundation Model in Pi on macOS through fm serve; resolve licensing, launchd operation, provider integration, and fixture coverage."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#332"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/332"
+    updatedAt: "2026-10-24T06:28:11Z"
 last_run:
-  timestamp: "2026-10-23T04:09:57Z"
+  timestamp: "2026-10-24T09:10:23Z"
   outcome: "completed"
-  writer: "sweep-MS-7D91-t3a74a2496-2026-10-23"
+  writer: "sweep-codex-0849ceaf-20261024"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 1
-      closed: 2
-      in_plan: 2
-      ingested: 1
+      acknowledged: 5
+      closed: 0
+      in_plan: 7
+      ingested: 5
+      manual_stuck: 0
       media_analyzed: 0
-      source_gone: 1
