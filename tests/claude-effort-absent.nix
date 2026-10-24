@@ -40,8 +40,9 @@
   - the session environment: a `CLAUDE_CODE_EFFORT_LEVEL` export appended to
     the real `hm-session-vars.sh`, and the same assignment appended to the
     real `environment.d` file. An unrelated export passes.
-  - the T3 Code declaration: an `effort` option on `defaultModelSelection` or
-    on `textGenerationModelSelection`, and no selection left on `claudeAgent`.
+  - the T3 Code declaration: a Claude selection with an `effort` option on
+    `defaultModelSelection` or `textGenerationModelSelection`, and no selection
+    left on `claudeAgent`.
     An effort on a selection that is not on `claudeAgent` passes.
   - the wiring: an activation script whose declared-settings flag is gone, and
     one whose flag points at a declaration that spells an effort. The first
@@ -382,9 +383,9 @@ let
             else
               expectPass 'the real T3 Code settings declaration' declarationProblems t3-settings "$t3Declared"
               jsonMutant 'an effort option on defaultModelSelection' t3-settings 'a claudeAgent selection carries an effort' "$t3Declared" \
-                '.own.defaultModelSelection.options = [{id: "effort", value: "high"}]'
+                '.own.defaultModelSelection = {instanceId: "claudeAgent", model: "claude-opus-5-5", options: [{id: "effort", value: "high"}]}'
               jsonMutant 'an effort option on textGenerationModelSelection' t3-settings 'a claudeAgent selection carries an effort' "$t3Declared" \
-                '.own.textGenerationModelSelection.options = [{id: "effort", value: "medium"}]'
+                '.own.textGenerationModelSelection = {instanceId: "claudeAgent", model: "claude-haiku-5-5", options: [{id: "effort", value: "medium"}]}'
               jsonMutant 'no selection left on claudeAgent' t3-settings 'declares no model selection on the claudeAgent instance' "$t3Declared" \
                 '.own |= with_entries(.value.instanceId = "codex")'
               codexSelection=$(mktemp)
