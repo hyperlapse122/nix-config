@@ -72,6 +72,74 @@
 let
   inherit (pkgs) lib;
 
+  codexEffects = pkgs.writeText "codex-activation-effects.py" ''
+    import os, subprocess, sys, tempfile, tomllib
+    from pathlib import Path
+    body = Path(sys.argv[1]).read_text()
+    original = sys.argv[2]
+    with tempfile.TemporaryDirectory() as work:
+        home = Path(work) / "home"
+        target = home / ".codex/config.toml"
+        target.parent.mkdir(parents=True)
+        redirected = body.replace(original, str(home))
+        assert redirected != body and original not in redirected, "Codex destination was not redirected"
+        env = dict(os.environ, HOME=str(home), CODEX_HOME=str(home / ".codex"))
+        env.pop("DRY_RUN", None)
+        def run():
+            return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
+        target.write_text('check_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n')
+        result = run()
+        assert result.returncode == 0, result.stderr
+        actual = tomllib.loads(target.read_text())
+        assert actual == {"check_for_update_on_startup": False, "custom": "keep",
+            "features": {"in_app_updates": False, "daemon_auto_start": False, "memories": False, "custom": True}}, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
+        assert actual["check_for_update_on_startup"] is False
+        assert all(actual["features"][key] is False for key in ["in_app_updates", "daemon_auto_start", "memories"]), "Codex settings must be TOML booleans"
+        protected = b'[features\nmalformed = true\n'
+        target.write_bytes(protected)
+        result = run()
+        assert result.returncode != 0, "Codex activation swallowed malformed-input refusal"
+        assert target.read_bytes() == protected, "Codex activation altered protected malformed input"
+  '';
+
+  authEffects = pkgs.writeText "containers-auth-effects.py" ''
+    import json, os, stat, subprocess, sys, tempfile
+    from pathlib import Path
+    body = Path(sys.argv[1]).read_text()
+    with tempfile.TemporaryDirectory() as work:
+        home = Path(work) / "home"
+        home.mkdir()
+        redirected = body.replace('$HOME', str(home))
+        assert redirected != body and '$HOME' not in redirected, "containersAuth destination was not redirected"
+        env = dict(os.environ, HOME=str(home))
+        env.pop("DRY_RUN", None)
+        def run(dry=False):
+            current = dict(env)
+            if dry:
+                current["DRY_RUN"] = "1"
+            result = subprocess.run(["bash", "-euo", "pipefail", "-c",
+                'run() { if [[ ! -v DRY_RUN ]]; then "$@"; fi; };\n' + redirected], env=current, capture_output=True, text=True)
+            assert result.returncode == 0, result.stderr
+        target = home / ".config/containers/auth.json"
+        run(True)
+        assert list(home.iterdir()) == [], "containersAuth dry-run changed fresh home"
+        run()
+        assert target.is_file(), "containersAuth did not create auth.json"
+        assert json.loads(target.read_text()) == {"credHelpers": {key: "sops" for key in
+            ["docker.io", "ghcr.io", "registry.gitlab.com", "registry.jpi.app"]}}, "containersAuth wrote incorrect JSON"
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600, "auth.json mode is not 0600"
+        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700, "containers directory mode is not 0700"
+        custom = b'{ "custom": "preserve exact bytes" }\n'
+        target.write_bytes(custom)
+        target.chmod(0o640)
+        target.parent.chmod(0o750)
+        for dry in (False, True):
+            run(dry)
+            assert target.read_bytes() == custom, "containersAuth overwrote existing bytes"
+            assert stat.S_IMODE(target.stat().st_mode) == 0o640, "containersAuth changed existing file mode"
+            assert stat.S_IMODE(target.parent.stat().st_mode) == 0o750, "containersAuth changed existing directory mode"
+  '';
+
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
@@ -148,6 +216,12 @@ let
           || bad "bootstrap must run no host-secrets step"
       fi
       [ "$(step dockerCredHelpers)" = "" ] || bad "the OrbStack credHelpers merge still runs"
+      authBlock=$TMPDIR/containers-auth-$variant.sh
+      stepBlock containersAuth > "$authBlock"
+      if ! python3 ${authEffects} "$authBlock"; then
+        bad "containersAuth effect contract failed"
+      fi
+
 
       vars=$gen/home-path/etc/profile.d/hm-session-vars.sh
       [ -f "$vars" ] || bad "no hm-session-vars.sh in the profile"
@@ -340,6 +414,12 @@ let
             bad "the piSettings step does not write its declared settings:"$'\n'"$output"
           fi
         fi
+      fi
+
+      codexBlock=$TMPDIR/codex-settings-$variant.sh
+      stepBlock codexSettings > "$codexBlock"
+      if ! python3 ${codexEffects} "$codexBlock" ${lib.escapeShellArg config.my.user.home}; then
+        bad "Codex activation effect contract failed"
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \

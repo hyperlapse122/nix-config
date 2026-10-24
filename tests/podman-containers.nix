@@ -21,6 +21,44 @@
 let
   inherit (pkgs) lib;
 
+  authEffects = pkgs.writeText "containers-auth-effects.py" ''
+    import json, os, stat, subprocess, sys, tempfile
+    from pathlib import Path
+    body = Path(sys.argv[1]).read_text()
+    with tempfile.TemporaryDirectory() as work:
+        home = Path(work) / "home"
+        home.mkdir()
+        redirected = body.replace('$HOME', str(home))
+        assert redirected != body and '$HOME' not in redirected, "containersAuth destination was not redirected"
+        env = dict(os.environ, HOME=str(home))
+        env.pop("DRY_RUN", None)
+        def run(dry=False):
+            current = dict(env)
+            if dry:
+                current["DRY_RUN"] = "1"
+            result = subprocess.run(["bash", "-euo", "pipefail", "-c",
+                'run() { if [[ ! -v DRY_RUN ]]; then "$@"; fi; };\n' + redirected], env=current, capture_output=True, text=True)
+            assert result.returncode == 0, result.stderr
+        target = home / ".config/containers/auth.json"
+        run(True)
+        assert list(home.iterdir()) == [], "containersAuth dry-run changed fresh home"
+        run()
+        assert target.is_file(), "containersAuth did not create auth.json"
+        assert json.loads(target.read_text()) == {"credHelpers": {key: "sops" for key in
+            ["docker.io", "ghcr.io", "registry.gitlab.com", "registry.jpi.app"]}}, "containersAuth wrote incorrect JSON"
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600, "auth.json mode is not 0600"
+        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700, "containers directory mode is not 0700"
+        custom = b'{ "custom": "preserve exact bytes" }\n'
+        target.write_bytes(custom)
+        target.chmod(0o640)
+        target.parent.chmod(0o750)
+        for dry in (False, True):
+            run(dry)
+            assert target.read_bytes() == custom, "containersAuth overwrote existing bytes"
+            assert stat.S_IMODE(target.stat().st_mode) == 0o640, "containersAuth changed existing file mode"
+            assert stat.S_IMODE(target.parent.stat().st_mode) == 0o750, "containersAuth changed existing directory mode"
+  '';
+
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
   podman = configurations.withTrait "my.podman.enable" (config: config.my.podman.enable);
 
@@ -158,11 +196,12 @@ let
       userSessionDocker = hm.systemd.user.sessionVariables.DOCKER_HOST or "";
 
       activationScript = hm.home.activation.containersAuth.data or "";
-      registriesConfEntry =
-        hm.xdg.configFile."containers/registries.conf.d/10-unqualified-search.conf" or null;
-      registriesConf = if registriesConfEntry != null then (registriesConfEntry.text or "") else "";
-      registriesConfEnabled =
-        if registriesConfEntry != null then (registriesConfEntry.enable or true) else false;
+      authBlock = pkgs.writeText "containers-auth-block.sh" activationScript;
+      registryFile =
+        if hm ? home-files then
+          "${hm.home-files}/.config/containers/registries.conf.d/10-unqualified-search.conf"
+        else
+          "";
     in
     ''
       # 1. Verify systemPackages contains podman, podman-docker-compat, and docker-credential-sops
@@ -197,31 +236,19 @@ let
         failed=1
       fi
 
-      # 4. Verify home.activation.containersAuth has credHelpers mappings and no embedded tokens
-      activationScriptData=${pkgs.lib.escapeShellArg activationScript}
-      for reg in "docker.io" "ghcr.io" "registry.gitlab.com" "registry.jpi.app"; do
-        if echo "$activationScriptData" | grep -q "\"$reg\":\"sops\""; then
-          :
-        else
-          echo "home.activation.containersAuth missing $reg helper mapping on ${hostName}" >&2
-          failed=1
-        fi
-      done
-
-      if echo "$activationScriptData" | grep -q -E '(auths|token|password)'; then
-        echo "home.activation.containersAuth contains embedded tokens on ${hostName}" >&2
+      if ! python3 ${authEffects} ${authBlock}; then
+        echo "containersAuth effect contract failed on ${hostName}" >&2
         failed=1
       fi
-
-      # 5. Verify registries search drop-in is enabled and sets unqualified-search-registries
-      if [ '${if registriesConfEnabled then "1" else "0"}' != "1" ]; then
-        echo "registries search drop-in is disabled on ${hostName}" >&2
-        failed=1
-      fi
-      if echo '${registriesConf}' | grep -q 'unqualified-search-registries = \["docker.io"\]'; then
-        :
-      else
-        echo "registries.conf drop-in missing unqualified-search-registries on ${hostName}: '${registriesConf}'" >&2
+      if ! python3 - ${esc registryFile} <<'PYREGISTRY'
+      import sys, tomllib
+      from pathlib import Path
+      path = Path(sys.argv[1])
+      assert path.is_file(), "missing materialized registry search drop-in"
+      assert tomllib.loads(path.read_text()).get("unqualified-search-registries") == ["docker.io"], "incorrect materialized registry search policy"
+      PYREGISTRY
+      then
+        echo "registry consumer configuration failed on ${hostName}" >&2
         failed=1
       fi
     '';
@@ -229,6 +256,7 @@ in
 pkgs.runCommand "podman-containers-tests"
   {
     nativeBuildInputs = [
+      pkgs.python3
       pkgs.gnugrep
     ];
   }

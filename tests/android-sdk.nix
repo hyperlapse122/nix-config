@@ -165,6 +165,7 @@ let
       fi
     '') (attrNames repo.packages.build-tools)
     + concatMapStrings (version: ''
+      check_file ${host'} "$sdk/ndk/${version}/source.properties"
       check_line ${host'} "$sdk/ndk/${version}/source.properties" ${escapeShellArg "Pkg.Revision = ${version}"}
       if ! "$sdk/ndk/${version}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version >/dev/null 2>&1; then
         fail ${host'}": clang from NDK ${version} does not run"
