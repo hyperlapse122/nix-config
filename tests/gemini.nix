@@ -94,7 +94,7 @@ let
           failed=1
         fi
 
-        if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
+        if ! printf '%s' ${esc script} | grep -F '/bin/agent-settings' >/dev/null; then
           echo 'the antigravitySettings activation script must invoke the packaged merger on ${hostName}' >&2
           failed=1
         fi
@@ -106,7 +106,7 @@ let
         # documents why the swallow is absent and matching that sentence would
         # fail the honest script.
         if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-          | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+          | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
           echo 'the antigravitySettings activation script must not swallow the merger exit status on ${hostName}' >&2
           failed=1
         fi
@@ -116,7 +116,7 @@ let
         # file in a comment and hands the merger a different one would pass.
         settingsArg=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+          | sed -n '1p' | awk '{print $2}' || true)
         if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/.gemini/antigravity-cli/settings.json"} ]; then
           echo "the merger must be pointed at the real settings file on ${hostName}, got: '$settingsArg'" >&2
           failed=1
@@ -126,7 +126,7 @@ let
         # module, so a mutation of the declared set turns this red.
         declaredPath=$(printf '%s' ${esc script} \
           | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-          | head -1 | awk '{print $2}' || true)
+          | sed -n '1p' | awk '{print $2}' || true)
         if [ -z "$declaredPath" ]; then
           echo 'the antigravitySettings activation script passes no declared-settings file on ${hostName}' >&2
           failed=1

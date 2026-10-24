@@ -170,24 +170,24 @@ let
       # Comment lines are stripped so an explanatory sentence cannot match.
       # The merger call spans several lines, so the whole block is searched.
       if printf '%s' "$script" | grep -v '^[[:space:]]*#' \
-        | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+        | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
         fail ${host'}": the tokscaleSettings activation script swallows the merger exit status"
       fi
 
       merger=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+        | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | sed -n '1p' || true)
       if [ -z "$merger" ]; then
         fail ${host'}": the tokscaleSettings activation script does not invoke the packaged merger"
       fi
 
       settingsArg=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}' || true)
+        | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' | sed -n '1p' | awk '{print $2}' || true)
       if [ "$settingsArg" != ${esc "${hm.home.homeDirectory or ""}/.config/tokscale/settings.json"} ]; then
         fail ${host'}": the merger must be pointed at ~/.config/tokscale/settings.json, got: '$settingsArg'"
       fi
 
       declaredPath=$(printf '%s' "$script" | tr '\n' ' ' \
-        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -1 | awk '{print $2}' || true)
+        | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | sed -n '1p' | awk '{print $2}' || true)
       if [ -z "$declaredPath" ]; then
         fail ${host'}": the tokscaleSettings activation script passes no declared document"
       elif ! python3 "$compareJson" "$declaredPath" ${declaredExpected}; then
@@ -263,7 +263,7 @@ let
             if [ "$tokscaleSecrets" != "cli-auth/tokscale_token tokscale_token h82 0400" ]; then
               fail ${host'}": expected cli-auth/tokscale_token owned by h82 with mode 0400, got: '$tokscaleSecrets'"
             fi
-            publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | head -1 || true)
+            publisher=$(printf '%s' ${esc publisher} | grep -oE '/nix/store/[^[:space:]]+/bin/publish-cli-auth' | sed -n '1p' || true)
             if [ -z "$publisher" ]; then
               fail ${host'}": sops-install-secrets no longer runs publish-cli-auth"
             elif grep -q tokscale "$publisher"; then

@@ -209,7 +209,7 @@ let
               failed=1
             fi
 
-            if ! printf '%s' ${esc script} | grep -qF '/bin/agent-settings'; then
+            if ! printf '%s' ${esc script} | grep -F '/bin/agent-settings' >/dev/null; then
               echo 'the ${merge.attr} activation script must invoke the packaged merger on ${hostName}' >&2
               failed=1
             fi
@@ -225,7 +225,7 @@ let
             # lines are stripped first, because the block documents why the swallow
             # is absent and matching that sentence would fail the honest script.
             if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-              | grep -qE '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)'; then
+              | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
               echo 'the ${merge.attr} activation script must not swallow the merger exit status on ${hostName}' >&2
               failed=1
             fi
@@ -287,7 +287,7 @@ let
           # round with evidence about a single assertion.
           settingsArg=$(printf '%s' ${esc script} \
             | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-            | head -1 | awk '{print $2}' || true)
+            | sed -n '1p' | awk '{print $2}' || true)
           if [ "$settingsArg" != ${esc "${userConfig.home.homeDirectory or ""}/${merge.file}"} ]; then
             echo "${merge.attr} must point the merger at ~/${merge.file} on ${hostName}, got: '$settingsArg'" >&2
             failed=1
@@ -295,7 +295,7 @@ let
 
           declaredPath=$(printf '%s' ${esc script} \
             | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-            | head -1 | awk '{print $2}' || true)
+            | sed -n '1p' | awk '{print $2}' || true)
           if [ -z "$declaredPath" ]; then
             echo 'the ${merge.attr} activation script passes no declared-settings file on ${hostName}' >&2
             failed=1

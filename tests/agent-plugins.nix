@@ -264,7 +264,7 @@ let
           fi
           cliArg=$(argValue "$piBlock" cli)
           merger=$(tr '\n' ' ' <<< ${esc piSettingsScript} \
-            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | head -1 || true)
+            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | sed -n '1p' || true)
           if [ -z "$merger" ]; then
             echo 'home.activation.piSettings invokes no packaged merger on ${hostName}' >&2
             failed=1
@@ -371,7 +371,7 @@ pkgs.runCommand "agent-plugins-tests"
     # absent flag reaches its own assertion as an empty string.
     argValue() {
       printf '%s' "$1" | tr '\n' ' ' \
-        | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | head -1 | awk '{print $2}' || true
+        | grep -oE -- "--$2[[:space:]]+[^[:space:]]+" | sed -n '1p' | awk '{print $2}' || true
     }
 
     # The activation script runs the helper once per plugin, so each plugin's
@@ -382,7 +382,7 @@ pkgs.runCommand "agent-plugins-tests"
         | grep -E -- "--plugin[[:space:]]+'?$2'?([[:space:]]|$)" || true
     }
     blockForHarness() {
-      blocksFor "$1" "$2" | grep -E -- "--harness[[:space:]]+'?$3'?([[:space:]]|$)" | head -1 || true
+      blocksFor "$1" "$2" | grep -E -- "--harness[[:space:]]+'?$3'?([[:space:]]|$)" | sed -n '1p' || true
     }
 
     if [ -z ${esc lockedRev} ]; then
