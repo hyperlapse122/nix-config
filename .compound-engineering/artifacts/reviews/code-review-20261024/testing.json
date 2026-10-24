@@ -1,0 +1,9 @@
+{
+  "reviewer": "testing",
+  "findings": [],
+  "residual_risks": [
+    "Static review does not establish matching-platform execution: the repaired Linux owner checks and tests/audit-proof-mutations.py require x86_64 Linux, and tailscale-provisioning additionally requires KVM. No such passes were obtained by this leaf; native assertion replays must not be counted as Linux owner or mutation evidence.",
+    "The added Darwin activation-effect checks were inspected but not executed by this leaf. Their native darwin-outputs result remains required before claiming platform verification."
+  ],
+  "testing_gaps": []
+}

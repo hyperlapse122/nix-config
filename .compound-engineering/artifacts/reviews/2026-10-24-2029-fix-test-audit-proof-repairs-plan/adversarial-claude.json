@@ -1,0 +1,81 @@
+{
+  "reviewer": "adversarial-claude",
+  "cross_model_route": "claude",
+  "cross_model_target": "claude",
+  "cross_model_harness": "claude",
+  "serving_family": "claude",
+  "independence_verified": true,
+  "model_requested": "claude-opus-5-5",
+  "model_actual": "claude-opus-5-5",
+  "effort_requested": "high",
+  "findings": [
+    {
+      "title": "R3 mutation proof has no path when Linux builders are unavailable",
+      "severity": "P2",
+      "section": "Goal Capsule — Stop conditions / R3 (assertion-class regression demonstration)",
+      "why_it_matters": "The plan says missing Linux builders must not block implementation or publication. Linux-owned checks, such as materialized consumer paths (AE2) and Linux activation blocks (AE1), then can't be run locally against a mutated configuration. CI only shows that the repaired check passes on unmutated code; it can't show the check fails on the regression. So R3 (prove each repaired assertion class catches its regression) is either quietly skipped for Linux-only classes or replaced by a green CI run, which is the declaration-level evidence the audit set out to remove. The plan should say how R3 is met for Linux-only classes when builders are missing.",
+      "finding_type": "omission",
+      "autofix_class": "gated_auto",
+      "suggested_fix": "Add to R3: for any assertion class that can only be built on Linux, the mutated-regression demonstration runs as a temporary CI job (or a commit that is later reverted) on the PR, and its failing output is linked as R3 evidence. Without that run, the class has not met R3, even if publication goes ahead.",
+      "confidence": 75,
+      "evidence": [
+        "Unavailable Linux builders do not prevent implementation or publication for CI.",
+        "R3. Demonstrate each repaired assertion class catches its intended regression without depending on evaluation failure or an unrelated guard.",
+        "Given a configuration entry that still has correct text but is disabled or retargeted, its materialized consumer-path check fails."
+      ]
+    },
+    {
+      "title": "Running full activation blocks may conflict with scratch-only and no-injection limits",
+      "severity": "P2",
+      "section": "Acceptance Examples — AE1 (full activation-block execution) / Scope Boundaries",
+      "why_it_matters": "AE1 requires running an entire activation block against scratch state. R5 forbids host activation. The scope boundary rules out any production injection interface, assuming existing test-local runners can already redirect every side effect. If any activation block in F1–F24 uses absolute host paths or host services, these constraints conflict. The implementer then has to break R5, add an injection seam that the plan rules out, or go back to checking a partial block, which is the weakness AE1 is meant to fix. No one confirmed the 'existing runners cover it' assumption for each activation-type repair.",
+      "finding_type": "omission",
+      "autofix_class": "gated_auto",
+      "suggested_fix": "Add a precondition to the activation-type repairs: before work starts, confirm the full block can run under the existing test-local runner with HOME and all target paths redirected to scratch. Any block that can't counts as a missing implementation prerequisite under the existing stop condition and is escalated. Do not fall back to partial-block assertions.",
+      "confidence": 75,
+      "evidence": [
+        "Given an activation block whose helper is replaced by an echo or a dead branch, executing that full block leaves divergent scratch state unrepaired and the owner check fails.",
+        "R5. Use only fake credentials and scratch state for verification, without host activation or changes to card administration.",
+        "A new generic test framework or production injection interface is unnecessary: existing test-local runners and fixtures cover the accepted work."
+      ]
+    },
+    {
+      "title": "Keeper-before-removal ordering is unenforced across concurrent units",
+      "severity": "P2",
+      "section": "Goal Capsule — Execution profile / R2 (C1–C11 keeper-first consolidation)",
+      "why_it_matters": "R2 and AE3 require each keeper to gain the unique assertion before the smaller case is removed. But U1–U8 run concurrently under separate file owners, and only U9 is serialized. If a keeper and its removal candidate are in files owned by different units, or the keeper is also being changed by an F repair, nothing ensures the removal is checked against the final repaired keeper. A removal could merge while the only remaining coverage of that regression is a keeper still being rewritten.",
+      "finding_type": "omission",
+      "autofix_class": "gated_auto",
+      "suggested_fix": "Assign every C1–C11 removal to U9, the serial integration unit. Before deleting the smaller case, rerun the AE3 regression check against the integrated, repaired keeper.",
+      "confidence": 50,
+      "evidence": [
+        "Independent file owners may implement U1-U8 concurrently; U9 integrates shared files serially.",
+        "R2. Complete C1-C11 only after their keeper assertions are present, and limit removals to D1-D3.",
+        "the keeper first acquires that assertion and still catches the same regression after the smaller case is removed."
+      ]
+    },
+    {
+      "title": "Merge decision can't see the R3 demonstration evidence",
+      "severity": "P3",
+      "section": "R3 / R6 (PR publication and user-owned merge)",
+      "why_it_matters": "The stated goal is that maintainers can trust the regression evidence when deciding to merge, and the user owns merge. The plan requires fresh evidence but never says where R3's mutated-regression runs are recorded. Mutation runs are temporary and don't appear in normal CI. The user would see only green checks and couldn't tell repaired proof from unrepaired proof. Recording the demonstrations in the PR description gives the merge decision the evidence the goal is about.",
+      "finding_type": "omission",
+      "autofix_class": "gated_auto",
+      "suggested_fix": "Extend R6: the PR description lists, for each repaired assertion class, the mutation applied and the failing check output from the R3 demonstration.",
+      "confidence": 50,
+      "evidence": [
+        "Objective: Maintainers can trust the repository's regression evidence when deciding whether a configuration change is safe to merge.",
+        "the implementation must produce fresh evidence rather than depend on temporary control files."
+      ]
+    }
+  ],
+  "residual_risks": [
+    "The audit baseline is pinned to revision 09e9f5aaf56f3bb549c69bc8499de9c208737e4d. If the default branch has moved, some F, C, or D targets may have changed, so their keeper and subsumption judgments may no longer hold on the current head.",
+    "The repairs fix 24 instances of a recurring weak-proof pattern (checks that inspect declarations or rebuild commands) but add no guard against new tests repeating it. The trust objective could erode again after merge.",
+    "Stricter repaired checks may expose real production defects. Under the policy exception, those fixes would land in a PR framed as test-only, which widens what the user is approving at merge."
+  ],
+  "deferred_questions": [
+    "For each activation-type repair, can the full block run under the existing test-local runner with every side effect redirected to scratch state, or does it need escalation as a missing prerequisite?",
+    "Which C1–C11 keepers are also changed by an F repair? Their consolidation check must run after that repair lands."
+  ]
+}

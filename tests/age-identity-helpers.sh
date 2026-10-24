@@ -14,6 +14,12 @@ trap 'rm -rf -- "$scratch"' EXIT
 fail() { printf 'age-identity-helpers: FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'age-identity-helpers: ok - %s\n' "$*"; }
 
+expect_failure() {
+  local status=0
+  err=$("$@" 2>&1 >/dev/null) || status=$?
+  [[ $status -ne 0 ]] || fail "expected non-zero status: $*"
+}
+
 # The helpers resolve their repository root from their own location, so give
 # each a fake checkout rather than pointing them at the real secrets tree. No
 # real key, card, sudo, or /var/lib is touched anywhere below.
@@ -46,17 +52,14 @@ out=$("$recover_bin" --host testhost)
   fail "sudo is not on the right-hand side with the resolved recipient: $out"
 pass 'the emitted pipeline runs gpg as the user and crosses sudo once, on the right'
 
-if "$recover_bin" --host nosuchhost >/dev/null 2>&1; then
-  fail 'an unknown host should fail'
-fi
-err=$("$recover_bin" --host nosuchhost 2>&1 >/dev/null || true)
+expect_failure "$recover_bin" --host nosuchhost
 [[ $err == *testhost* ]] || fail "the failure does not list available hosts: $err"
 [[ $err == *--host* ]] || fail "the failure does not name --host: $err"
 pass 'an unknown host exits non-zero, lists the available hosts and names --host'
 
 # In the rescue path the hostname is the installer image's, not a configuration
 # name, so detection finds nothing and --host becomes mandatory.
-err=$("$recover_bin" 2>&1 >/dev/null || true)
+expect_failure "$recover_bin"
 if [[ $err == *"no bootstrap material"* ]]; then
   [[ $err == *--host* ]] || fail "the rescue-path failure does not name --host: $err"
   pass 'an undetectable hostname fails and names --host'
@@ -120,8 +123,8 @@ fi
 pass 'a GPG failure on the left of the pipe fails the whole run'
 
 # A missing installer must be named rather than producing a broken pipe.
-err=$(RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_INSTALLER=$scratch/absent-installer \
-  PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost 2>&1 >/dev/null || true)
+expect_failure env RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_INSTALLER=$scratch/absent-installer \
+  PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost
 [[ $err == *absent-installer* ]] || fail "a missing installer was not named: $err"
 pass 'a missing installer exits non-zero naming the path'
 
@@ -129,10 +132,7 @@ pass 'a missing installer exits non-zero naming the path'
 # The identity goes to the invoking user's installer with no sudo anywhere, and
 # the host must be named because the distribution owns the running hostname.
 
-if "$recover_bin" --user >/dev/null 2>&1; then
-  fail '--user without --host should fail'
-fi
-err=$("$recover_bin" --user 2>&1 >/dev/null || true)
+expect_failure "$recover_bin" --user
 [[ $err == *--host* ]] || fail "--user without --host does not name --host: $err"
 pass '--user without --host exits non-zero and names --host'
 
@@ -353,7 +353,7 @@ for bin in "$recover_bin" "$prepare_bin"; do
   if PATH=$stub_dir:$PATH "$bin" --host testhost >/dev/null 2>&1; then
     fail "$name should refuse to run as root"
   fi
-  err=$(PATH=$stub_dir:$PATH "$bin" --host testhost 2>&1 >/dev/null || true)
+  expect_failure env PATH=$stub_dir:$PATH "$bin" --host testhost
   [[ $err == *root* ]] || fail "$name refusal does not mention root: $err"
 done
 pass 'both helpers refuse to run as root, naming the boundary'

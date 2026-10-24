@@ -70,14 +70,16 @@ in
   # CROSS_MODEL_PEERS on every host that installs it.
   my.agents.crossModelPeers = [ "codex" ];
 
-  # Unguarded and after installPackages for the reasons given on
+  # No executable-existence guard; ordered after installPackages as on
   # claudeSettings in claude.nix: a refusal must fail the rebuild loudly
   # without stranding linkGeneration or installPackages behind it.
   home.activation.codexSettings = lib.hm.dag.entryAfter [ "installPackages" ] ''
-    ${merger} \
-      --format toml \
-      --label Codex \
-      --settings ${config.home.homeDirectory}/.codex/config.toml \
-      --declared ${declared}
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --format toml \
+        --label Codex \
+        --settings ${config.home.homeDirectory}/.codex/config.toml \
+        --declared ${declared}
+    fi
   '';
 }

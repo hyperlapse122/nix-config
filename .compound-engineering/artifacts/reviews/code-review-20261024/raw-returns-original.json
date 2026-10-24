@@ -1,0 +1,80 @@
+[
+  {
+    "reviewer": "correctness",
+    "findings": [
+      {
+        "title": "Enable nix-command inside the workflow guard",
+        "severity": "P1",
+        "file": "tests/check-workflow-docs-skip.sh",
+        "line": 277,
+        "confidence": 75,
+        "autofix_class": "gated_auto",
+        "owner": "downstream-resolver",
+        "requires_verification": true,
+        "pre_existing": false,
+        "suggested_fix": "Pass --extra-experimental-features nix-command before eval. Verify with isolated Nix configuration and build checks.x86_64-linux.ci-workflow-docs-skip on Linux.",
+        "first_evidence": "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)"
+      }
+    ],
+    "residual_risks": [],
+    "testing_gaps": [
+      "Linux owner builds and mutation matrix execution, including Tailscale KVM, remain unverified; native reproductions are not Linux passes."
+    ]
+  },
+  {
+    "reviewer": "project-standards",
+    "findings": [],
+    "residual_risks": [],
+    "testing_gaps": [
+      "Matching-platform execution remains pending for the changed Linux checks and mutation owner matrix, including the Tailscale KVM test. Require current-revision Linux/KVM results before readiness; native replays are not Linux passes."
+    ]
+  },
+  {
+    "reviewer": "testing",
+    "findings": [],
+    "residual_risks": [
+      "Linux owner and mutation checks remain unverified by this leaf; tailscale-provisioning also requires KVM. Native replays do not establish Linux passes.",
+      "Darwin activation-effect checks were inspected but not executed by this leaf; native darwin-outputs evidence remains required."
+    ],
+    "testing_gaps": []
+  },
+  {
+    "reviewer": "security",
+    "findings": [],
+    "residual_risks": [],
+    "testing_gaps": [
+      "Linux security owners and mutation controls require matching-platform CI evidence; Linux/KVM was unavailable.",
+      "Darwin activation effect checks were inspected but not executed; current-head darwin-outputs evidence remains required."
+    ]
+  },
+  {
+    "reviewer": "reliability",
+    "findings": [],
+    "residual_risks": [
+      "Linux/KVM execution was unavailable. Require successful current-revision owner baselines, intended-diagnostic mutations, restored controls, and preserved CI transcripts before accepting the mutation evidence."
+    ],
+    "testing_gaps": []
+  },
+  {
+    "reviewer": "maintainability",
+    "findings": [
+      {
+        "title": "Duplicate containers-auth probe creates parallel maintenance owners",
+        "severity": "P2",
+        "file": "tests/darwin-outputs.nix",
+        "line": 105,
+        "confidence": 100,
+        "autofix_class": "gated_auto",
+        "owner": "downstream-resolver",
+        "requires_verification": true,
+        "pre_existing": false,
+        "suggested_fix": "Extract the byte-identical authEffects body into tests/lib/containers-auth-effects.py and reference it from both checks, preserving both platform suites and their distinct delivery boundaries.",
+        "first_evidence": "tests/darwin-outputs.nix:105 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''"
+      }
+    ],
+    "residual_risks": [],
+    "testing_gaps": [
+      "Linux owner checks and KVM mutation execution remain unverified; matching-platform CI evidence is required."
+    ]
+  }
+]

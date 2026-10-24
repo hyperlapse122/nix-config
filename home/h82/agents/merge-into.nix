@@ -17,9 +17,11 @@ directory: label: file: document:
 # and one started without it find the same ledger. The merger only opens it
 # when the document declares ownEntries or a migration.
 lib.hm.dag.entryAfter [ "installPackages" ] ''
-  ${merger} \
-    --label ${lib.escapeShellArg label} \
-    --settings ${config.home.homeDirectory}/${directory}/${file} \
-    --declared ${document} \
-    --ledger ${lib.escapeShellArg "${config.xdg.stateHome}/nix-config/agent-settings-ledger/${directory}/${file}"}
+  if [[ ! -v DRY_RUN ]]; then
+    ${merger} \
+      --label ${lib.escapeShellArg label} \
+      --settings ${config.home.homeDirectory}/${directory}/${file} \
+      --declared ${document} \
+      --ledger ${lib.escapeShellArg "${config.xdg.stateHome}/nix-config/agent-settings-ledger/${directory}/${file}"}
+  fi
 ''

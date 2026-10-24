@@ -14,6 +14,12 @@ trap 'rm -rf -- "$scratch"' EXIT
 fail() { printf 'nr: FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'nr: ok - %s\n' "$*"; }
 
+expect_failure() {
+  local status=0
+  err=$("$@" 2>&1 >/dev/null) || status=$?
+  [[ $status -ne 0 ]] || fail "expected non-zero status: $*"
+}
+
 git_bin=$(command -v git) || fail 'git is required'
 # The production script reaches git and nvd through substituted store paths;
 # the unbuilt source still carries the @...@ placeholders, so render a copy.
@@ -60,14 +66,14 @@ mkdir -p "$nonrepo"
 if (cd "$nonrepo" && "$rendered" build >/dev/null 2>&1); then
   fail 'running outside a git repository should fail'
 fi
-err=$( (cd "$nonrepo" && "$rendered" build 2>&1 >/dev/null) || true)
+expect_failure bash -c 'cd "$1" && "$2" build' _ "$nonrepo" "$rendered"
 [[ $err == *--flake-dir* ]] || fail "failure outside a repo does not name --flake-dir: $err"
 pass 'outside a git repository it fails and names --flake-dir'
 
 noflake=$scratch/noflake
 make_repo "$noflake"
 rm -f "$noflake/flake.nix"
-err=$( (cd "$noflake" && "$rendered" build 2>&1 >/dev/null) || true)
+expect_failure bash -c 'cd "$1" && "$2" build' _ "$noflake" "$rendered"
 [[ $err == *--flake-dir* ]] || fail "repo without flake.nix does not name --flake-dir: $err"
 pass 'a git repository with no flake.nix fails and names --flake-dir'
 
@@ -95,7 +101,7 @@ for sub in switch boot test; do
   if "$rendered" "$sub" --flake-dir "$repo" >/dev/null 2>&1; then
     fail "$sub on a bootstrap generation should refuse without --host"
   fi
-  err=$("$rendered" "$sub" --flake-dir "$repo" 2>&1 >/dev/null || true)
+  expect_failure "$rendered" "$sub" --flake-dir "$repo"
   [[ $err == *--host* ]] || fail "$sub refusal does not name --host: $err"
 done
 pass 'switch, boot and test refuse on a bootstrap generation without --host'
@@ -137,12 +143,12 @@ pass 'boot diffs against /nix/var/nix/profiles/system, which it actually updates
 
 unset NR_VARIANT_FILE
 for bad in "--host" "--flake-dir"; do
-  err=$("$rendered" switch --flake-dir "$repo" "$bad" 2>&1 >/dev/null || true)
+  expect_failure "$rendered" switch --flake-dir "$repo" "$bad"
   [[ $err == *"missing value for $bad"* ]] || fail "$bad with no value not rejected: $err"
 done
 pass 'a flag with no value exits non-zero naming the flag'
 
-err=$("$rendered" switch --flake-dir "$repo" --bogus 2>&1 >/dev/null || true)
+expect_failure "$rendered" switch --flake-dir "$repo" --bogus
 [[ $err == *"unexpected argument --bogus"* ]] || fail "unknown flag not rejected: $err"
 pass 'an unknown flag exits non-zero naming it'
 
@@ -244,10 +250,7 @@ export NR_DRY_RUN=1
 
 # --- usage -----------------------------------------------------------------
 
-if "$rendered" frobnicate --flake-dir "$repo" >/dev/null 2>&1; then
-  fail 'an unknown subcommand should fail'
-fi
-err=$("$rendered" frobnicate --flake-dir "$repo" 2>&1 >/dev/null || true)
+expect_failure "$rendered" frobnicate --flake-dir "$repo"
 [[ $err == *"unknown subcommand"* ]] || fail "unknown subcommand message missing: $err"
 pass 'an unknown subcommand exits non-zero with usage'
 

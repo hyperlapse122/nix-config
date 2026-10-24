@@ -1,0 +1,80 @@
+{
+  "branch": "chore/audit-tests",
+  "completed_at": "2026-10-24T12:54:31.899371+00:00",
+  "cost": {
+    "host": "codex",
+    "scope": {
+      "changed_lines": 6786,
+      "deleted_band": "none",
+      "depth": "full",
+      "exec_nontest_lines": 0,
+      "size_band": "small",
+      "unclassified_lines": 4902
+    },
+    "stages": [
+      {
+        "elapsed_seconds": 26.682,
+        "ended_at": "2026-10-24T12:39:25.851516+00:00",
+        "facts": {
+          "changed_lines": 6786,
+          "deleted_band": "none",
+          "depth": "full",
+          "exec_nontest_lines": 0,
+          "size_band": "small",
+          "unclassified_lines": 4902
+        },
+        "stage": "scope",
+        "started_at": "2026-10-24T12:38:59.169771+00:00"
+      },
+      {
+        "elapsed_seconds": 21.713,
+        "ended_at": "2026-10-24T12:39:47.564518+00:00",
+        "reviewers": 7,
+        "stage": "select",
+        "started_at": "2026-10-24T12:39:25.851516+00:00"
+      },
+      {
+        "candidates": 2,
+        "elapsed_seconds": 529.96,
+        "ended_at": "2026-10-24T12:48:37.524089+00:00",
+        "stage": "dispatch",
+        "started_at": "2026-10-24T12:39:47.564518+00:00"
+      },
+      {
+        "ended_at": "2026-10-24T12:48:37.494152+00:00",
+        "stage": "peer"
+      },
+      {
+        "candidates": 4,
+        "elapsed_seconds": 108.524,
+        "ended_at": "2026-10-24T12:51:15.031582+00:00",
+        "stage": "merge",
+        "started_at": "2026-10-24T12:49:26.507129+00:00"
+      },
+      {
+        "elapsed_seconds": 70.337,
+        "ended_at": "2026-10-24T12:52:41.334829+00:00",
+        "stage": "validate",
+        "started_at": "2026-10-24T12:51:30.997618+00:00"
+      },
+      {
+        "candidates": 4,
+        "elapsed_seconds": 60.034,
+        "ended_at": "2026-10-24T12:54:31.929171+00:00",
+        "stage": "report",
+        "started_at": "2026-10-24T12:53:31.895127+00:00"
+      }
+    ],
+    "status": "complete",
+    "totals": {
+      "artifact_bytes": 1032386,
+      "candidates": 2,
+      "elapsed_seconds": 817.25,
+      "reviewers": 7
+    },
+    "truncated_events": 0
+  },
+  "head_sha": "6d6a4610d8dba181ab80ae99c08b427893721a78",
+  "run_id": "code-review-20261024",
+  "verdict": "Ready with fixes"
+}

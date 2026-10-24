@@ -74,6 +74,21 @@ job_block() {
   ' "$file"
 }
 
+job_condition() {
+  job_block "$1" "$file" | python3 -c '
+import sys, yaml
+text = sys.stdin.read()
+if sum(line.startswith("    if:") for line in text.splitlines()) != 1:
+    sys.exit(0)
+value = yaml.safe_load(text).get("if", "")
+if not isinstance(value, str):
+    sys.exit(0)
+if value.startswith("${{") and value.endswith("}}"):
+    value = value[3:-2].strip()
+print(value)
+'
+}
+
 # needs_pattern scalar|list: the needs: line a gated job must carry.
 # scalar is exactly `needs: changes`; list also accepts a flow list that
 # names `changes` as one of its entries, e.g. `needs: [changes, hosts]`.
@@ -95,17 +110,12 @@ assert_gated() {
     fail "job '$job' does not declare 'changes' in needs: ($needs_form form)"
   fi
   local if_line expected
-  if_line=$(grep -E '^[[:space:]]*if:' <<<"$block" || true)
+  if_line=$(job_condition "$job")
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  # The full literal condition as one fixed string, connectives included --
-  # three independent substring checks would each still match a mutation
-  # that swaps || for && (a real, verified false pass): only an exact match
-  # on the whole expression proves the clauses are joined the way R1/R6/R7
-  # require, not just present somewhere in the line.
   expected="!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.docs_only != 'true')"
-  if ! grep -qF -- "$expected" <<<"$if_line"; then
+  if [ "$if_line" != "$expected" ]; then
     fail "job '$job' if: does not match the expected fail-open condition exactly (R1/R6/R7/KTD4); got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' is gated on the changes job (R1/R6/R7/KTD4)"
@@ -140,15 +150,12 @@ assert_docs_only_only() {
     fail "job '$job' does not declare 'needs: changes'"
   fi
   local if_line expected
-  if_line=$(grep -E '^[[:space:]]*if:' <<<"$block" || true)
+  if_line=$(job_condition "$job")
   if [ -z "$if_line" ]; then
     fail "job '$job' declares no if: condition"
   fi
-  # Exact match on the whole expression, connectives included -- see the
-  # comment in assert_gated for why independent substring checks do not
-  # prove the clauses are joined with &&.
   expected="!cancelled() && github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.docs_only == 'true'"
-  if ! grep -qF -- "$expected" <<<"$if_line"; then
+  if [ "$if_line" != "$expected" ]; then
     fail "job '$job' if: does not match the expected docs-only-only condition exactly; got: $if_line"
   fi
   echo "check-workflow-docs-skip: ok - job '$job' runs only on a genuine docs-only PR"
@@ -235,15 +242,86 @@ assert_darwin_targets() {
   local hosts build
   hosts=$(job_block hosts "$file")
   build=$(job_block build-darwin "$file")
-  if ! grep -qF 'map (n: "checks.aarch64-darwin.${n}") (builtins.attrNames flake.checks.aarch64-darwin)' <<<"$hosts"; then
-    fail "job 'hosts' does not list the aarch64-darwin checks in darwin_targets"
-  fi
-  if ! grep -qF 'darwinConfigurations.${n}.system darwinConfigurations.${n}-bootstrap.system' <<<"$hosts"; then
-    fail "job 'hosts' does not list both variants of each macOS host in darwin_targets"
-  fi
-  if ! grep -qE '^[[:space:]]*set -f[[:space:]]*$' <<<"$build"; then
-    fail "job 'build-darwin' splits its target without turning globbing off"
-  fi
+  python3 - "$file" <<'PYTHON'
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+text = Path(sys.argv[1]).read_text()
+def block(name):
+    match = re.search(r"^  " + re.escape(name) + r":\s*\n(.*?)(?=^  [\w-]+:|\Z)", text, re.M | re.S)
+    assert match, f"missing job {name}"
+    return match[1]
+
+hosts = block("hosts")
+match = re.search(r"lists=\$\(nix eval --impure --json --expr '(.*?)'\)", hosts, re.S)
+assert match, "hosts list expression missing"
+expr = match[1]
+fixture = """{
+  nixosConfigurations = { north = {}; south-bootstrap = {}; };
+  homeConfigurations = {
+    home-intel.activationPackage.system = "x86_64-linux";
+    home-arm.activationPackage.system = "aarch64-linux";
+  };
+  systemConfigs = { sys-intel.system = "x86_64-linux"; sys-arm.system = "aarch64-linux"; };
+  darwinConfigurations = { mac-one = {}; mac-one-bootstrap = {}; mac-two = {}; mac-two-bootstrap = {}; };
+  checks = { aarch64-linux = { linux-one = {}; linux-two = {}; };
+    aarch64-darwin = { darwin-one = {}; "darwin-*" = {}; }; };
+}"""
+expr, count = re.subn(r"builtins\.getFlake \(toString \./\.\)", lambda _: fixture, expr)
+assert count == 1, "fixture did not replace actual flake read"
+result = subprocess.run(["nix", "--extra-experimental-features", "nix-command", "eval", "--json", "--expr", expr], text=True, capture_output=True)
+assert result.returncode == 0, result.stderr
+lists = json.loads(result.stdout)
+expected_linux = [
+    {"attr": "homeConfigurations.home-arm.activationPackage", "system": "aarch64-linux"},
+    {"attr": "homeConfigurations.home-intel.activationPackage", "system": "x86_64-linux"},
+    {"attr": "systemConfigs.sys-arm", "system": "aarch64-linux"},
+    {"attr": "systemConfigs.sys-intel", "system": "x86_64-linux"},
+    {"attr": "checks.aarch64-linux.linux-one", "system": "aarch64-linux"},
+    {"attr": "checks.aarch64-linux.linux-two", "system": "aarch64-linux"},
+]
+expected_darwin = [
+    "darwinConfigurations.mac-one.system darwinConfigurations.mac-one-bootstrap.system",
+    "darwinConfigurations.mac-two.system darwinConfigurations.mac-two-bootstrap.system",
+    "checks.aarch64-darwin.darwin-*", "checks.aarch64-darwin.darwin-one",
+]
+assert lists == {"targets": ["north", "south-bootstrap"], "linux_targets": expected_linux,
+                 "darwin_targets": expected_darwin}, f"hosts matrix outputs differ: {lists}"
+with tempfile.TemporaryDirectory() as tmp:
+    Path(tmp, "checks.aarch64-darwin.darwin-expanded").touch()
+    for job, entries in [("build", lists["targets"]), ("build-linux", expected_linux),
+                         ("build-darwin", expected_darwin)]:
+        body = block(job)
+        runs = list(re.finditer(r"^        run: (.*?)(?=^      -|\Z)", body, re.M | re.S))
+        run = next((run for run in runs if "nix build" in run[1]), None)
+        assert run, f"{job}: missing build script"
+        script = run[1]
+        if script.startswith("|\n"):
+            script = "\n".join(line[10:] for line in script[2:].splitlines())
+        assert "nix build" in script, f"{job}: no actual build call to record"
+        for entry in entries:
+            env = dict(os.environ, RECORD=str(Path(tmp, "record")))
+            if job == "build-linux":
+                env["ATTR"] = entry["attr"]
+                want = [".#" + entry["attr"]]
+            else:
+                env["TARGET"] = entry
+                want = ([".#nixosConfigurations." + entry + ".config.system.build.toplevel"]
+                        if job == "build" else [".#" + attr for attr in entry.split()])
+            recorder = 'nix() { printf "%s\\0" "$@" > "$RECORD"; }; export -f nix\n'
+            completed = subprocess.run(["bash", "-eu", "-c", recorder + script], cwd=tmp, env=env,
+                                       text=True, capture_output=True)
+            assert completed.returncode == 0, completed.stderr
+            args = Path(env["RECORD"]).read_bytes().decode().split("\0")[:-1]
+            targets = [arg for arg in args if arg.startswith(".#")]
+            assert targets == want, f"{job}: recorded targets {targets}, expected {want}"
+print("check-workflow-docs-skip: ok - actual workflow list and build consumers")
+PYTHON
   echo "check-workflow-docs-skip: ok - darwin_targets carries the macOS hosts and checks"
 }
 

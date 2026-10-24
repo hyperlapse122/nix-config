@@ -1,0 +1,322 @@
+{
+  "run_id": "code-review-20261024",
+  "run_dir": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024",
+  "selected_findings": [
+    {
+      "#": 1,
+      "autofix_class": "gated_auto",
+      "confidence": 75,
+      "evidence": [
+        "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)",
+        "flake.nix:1608-1622 declares Python/PyYAML and pkgs.nix as nativeBuildInputs and invokes this script without NIX_CONFIG or explicit experimental features.",
+        "Read-only reproduction: env NIX_CONF_DIR=/nonexistent NIX_USER_CONF_FILES=/dev/null NIX_CONFIG= nix eval --json --expr '1' fails with: error: experimental Nix feature 'nix-command' is disabled; add '--extra-experimental-features nix-command' to enable it. This is a native CLI reproduction, not a Linux derivation result."
+      ],
+      "file": "tests/check-workflow-docs-skip.sh",
+      "first_evidence": "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)",
+      "independent_reviewers": [
+        "correctness"
+      ],
+      "line": 277,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "correctness"
+      ],
+      "severity": "P1",
+      "suggested_fix": "Pass --extra-experimental-features nix-command before eval. Verify with isolated Nix configuration and build checks.x86_64-linux.ci-workflow-docs-skip on Linux.",
+      "title": "Enable nix-command inside the workflow guard",
+      "why_it_matters": "The ci-workflow-docs-skip derivation fails before checking its matrix contract in a clean Linux build sandbox. The new subprocess uses the experimental nix eval command, but neither its arguments nor the derivation enable nix-command; the invoking developer or Actions runner's Nix configuration is not a declared sandbox input. Explicitly enabling the feature makes this pure expression evaluation independent of host configuration."
+    },
+    {
+      "#": 2,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "tests/darwin-outputs.nix:105 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+        "tests/podman-containers.nix:24 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+        "Read and compared both complete authEffects definitions: their 37-line Nix blocks are byte-identical, including the fresh-home, dry-run, exact JSON, file/directory mode, and existing-byte preservation assertions.",
+        "tests/darwin-outputs.nix:220-221 extracts stepBlock containersAuth from the materialized generation and executes authEffects; tests/podman-containers.nix:239 executes the same probe over authBlock. These callers preserve distinct platform delivery coverage when the probe is shared."
+      ],
+      "file": "tests/darwin-outputs.nix",
+      "first_evidence": "tests/darwin-outputs.nix:105 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+      "independent_reviewers": [
+        "maintainability"
+      ],
+      "line": 105,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "maintainability"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Extract the byte-identical authEffects body into tests/lib/containers-auth-effects.py and reference it from both checks, preserving both platform suites and their distinct delivery boundaries.",
+      "title": "Duplicate containers-auth probe creates parallel maintenance owners",
+      "why_it_matters": "Changes to the containers-auth lifecycle contract now require editing two byte-identical runtime probes, so a correction to permissions, preservation, or dry-run coverage can leave the other platform testing an older contract. The Linux and Darwin suites exercise distinct delivery boundaries and should remain independent, but their shared probe implementation need not be copied. Extracting the probe preserves both executions while giving the assertions one maintenance owner."
+    },
+    {
+      "#": 3,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "git diff 09e9f5aaf56f3bb549c69bc8499de9c208737e4d -- tests/podman-containers.nix removes the activationScriptData no-embedded-token assertion.",
+        "tests/podman-containers.nix:24-60 inspects fresh auth.json, dry-run state, modes and existing bytes, without inspecting embedded credentials in the activation block.",
+        "Plan R4 retains every named independent contract."
+      ],
+      "file": "tests/podman-containers.nix",
+      "first_evidence": "tests/podman-containers.nix:239 --       if ! python3 ${authEffects} ${authBlock}; then",
+      "independent_reviewers": [
+        "testing"
+      ],
+      "line": 239,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "testing"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Retain the new effect probes and restore an independent credential-free activation-artifact assertion over the actual block, with a fake embedded-token negative control; avoid matching incidental store-path hashes.",
+      "title": "Restore the independent no-embedded-credentials activation contract",
+      "why_it_matters": "The diff deletes the independent check forbidding embedded auths/token/password data in the world-readable activation artifact. The replacement only checks the created auth.json and preserved target bytes, so a credential embedded elsewhere in the block is no longer rejected. R4 requires retaining independent security contracts.",
+      "origin_note": "Synthesis promoted a peer residual risk after independently verifying the removed security assertion in the branch diff; testing attribution denotes the test-contract synthesis, not an additional independent reviewer."
+    },
+    {
+      "#": 4,
+      "autofix_class": "manual",
+      "confidence": 75,
+      "evidence": [
+        "tests/lib/agent-activation.py:65: `result = subprocess.run([bash, '-e', str(block)], env=current,`",
+        "tests/lib/agent-activation.py:56: `env.pop('DRY_RUN', None)`. Live runs are tested with DRY_RUN unset, the same as Home Manager's live runs, where DRY_RUN is only exported for dry runs.",
+        "home/h82/agents/agent-plugins.nix:203: `if [[ -v DRY_RUN ]]; then`. This is the -u-safe form; a refactor to `[ -n \"$DRY_RUN\" ]` would expand to empty under `bash -e`, take the live branch, and satisfy every call/args/Pi-link/refusal assertion plus the dry-run pass. Under HM's `set -u` the same line aborts activation.",
+        "home/h82/agents/agent-plugins.nix:257-259: 'linkGeneration sits behind these entries in the built activation script, so this position keeps a refusal from stranding installPackages but not from stranding linkGeneration' \u2014 so a -u abort here leaves home files unlinked.",
+        "Same diff, tests/podman-containers.nix authEffects: `subprocess.run([\"bash\", \"-euo\", \"pipefail\", \"-c\", ...])`, and tests/vscodium.nix: `${pkgs.bash}/bin/bash -eu \"$redirected\"`. The shared harness is the weakest of the new execution harnesses.",
+        "Locally available pinned Home Manager source modules/home-environment.nix:860-863 sets -eu, pipefail and cd $HOME; reviewed harness line 65 passes only -e."
+      ],
+      "file": "tests/lib/agent-activation.py",
+      "first_evidence": "tests/lib/agent-activation.py:65: `result = subprocess.run([bash, '-e', str(block)], env=current,`",
+      "independent_reviewers": [
+        "adversarial-claude"
+      ],
+      "line": 65,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "adversarial-claude"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Run the block under the same shell options Home Manager's activation script uses: `subprocess.run([bash, '-euo', 'pipefail', str(block)], ...)`. Optionally set cwd=str(home) to match HM's `cd $HOME`. This is the same strictness the sibling harnesses in this diff already use: podman-containers/darwin-outputs authEffects use `-euo pipefail` and vscodium uses `-eu`.",
+      "title": "Activation harness runs without -u, passing blocks that abort under Home Manager",
+      "why_it_matters": "This harness is now the only runtime proof for the claude, codex-settings, gemini, tokscale and agent-plugins activation blocks. Home Manager runs activation under `set -eu` and `set -o pipefail`, but the harness runs each block with `bash -e` only. A block that reads an unset variable passes every harness assertion here, then aborts the real `home-manager switch` with an 'unbound variable' error. Per the module's own comment, a failure at that point strands linkGeneration, so the user's declared home files are never linked, while CI stays green."
+    }
+  ],
+  "findings": [
+    {
+      "#": 1,
+      "autofix_class": "gated_auto",
+      "confidence": 75,
+      "evidence": [
+        "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)",
+        "flake.nix:1608-1622 declares Python/PyYAML and pkgs.nix as nativeBuildInputs and invokes this script without NIX_CONFIG or explicit experimental features.",
+        "Read-only reproduction: env NIX_CONF_DIR=/nonexistent NIX_USER_CONF_FILES=/dev/null NIX_CONFIG= nix eval --json --expr '1' fails with: error: experimental Nix feature 'nix-command' is disabled; add '--extra-experimental-features nix-command' to enable it. This is a native CLI reproduction, not a Linux derivation result."
+      ],
+      "file": "tests/check-workflow-docs-skip.sh",
+      "first_evidence": "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)",
+      "independent_reviewers": [
+        "correctness"
+      ],
+      "line": 277,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "correctness"
+      ],
+      "severity": "P1",
+      "suggested_fix": "Pass --extra-experimental-features nix-command before eval. Verify with isolated Nix configuration and build checks.x86_64-linux.ci-workflow-docs-skip on Linux.",
+      "title": "Enable nix-command inside the workflow guard",
+      "why_it_matters": "The ci-workflow-docs-skip derivation fails before checking its matrix contract in a clean Linux build sandbox. The new subprocess uses the experimental nix eval command, but neither its arguments nor the derivation enable nix-command; the invoking developer or Actions runner's Nix configuration is not a declared sandbox input. Explicitly enabling the feature makes this pure expression evaluation independent of host configuration."
+    },
+    {
+      "#": 2,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "tests/darwin-outputs.nix:105 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+        "tests/podman-containers.nix:24 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+        "Read and compared both complete authEffects definitions: their 37-line Nix blocks are byte-identical, including the fresh-home, dry-run, exact JSON, file/directory mode, and existing-byte preservation assertions.",
+        "tests/darwin-outputs.nix:220-221 extracts stepBlock containersAuth from the materialized generation and executes authEffects; tests/podman-containers.nix:239 executes the same probe over authBlock. These callers preserve distinct platform delivery coverage when the probe is shared."
+      ],
+      "file": "tests/darwin-outputs.nix",
+      "first_evidence": "tests/darwin-outputs.nix:105 --   authEffects = pkgs.writeText \"containers-auth-effects.py\" ''",
+      "independent_reviewers": [
+        "maintainability"
+      ],
+      "line": 105,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "maintainability"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Extract the byte-identical authEffects body into tests/lib/containers-auth-effects.py and reference it from both checks, preserving both platform suites and their distinct delivery boundaries.",
+      "title": "Duplicate containers-auth probe creates parallel maintenance owners",
+      "why_it_matters": "Changes to the containers-auth lifecycle contract now require editing two byte-identical runtime probes, so a correction to permissions, preservation, or dry-run coverage can leave the other platform testing an older contract. The Linux and Darwin suites exercise distinct delivery boundaries and should remain independent, but their shared probe implementation need not be copied. Extracting the probe preserves both executions while giving the assertions one maintenance owner."
+    },
+    {
+      "#": 3,
+      "autofix_class": "gated_auto",
+      "confidence": 100,
+      "evidence": [
+        "git diff 09e9f5aaf56f3bb549c69bc8499de9c208737e4d -- tests/podman-containers.nix removes the activationScriptData no-embedded-token assertion.",
+        "tests/podman-containers.nix:24-60 inspects fresh auth.json, dry-run state, modes and existing bytes, without inspecting embedded credentials in the activation block.",
+        "Plan R4 retains every named independent contract."
+      ],
+      "file": "tests/podman-containers.nix",
+      "first_evidence": "tests/podman-containers.nix:239 --       if ! python3 ${authEffects} ${authBlock}; then",
+      "independent_reviewers": [
+        "testing"
+      ],
+      "line": 239,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "testing"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Retain the new effect probes and restore an independent credential-free activation-artifact assertion over the actual block, with a fake embedded-token negative control; avoid matching incidental store-path hashes.",
+      "title": "Restore the independent no-embedded-credentials activation contract",
+      "why_it_matters": "The diff deletes the independent check forbidding embedded auths/token/password data in the world-readable activation artifact. The replacement only checks the created auth.json and preserved target bytes, so a credential embedded elsewhere in the block is no longer rejected. R4 requires retaining independent security contracts.",
+      "origin_note": "Synthesis promoted a peer residual risk after independently verifying the removed security assertion in the branch diff; testing attribution denotes the test-contract synthesis, not an additional independent reviewer."
+    },
+    {
+      "#": 4,
+      "autofix_class": "manual",
+      "confidence": 75,
+      "evidence": [
+        "tests/lib/agent-activation.py:65: `result = subprocess.run([bash, '-e', str(block)], env=current,`",
+        "tests/lib/agent-activation.py:56: `env.pop('DRY_RUN', None)`. Live runs are tested with DRY_RUN unset, the same as Home Manager's live runs, where DRY_RUN is only exported for dry runs.",
+        "home/h82/agents/agent-plugins.nix:203: `if [[ -v DRY_RUN ]]; then`. This is the -u-safe form; a refactor to `[ -n \"$DRY_RUN\" ]` would expand to empty under `bash -e`, take the live branch, and satisfy every call/args/Pi-link/refusal assertion plus the dry-run pass. Under HM's `set -u` the same line aborts activation.",
+        "home/h82/agents/agent-plugins.nix:257-259: 'linkGeneration sits behind these entries in the built activation script, so this position keeps a refusal from stranding installPackages but not from stranding linkGeneration' \u2014 so a -u abort here leaves home files unlinked.",
+        "Same diff, tests/podman-containers.nix authEffects: `subprocess.run([\"bash\", \"-euo\", \"pipefail\", \"-c\", ...])`, and tests/vscodium.nix: `${pkgs.bash}/bin/bash -eu \"$redirected\"`. The shared harness is the weakest of the new execution harnesses.",
+        "Locally available pinned Home Manager source modules/home-environment.nix:860-863 sets -eu, pipefail and cd $HOME; reviewed harness line 65 passes only -e."
+      ],
+      "file": "tests/lib/agent-activation.py",
+      "first_evidence": "tests/lib/agent-activation.py:65: `result = subprocess.run([bash, '-e', str(block)], env=current,`",
+      "independent_reviewers": [
+        "adversarial-claude"
+      ],
+      "line": 65,
+      "owner": "downstream-resolver",
+      "pre_existing": false,
+      "requires_verification": true,
+      "reviewers": [
+        "adversarial-claude"
+      ],
+      "severity": "P2",
+      "suggested_fix": "Run the block under the same shell options Home Manager's activation script uses: `subprocess.run([bash, '-euo', 'pipefail', str(block)], ...)`. Optionally set cwd=str(home) to match HM's `cd $HOME`. This is the same strictness the sibling harnesses in this diff already use: podman-containers/darwin-outputs authEffects use `-euo pipefail` and vscodium uses `-eu`.",
+      "title": "Activation harness runs without -u, passing blocks that abort under Home Manager",
+      "why_it_matters": "This harness is now the only runtime proof for the claude, codex-settings, gemini, tokscale and agent-plugins activation blocks. Home Manager runs activation under `set -eu` and `set -o pipefail`, but the harness runs each block with `bash -e` only. A block that reads an unset variable passes every harness assertion here, then aborts the real `home-manager switch` with an 'unbound variable' error. Per the module's own comment, a failure at that point strands linkGeneration, so the user's declared home files are never linked, while CI stays green."
+    }
+  ],
+  "skip_count": 0,
+  "skipped_findings": [],
+  "skip_evidence_basis": "No ordinary-plus-independent-peer corroborated finding with first_evidence exists.",
+  "scope": {
+    "mode": "standalone",
+    "base": "09e9f5aaf56f3bb549c69bc8499de9c208737e4d",
+    "diff_a": "09e9f5aaf56f3bb549c69bc8499de9c208737e4d",
+    "diff_b": null,
+    "pr": {
+      "number": null,
+      "url": null,
+      "title": null,
+      "body": null,
+      "base_ref_name": null,
+      "head_ref_oid": null,
+      "head_ref": null,
+      "base_ref": null,
+      "has_prior_comments": false
+    },
+    "branch": "chore/audit-tests",
+    "head_sha": "6d6a4610d8dba181ab80ae99c08b427893721a78",
+    "files": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/files.txt",
+    "diff": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/diff.patch.gz",
+    "tree_is_reviewed_head": true,
+    "untracked_excluded": []
+  },
+  "scope_context": {
+    "mode": "standalone",
+    "base": "09e9f5aaf56f3bb549c69bc8499de9c208737e4d",
+    "diff_a": "09e9f5aaf56f3bb549c69bc8499de9c208737e4d",
+    "diff_b": null,
+    "pr": {
+      "number": null,
+      "url": null,
+      "title": null,
+      "body": null,
+      "base_ref_name": null,
+      "head_ref_oid": null,
+      "head_ref": null,
+      "base_ref": null,
+      "has_prior_comments": false
+    },
+    "branch": "chore/audit-tests",
+    "head_sha": "6d6a4610d8dba181ab80ae99c08b427893721a78",
+    "files": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/files.txt",
+    "diff": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/diff.patch.gz",
+    "tree_is_reviewed_head": true,
+    "untracked_excluded": []
+  },
+  "diff": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/diff.patch.gz",
+  "intent": {
+    "summary": "Repair accepted test-audit proof defects F1-F24, preserve independent contracts while consolidating C1-C11 and narrowly removing D1-D3. Verify actual materialized delivery, activation effects and lifecycle behavior; temporary Linux mutation evidence venue remains pending matching-platform execution. Review the full branch plus uncommitted simplify fixes, retaining independent suites.\n",
+    "confidence": "explicit"
+  },
+  "plan": {
+    "path": ".compound-engineering/artifacts/plans/2026-10-24-2029-fix-test-audit-proof-repairs-plan.md",
+    "source": "explicit",
+    "requirements": [
+      "R1. Implement every accepted repair F1-F24 in the repair register, preserving the independent contracts named there and in the audit preservation ledgers.",
+      "R2. Complete C1-C11 only after their keeper assertions are present, and limit removals to D1-D3.",
+      "R3. Demonstrate each repaired assertion class catches its intended regression without depending on evaluation failure or an unrelated guard.",
+      "R4. Retain every complete test suite and all named independent contracts; exclude the rejected Claude updater duplication and VSCodium whole-object escape hypotheses.",
+      "R5. Use only fake credentials and scratch state for verification, without host activation or changes to card administration.",
+      "R6. Publish an open PR and leave merge to the user after the repository's current-head evidence requirements are satisfied."
+    ],
+    "implementation_units": [
+      "U1. Release proof and narrow replay consolidation",
+      "U2. Linux agent activation and keeper proof",
+      "U3. Security boundary proof and pinentry preservation",
+      "U4. Platform delivery and native Darwin effects",
+      "U5. Desktop and provisioning lifecycle observers",
+      "U6. Materialized system consumer paths",
+      "U7. Workflow semantics and dependency-only removal",
+      "U8. Remove the unused skill provenance seam",
+      "U9. Serial shared integration and evidence reconciliation"
+    ],
+    "settled_decisions": [
+      "- **Apply all accepted findings.** Governs R1-R3. (session-settled: user-approved \u2014 chosen over deferring low-severity findings: the user authorized all accepted findings and repository policy requires every valid finding.)",
+      "- **Leave merge to the user.** Governs R6. (session-settled: user-directed \u2014 chosen over automatic merge: LFG authorizes shipping, while the user explicitly reserves merge.)"
+    ]
+  },
+  "invocation": {
+    "arguments": "mode:agent plan:.compound-engineering/artifacts/plans/2026-10-24-2029-fix-test-audit-proof-repairs-plan.md",
+    "constraints": [
+      "No production edits, index writes, commits, pushes, PRs. Artifacts only under configured CE docs_root.",
+      "All valid findings including tests audit and residual risks must be reported regardless severity/confidence/apply bar; parent applies them all per AGENTS.",
+      "Do not suppress due protected tests; tests remain preserved unless concrete defect requires additive fix.",
+      "Product intent: repair accepted F1-F24, C1-C11, D1-D3, retain all independent contracts/suites, rejected Claude updater duplication and VSCodium whole-object hypotheses excluded.",
+      "Plan key decisions session-settled preserve.",
+      "Temporary 19 owner/36 mutation CI venue explicitly required by plan; remove after actual matching Linux caught/restored controls and rerun ordinary final-head CI. Pending CI evidence does not prevent initial publication.",
+      "No apply:local. Parent will apply all findings and handle full verification publication."
+    ]
+  },
+  "validator_template": "/Users/h82/.codex/plugins/cache/compound-engineering-plugin/compound-engineering/3.32.0/skills/ce-code-review/references/validator-batch-template.md",
+  "verdicts_path": "/Users/h82/.t3/worktrees/nix-config/t3-e3385b52/.compound-engineering/artifacts/reviews/code-review-20261024/validator-verdicts.json",
+  "batch_count": 1
+}

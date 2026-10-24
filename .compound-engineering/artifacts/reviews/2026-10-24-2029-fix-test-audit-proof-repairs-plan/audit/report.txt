@@ -1,0 +1,95 @@
+Repository-wide test audit
+Revision: 09e9f5aaf56f3bb549c69bc8499de9c208737e4d
+
+Reviewed all 180 files under tests/ (36,477 lines including fixtures and support), plus inline flake check declarations, production owners, callers, relevant dependency source, history and CI routing. Every file has an owner lane in inventory.json. The initial partial systems ledger is completed by systems-deepen.md, systems-security.md, systems-platform.md and systems-desktop.md. No repository changes, commits, pushes, activation or real-secret operations occurred.
+
+The audit found 24 groups of proof repairs, 11 consolidation candidates and 3 narrow removals. Most tests protect independent package, configuration, protocol, platform, security or lifecycle contracts and should remain. No complete test file is recommended for deletion.
+
+Proof repairs
+
+1. Activation execution: tests/claude.nix:198, codex-settings.nix:102, gemini.nix:97, tokscale.nix:174 and agent-plugins.nix:218 inspect or reconstruct commands. An echo or dead branch can satisfy these checks without activation running the helper. Execute the actual redirected block with divergent state and recording/failing helpers. Keep declaration, destination and DAG assertions. Evidence: exact Gemini check replay with synthetic inputs; source/overlap review for the other owners. See agents.md F1.
+
+2. Gemini delivery: tests/gemini.nix:57 reads option text without enabled, resolved-target or materialized-file proof. A disabled file passes its value assertion. Read the delivered .gemini/settings.json. See agents.md F2 and its native isolated replay.
+
+3. Standalone Linux coverage: Gemini, Codex settings and plugin checks loop over configurations.entries, omitting standalone Linux users. Use userEntries/userGuard for home contracts. Existing non-NixOS checks do not cover all TOML/declaration/plugin values. See agents.md F3.
+
+4. Failed-fetch confidentiality: tests/test_agent_plugin_release.py:124 has no failed-response body sentinel and no non-disclosure assertion. A payload-printing failure branch passes. Emit a sentinel in the failing fetch fixture and assert its absence from both streams. Scratch original/mutant and repaired-test controls establish the gap. See releases.md F1.
+
+5. Schedule uniqueness: tests/update-dependencies-reconcile.sh:294 accepts 7,7 as twice hourly. Require two distinct numeric minutes and the documented 30-minute separation. Whole-suite duplicate-minute mutant passes. See releases.md F2.
+
+6. Workflow gates: tests/check-workflow-docs-skip.sh:108,151 accepts a correct condition as a substring of a permanently false or always-true expression and can inspect step conditions instead of the job scalar. Parse the job-level value and enforce the complete condition. Full baseline and false-prefix mutation both pass. See systems.md F1, validated by systems-deepen.md.
+
+7. Valid wrong recipient: tests/test_install_user_age_identity.py:61,110 uses OTHER-ID, which makes fake keygen fail. It never proves rejection of a valid identity for another recipient. Use a valid key with a different valid expected recipient, retaining old-byte and staging-cleanup assertions and a separate corrupt-input case. All ten tests pass a parse-success-only comparator mutant. See systems.md F2 and systems-deepen.md.
+
+8. Bootstrap recipient membership: tests/bootstrap-recipients.nix:53 accepts an empty recipient or a substring in an unrelated rule/comment. Validate nonempty recipient syntax and exact membership in the applicable token rule. Empty-recipient mutation passes generated builder replay. Keep directory pairing and actual ciphertext/rule equality as distinct guards. See systems.md F3 and systems-deepen.md.
+
+9. Error exit statuses: tests/nr.sh:70,140,145 and age-identity-helpers.sh:123 discard statuses through || true, then assert only diagnostics. Explicitly require failure before checking wording. Full source runners pass mutants that print the correct error and exit zero. See systems-security.md F1.
+
+10. SSH load-time identity: tests/test_desktop_ssh.py:257 never supplies a valid mismatched public identity with a wallet password that successfully decrypts the existing private key. Add that row, preserving missing-entry and wrong-password coverage. Provision-time mismatch tests are a separate boundary. Source-supported gap; Linux mutation proof remains pending. See systems-security.md F2.
+
+11. Pinentry package rendering: tests/pinentry-card.sh:513-515 reports that multiple rendered delegates compile but executes only pass. The caller passes raw source. Replace the claim with actual installed Linux package substitution/executable proof; retain raw relay behavior and separate Darwin filter proof. See systems-security.md F3.
+
+12. NDK metadata: tests/android-sdk.nix:227-230 skips a missing file in check_line; the source.properties call has no preceding existence assertion. Require the metadata file as well as its version. Exact helper replay confirms absent metadata leaves failed=0. See systems-platform.md F1.
+
+13. Registry search destination: tests/podman-containers.nix:161-167,216-225 checks named option enable/text without the consumer target; its regex accepts commented text. Inspect materialized 10-unqualified-search.conf and parse TOML. Registry/prune VMs do not cover that discovery file. See systems-platform.md F2.
+
+14. Container auth activation: tests/podman-containers.nix:200-214 and darwin-config.nix:556-558 accept printed JSON or step presence without creation of auth.json. The registry VM creates this file itself. Execute actual scratch activation and check JSON, modes, existing-file preservation and dry-run behavior. Focused assertion replay accepts print-only output. See systems-platform.md F3.
+
+15. Darwin Codex merge: tests/darwin-config.nix:459-465 accepts an echo-only merger. Native darwin-outputs executes Pi's merge, not Codex's. Execute the actual redirected Codex step and check TOML, retired-key removal and refusal propagation. Full darwin-config control/mutant confirms the static gap. See systems-platform.md F4.
+
+16. GPG/Zsh/Ghostty delivery: flake.nix:842-938,970-1007 reads source/text without materialized consumer delivery. Real extendModules overrides disable the corresponding files while producing identical complete check derivations. Read home-files at the expected paths and keep startup-chain, font-order and zero-cache policies. See inline.md F1 and delivery-controls.json/gpg-delivery-control.json.
+
+17. User Python runtime: flake.nix:948,959-967 checks package names with no executable assertion, then runs builder Python/uv. Replacing every NixOS user's Python package with an empty package produces the identical check derivation. Run the installed home.path executables. See inline.md F2 and python-runtime-control.json.
+
+18. Printer lifecycle: tests/printing.nix:214-233 greps queue commands without executing reconciliation. Removing the existing-URI guard retains its predicates but recreates an already-correct queue, querying an offline printer. Run the actual script against fresh, correct and changed queue states, with unnecessary creation rejected. Focused real-source controls distinguish the calls. See systems-desktop.md F1 and desktop-controls.json.
+
+19. Taskbar activation: tests/plasma-taskbar.nix:51-66 accepts a nonempty dead branch containing launcher/grouping strings. Execute the actual step against divergent applet fixtures and inspect KConfig writes for both supported applet types and trait variants. Focused no-op control passes all existing predicates. See systems-desktop.md F2.
+
+20. VSCodium activation: tests/vscodium.nix:353-378 extracts a call and runs the merger independently. A false branch retains extracted values and successful direct merger results while activation writes nothing. Execute the redirected full step and refusal path. See systems-desktop.md F3 and vscodium-activation-controls.json.
+
+21. Tailscale no-query behavior: tests/tailscale-provisioning.nix:204-211 promises no API traffic with existing state but observes only DELETEs. Moving the state guard after GET yields one GET, zero DELETEs and success. Record all method/path requests and assert none in scenario B. Focused source controls confirm the observer gap; VM execution remains pending. See systems-desktop.md F4.
+
+22. Logitech rule delivery: tests/logitech-wakeup.nix:26-29 searches a check-owned copy of extraRules. Disabling actual udev delivery leaves the identical check derivation. Inspect the enabled, correctly targeted installed rule directory and receiver-specific line. Neighboring device checks do not prove this receiver policy. See systems-deepen.md F4 and deepen-controls/materialization.json.
+
+23. Sysctl destination: tests/kernel-sysctl.nix:34-45 checks enable/source but not target. Retargeting outside sysctl.d leaves the identical check derivation. Require the actual consumer path and retain all four numeric policies. See systems-deepen.md F5.
+
+24. Darwin matrix brittleness: tests/check-workflow-docs-skip.sh:238 requires a specific Nix lambda variable spelling. A consistent alpha rename preserves behavior but fails the test. Exercise the actual workflow list expression with distinct fixture outputs and recording target splitting, preserving all-host/all-check/native-runner/globbing contracts. See systems-deepen.md F6 and workflow-alpha-rename.log.
+
+Consolidations and removals
+
+- Plugin train selection: absorb test_agent_plugin_release.py:55 into the stronger all-train case at :63. No unique assertion is lost.
+- Claude Code up-to-date status: absorb test_claude_code_release.py:90 into :97, which additionally proves no manifest fetch.
+- T3 SRI replay: absorb test_t3code_release.py:291 into the complete independently expected dry-run pin at :409; keep persisted-write coverage.
+- WiFiman hash replay: absorb test_wifiman_desktop_release.py:151 into full pin resolution at :113; keep persisted-file coverage.
+- Merger prefix collision: test_agent_settings.py:76 already asserts the same preserved longer key as :85.
+- Direct main success: test_agent_settings.py:324 proves process exit and merge, subsuming :309's private main return case.
+- Direct main refusal: move explicit no-Traceback proof into test_agent_settings.py:330 before removing :291's return-only case. Preserve distinct TOML and ledger failures.
+- Plugin rerun: carry the exact symlink-target assertion from test_agent_plugin_sync.py:362 into :370. Keep :381's reassertion proof separately.
+- Codex helper startup: packages/codex.nix postInstallCheck already runs the same helper as tests/codex.nix:91. Retain the installed-profile/sibling-helper check in flake.nix.
+- Docker get: carry the exact response key set from test_docker_credential_sops.py:66 into every :120 routing row first.
+- Pinentry encoding: consolidate repeated setup through a prompt table, retaining the simple no-holder, holder-bearing and alignment variants. Apply the raw-PIN-negative assertion to answered rows; do not delete a distinct grammar variant. No runtime reduction is claimed for this consolidation.
+
+- Remove obsolete T3 TypeScript source fixture helpers/plumbing in test_t3code_release.py. Keep existing Antigravity-pin preservation and release-list-only-fetch assertions.
+- Remove only the direct dependency Git config replacement self-test at lint-staged-markdown.sh:391-396. Real linked-worktree hook commit cases remain.
+- Remove my.testAuditSkill and its repeated registry assertions at test-audit-skill.nix:180-214, plus the documentation sentence naming it. This internal option has no production caller. Retain actual shipped attribution, license, enabled resolved targets, byte equality, frontmatter and non-symlink proof. About 17 production configuration lines could be removed; no deletion has been applied.
+
+Independent preservation review
+
+preservation.md validates the earlier repair/consolidation findings and names exact keepers and carry-first requirements. The parent independently reviewed the later security, desktop and deepened findings. security-preservation.md records the pinentry variant preservation and test-only registry review. No whole suite is retired. Root/user recovery, source/package delivery, provider/API, security metadata/decryption, host/fixture variants and VM/hardware boundaries remain distinct.
+
+Two suspected issues were rejected: the Claude Desktop/Claude Code updater branches are separate and correct; VSCodium's whole-object set mutation is rejected by the real merger. No duplicate validation or production fix is recommended for either.
+
+Baseline and limits
+
+- nix flake check --no-build --all-systems: passed.
+- Native checks.aarch64-darwin.darwin-outputs build: passed.
+- 25 of 26 test_*.py source suites: passed after supplying declared tomlkit dependencies where needed. Desktop SSH requires Linux SO_PEERCRED and has no native Darwin pass. Serve-html skips its Linux-only loopback case on Darwin.
+- Pi extension: all 49 cases passed. Root identity installer and agent-instruction content runners passed.
+- Source/helper shell suites passed for nr, nr-linux, nr-darwin, age helpers, Pi, Tokscale, docs classifier/gating, all five release/workflow suites, Podman resources, minikube start and mobile devices. GNU tools and physical TMPDIR corrected initial native BSD/path fixture failures.
+- Raw pinentry source runner timed out twice on Darwin; its Linux Nix baseline remains pending. No orphaned pinentry test processes remained.
+- Linux native checks, host outputs and all nine VM tests were not executed. No Linux builder/KVM was available and the Podman connection was stopped. Evaluation, identical derivations and focused/synthetic replays do not count as Linux builds or VM passes.
+- Hardware behavior was not validated. No host activation was run.
+
+Production LOC changed: 0. Test/support LOC changed: 0. No commit, push or PR. Applying approved repairs requires owner/sibling checks, targeted caught mutations and supported-platform verification; the audit does not claim a completed pruning cutover or merge readiness.
+
+Detailed ledgers: releases.md, agents.md, systems.md (initial findings), systems-deepen.md, systems-security.md, systems-platform.md, systems-desktop.md, inline.md. inventory.json maps every file and records per-file baseline status. All files are in this report's directory.

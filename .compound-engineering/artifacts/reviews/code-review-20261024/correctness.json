@@ -1,0 +1,27 @@
+{
+  "reviewer": "correctness",
+  "findings": [
+    {
+      "title": "Enable nix-command inside the workflow guard",
+      "severity": "P1",
+      "file": "tests/check-workflow-docs-skip.sh",
+      "line": 277,
+      "why_it_matters": "The ci-workflow-docs-skip derivation fails before checking its matrix contract in a clean Linux build sandbox. The new subprocess uses the experimental nix eval command, but neither its arguments nor the derivation enable nix-command; the invoking developer or Actions runner's Nix configuration is not a declared sandbox input. Explicitly enabling the feature makes this pure expression evaluation independent of host configuration.",
+      "autofix_class": "gated_auto",
+      "owner": "downstream-resolver",
+      "requires_verification": true,
+      "suggested_fix": "Invoke nix with --extra-experimental-features nix-command before eval, or set the feature explicitly in this derivation's NIX_CONFIG. Verify the guard with isolated Nix configuration and build checks.x86_64-linux.ci-workflow-docs-skip on Linux.",
+      "confidence": 75,
+      "evidence": [
+        "tests/check-workflow-docs-skip.sh:277 -- result = subprocess.run([\"nix\", \"eval\", \"--json\", \"--expr\", expr], text=True, capture_output=True)",
+        "flake.nix:1608-1622 declares Python/PyYAML and pkgs.nix as nativeBuildInputs and invokes this script without NIX_CONFIG or explicit experimental features.",
+        "Read-only reproduction: env NIX_CONF_DIR=/nonexistent NIX_USER_CONF_FILES=/dev/null NIX_CONFIG= nix eval --json --expr '1' fails with: error: experimental Nix feature 'nix-command' is disabled; add '--extra-experimental-features nix-command' to enable it. This is a native CLI reproduction, not a Linux derivation result."
+      ],
+      "pre_existing": false
+    }
+  ],
+  "residual_risks": [],
+  "testing_gaps": [
+    "Linux owner builds and the new audit-proof-mutations matrix, including the Tailscale KVM case, were not executed in this review because a Linux/KVM builder is unavailable. Native CLI reproductions and source inspection do not establish those checks pass."
+  ]
+}

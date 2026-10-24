@@ -1,0 +1,28 @@
+{
+  "verdicts": [
+    {
+      "#": 1,
+      "status": "confirmed",
+      "protected_subject": null,
+      "reason": "The newly added tests/check-workflow-docs-skip.sh:277 invokes nix eval without enabling nix-command, and flake.nix:1608-1622 supplies no feature configuration; with Nix 2.34.9 and isolated configuration the same invocation fails with nix-command disabled, establishing the clean-config trigger although Linux sandbox incidence was not measured."
+    },
+    {
+      "#": 2,
+      "status": "confirmed",
+      "protected_subject": null,
+      "reason": "Fresh comparison confirms that the new authEffects definitions at tests/podman-containers.nix:24-60 and tests/darwin-outputs.nix:105-141 are identical, so a lifecycle assertion correction requires parallel edits; both distinct platform callers execute the same probe and can retain their independent delivery coverage with a shared implementation."
+    },
+    {
+      "#": 3,
+      "status": "confirmed",
+      "protected_subject": "secrets-exposure",
+      "reason": "The diff from 09e9f5a removes the activationScriptData credential assertion, while tests/podman-containers.nix:24-60 only checks filesystem effects and no remaining containersAuth guard inspects embedded credentials; a credential-bearing inert assignment in the activation block would preserve all observed effects and escape detection, with actual credential incidence not measured."
+    },
+    {
+      "#": 4,
+      "status": "confirmed",
+      "protected_subject": null,
+      "reason": "The newly introduced tests/lib/agent-activation.py:56-66 unsets DRY_RUN and executes blocks with bash -e only, whereas the available Home Manager modules/home-environment.nix:860-863 enables -eu and pipefail; replacing agent-plugins.nix:203 with an unguarded DRY_RUN expansion is therefore a reachable missed regression under the shared callers, although mutation incidence was not measured."
+    }
+  ]
+}

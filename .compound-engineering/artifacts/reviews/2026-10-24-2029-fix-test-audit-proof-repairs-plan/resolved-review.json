@@ -1,0 +1,127 @@
+{
+  "document": ".compound-engineering/artifacts/plans/2026-10-24-2029-fix-test-audit-proof-repairs-plan.md",
+  "pre_edit_sha256": "3fba58aba9fca6b7bab252ce137437382d1a06da74ec7a933c8f466e8bd0955e",
+  "permission": "User authorized all valid findings; ce-plan draft correction grant covers implementation and verification sections within R1-R6.",
+  "claims": [
+    {
+      "id": "DR1",
+      "source": "coherence-reviewer",
+      "disposition": "apply",
+      "reason": "tests/tailscale-mock-api.py owns request handlers and only records DELETE IDs; F21 needs all-request observation in U5.",
+      "edit": "Add mock support file to U5 owned files."
+    },
+    {
+      "id": "DR2",
+      "source": "adversarial-claude + whole-doc-claude",
+      "disposition": "apply",
+      "reason": "Normal check.yml PR jobs build unmutated head, so unavailable local mutation evidence requires an explicit supported CI venue.",
+      "edit": "U9 temporarily owns finite mutation-proof CI steps and scratch runner, records linked evidence then removes temporary infrastructure and reruns final-head CI."
+    },
+    {
+      "id": "DR3",
+      "source": "whole-doc-claude",
+      "disposition": "apply",
+      "reason": "Shard declaration can remain unchanged while its closure gains host generations; current U9 wording incorrectly narrows routing edits.",
+      "edit": "Require per-unit generation-closure integration notes and U9 hostClosureChecks updates independently of declaration changes."
+    },
+    {
+      "id": "DR4",
+      "source": "whole-doc-claude",
+      "disposition": "apply",
+      "reason": "U6 reference names nonexistent Sources below; actual location is Verification Contract Required learning references.",
+      "edit": "Correct cross-reference."
+    },
+    {
+      "id": "DR5",
+      "source": "adversarial-claude",
+      "disposition": "apply",
+      "reason": "Explicit scratch redirection confirmation prevents partial-block fallback when absolute paths/services are present.",
+      "edit": "Add per-block source redirection prerequisite without gating other units."
+    },
+    {
+      "id": "DR6",
+      "source": "adversarial-claude",
+      "disposition": "apply",
+      "reason": "Mutation evidence must be durable and visible to the user who owns merge.",
+      "edit": "Require per-class PR evidence index with commands, diagnostics and run/artifact links."
+    },
+    {
+      "id": "DR7",
+      "source": "adversarial-claude keeper ordering concern",
+      "disposition": "verified wrong",
+      "reason": "Every C keeper/removal is within one unit except C9, whose package keeper is unchanged and whose shared profile keeper belongs to serial U9. Sequencing already says keeper assertions and repaired proof before deletions; add explicit final C9 confirmation to remove ambiguity."
+    },
+    {
+      "id": "DR8",
+      "source": "security-lens-claude deferred question",
+      "disposition": "verified wrong",
+      "reason": "R5 globally requires fake credentials and scratch state; unit approaches and Verification Contract already bind runners to scratch. DR5 adds explicit per-block confirmation."
+    },
+    {
+      "id": "DR9",
+      "source": "adversarial-claude residual baseline drift",
+      "disposition": "verified wrong",
+      "reason": "Assumptions explicitly requires each unit to recheck current source before editing, so stale target judgments are not accepted blindly."
+    },
+    {
+      "id": "DR10",
+      "source": "adversarial-claude residual recurring weak proof",
+      "disposition": "verified wrong",
+      "reason": "Existing test-audit authoring gate governs future tests; Verification Contract explicitly requires loading it. No evidenced missing repository mechanism."
+    },
+    {
+      "id": "DR11",
+      "source": "adversarial-claude residual production fix framing",
+      "disposition": "apply",
+      "reason": "Any discovered production fix needs clear PR scope.",
+      "edit": "Require parent to rewrite PR description around actual behavior changes and list applied findings."
+    },
+    {
+      "id": "DR12",
+      "source": "whole-doc-claude residual pinentry unit verification",
+      "disposition": "apply",
+      "reason": "U3 raw source proof is independent, installed package completion depends on U9 wiring.",
+      "edit": "Make U3 partial/final verification dependency explicit."
+    },
+    {
+      "id": "DR13",
+      "source": "whole-doc-claude VM CI question",
+      "disposition": "verified wrong",
+      "reason": ".github/workflows/check.yml vm-check-names and vm-checks enumerate all VM checks on non-doc PRs, enable KVM and build each current-head target."
+    }
+  ],
+  "post_edit_sha256": "691a69322734e470b3713df37ef6106946b383b96284659e648ee0b9504a8e03",
+  "application_policy": "All retained valid findings applied under explicit root apply-all instruction, which overrides skill dispositions; no settled annotations changed.",
+  "coverage": {
+    "local_personas": [
+      "coherence",
+      "feasibility",
+      "scope-guardian",
+      "security-lens",
+      "adversarial"
+    ],
+    "local_execution": "serial single child; no independence promotion",
+    "limited_local_verification": "completed; corroborated Linux mutation evidence venue gap",
+    "cross_model": {
+      "route": "claude",
+      "requested_model": "claude-opus-5-5",
+      "served_model": "claude-opus-5-5",
+      "effort": "high",
+      "independence_verified": true,
+      "folded": [
+        "security-lens",
+        "adversarial",
+        "whole-doc"
+      ]
+    }
+  },
+  "verification": {
+    "F_ids": 24,
+    "C_ids": 11,
+    "D_ids": 3,
+    "existing_file_edits": false,
+    "tests_run": false,
+    "implementation_run": false,
+    "remaining_findings": 0
+  }
+}

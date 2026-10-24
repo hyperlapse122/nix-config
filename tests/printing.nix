@@ -212,6 +212,53 @@ let
   # dotted version string.
   leakPattern = "[A-Za-z][A-Za-z0-9+.-]*://|(^|[^0-9.])([0-9]{1,3}[.]){3}[0-9]{1,3}([^0-9.]|$)";
 
+  queueRuntime = pkgs.writeText "printing-runtime.py" ''
+    import json, os, pathlib, subprocess, sys, tempfile
+    script, labels_json, bash = sys.argv[1:]
+    labels = json.loads(labels_json)
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        body = pathlib.Path(script).read_text()
+        import re
+        for command in ["lpstat", "lpadmin"]:
+            body, replacements = re.subn(r"(?<![A-Za-z0-9_/.-])" + command + r"(?= )", str(root / command), body)
+            assert replacements >= len(labels), "printer command was not redirected: " + command
+        body = re.sub(r"^#!.*\n", "", body)
+        (root / "run").write_text(body)
+        stub = "#!" + sys.executable + "\n" + r"""
+    import json, os, pathlib, sys
+    root = pathlib.Path(os.environ['QUEUE_SCRATCH'])
+    args = sys.argv[1:]
+    if pathlib.Path(sys.argv[0]).name == 'lpstat':
+        label = args[1]
+        if os.environ['QUEUE_CASE'] == 'fresh': sys.exit(1)
+        uri = 'ipp://old.invalid/queue' if os.environ['QUEUE_CASE'] == 'changed' else os.environ[label.upper() + '_URI']
+        print('device for ' + label + ': ' + uri)
+    else:
+        with (root / 'calls').open('a') as log: log.write(json.dumps(args) + '\n')
+        if os.environ['QUEUE_CASE'] == 'refuse' or ('-v' in args and os.environ['QUEUE_CASE'] == 'correct'): sys.exit(42)
+    """
+        for name in ['lpstat', 'lpadmin']:
+            (root / name).write_text(stub)
+            (root / name).chmod(0o700)
+        for case in ['fresh', 'changed', 'correct', 'refuse']:
+            (root / 'calls').write_text("")
+            env = dict(os.environ, QUEUE_SCRATCH=str(root), QUEUE_CASE=case, PATH=str(root) + ':' + os.environ['PATH'])
+            for label in labels:
+                env[label.upper() + '_URI'] = 'ipp://fake.invalid/' + label
+                env[label.upper() + '_INFO'] = 'Fake printer ' + label
+            result = subprocess.run([bash, '-eu', str(root / 'run')], env=env)
+            calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]
+            if case == 'refuse':
+                assert result.returncode != 0, 'printer reconciliation swallowed lpadmin refusal'
+                continue
+            expected = []
+            for label in labels:
+                if case != 'correct': expected.append(['-p', label, '-E', '-v', env[label.upper() + '_URI'], '-m', 'everywhere'])
+                expected.append(['-p', label, '-D', env[label.upper() + '_INFO']])
+            assert result.returncode == 0 and calls == expected, ('printer queue lifecycle', case, calls, expected)
+  '';
+
   assertQueued =
     entry:
     let
@@ -257,6 +304,9 @@ let
         script=/dev/null
       fi
       ${lib.concatMapStrings assertLabel config.my.printing.queues}
+      if ! python3 ${queueRuntime} "$script" ${esc (builtins.toJSON config.my.printing.queues)} ${pkgs.bash}/bin/bash; then
+        ${fail "${name}: printer queue lifecycle failed"}
+      fi
       # The pipeline tails read all their input rather than use -q, so an
       # early exit cannot SIGPIPE the producer and fail the pipe under pipefail.
       if grep -E '^[[:space:]]*(uri|info)=' "$script" | grep -vxE '[[:space:]]*(uri=[$][A-Z0-9_]+_URI|info=[$][A-Z0-9_]+_INFO)' >/dev/null; then
@@ -297,34 +347,41 @@ let
         exit 1
       '';
 in
-pkgs.runCommand "printing-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-  set -x
-  # Succeeds when the socket unit keeps a listener after its drop-ins, which
-  # systemd applies in name order; an empty ListenStream= resets every earlier
-  # one. A missing or masked unit has none.
-  socketListens() {
-    [ -s "$1" ] || return 1
-    {
-      cat "$1"
-      for dropIn in "$1".d/*.conf; do
-        if [ -e "$dropIn" ]; then cat "$dropIn"; fi
-      done
-    } | awk '/^ListenStream=$/ { n = 0; next } /^ListenStream=/ { n++ } END { exit n == 0 }'
+pkgs.runCommand "printing-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.gnugrep
+      pkgs.python3
+    ];
   }
-  ${configurations.guard}
-  ${printing.guard}
-  ${resolvedGuard}
-  ${queueGuard}
-  ${unqueuedGuard}
-  failed=0
+  ''
+    set -x
+    # Succeeds when the socket unit keeps a listener after its drop-ins, which
+    # systemd applies in name order; an empty ListenStream= resets every earlier
+    # one. A missing or masked unit has none.
+    socketListens() {
+      [ -s "$1" ] || return 1
+      {
+        cat "$1"
+        for dropIn in "$1".d/*.conf; do
+          if [ -e "$dropIn" ]; then cat "$dropIn"; fi
+        done
+      } | awk '/^ListenStream=$/ { n = 0; next } /^ListenStream=/ { n++ } END { exit n == 0 }'
+    }
+    ${configurations.guard}
+    ${printing.guard}
+    ${resolvedGuard}
+    ${queueGuard}
+    ${unqueuedGuard}
+    failed=0
 
-  ${lib.concatMapStringsSep "\n" assertEnabled printing.enabled}
-  ${lib.concatMapStringsSep "\n" assertDisabled printing.disabled}
-  ${lib.concatMapStringsSep "\n" assertQueued queued}
-  ${lib.concatMapStringsSep "\n" assertUnqueued unqueued}
+    ${lib.concatMapStringsSep "\n" assertEnabled printing.enabled}
+    ${lib.concatMapStringsSep "\n" assertDisabled printing.disabled}
+    ${lib.concatMapStringsSep "\n" assertQueued queued}
+    ${lib.concatMapStringsSep "\n" assertUnqueued unqueued}
 
-  if [ "$failed" != 0 ]; then
-    exit 1
-  fi
-  touch $out
-''
+    if [ "$failed" != 0 ]; then
+      exit 1
+    fi
+    touch $out
+  ''

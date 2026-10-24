@@ -1,0 +1,7 @@
+{
+  "tracked_diff_unchanged": true,
+  "sha256": "dc797bfe68caf22e41bdf8e47e226b3912a167fcd8e6bcc12632910be5ea8340",
+  "peer_job_cleaned": true,
+  "archived_diff_encoding": "gzip",
+  "archived_diff_note": "Lossless compression preserves significant patch context spaces while satisfying repository whitespace checks."
+}

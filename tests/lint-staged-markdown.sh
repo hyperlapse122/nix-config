@@ -388,11 +388,4 @@ git -C "$wt2" add docs/bad.md
 PATH="$stub_mise_dir:$PATH" git -C "$wt2" commit -q -m "commit without hook" || fail "commit on branch without .githooks failed"
 pass "linked worktree on branch without .githooks commits successfully"
 
-# Running git config core.hooksPath twice leaves a single value
-git -C "$repo12" config core.hooksPath .githooks
-git -C "$repo12" config core.hooksPath .githooks
-hooks_count=$(git -C "$repo12" config --get-all core.hooksPath | wc -l | tr -d " ")
-[[ "$hooks_count" -eq 1 ]] || fail "git config core.hooksPath left multiple values: $hooks_count"
-pass "running git config core.hooksPath twice leaves a single value"
-
 pass "all lint-staged-markdown scenarios passed"

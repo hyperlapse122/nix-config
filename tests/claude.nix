@@ -62,6 +62,8 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
   environmentTier = {
     DISABLE_AUTOUPDATER = "1";
     CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
@@ -136,6 +138,12 @@ let
     {
       attr = "claudeSettings";
       file = ".claude/settings.json";
+      declared = {
+        set = settingsTier;
+        remove = retiredKeys;
+        setPaths = settingsPaths;
+        inherit removePaths;
+      };
       expected =
         expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths
           removePaths;
@@ -143,6 +151,12 @@ let
     {
       attr = "claudeGlobalConfig";
       file = ".claude.json";
+      declared = {
+        set = globalConfigTier;
+        remove = [ ];
+        setPaths = [ ];
+        removePaths = [ ];
+      };
       expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ] [ ];
     }
   ];
@@ -219,6 +233,49 @@ let
         in
         ''
           ${activationAbsent}${activationPresent}
+          ${executeActivation {
+            inherit script;
+            home = userConfig.home.homeDirectory or "";
+            contract = {
+              file = merge.file;
+              declared = merge.declared;
+            }
+            // lib.optionalAttrs (merge.attr == "claudeSettings") {
+              seed = {
+                activationUnmanaged = "keep";
+                advisorModel = "retired";
+                autoCompactWindow = "retired";
+                effortLevel = "retired";
+                model = "divergent";
+                enabledPlugins.custom = false;
+                worktree.custom = "keep";
+                modelSettings = {
+                  claude-opus-5-5.effortLevel = "medium";
+                  custom.effortLevel = "high";
+                };
+              };
+              expected = {
+                activationUnmanaged = "keep";
+                model = "opus[1m]";
+                language = "korean";
+                theme = "auto";
+                preferredNotifChannel = "ghostty";
+                agentPushNotifEnabled = false;
+                inputNeededNotifEnabled = false;
+                cleanupPeriodDays = 30;
+                disableClaudeAiConnectors = true;
+                enabledPlugins = {
+                  custom = false;
+                  "cc-plugin-you-should-know@builtin" = true;
+                };
+                worktree = {
+                  custom = "keep";
+                  baseRef = "head";
+                };
+                modelSettings.custom.effortLevel = "high";
+              };
+            };
+          }}
           # Read the flags the merger is actually invoked with, not merely whether
           # the script mentions a path somewhere. A check that greps for the store
           # path anywhere in the text passes a script that names the right file in
