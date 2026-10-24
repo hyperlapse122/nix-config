@@ -274,7 +274,7 @@ fixture = """{
 }"""
 expr, count = re.subn(r"builtins\.getFlake \(toString \./\.\)", lambda _: fixture, expr)
 assert count == 1, "fixture did not replace actual flake read"
-result = subprocess.run(["nix", "--extra-experimental-features", "nix-command", "eval", "--json", "--expr", expr], text=True, capture_output=True)
+result = subprocess.run(["nix", "--extra-experimental-features", "nix-command", "eval", "--store", "dummy://", "--json", "--expr", expr], text=True, capture_output=True)
 assert result.returncode == 0, result.stderr
 lists = json.loads(result.stdout)
 expected_linux = [

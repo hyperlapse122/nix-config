@@ -221,8 +221,8 @@ let
         body = pathlib.Path(script).read_text()
         import re
         for command in ["lpstat", "lpadmin"]:
-            body, replacements = re.subn(r"(?<![A-Za-z0-9_/.-])" + command + r"(?= )", str(root / command), body)
-            assert replacements >= len(labels), "printer command was not redirected: " + command
+            body = re.sub(r"(?<![A-Za-z0-9_/.-])" + command + r"(?= )", str(root / command), body)
+            assert not re.search(r"(?<![A-Za-z0-9_.-])(?:/[^\s;]*)?/" + command + r"(?= |$)|(?<![A-Za-z0-9_/.-])" + command + r"(?= |$)", body.replace(str(root / command), "")), "unredirected printer command: " + command
         body = re.sub(r"^#!.*\n", "", body)
         (root / "run").write_text(body)
         stub = "#!" + sys.executable + "\n" + r"""

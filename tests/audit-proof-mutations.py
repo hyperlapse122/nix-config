@@ -89,13 +89,13 @@ CASES += [
              '', 'unresolved package substitution:'),
     mutation('pinentry-missing-alias', 'F11', 'pinentry-card', 'packages/gpg-tools.nix',
              'ln -s pinentry-card $out/bin/pinentry\n      substituteInPlace $out/bin/pinentry-card',
-             'ln -s audit-missing-pinentry $out/bin/pinentry\n      substituteInPlace $out/bin/pinentry-card',
+             'substituteInPlace $out/bin/pinentry-card',
              'missing executable entry point:'),
     mutation('ndk-no-metadata', 'F12', 'android-sdk', 'packages/android-sdk.nix',
              '  sdkRoot = "${composition.androidsdk}/libexec/android-sdk";',
              '''  sdkRoot = pkgs.runCommand "audit-sdk-without-ndk-metadata" { } ''
     mkdir -p $out
-    cp -rs ${composition.androidsdk}/libexec/android-sdk/. $out/
+    cp -rsL ${composition.androidsdk}/libexec/android-sdk/. $out/
     chmod -R u+w $out
     rm $out/ndk/*/source.properties
   '';''',
