@@ -85,7 +85,7 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
         toml = contract.get('format') == 'toml'
         if toml:
             import tomlkit
-            target.write_text(tomlkit.dumps(seed))
+            target.write_text(seed if isinstance(seed, str) else tomlkit.dumps(seed))
         else:
             target.write_text(json.dumps(seed))
         seeded_bytes = target.read_bytes()
@@ -120,6 +120,14 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
             assert value == row['value'], 'activation did not reassert nested setting'
         for key in declared.get('remove', []):
             assert key not in actual, 'activation did not retire ' + key
+        if toml:
+            for line in seeded_bytes.decode().splitlines():
+                if line.lstrip().startswith('#'):
+                    assert line in target.read_text(), 'activation lost a user comment'
+            applied_bytes = target.read_bytes()
+            result, calls = run()
+            assert result.returncode == 0 and len(calls) == 1, 'repeated activation failed'
+            assert target.read_bytes() == applied_bytes, 'repeated activation changed settings'
         result, calls = run('settings')
         assert calls and result.returncode != 0, 'activation swallowed merger refusal'
     else:

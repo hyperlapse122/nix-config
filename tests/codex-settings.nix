@@ -104,18 +104,10 @@ let
   };
   expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
-  # Execute the generated command, redirecting only its destination. Independent
-  # expectations and divergent input make an echo-only activation fail here.
-  activationProbe = pkgs.writeText "codex-settings-activation.py" ''
-    import pathlib
-    import subprocess
-    import sys
-    import tempfile
-    import tomllib
-
-    script = pathlib.Path(sys.argv[1]).read_text()
-    destination = sys.argv[2]
-    seeded = """# user comment survives
+  # The shared activation owner runs this divergent TOML seed, preserving
+  # comments and user-owned tables while applying the independent declaration.
+  seed = ''
+    # user comment survives
     model = "old-model"
     model_reasoning_effort = "high"
     service_tier = "priority"
@@ -129,35 +121,26 @@ let
     trust_level = "trusted"
     [plugins."example@local"]
     enabled = true
-    """
-    with tempfile.TemporaryDirectory() as work:
-        target = pathlib.Path(work) / "config.toml"
-        target.write_text(seeded)
-        redirected = script.replace(destination, str(target))
-        assert redirected != script, "activation does not target the expected config.toml"
-        for attempt in range(2):
-            subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], check=True)
-            raw = target.read_text()
-            actual = tomllib.loads(raw)
-            assert actual.get("model") == "gpt-6-astra", "activation did not write Astra"
-            assert actual.get("model_reasoning_effort") == "low"
-            assert actual.get("service_tier") == "default"
-            assert actual.get("agents") == {
-                "default_subagent_model": "gpt-6.1-sol",
-                "default_subagent_reasoning_effort": "medium",
-                "max_threads": 3,
-            }
-            assert actual.get("unrelated") == "keep me"
-            assert actual.get("projects") == {"/scratch/project": {"trust_level": "trusted"}}
-            assert actual.get("plugins") == {"example@local": {"enabled": True}}
-            assert "# user comment survives" in raw
-            assert "developer_instructions" not in actual
-            assert actual.get("check_for_update_on_startup") is False
-            assert actual.get("features") == {
-                "in_app_updates": False, "daemon_auto_start": False, "memories": False,
-            }
   '';
-
+  applied = {
+    model = "gpt-6-astra";
+    model_reasoning_effort = "low";
+    service_tier = "default";
+    unrelated = "keep me";
+    agents = {
+      default_subagent_model = "gpt-6.1-sol";
+      default_subagent_reasoning_effort = "medium";
+      max_threads = 3;
+    };
+    projects."/scratch/project".trust_level = "trusted";
+    plugins."example@local".enabled = true;
+    check_for_update_on_startup = false;
+    features = {
+      in_app_updates = false;
+      daemon_auto_start = false;
+      memories = false;
+    };
+  };
   assertHost =
     entry:
     let
@@ -222,11 +205,6 @@ let
           echo 'the declared keys codexSettings renders drifted from the asserted values on ${hostName}' >&2
           failed=1
         fi
-        printf '%s' ${esc script} > activation-script
-        if ! python3 -I ${activationProbe} activation-script ${esc "${userConfig.home.homeDirectory or ""}/${settingsFile}"}; then
-          echo 'codexSettings did not apply the expected settings on ${hostName}' >&2
-          failed=1
-        fi
       '';
     in
     ''
@@ -238,6 +216,8 @@ let
           file = settingsFile;
           format = "toml";
           inherit declared;
+          inherit seed;
+          expected = applied;
         };
       }}
       if [ ${esc (lib.boolToString targeted)} != "false" ]; then
@@ -246,7 +226,7 @@ let
       fi
     '';
 in
-pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils pkgs.python3 ]; } ''
+pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
   ${configurations.userGuard}
   failed=0
 
@@ -257,4 +237,4 @@ pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils pk
     fi
 
     touch $out
-  ''
+''
