@@ -10,7 +10,7 @@ CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
 HEADINGS = [
-    "GPG and encryption", "Git", "Pull and merge requests", "Markdown",
+    "GPG and encryption", "File I/O", "Git", "Pull and merge requests", "Markdown",
     "Korean text", "Tests", "Review findings",
 ]
 # These are consequential limits, not an inventory of all approved wording.
@@ -20,6 +20,11 @@ POLICIES = {
         "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing.",
         "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it.",
         "Leave card administration and key management to the user.",
+    ],
+    "File I/O": [
+        "Use the harness's native read, write, edit, or patch tools for routine file reads, writes, and edits when a suitable tool is available.",
+        "Use shell commands or scripts such as Python and `sed` for file I/O only when the harness has no suitable native tool or the operation requires a command-line tool.",
+        "The GPG and encryption rules take precedence for decrypted output: pipe it straight into the consuming command without opening decrypted files with file tools.",
     ],
     "Git": ["Never rename onto or push over an existing branch."],
     "Pull and merge requests": [
