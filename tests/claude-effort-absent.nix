@@ -5,10 +5,9 @@
 
   Guard Claude's default effort across rendered instructions, settings and
   session environments. Read the materialized files and the declarations
-  named by activation, rather than detached option values. Instruction
-  sentences that pair Claude or a role alias with an effort are rejected;
-  only the exact Codex CE-prescribed peer exception is exempt. Codex reasoningEffort remains
-  allowed, and store paths are excluded from the word search.
+  named by activation, rather than detached option values.
+  Codex reasoningEffort remains allowed, and store paths are excluded from
+  the word search.
 
   - the declaration JSON that the Claude Code settings merge and the Claude
     Code global config merge are invoked with, found through the `--declared`
@@ -33,8 +32,6 @@
   - instruction copies: appended assignments pair Claude, a model or a role
     alias with an effort, or give the claudeAgent instance a knob. All fail.
     A Codex reasoningEffort and a store path spelling effort must pass.
-    The exact CE peer exception passes only in the Codex copy; leaking it
-    elsewhere or appending a blanket Claude effort assignment still fails.
   - the Claude declaration: the Opus `effortLevel` path set again, `effortLevel`
     in the settings tier, either retirement dropped, the `prune` flag or the
     `value` dropped or changed, and an `effortLevel` in the global config
@@ -82,7 +79,6 @@ let
     ".gemini/config/AGENTS.md"
   ];
 
-  # Only these exact lines in Codex delivery can prescribe CE peer effort.
   sentenceProgram = pkgs.writeText "claude-effort-absent-sentences.awk" ''
     function hasWord(line, term,    from, pos, before, after) {
       from = 1

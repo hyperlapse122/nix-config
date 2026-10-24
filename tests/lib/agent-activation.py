@@ -18,6 +18,12 @@ def assert_types(actual, expected):
             assert_types(value, want)
 
 
+def value_at(document, path):
+    for key in path:
+        document = document[key]
+    return document
+
+
 mode, script_path, original_home, contract_path, bash = sys.argv[1:]
 script = Path(script_path).read_text()
 contract = json.loads(Path(contract_path).read_text())
@@ -49,7 +55,7 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
     recorder.chmod(0o755)
     redirected = redirected.replace(helper, shlex.quote(str(recorder)))
     block = root / 'block.sh'
-    block.write_text(redirected)
+    block.write_text('run() { if [[ -z ${DRY_RUN:-} ]]; then "$@"; fi; }\n' + redirected)
     env = dict(os.environ, HOME=str(home), ACTIVATION_LOG=str(log),
                ACTIVATION_HELPER=helper, ACTIVATION_MODE=mode,
                CODEX_HOME=str(root / 'inherited-codex'))
@@ -103,31 +109,34 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
         assert json.loads(Path(args[args.index('--declared') + 1]).read_text()) == declared, 'wrong activation declaration'
         if toml:
             assert args[args.index('--format') + 1] == 'toml'
-        actual = tomlkit.parse(target.read_text()).unwrap() if toml else json.loads(target.read_text())
+        applied_bytes = target.read_bytes()
+        applied_text = applied_bytes.decode()
+        actual = tomlkit.parse(applied_text).unwrap() if toml else json.loads(applied_text)
         if 'expected' in contract:
             assert_types(actual, contract['expected'])
             assert actual == contract['expected'], 'activation did not preserve the seeded document'
-        else:
+        elif 'preservePaths' not in contract:
             assert actual['activationUnmanaged'] == 'keep', 'activation lost unmanaged state'
-        for key, value in declared.get('set', {}).items():
+        for key, value in (declared.get('set', {}) | declared.get('own', {})).items():
             assert_types(actual[key], value)
             assert actual[key] == value, 'activation did not reassert ' + key
         for row in declared.get('setPaths', []):
-            value = actual
-            for key in row['path']:
-                value = value[key]
+            value = value_at(actual, row['path'])
             assert_types(value, row['value'])
             assert value == row['value'], 'activation did not reassert nested setting'
         for key in declared.get('remove', []):
             assert key not in actual, 'activation did not retire ' + key
+        for path in contract.get('preservePaths', []):
+            value, want = value_at(actual, path), value_at(seed, path)
+            assert_types(value, want)
+            assert value == want, 'activation changed unmanaged path: ' + '.'.join(path)
         if toml:
             for line in seeded_bytes.decode().splitlines():
                 if line.lstrip().startswith('#'):
-                    assert line in target.read_text(), 'activation lost a user comment'
-            applied_bytes = target.read_bytes()
-            result, calls = run()
-            assert result.returncode == 0 and len(calls) == 1, 'repeated activation failed'
-            assert target.read_bytes() == applied_bytes, 'repeated activation changed settings'
+                    assert line in applied_text, 'activation lost a user comment'
+        result, calls = run()
+        assert result.returncode == 0 and len(calls) == 1, 'repeated activation failed'
+        assert target.read_bytes() == applied_bytes, 'repeated activation changed settings'
         result, calls = run('settings')
         assert calls and result.returncode != 0, 'activation swallowed merger refusal'
     else:

@@ -12,7 +12,6 @@ ACTION = "{{ .user.gpgKey }}"
 CODEX_OPEN = "{{ if .codex }}"
 CODEX_CLOSE = "{{ end -}}"
 CODEX_HEADING = "Codex role orchestration"
-# Independent normative selection/limits, not values read back from the template.
 PROFILES = {
     "P1": ("gpt-6-luna", "low", "Standard"),
     "P2": ("gpt-6-luna", "medium", "Standard"),
@@ -57,21 +56,33 @@ CODEX_SENTENCES = [
     "Preserve surviving findings and identify uncovered lenses after partial failure.",
     "Parent tools do not authorize answering a child's reserved approval.",
     "Instructions asking a shared-checkout child not to write do not enforce read-only access.",
+    "Establish required enforced read-only/tool restrictions before peer egress.",
+    "If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback.",
 ]
-# Coverage rows assert responsibility/profile associations, independently of prose.
 ROLE_PROFILES = {
-    "source-persona fetch": "P1", "media analyzer": "P3",
-    "decisions/reconciliation": "P5", "`ce-brainstorm` grounding": "P2",
-    "repo/history/learnings/framework-docs/web/best-practices": "P2",
-    "spec-flow analyzer": "P4", "architecture strategist/complex plan author": "P6",
-    "implementation/design-sync": "P3", "investigation/root cause": "P4",
-    "work-recap/behavior-trace": "P2", "evidence researchers/issue intelligence": "P2",
-    "generation/ceiling": "P3/P6/P7", "verdict/synthesis": "P6",
-    "correctness, standards": "P4", "merge/validator/report": "P3/P4/P3",
-    "whole-doc, coherence": "P4", "reuse, quality": "P4",
-    "Related Docs Finder": "P2", "session historian": "P3",
-    "security sentinel": "P4", "investigators/replacement authors": "P3",
-    "Browser/device/prototype": "P3", "Commit/publication/babysitting": "P5",
+    "source-persona fetch": "P1; unclear connector semantics P3",
+    "media analyzer": "P3 for frame/transcript interpretation",
+    "decisions/reconciliation": "P5; conflicting evidence or difficult scope P6",
+    "`ce-brainstorm` grounding": "P2; brainstorm claim verifier P3",
+    "repo/history/learnings/framework-docs/web/best-practices": "P2 gathering, P3 applicability/reconciliation",
+    "spec-flow analyzer": "P4",
+    "architecture strategist/complex plan author": "P6; ordinary delegated plan author P3",
+    "implementation/design-sync": "P3; complex diagnosis P4, architecture P6",
+    "investigation/root cause": "P4; exact gathering P1/P2 does not transfer diagnosis",
+    "work-recap/behavior-trace": "P2; complex causal tracing P4",
+    "evidence researchers/issue intelligence": "P2 retrieval, P3 interpretation",
+    "generation/ceiling": "P3/P6/P7 according to the skill's frame and diversity contract",
+    "verdict/synthesis": "P6; P7 peer",
+    "correctness, standards": "P4 even on small changes",
+    "merge/validator/report": "P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings",
+    "whole-doc, coherence": "P4; independent peer P7",
+    "reuse, quality": "P4 regardless of output length",
+    "Related Docs Finder": "P2 bounded matching; overlap interpretation P3",
+    "session historian": "P3; root retains classification/drafting ownership",
+    "security sentinel": "P4; research-only framework/best-practices gathering P2",
+    "investigators/replacement authors": "P3; complex behavior verification P4; root retains deletion/metadata decisions",
+    "Browser/device/prototype": "P3 with required modalities/tools; status only P1",
+    "Commit/publication/babysitting": "P5; deterministic commands need no extra model call; diagnosis P4",
 }
 HEADINGS = [
     "GPG and encryption", "File I/O", "Git", "Pull and merge requests", "Markdown",
@@ -133,7 +144,6 @@ REMOVED = re.compile(
 
 
 def render(template, key, codex=False):
-    """Independent renderer for a field and one terminal delivery conditional."""
     if template.count(CODEX_OPEN) != 1 or template.count(CODEX_CLOSE) != 1:
         raise ValueError("missing or repeated delivery conditional")
     common, conditional = template.split(CODEX_OPEN)
@@ -198,10 +208,8 @@ def content_problems(text, key, codex=False):
                 problems.append(f"incorrect Codex profile {profile}")
         for role, profile in ROLE_PROFILES.items():
             rows = [line for line in body.splitlines() if line.startswith("| ") and role in line]
-            if len(rows) != 1 or profile not in rows[0].split(" | ")[-1]:
+            if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
                 problems.append(f"missing Codex responsibility mapping: {role}")
-        # Extra policy can reverse a guarded sentence while leaving it present.
-        # Reject contrary dispatch instructions, including separate bullets.
         contrary = re.compile(
             r"(?:^|[.!?]\s+|\n)\s*(?:- )?(?:"
             r"(?:automatically|always) (?:select|use|choose|request) (?:GPT )?`?(?:max|ultra|Ultrafast|Fast)|"
@@ -278,7 +286,6 @@ def self_test(template):
     codex = render(template, FAKE_KEY, True)
     errors = content_problems(codex, FAKE_KEY, True)
     assert not errors, errors
-    # Guard policy, not just delivery equality against the same edited template.
     for sentence in CODEX_SENTENCES:
         for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
             mutated = codex.replace(sentence, replacement, 1)
@@ -295,8 +302,9 @@ def self_test(template):
     for role in ROLE_PROFILES:
         row = next(line for line in codex.splitlines() if line.startswith("| ") and role in line)
         assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, ""), FAKE_KEY, True)
-        wrong = row.rsplit(" | ", 1)[0] + " | inherit root |"
-        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, True)
+        for assignment in ("inherit root", "P40 regardless of output length", "P3; P4 is prohibited"):
+            wrong = row.rsplit(" | ", 1)[0] + f" | {assignment} |"
+            assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, True)
     assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, True)
     assert "removed orchestration instructions" in content_problems(codex, FAKE_KEY)
     for contrary in (
@@ -306,7 +314,6 @@ def self_test(template):
     ):
         for separator in (" ", "\n- "):
             assert "contradictory Codex policy" in content_problems(codex + separator + contrary, FAKE_KEY, True), contrary
-    # Variant wiring mutations exercise the same delivered-file boundary.
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "AGENTS.md"
         path.write_text(expected)
@@ -372,11 +379,15 @@ def main():
     for problem in problems:
         print(problem, file=sys.stderr)
     failed = bool(problems)
+    expected_renderings = {}
     for entry in entries:
         key = entry["key"]
         for delivery in entry["paths"]:
             path, codex = delivery["path"], delivery["codex"]
-            expected = render(template, key, codex)
+            variant = (key, codex)
+            if variant not in expected_renderings:
+                expected_renderings[variant] = render(template, key, codex)
+            expected = expected_renderings[variant]
             for problem in delivery_problems(Path(path), expected, key, codex):
                 print(f"{entry['name']} {path}: {problem}", file=sys.stderr)
                 failed = True

@@ -41,19 +41,13 @@
     any instance with driver "codex" leaves either undeclared, names another
     home, or declares `managed`, since
     T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
-    the skills land. The Pi instance declares no binaryPath and no launch arguments. It
-    owns two model selections whole: the default, Codex GPT-6 Astra with low
-    reasoning effort and Standard service, and text generation, Claude Haiku
-    5.5 with no option,
-    so options from an earlier model are dropped.
+    the skills land. The Pi instance declares no binaryPath and no launch arguments.
     The declaration retires providerModelPreferences.opencode, which an
     earlier generation wrote, and prunes the object it leaves empty. On a full
     configuration, the real merger also runs over a settings.json that holds
     an enabled opencode instance, that preference, and another provider's:
     the merged file must hold the instance disabled and only the other
-    provider's preference left. The generated activation command also runs
-    against divergent scratch selections, proving whole-object replacement,
-    Standard service, and preservation of unrelated state and project overrides.
+    provider's preference left.
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -112,6 +106,7 @@
 }:
 let
   inherit (pkgs) lib;
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
@@ -411,52 +406,27 @@ let
     };
   };
 
-  selectionProbe = pkgs.writeText "t3code-selection-activation.py" ''
-    import json
-    import pathlib
-    import subprocess
-    import sys
-    import tempfile
-
-    script = pathlib.Path(sys.argv[1]).read_text()
-    destination = sys.argv[2]
-    seeded = {
-        "defaultModelSelection": {
-            "instanceId": "old-provider", "model": "old-model",
-            "options": [{"id": "staleOption", "value": True}],
-            "staleField": "remove me",
-        },
-        "textGenerationModelSelection": {
-            "instanceId": "claudeAgent", "model": "claude-haiku-5-5", "options": [],
-        },
-        "unrelated": {"keep": True},
-        "providerInstances": {"codex": {"config": {"env": {"KEEP": "yes"}}}},
-        "projectSettingsOverrides": {"scratch": {"defaultModelSelection": {
-            "instanceId": "codex", "model": "gpt-6.1-sol", "options": [],
-        }}},
-    }
-    with tempfile.TemporaryDirectory() as work:
-        target = pathlib.Path(work) / "settings.json"
-        target.write_text(json.dumps(seeded))
-        redirected = script.replace(destination, str(target))
-        assert redirected != script, "activation does not target the expected settings.json"
-        for attempt in range(2):
-            subprocess.run(["bash", "-euo", "pipefail", "-c",
-                            'run() { "$@"; }\n' + redirected], check=True)
-            actual = json.loads(target.read_text())
-            assert actual.get("defaultModelSelection") == {
-                "instanceId": "codex", "model": "gpt-6-astra", "options": [
-                    {"id": "reasoningEffort", "value": "low"},
-                    {"id": "serviceTier", "value": "default"},
-                ],
-            }, "activation did not replace the default selection whole"
-            for key in ("textGenerationModelSelection", "unrelated", "projectSettingsOverrides"):
-                assert actual.get(key) == seeded[key], "activation changed " + key
-            codex = actual.get("providerInstances", {}).get("codex", {}).get("config", {})
-            assert codex.get("homePath") == "~/.codex"
-            assert codex.get("setupMode") == "existing"
-            assert codex.get("env") == {"KEEP": "yes"}
-  '';
+  selectionSeed = {
+    defaultModelSelection = {
+      instanceId = "old-provider";
+      model = "old-model";
+      options = [
+        {
+          id = "staleOption";
+          value = true;
+        }
+      ];
+      staleField = "remove me";
+    };
+    textGenerationModelSelection = settingsExpectedBase.own.textGenerationModelSelection;
+    unrelated.keep = true;
+    providerInstances.codex.config.env.KEEP = "yes";
+    projectSettingsOverrides.scratch.defaultModelSelection = {
+      instanceId = "codex";
+      model = "gpt-6.1-sol";
+      options = [ ];
+    };
+  };
 
   clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
     builtins.toJSON {
@@ -515,6 +485,34 @@ let
         } ${esc (activation.data or "")} ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
         } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected} ${lib.boolToString pluginsDeclared}
+      ''
+      + lib.optionalString (expected && activation != null && merge.attr == "t3codeSettings") ''
+        if ! (
+          failed=0
+          ${executeActivation {
+            script = activation.data or "";
+            home = user.home.homeDirectory or "";
+            contract = {
+              file = ".t3/userdata/settings.json";
+              declared = settingsExpectedBase;
+              seed = selectionSeed;
+              preservePaths = [
+                [ "unrelated" ]
+                [ "projectSettingsOverrides" ]
+                [
+                  "providerInstances"
+                  "codex"
+                  "config"
+                  "env"
+                ]
+              ];
+            };
+          }}
+          exit "$failed"
+        ); then
+          echo ${esc "${name}: the generated activation did not apply the startup selection"} >&2
+          fail=1
+        fi
       ''
     ) merges
     + (
@@ -872,10 +870,6 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     fi
 
     [ "$attr" = t3codeSettings ] || return 0
-    if ! python3 -I ${selectionProbe} script "$settings"; then
-      echo "$name: the generated activation did not apply the startup selection:" >&2
-      fail=1
-    fi
     [ "$full" = true ] || return 0
     checkOpencodeDisabled "$name" "$merger" "$declared"
   }

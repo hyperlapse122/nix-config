@@ -18,13 +18,6 @@
   - it does not swallow the merger's exit status.
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
-  - the `--declared` store file is identical to the declaration restated as
-    literals here: the startup and native child defaults, four update-off
-    keys, and `developer_instructions`
-    retired because ~/.codex/AGENTS.md carries the instructions now, so a
-    dropped or changed key turns this red.
-  - executing its generated command against divergent scratch TOML applies
-    those defaults and retains unrelated keys, comments, trust, and plugins.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
@@ -104,8 +97,6 @@ let
   };
   expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
-  # The shared activation owner runs this divergent TOML seed, preserving
-  # comments and user-owned tables while applying the independent declaration.
   seed = ''
     # user comment survives
     model = "old-model"
