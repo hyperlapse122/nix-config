@@ -98,12 +98,12 @@ let
         env.pop("DRY_RUN", None)
         def run():
             return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
-        target.write_text('model = "old-model"\nmodel_reasoning_effort = "high"\nservice_tier = "priority"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "low"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n')
+        target.write_text('model = "old-model"\nmodel_reasoning_effort = "high"\nservice_tier = "priority"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "medium"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n')
         result = run()
         assert result.returncode == 0, result.stderr
         actual = tomllib.loads(target.read_text())
         assert actual == {"model": "gpt-6-astra", "model_reasoning_effort": "low", "service_tier": "default",
-            "agents": {"default_subagent_model": "gpt-6.1-sol", "default_subagent_reasoning_effort": "medium", "max_threads": 3},
+            "agents": {"default_subagent_model": "gpt-6.1-sol", "default_subagent_reasoning_effort": "low", "max_threads": 3},
             "check_for_update_on_startup": False, "custom": "keep",
             "features": {"in_app_updates": False, "daemon_auto_start": False, "memories": False, "custom": True}}, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
         assert actual["check_for_update_on_startup"] is False

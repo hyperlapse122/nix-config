@@ -13,9 +13,9 @@ CODEX_OPEN = "{{ if .codex }}"
 CODEX_CLOSE = "{{ end -}}"
 CODEX_HEADING = "Codex role orchestration"
 PROFILES = {
-    "P1": ("gpt-6-luna", "low", "Standard"),
-    "P2": ("gpt-6-luna", "medium", "Standard"),
-    "P3": ("gpt-6.1-sol", "medium", "Standard"),
+    "P1": ("gpt-6-luna", "low", "Fast"),
+    "P2": ("gpt-6-luna", "low", "Fast"),
+    "P3": ("gpt-6.1-sol", "low", "Standard"),
     "P4": ("gpt-6.1-sol", "medium", "Standard"),
     "P5": ("gpt-6-astra", "low", "Standard"),
     "P6": ("gpt-6-astra", "medium", "Standard"),
@@ -29,9 +29,10 @@ CODEX_SENTENCES = [
     "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
     "Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.",
     "GPT `max` and `ultra` require an explicit user request for the affected work.",
-    "Standard is the default.",
-    "Automatic Fast requires advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage.",
-    "Unknown allowance retains Standard unless the user requests acceleration.",
+    "Standard is the default except for P1/P2 Luna tasks, which have standing user authorization for Fast (`priority`) when the route and account support it, even when allowance is unknown.",
+    "This authorization does not extend to root, Sol or external peers.",
+    "Other automatic Fast selections require advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage.",
+    "For those other roles, unknown allowance retains Standard unless the user requests acceleration.",
     "Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.",
     "Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers.",
     "Compare returned provider, model and options with the request before counting configuration as applied.",
@@ -68,9 +69,9 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 
 | Profile | Responsibility | Model | Effort | Service |
 | --- | --- | --- | --- | --- |
-| P1 | Exact lookup, fixed-field extraction, status | `gpt-6-luna` | `low` | Standard |
-| P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `medium` | Standard |
-| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `medium` | Standard |
+| P1 | Exact lookup, fixed-field extraction, status | `gpt-6-luna` | `low` | Fast |
+| P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `low` | Fast |
+| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `low` | Standard |
 | P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `medium` | Standard |
 | P5 | Root orchestration, delegation, progress | `gpt-6-astra` | `low` | Standard |
 | P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6-astra` | `medium` | Standard |
@@ -80,7 +81,7 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 - Use P3 for unlisted or newly introduced delegated responsibilities. Mixed work takes its substantive responsibility's profile; split only where the owning skill already permits it. Root-owned work stays Astra P5/P6; delegated authoring assignments do not move that work out of the root.
 - Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Interpretation discovered by P1/P2 returns evidence for a new P3 dispatch; difficult implementation/validation uses P4, unresolved architectural tradeoffs P6. Do not walk an escalation ladder on every retry. Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.
 - GPT `max` and `ultra` require an explicit user request for the affected work. Role titles, large context and importance do not authorize an increase, including to `xhigh`. This GPT limit does not rewrite P7's prescribed external effort.
-- Standard is the default. Automatic Fast requires advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage. Unknown allowance retains Standard unless the user requests acceleration. Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.
+- Standard is the default except for P1/P2 Luna tasks, which have standing user authorization for Fast (`priority`) when the route and account support it, even when allowance is unknown. This authorization does not extend to root, Sol or external peers. Other automatic Fast selections require advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage. For those other roles, unknown allowance retains Standard unless the user requests acceleration. Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.
 
 ## CE coverage
 
@@ -114,7 +115,7 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 
 - Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers. Discover the exact provider instance, model and option descriptors with `orchestrator_capabilities`; search omitted models before declaring absence. Check child/cross-provider eligibility and required modalities/tools. Explicitly set `target.model` and provider-specific effort and supported tier in `target.options`. For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`. Do not extrapolate these option names or values to external providers. Compare returned provider, model and options with the request before counting configuration as applied.
 - Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch. Bounded discovery/recovery follows the owning skill; unsupported or unverifiable selections are reported as unavailable/degraded, with its compatible fallback. Never silently clamp, substitute a family, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran. Queue/backpressure and launch failures must not create duplicate live work.
-- Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve an explicitly accelerated root and disclose actual inherited child tier; if required independent Standard cannot be honored, report the limitation rather than resetting the root or claiming isolation.
+- Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve the root tier and disclose the actual inherited child tier; if a required independent tier cannot be honored, including P1/P2 priority under a Standard root or Standard under an accelerated root, report the limitation rather than changing the root or claiming isolation.
 - Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. Do not add Antigravity to an allowlist incidentally; an unauthorized Gemini recipient or unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
 - Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.
 
@@ -356,12 +357,12 @@ def self_test(template):
             mutated = codex.replace(sentence, replacement, 1)
             assert mutated != codex
             assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, True)), sentence
-    for profile, (_, effort, _) in PROFILES.items():
+    for profile, (_, effort, service) in PROFILES.items():
         row = next(line for line in codex.splitlines() if line.startswith(f"| {profile} |"))
         mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
         assert mutant != row
         assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
-        mutant = row.replace("Standard", "Fast") if profile != "P7" else row.replace("Provider default", "Ultrafast")
+        mutant = row.replace(f"| {service} |", "| Ultrafast |")
         assert mutant != row
         assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
     for role in ROLE_PROFILES:
