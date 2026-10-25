@@ -178,7 +178,7 @@ POLICIES = {
         "When the commits since the base include a merge commit, compare the rebased tip's tree with the tree `git merge-tree --write-tree <base> <old-tip>` prints for the base and your pre-rebase tip before you push, and when it reports a conflict or the trees differ, return the branch to that tip with `git reset --hard <old-tip>`, push nothing, and report the branch, because a default rebase drops a change made only inside a merge commit.",
         "When signing or a hook fails during the rebase, run `git rebase --abort` and report, and never disable signing or pass `--no-verify`.",
         "When the lease is rejected, never retry with `--force`; report the branch instead.",
-        "Force-push only the head branch of a pull or merge request you opened, in this or an earlier session, only with `--force-with-lease`, and never a base branch.",
+        "Force-push only the head branch of a pull or merge request you opened, in this or an earlier session, or whose rebase the user explicitly authorized, only with `--force-with-lease`, and never a base branch.",
     ],
     "Markdown": [
         'In text that does not render as Markdown, such as commit messages, code comments, and plain-text or config files, write a range with a dash or a word, and an approximation with a word, and never with `\\~`.',
