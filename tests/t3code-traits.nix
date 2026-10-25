@@ -23,8 +23,8 @@
     files, checking destination/declaration, real file effects, repeat apply,
     dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, Codex, and Pi instances, the
-    disabled Grok and OpenCode instances, the Claude instance's launch arguments emptied,
+    enabled Antigravity, Claude, Codex, and two OMP instances, the
+    disabled Grok, Pi and OpenCode instances, the Claude instance's launch arguments emptied,
     which retires the --add-dir an earlier generation wrote, no environment
     entry upserted, and the Codex instance's launch arguments emptied, which
     retires the developer_instructions override an earlier generation wrote; the
@@ -171,6 +171,8 @@ let
         "claudeAgent"
         "codex"
         "grok"
+        "omp"
+        "omp-codex"
         "opencode"
         "pi"
       ];
@@ -288,6 +290,54 @@ let
       {
         path = [
           "providerInstances"
+          "omp"
+          "displayName"
+        ];
+        value = "OMP";
+      }
+      {
+        path = [
+          "providerInstances"
+          "omp"
+          "driver"
+        ];
+        value = "acpRegistry";
+      }
+      {
+        path = [
+          "providerInstances"
+          "omp"
+          "enabled"
+        ];
+        value = true;
+      }
+      {
+        path = [
+          "providerInstances"
+          "omp-codex"
+          "displayName"
+        ];
+        value = "OMP Codex";
+      }
+      {
+        path = [
+          "providerInstances"
+          "omp-codex"
+          "driver"
+        ];
+        value = "acpRegistry";
+      }
+      {
+        path = [
+          "providerInstances"
+          "omp-codex"
+          "enabled"
+        ];
+        value = true;
+      }
+      {
+        path = [
+          "providerInstances"
           "opencode"
           "driver"
         ];
@@ -315,7 +365,7 @@ let
           "pi"
           "enabled"
         ];
-        value = true;
+        value = false;
       }
       {
         path = [
@@ -374,6 +424,32 @@ let
         value = true;
       }
     ];
+    ownEntries =
+      map
+        (id: {
+          path = [
+            "providerInstances"
+            id
+            "config"
+          ];
+          entries = {
+            source = "local";
+            commandPath = noContext "${import ../packages/omp.nix { inherit pkgs; }}/bin/omp";
+            commandArgs = [
+              "--mode"
+              "acp"
+              "--config"
+              (scopeExpected id)
+              "--models"
+              (if id == "omp" then "synthetic/**,openrouter/**" else "openai-codex/*")
+            ];
+            customModels = if id == "omp" then snapshotSelectors else [ ];
+          };
+        })
+        [
+          "omp"
+          "omp-codex"
+        ];
     own = {
       defaultModelSelection = {
         instanceId = "codex";
@@ -429,6 +505,30 @@ let
   # activation names are built: the check compares the paths, and the paths
   # are the store hashes of what the module would install.
   noContext = builtins.unsafeDiscardStringContext;
+  snapshotSelectors =
+    map (row: "synthetic/${row.id}")
+      (builtins.fromJSON (builtins.readFile ../home/h82/agents/synthetic-catalog.json)).data
+    ++
+      map (row: "openrouter/${row.id}")
+        (builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json)).data;
+  scopeExpected =
+    id:
+    noContext (
+      toString (
+        pkgs.writeText (if id == "omp" then "omp-t3-OMP.json" else "omp-t3-OMP-Codex.json") (
+          builtins.toJSON {
+            enabledModels =
+              if id == "omp" then
+                [
+                  "synthetic/**"
+                  "openrouter/**"
+                ]
+              else
+                [ "openai-codex/*" ];
+          }
+        )
+      )
+    );
   binaryPathExpected = noContext "${
     import ../packages/antigravity-acp-path.nix { inherit pkgs; }
   }/bin/agy_acp_server.par";

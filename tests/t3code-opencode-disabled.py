@@ -39,7 +39,8 @@ def main(merger, declared_path):
         os.chmod(target, 0o644)
         for attempt in ('first', 'second'):
             result = subprocess.run(
-                [merger, '--label', 't3codeSettings', '--settings', target, '--declared', declared_path],
+                [merger, '--label', 't3codeSettings', '--settings', target, '--declared', declared_path,
+                 '--ledger', os.path.join(work, 'ownership.json')],
                 env={}, capture_output=True, text=True)
             if result.returncode != 0:
                 return problems + ['the merger refused the {} run: {}'.format(attempt, result.stderr.strip())]
