@@ -2,8 +2,11 @@
 pkgs.runCommand "omp-declared-models.json" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   export HOME=$TMPDIR/home
   mkdir -p "$HOME"
-  # The sandbox has no network or real credentials. OMP falls back to its
-  # bundled catalog; only the two API providers participate in this render.
+  # Darwin builders can reach the network. Force discovery to fail locally so
+  # online-only rows cannot be mistaken for bundled rows and get only overrides.
+  # This environment applies only to the build-time bundled catalog probe.
+  export HTTP_PROXY=http://127.0.0.1:1 HTTPS_PROXY=http://127.0.0.1:1
+  export ALL_PROXY=http://127.0.0.1:1 NO_PROXY=
   SYNTHETIC_API_KEY=sk-fake-synthetic OPENROUTER_API_KEY=sk-fake-openrouter \
     ${omp}/bin/omp models --json > bundled.json
   python3 -I ${./omp-declarations.py} \
