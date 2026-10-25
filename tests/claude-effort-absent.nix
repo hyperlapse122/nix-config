@@ -73,7 +73,7 @@ let
   esc = value: lib.escapeShellArg (toString value);
 
   deliveryPaths = [
-    ".pi/agent/AGENTS.md"
+    ".omp/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
     ".gemini/config/AGENTS.md"
@@ -234,13 +234,13 @@ let
         else
           ''
             claudeCopy=${baseFiles}/.claude/CLAUDE.md
-            piCopy=${baseFiles}/.pi/agent/AGENTS.md
-            if [ ! -s "$claudeCopy" ] || [ ! -s "$piCopy" ]; then
+            ompCopy=${baseFiles}/.omp/agent/AGENTS.md
+            if [ ! -s "$claudeCopy" ] || [ ! -s "$ompCopy" ]; then
               echo "self-test: the instruction copies of the first user are missing" >&2
               selfTestFailed=1
             else
               expectPass 'the real Claude Code copy' instructionProblems "$claudeCopy"
-              expectPass 'the real Pi copy' instructionProblems "$piCopy"
+              expectPass 'the real OMP copy' instructionProblems "$ompCopy"
               codexCopy=${baseFiles}/.codex/AGENTS.md
               expectPass 'the real Codex CE peer exception' instructionProblems "$codexCopy" 1
               expectFail 'the Codex exception leaked into common delivery' \

@@ -1,5 +1,5 @@
 # Each entry:
-# - `id`: the upstream model ID, without the `synthetic/` provider prefix Pi
+# - `id`: the upstream model ID, without the `synthetic/` provider prefix OMP
 #   adds.
 # - `family`: the family the shared instructions map the ID's org to.
 # - `lineage`: an anchored regular expression, valid for both Nix

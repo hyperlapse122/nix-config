@@ -42,7 +42,6 @@ let
         claude = [ ];
         codex = [ ];
         antigravity = [ ];
-        pi = [ ];
         omp = [ ];
       };
     };
@@ -54,10 +53,6 @@ let
     {
       name = "compound-engineering";
       harness = "omp";
-    }
-    {
-      name = "compound-engineering";
-      harness = "pi";
     }
     {
       name = "compound-engineering";
@@ -76,10 +71,7 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; Codex's and agy's update overrides travel inside their wrappers
-  # instead. Pi has no plugin command that takes a path, so its "CLI" is the
-  # merger that writes the plugin's skills directory into the `skills` list of
-  # ~/.pi/agent/settings.json.
+  # it; Codex's and agy's update overrides travel inside their wrappers.
   harnesses = {
     # OMP discovers native directories directly; no mutable plugin registry.
     omp = { };
@@ -95,10 +87,6 @@ let
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";
-      env = "";
-    };
-    pi = {
-      cli = "${agentTools.agentSettings}/bin/agent-settings";
       env = "";
     };
   };

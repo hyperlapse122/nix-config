@@ -33,13 +33,12 @@
 #   commit contains both files. A T3-only change stays its own commit.
 # - A failing antigravity-acp-release keeps a T3 version bump already in
 #   t3code-release.json and restores only that file's antigravity section.
-# - The update step runs pi-release, and a failing pi-release warns, keeps
+# - The update step runs omp-release, and a failing omp-release warns, keeps
 #   the pin, and lets the other updates through. It runs npm-release for
-#   pi-acp and then acpx, each with its pin and lock file, and a failure for
-#   one restores both of that package's files, warns naming it, and still
-#   updates the other.
-# - The push step commits each changed pin on its own: the Pi pin as
-#   `chore(packages): bump pi to <version>`, and each of pi-acp and acpx as
+#   acpx with its pin and lock file; a failure restores both files and warns
+#   while allowing the remaining updates to continue.
+# - The push step commits each changed pin on its own: the OMP pin as
+#   `chore(packages): bump omp to <version>`, and acpx as
 #   `chore(packages): bump <package> to <version>` with its pin and lock file
 #   together, and nothing else.
 
@@ -117,16 +116,14 @@ setup_clone() {
   mkdir -p "$clone/packages"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
   printf '{"version": "1.4.1", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
-  printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/pi-release.json"
-  mkdir -p "$clone/packages/pi-acp" "$clone/packages/acpx"
-  printf '{"version": "0.0.33"}\n' >"$clone/packages/pi-acp-release.json"
-  printf '{"lockfileVersion": 3, "name": "pi-acp"}\n' >"$clone/packages/pi-acp/package-lock.json"
+  printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
+  mkdir -p "$clone/packages/acpx"
   printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json \
-    packages/antigravity-acp-release.json packages/pi-release.json packages/pi-acp-release.json \
-    packages/pi-acp/package-lock.json packages/acpx-release.json packages/acpx/package-lock.json
+    packages/antigravity-acp-release.json packages/omp-release.json \
+    packages/acpx-release.json packages/acpx/package-lock.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -520,7 +517,7 @@ jq -e '.version == "0.0.47-nightly.20261021.1" and .antigravity == {"x86_64-linu
   fail 'a failing antigravity-acp-release left the PATH pin changed while restoring the t3 section'
 pass 'a failing antigravity-acp-release keeps a T3 version bump and restores the antigravity section'
 
-# --- Pi, its ACP packages, and the catalog keys -----------------------------
+# --- OMP, its ACP packages, and the catalog keys -----------------------------
 
 # run_part <name> <script> <stub>: runs <script> in a fresh clone with
 # `set -euo pipefail` and a `nix` on PATH whose body is <stub>, then a marker
@@ -543,29 +540,29 @@ echo after-part"
   printf '%s\n' "$clone"
 }
 
-grep -Eq '^[^#]*nix run \.#pi-release -- --output packages/pi-release\.json' <<<"$update_script" ||
-  fail 'the update step no longer runs pi-release against packages/pi-release.json'
-pi_script=$(awk '/^# [0-9]+\. Update Pi\./ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $pi_script ]] || fail "could not find the Pi part of the update step in $workflow"
-pi_stub='if [[ ${FAIL:-0} == 1 ]]; then
-  printf "{\"version\": \"partial" >packages/pi-release.json
-  echo "pi-release: release v1.5.0 has no pi-linux-arm64.tar.gz" >&2
+grep -Eq '^[^#]*nix run \.#omp-release -- --output packages/omp-release\.json' <<<"$update_script" ||
+  fail 'the update step no longer runs omp-release against packages/omp-release.json'
+omp_script=$(awk '/^# [0-9]+\. Update OMP\./ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $omp_script ]] || fail "could not find the OMP part of the update step in $workflow"
+omp_stub='if [[ ${FAIL:-0} == 1 ]]; then
+  printf "{\"version\": \"partial" >packages/omp-release.json
+  echo "omp-release: release v1.5.0 has no omp-linux-arm64" >&2
   exit 1
 fi
-printf "{\"version\": \"1.5.0\", \"platforms\": {}}\n" >packages/pi-release.json'
+printf "{\"version\": \"1.5.0\", \"platforms\": {}}\n" >packages/omp-release.json'
 
-clone=$(FAIL=1 run_part pi-fails "$pi_script" "$pi_stub")
-grep -q '^::warning' "$scratch/pi-fails-step.log" ||
-  fail "a failing pi-release emitted no ::warning:: annotation: $(cat "$scratch/pi-fails-step.log")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/pi-release.json) ]] ||
-  fail 'a failing pi-release left packages/pi-release.json changed'
-clone=$(run_part pi-succeeds "$pi_script" "$pi_stub")
-grep -q '"1.5.0"' "$clone/packages/pi-release.json" || fail 'a succeeding pi-release did not update the pin'
-if grep -q '^::warning' "$scratch/pi-succeeds-step.log"; then fail 'a succeeding pi-release still emitted a warning'; fi
-pass 'pi-release runs against packages/pi-release.json; a failure warns and keeps the pin, a success updates it'
+clone=$(FAIL=1 run_part omp-fails "$omp_script" "$omp_stub")
+grep -q '^::warning' "$scratch/omp-fails-step.log" ||
+  fail "a failing omp-release emitted no ::warning:: annotation: $(cat "$scratch/omp-fails-step.log")"
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/omp-release.json) ]] ||
+  fail 'a failing omp-release left packages/omp-release.json changed'
+clone=$(run_part omp-succeeds "$omp_script" "$omp_stub")
+grep -q '"1.5.0"' "$clone/packages/omp-release.json" || fail 'a succeeding omp-release did not update the pin'
+if grep -q '^::warning' "$scratch/omp-succeeds-step.log"; then fail 'a succeeding omp-release still emitted a warning'; fi
+pass 'omp-release runs against packages/omp-release.json; a failure warns and keeps the pin, a success updates it'
 
-npm_script=$(awk '/^# [0-9]+\. Update Pi.s ACP adapter and client/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $npm_script ]] || fail "could not find the Pi ACP part of the update step in $workflow"
+npm_script=$(awk '/^# [0-9]+\. Update the shared ACP client/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
+[[ -n $npm_script ]] || fail "could not find the shared ACP client part of the update step in $workflow"
 # The stub records each package it was asked for, checks the paths it was
 # given, and fails for the packages FAIL names after leaving both files
 # half-written.
@@ -592,21 +589,15 @@ fi
 printf "{\"version\": \"9.9.9\"}\n" >"$output"
 printf "{\"lockfileVersion\": 3, \"new\": true}\n" >"$lock"'
 
-clone=$(FAIL=pi-acp run_part npm-one-fails "$npm_script" "$npm_stub")
-[[ $(paste -sd ' ' "$clone/npm-calls.log") == "pi-acp acpx" ]] ||
-  fail "the update step ran npm-release for $(paste -sd ' ' "$clone/npm-calls.log"), not pi-acp then acpx"
-grep -q '^::warning title=pi-acp update skipped' "$scratch/npm-one-fails-step.log" ||
-  fail "a failing npm-release for pi-acp emitted no warning naming it: $(cat "$scratch/npm-one-fails-step.log")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/pi-acp-release.json packages/pi-acp/package-lock.json) ]] ||
-  fail 'a failing npm-release for pi-acp left its pin or lock file changed'
+clone=$(FAIL=acpx run_part npm-fails "$npm_script" "$npm_stub")
+[[ $(paste -sd ' ' "$clone/npm-calls.log") == "acpx" ]] || fail 'npm-release did not run for acpx alone'
+grep -q '^::warning title=acpx update skipped' "$scratch/npm-fails-step.log" || fail 'a failing acpx update emitted no warning'
+[[ -z $("$git_bin" -C "$clone" status --porcelain packages/acpx-release.json packages/acpx/package-lock.json) ]] ||
+  fail 'a failing acpx update left its pin or lock file changed'
+clone=$(run_part npm-succeeds "$npm_script" "$npm_stub")
 grep -q '"9.9.9"' "$clone/packages/acpx-release.json" && grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
-  fail 'a failing pi-acp update kept acpx from updating its pin and lock file'
-clone=$(FAIL='pi-acp acpx' run_part npm-both-fail "$npm_script" "$npm_stub")
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages) ]] ||
-  fail "failing npm-release runs left changes: $("$git_bin" -C "$clone" status --porcelain packages)"
-[[ $(grep -c '^::warning' "$scratch/npm-both-fail-step.log") == 2 ]] ||
-  fail 'two failing npm-release runs did not each warn'
-pass 'npm-release runs for pi-acp and acpx; a failure restores that package'\''s pin and lock file and lets the other update'
+  fail 'a successful acpx update did not replace its pin and lock file'
+pass 'npm-release updates acpx; failure restores its pin and lock file and lets the step continue'
 
 for key in SYNTHETIC_API_KEY OPENROUTER_API_KEY; do
   if grep -q "$key" "$workflow"; then
@@ -617,20 +608,17 @@ pass 'neither catalog key appears in this workflow'
 
 # Every pin this section adds changed at once: the push step must make one
 # commit per pin, each holding only its own files.
-read -r origin clone <<<"$(setup_clone pi-push)"
+read -r origin clone <<<"$(setup_clone omp-push)"
 base_sha=$("$git_bin" -C "$clone" rev-parse HEAD)
-printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/pi-release.json"
-printf '{"version": "0.0.34"}\n' >"$clone/packages/pi-acp-release.json"
-printf '{"lockfileVersion": 3, "name": "pi-acp", "new": true}\n' >"$clone/packages/pi-acp/package-lock.json"
+printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
 printf '{"version": "0.21.0"}\n' >"$clone/packages/acpx-release.json"
 printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >"$clone/packages/acpx/package-lock.json"
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/pi-push-step.log" 2>&1 ||
-  fail "the push step failed on the Pi pins: $(tail -n 5 "$scratch/pi-push-step.log")"
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/omp-push-step.log" 2>&1 ||
+  fail "the push step failed on the OMP pins: $(tail -n 5 "$scratch/omp-push-step.log")"
 commits=$("$git_bin" --git-dir "$origin" log --reverse --format='%H %s' "$base_sha..main")
-[[ $(wc -l <<<"$commits") == 3 ]] || fail "the Pi pins should land as three commits, found: $commits"
+[[ $(wc -l <<<"$commits") == 2 ]] || fail "the OMP pins should land as two commits, found: $commits"
 for expected in \
-  'chore(packages): bump pi to 1.5.0|packages/pi-release.json' \
-  'chore(packages): bump pi-acp to 0.0.34|packages/pi-acp-release.json packages/pi-acp/package-lock.json' \
+  'chore(packages): bump omp to 1.5.0|packages/omp-release.json' \
   'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json'; do
   subject=${expected%%|*} want=${expected#*|}
   sha=$(awk -v s="$subject" '{ sha = $1; sub(/^[^ ]+ /, "") } $0 == s { print sha }' <<<"$commits")
@@ -638,4 +626,4 @@ for expected in \
   files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$sha" | sort | paste -sd ' ')
   [[ $files == "$want" ]] || fail "'$subject' carries $files, want $want"
 done
-pass 'the Pi, pi-acp, and acpx changes each land as their own commit with only their files'
+pass 'the OMP and acpx changes each land as their own commit with only their files'

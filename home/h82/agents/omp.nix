@@ -63,7 +63,10 @@ in
       "mcp.json" = lib.mkDefault (pkgs.writeText "omp-mcp.json" ''{"mcpServers":{}}'');
     };
 
-    home.packages = [ omp ];
+    home.packages = [
+      omp
+      (import ../../../packages/acpx.nix { inherit pkgs; })
+    ];
     home.file.".omp/agent/OMP.md".source = ./instructions/omp.md;
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;

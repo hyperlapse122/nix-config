@@ -25,12 +25,6 @@
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
-  - pi on PATH has pi-synthetic-key beside it, which reads its key from the
-    state directory host-secrets publishes to, and activation merges the
-    declared Pi settings into ~/.pi/agent/settings.json after writeBoundary:
-    that step, run with its target moved to a scratch file, must write every
-    value its declared document sets, and tests/pi_declared.py checks that
-    document and the Pi models one against literals;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -122,13 +116,6 @@ let
 
   androidPin = import ./lib/android-pin.nix { inherit lib; };
   expectedPeers = import ./lib/cross-model-peers.nix { inherit lib; };
-
-  # What tests/pi.nix hands tests/pi_declared.py.
-  syntheticSnapshot = ../home/h82/agents/synthetic-catalog.json;
-  openrouterSnapshot = ../home/h82/agents/openrouter-catalog.json;
-  renderer = ../home/h82/agents/pi-declarations.py;
-  piModels = import ../home/h82/agents/synthetic-models.nix;
-  defaultModel = piModels.${piModels.defaultModel}.id;
 
   fontFamilies = [
     "JetBrainsMono Nerd Font"
@@ -309,24 +296,6 @@ let
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
 
-      # Pi's Synthetic and OpenRouter providers run the packaged key helpers,
-      # which read the keys host-secrets publishes into the state directory.
-      pi=$(readlink -f "$gen/home-path/bin/pi" || true)
-      piKey=$(readlink -f "$gen/home-path/bin/pi-synthetic-key" || true)
-      if [ -z "$pi" ] || [ ! -f "$pi" ]; then
-        bad "no pi on PATH"
-      elif [ -z "$piKey" ] || [ ! -f "$piKey" ]; then
-        bad "no pi-synthetic-key beside pi"
-      elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/synthetic_api_key'"} "$piKey"; then
-        bad "Pi's key helper does not read ${user.my.secrets.stateDir}/synthetic_api_key"
-      fi
-      piOpenrouterKey=$(readlink -f "$gen/home-path/bin/pi-openrouter-key" || true)
-      if [ -z "$piOpenrouterKey" ] || [ ! -f "$piOpenrouterKey" ]; then
-        bad "no pi-openrouter-key beside pi"
-      elif ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${user.my.secrets.stateDir}/openrouter_api_key'"} "$piOpenrouterKey"; then
-        bad "Pi's OpenRouter key helper does not read ${user.my.secrets.stateDir}/openrouter_api_key"
-      fi
-
       # Compound Engineering's Antigravity route takes the helper from the
       # directory agy_acp_server.par is found in. The macOS .par finds its CA
       # bundle itself, so the wrapper sets no SSL_CERT_FILE. It seeds
@@ -352,65 +321,6 @@ let
       elif [ "$(readlink -f "$gen/home-path/bin/serve-html" || true)" != ${lib.escapeShellArg serveHtml} ]; then
         bad "serve-html on PATH is not the packaged helper"
       fi
-
-      piSettings=$(step piSettings); piSettings=''${piSettings:-0}
-      if [ "$piSettings" = 0 ] || [ "$piSettings" -le "$boundary" ]; then
-        bad "the activation script has no piSettings step after writeBoundary"
-      else
-        # The piSettings step itself, run with its target moved to a scratch
-        # file: the file it writes must hold every value its declared document
-        # sets, and tests/pi_declared.py checks that document and the models
-        # one against literals, so an activation that only names the merger
-        # fails.
-        piBlock=$(stepBlock piSettings)
-        piMerger=$(grep -oE '/nix/store/[^[:space:]]+/bin/agent-settings' <<<"$piBlock" | head -n1 || true)
-        piDeclared=$(grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' <<<"$piBlock" | head -n1 | awk '{print $2}' || true)
-        piModelsDeclared=$(stepBlock piModels | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' | head -n1 | awk '{print $2}' || true)
-        piTarget=${lib.escapeShellArg "${config.my.user.home}/.pi/agent/settings.json"}
-        piScratch=$TMPDIR/pi-$variant/settings.json
-        piLedgerTarget=$(grep -oE -- '--ledger[[:space:]]+[^[:space:]]+' <<<"$piBlock" | awk '{print $2}' | tr -d "'" || true)
-        piLedgerScratch=$TMPDIR/pi-$variant/ledger.json
-        piRedirected=''${piBlock//"$piTarget"/"$piScratch"}
-        if [ -n "$piLedgerTarget" ]; then
-          piRedirected=''${piRedirected//"$piLedgerTarget"/"$piLedgerScratch"}
-        fi
-        if [ -z "$piMerger" ] || [ -z "$piDeclared" ] || [ -z "$piModelsDeclared" ]; then
-          bad "the Pi activation steps do not run the packaged merger with a declared document"
-        elif [ "$piRedirected" = "$piBlock" ]; then
-          bad "the Pi settings merge does not target $piTarget"
-        else
-          mkdir -p "$TMPDIR/pi-$variant/work/home"
-          HOME=$TMPDIR/pi-$variant/work/home PI_OFFLINE=1 OPENROUTER_API_KEY=sk-fake "$pi" --list-models > "$TMPDIR/pi-$variant/work/listed"
-          awk '$1 == "openrouter" { print $2 }' "$TMPDIR/pi-$variant/work/listed" > "$TMPDIR/pi-$variant/work/bundled"
-          if ! output=$(python3 -I ${./pi_declared.py} "$piMerger" "$piModelsDeclared" "$piDeclared"             ${syntheticSnapshot} ${openrouterSnapshot} "$TMPDIR/pi-$variant/work/bundled" ${renderer}             "$piKey" "$piOpenrouterKey" "$TMPDIR/pi-$variant/declared" ${lib.escapeShellArg defaultModel} 2>&1); then
-            bad "the declared Pi documents failed:"$'\n'"$output"
-          fi
-          if ! output=$(bash -euo pipefail -c "$piRedirected" 2>&1); then
-            bad "the piSettings step fails on a scratch settings file:"$'\n'"$output"
-          elif ! output=$(python3 -I ${./pi_settings_applied.py} "$piDeclared" "$piScratch" 2>&1); then
-            bad "the piSettings step does not write its declared settings:"$'\n'"$output"
-          fi
-        fi
-      fi
-
-      dryHome=$TMPDIR/pi-dry-$variant
-      mkdir -p "$dryHome/.pi/agent"
-      printf '%s\n' '{"activationUnmanaged":"keep"}' > "$dryHome/seed.json"
-      for file in models settings; do cp "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json"; done
-      for piName in piModels piSettings; do
-        dryBlock=$(stepBlock "$piName")
-        dryOriginal=${lib.escapeShellArg config.my.user.home}
-        dryRedirected=''${dryBlock//"$dryOriginal"/"$dryHome"}
-        if [ "$dryRedirected" = "$dryBlock" ] || [[ "$dryRedirected" == *"$dryOriginal"* ]]; then
-          bad "Pi dry-run destination was not redirected"
-        elif ! DRY_RUN=1 HOME="$dryHome" bash -euo pipefail -c "$dryRedirected"; then
-          bad "Pi settings dry-run failed"
-        fi
-      done
-      for file in models settings; do
-        cmp -s "$dryHome/seed.json" "$dryHome/.pi/agent/$file.json" || bad "Pi settings dry-run changed protected bytes"
-      done
-      [ ! -e "$dryHome/.local/state/nix-config/agent-settings-ledger" ] || bad "Pi settings dry-run created a ledger"
 
       codexBlock=$TMPDIR/codex-settings-$variant.sh
       stepBlock codexSettings > "$codexBlock"

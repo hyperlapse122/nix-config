@@ -19,7 +19,7 @@ jobs:
     env:
       # The verification before the commit, and again before each push when
       # main moved.
-      VERIFY_TARGETS: .#checks.x86_64-linux.pi-settings .#checks.x86_64-linux.pi-models-load .#checks.x86_64-linux.synthetic-models
+      VERIFY_TARGETS: .#checks.x86_64-linux.omp-settings .#checks.x86_64-linux.omp-models-load .#checks.x86_64-linux.synthetic-models
     steps:
       # No token stays in .git/config; only the push step holds one. Pin ref
       # to main so workflow_dispatch from another branch cannot push that

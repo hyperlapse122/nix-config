@@ -49,7 +49,7 @@ with open(os.environ['ACTIVATION_LOG'], 'a') as stream:
                              'updater': os.environ.get('DISABLE_AUTOUPDATER')}) + '\\n')
 if os.environ.get('FAIL_HARNESS') == ('settings' if '--harness' not in args else args[args.index('--harness') + 1]):
     sys.exit(73)
-if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') + 1] == 'pi':
+if os.environ['ACTIVATION_MODE'] == 'settings':
     sys.exit(subprocess.call([os.environ['ACTIVATION_HELPER'], *args]))
 ''')
     recorder.chmod(0o755)
@@ -140,9 +140,6 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
         result, calls = run('settings')
         assert calls and result.returncode != 0, 'activation swallowed merger refusal'
     else:
-        settings = home / '.pi/agent/settings.json'
-        settings.parent.mkdir(parents=True)
-        settings.write_text('{"skills":["/user/skills"],"theme":"dark"}')
         result, calls = run()
         assert result.returncode == 0, result.stderr
         assert len(calls) == len(contract), 'activation skipped plugin harness rows'
@@ -156,12 +153,6 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
                 assert call['codex_home'] is None, 'Codex inherited CODEX_HOME'
             if expected['harness'] == 'claude':
                 assert call['updater'] == '1', 'Claude updater environment missing'
-        pi = next(row for row in contract if row['harness'] == 'pi')
-        base = Path(pi['base'].replace(original_home, str(home)))
-        link = base / pi['segment']
-        actual = json.loads(settings.read_text())
-        assert actual == {'skills': ['/user/skills', str(link / 'skills')], 'theme': 'dark'}, 'activation did not deliver Pi skills'
-        assert os.readlink(link) == pi['source'], 'activation linked wrong plugin source'
         for row in contract:
             result, calls = run(row['harness'])
             assert any(c['args'][c['args'].index('--harness') + 1] == row['harness'] for c in calls)

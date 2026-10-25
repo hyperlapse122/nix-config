@@ -26,13 +26,13 @@ release = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader
 loader.exec_module(release)
 
 BASE = "https://registry.npmjs.org"
-NAME = "pi-acp"
+NAME = "acpx"
 VERSION = "0.0.34"
 DEPS_HASH = "sha256-" + base64.b64encode(b"d" * 32).decode("ascii")
 PACKAGE_JSON = {
     "name": NAME,
     "version": VERSION,
-    "bin": {"pi-acp": "dist/index.js"},
+    "bin": {"acpx": "dist/index.js"},
     "dependencies": {"zod": "^3.25.0"},
     "devDependencies": {"tsup": "^8.0.0"},
 }
@@ -145,8 +145,8 @@ class NpmReleaseTestCase(unittest.TestCase):
             path = self.root / name
             path.write_text(body)
             path.chmod(0o755)
-        self.output = self.root / "pi-acp-release.json"
-        self.lock = self.root / "pi-acp" / "package-lock.json"
+        self.output = self.root / "acpx-release.json"
+        self.lock = self.root / "acpx" / "package-lock.json"
         self.lock.parent.mkdir()
         self.npm_log = self.root / "npm.json"
         self.prefetch_log = self.root / "prefetch.json"
@@ -247,8 +247,8 @@ class NpmReleaseTestCase(unittest.TestCase):
 
     def test_refuses_a_manifest_for_another_package(self):
         routes = registry()
-        routes[latest_url()]["name"] = "pi-acp-fork"
-        self.assert_refused("pi-acp-fork", routes=routes)
+        routes[latest_url()]["name"] = "acpx-fork"
+        self.assert_refused("acpx-fork", routes=routes)
 
     def test_refuses_a_tarball_outside_the_npm_registry(self):
         for url in ["https://evil.example/x.tgz", "http://registry.npmjs.org/x.tgz", None]:

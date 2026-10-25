@@ -9,7 +9,6 @@
     ./instructions
     ./korean-skills.nix
     ./omp.nix
-    ./pi.nix
     ./skills.nix
     ./test-audit.nix
     ./tokscale.nix

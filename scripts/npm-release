@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resolve the newest release of one npm package and regenerate its lock file.
 
-For a package that ships no lock file of its own, such as pi-acp and acpx.
+For a package that ships no lock file of its own, such as acpx.
 Reads the registry's latest manifest for the version, tarball URL, and sha512
 integrity; downloads the tarball and checks it against that integrity; takes
 its package.json without devDependencies, the same way the Nix package does

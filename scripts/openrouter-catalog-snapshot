@@ -3,7 +3,7 @@
 
 Fetches https://openrouter.ai/api/v1/models/user, or reads a catalog file
 given with --catalog, and writes `--snapshot FILE`: every row whose output
-modalities include `text`, sorted by `id` and trimmed to the fields Pi's
+modalities include `text`, sorted by `id` and trimmed to the fields OMP's
 model config renders, in the catalog's own shape:
 
 - `id`, `name`, `context_length`
@@ -14,7 +14,7 @@ model config renders, in the catalog's own shape:
   `pricing.input_cache_write` when present, each a numeric string
 - `reasoning` as given, when present
 
-A row whose output lacks `text` is skipped, because Pi cannot serve it as a
+A row whose output lacks `text` is skipped, because OMP cannot serve it as a
 chat model. A malformed row is skipped with a warning naming it on stderr,
 keeping its previous entry from FILE when one exists. The run exits non-zero,
 leaving FILE as it is, when no row is left or when the valid rows shrink

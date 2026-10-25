@@ -29,8 +29,22 @@ let
         inherit (entry) name;
         home = entry.user.home.homeDirectory or "";
         activate = "${entry.user.home.activationPackage}/activate";
+        files = toString entry.user.home-files;
+        path = toString entry.user.home.path;
       }) entries
     )
+  );
+  retiredFiles = pkgs.linkFarm "home-manager-files" (
+    map
+      (name: {
+        inherit name;
+        path = pkgs.writeText "retired-agent-fixture" "old generation";
+      })
+      [
+        ".pi/agent/AGENTS.md"
+        ".pi/agent/extensions/nix-config"
+        ".pi/agent/skills/test-audit"
+      ]
   );
 in
 pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
@@ -41,5 +55,6 @@ pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
     ${tools.ompConfigReconcile}/bin/omp-config-reconcile \
     ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp \
     ${activations}
+  ${tools.ompConfigPython}/bin/python3 ${./agent-retirement.py} ${activations} ${retiredFiles}
   touch $out
 ''

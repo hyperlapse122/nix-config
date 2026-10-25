@@ -97,14 +97,8 @@ let
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
   ompRelease = pythonHelper "omp-release" ../scripts/omp-release;
 
-  # Resolves the latest Pi release and its per-platform tarball digests from
-  # the GitHub releases API and the release's SHA256SUMS. Its network calls go
-  # through an overridable command so the sandboxed repository check can drive
-  # it with fixtures.
-  piRelease = pythonHelper "pi-release" ../scripts/pi-release;
-
   # Resolves the latest release of an npm package that ships no lock file,
-  # such as pi-acp and acpx, and regenerates its lock file and npmDepsHash.
+  # such as acpx, and regenerates its lock file and npmDepsHash.
   # Its network call goes through an overridable command so the sandboxed
   # repository check can drive it with fixtures; npm and prefetch-npm-deps
   # come from the store so the update workflow's runner needs neither.
@@ -180,7 +174,6 @@ in
     miseRelease
     codexRelease
     ompRelease
-    piRelease
     npmRelease
     antigravityCliRelease
     antigravityAcpRelease

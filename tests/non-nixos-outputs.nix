@@ -22,7 +22,7 @@
     ~/.codex/AGENTS.md, and its settings merge targets ~/.codex/config.toml
     after installPackages;
   - on fixtures of the builder's own architecture, the Tokscale wrapper,
-    Pi's key helper, and the registry credential helper read the tokens
+    OMP's key helper, and the registry credential helper read the tokens
     host-secrets publishes, not /run/secrets, which a non-NixOS host does not
     have;
   - the system layer manages no file the distribution owns: no user database,
@@ -176,7 +176,7 @@ let
       hm = entry.host.home.config;
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
-      pi = packageNamed "pi";
+      omp = packageNamed "omp";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -193,15 +193,15 @@ let
             ''
         )
         (
-          if pi == null then
-            fail "${entry.name}: no pi package in home.packages"
+          if omp == null then
+            fail "${entry.name}: no omp package in home.packages"
           else
             ''
-              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/synthetic_api_key'"} ${pi}/bin/pi-synthetic-key; then
-                ${fail "${entry.name}: Pi's key helper does not read ${state}/synthetic_api_key"}
+              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/synthetic_api_key'"} ${omp}/bin/omp-synthetic-key; then
+                ${fail "${entry.name}: OMP's key helper does not read ${state}/synthetic_api_key"}
               fi
-              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} ${pi}/bin/pi-openrouter-key; then
-                ${fail "${entry.name}: Pi's OpenRouter key helper does not read ${state}/openrouter_api_key"}
+              if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} ${omp}/bin/omp-openrouter-key; then
+                ${fail "${entry.name}: OMP's OpenRouter key helper does not read ${state}/openrouter_api_key"}
               fi
             ''
         )

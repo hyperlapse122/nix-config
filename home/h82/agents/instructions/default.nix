@@ -27,10 +27,6 @@ in
       target = ".omp/agent/AGENTS.md";
       source = instructions;
     };
-    agent-instructions-pi = {
-      target = ".pi/agent/AGENTS.md";
-      source = instructions;
-    };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
       source = instructions;

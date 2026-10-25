@@ -10,7 +10,7 @@
     Claude Code               ~/.claude/skills/<name>
     Antigravity CLI, and T3 Code's Antigravity instances
                               ~/.gemini/antigravity-cli/skills/<name>
-    Pi                        ~/.pi/agent/skills/<name>
+    OMP                       ~/.omp/agent/skills/<name>
     Codex                     ~/.codex/skills/<name>
 
   The user list is `userEntries` from `tests/lib/configurations.nix`, so the
@@ -18,9 +18,9 @@
   helper's guard fails the build when that list is empty.
 
   Verifies, per Home Manager user:
-  - each of the twelve targets is exactly one enabled Home Manager file, found by
-    its resolved `target` rather than its attribute name, because either can
-    move the file without changing its text.
+  - each delivery has an enabled Home Manager entry found by resolved target:
+    OMP owns its whole contributed root, and the other harnesses link each
+    skill separately.
   - each target exists in the materialized `home-files`, holds a SKILL.md whose
     frontmatter `name` equals the directory name and whose `description` is
     not empty, holds a LICENSE that starts with "MIT License", and matches the
@@ -33,10 +33,9 @@
     directory itself, never its files with `recursive = true`.
   - no enabled target is ~/.codex/skills/.system or under it, which Codex
     owns.
-  - the enabled targets at or under each of the four roots are exactly the
-    three skill directories plus test-audit, which tests/test-audit-skill.nix
-    checks, so a skill dropped from or added to a module, or a file declared
-    inside a skill directory, turns this red.
+  - the other roots declare exactly the three skill directories plus test-audit;
+    OMP declares only its whole root. Content checks below cover all four
+    delivered skill trees; native OMP checks also exercise discovery.
   - nothing exists at ~/.agents/skills or ~/.gemini/config/skills in the
     materialized `home-files`: the Antigravity CLI lists skills under
     ~/.gemini/config/skills twice, and ~/.agents/skills is no harness's root
@@ -87,7 +86,7 @@ let
   roots = [
     ".claude/skills"
     ".gemini/antigravity-cli/skills"
-    ".pi/agent/skills"
+    ".omp/agent/skills"
     ".codex/skills"
   ];
 
@@ -214,13 +213,21 @@ let
       homeFiles = userConfig.home-files or null;
     in
     lib.concatMapStrings (
-      root: lib.concatMapStrings (name: homeFile label userConfig "${root}/${name}") skillNames
+      root:
+      if root == ".omp/agent/skills" then
+        homeFile label userConfig root
+      else
+        lib.concatMapStrings (name: homeFile label userConfig "${root}/${name}") skillNames
     ) roots
     + lib.concatMapStrings (
       root:
       let
         found = targetsUnder userConfig root;
-        expected = sorted (map (name: "${root}/${name}") (skillNames ++ otherSkillNames));
+        expected =
+          if root == ".omp/agent/skills" then
+            [ root ]
+          else
+            sorted (map (name: "${root}/${name}") (skillNames ++ otherSkillNames));
       in
       lib.optionalString (found != expected) ''
         echo ${esc "~/${root} on ${label} must hold exactly ${lib.concatStringsSep ", " expected}, got: ${lib.concatStringsSep ", " found}"} >&2
