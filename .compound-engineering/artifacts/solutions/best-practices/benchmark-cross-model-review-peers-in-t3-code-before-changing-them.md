@@ -1,7 +1,7 @@
 ---
 title: Benchmark a cross-model review peer in T3 Code before changing its model or effort, and never rank models on one sample
 date: "2026-10-22"
-last_updated: "2026-10-24"
+last_updated: "2026-10-25"
 category: best-practices
 module: "Cross-model review peers (home/h82/agents/synthetic-models.nix, home/h82/agents/instructions/instructions.md.tmpl)"
 problem_type: best_practice
@@ -24,7 +24,7 @@ tags: ["cross-model-peer", "reviewer", "benchmark", "t3-code", "delegate-task", 
 
 ## Context
 
-The shared instructions pick the cross-model review peers for every `ce-doc-review`, `ce-code-review`, `ce-pov` panel, and `ce-bakeoff` judge pass (`home/h82/agents/instructions/instructions.md.tmpl`, the `# Compound Engineering` candidate and default sentences). Their model IDs and per-role efforts live in `home/h82/agents/synthetic-models.nix`. Until 2026-10-21 a Claude Code session ran one OpenCode peer, GLM-5.3 at `max`. Reviews felt slow, and the question was whether a lower effort or other Synthetic models would be faster without missing problems.
+At the time of the benchmark, the shared instructions selected Synthetic cross-model review peers, with model IDs and per-role efforts in `home/h82/agents/synthetic-models.nix`. Until 2026-10-21 a Claude Code session ran one OpenCode peer, GLM-5.3 at `max`. Reviews felt slow, and the question was whether a lower effort or other Synthetic models would be faster without missing problems. Current peer selection follows each CE workflow and the shared instructions; the Synthetic source now supplies the T3 OMP API startup selection and model-watch data, not a universal peer roster.
 
 Nothing in the repository measured a peer's wall time or coverage, and published benchmarks did not answer it: Artificial Analysis listed GLM-5.3 only at `max` as of 2026-10-21, and Compound Engineering 3.31.0's own peer scripts pick "one model per provider at high reasoning" without numbers for OpenCode models. The answer came from a benchmark run inside T3 Code on a real peer prompt. Two things from it are not recoverable from the final code: how to run such a benchmark so the numbers mean something, and the numbers themselves.
 
@@ -44,7 +44,9 @@ A delegated thread can disappear when T3 Code compacts its state: on 2026-10-21 
 
 **Rebuild the fixture the original peer saw, not just its prompt.** A captured prompt points at a reviewed checkout and a scratch directory by path, and both change after the review ends. On 2026-10-23 the prompt of a `ce-code-review` Codex peer named the checkout `~/.t3/worktrees/nix-config/t3-dbe265a0`. That review had covered base `9574dcd` plus uncommitted edits on `5047b1b`, the state its scratch `full.diff` records. By the time of the replay, the checkout sat at `5726717`, which already held the review's fixes, so a replay there would review a different tree. The scratch directory had also gained the rest of that review's outputs after the peer launched: `review.json`, `synthesized-findings.json`, the other reviewers' JSON, and the peer's own `adversarial-codex.json`. A replayed peer may read any of them. Before each run, rebuild the reviewed tree on the same path (base plus `full.diff`, checked against `full.diff`), and reset the scratch directory to the files whose modification time predates the peer's `startedAt`. For a code-review peer, that set was `full.diff`, `files.txt`, `intent.md`, `reviewer-brief.md`, `adversarial-review-brief.md`, and `adversarial-review-constraints.md`. Restore the checkout to its branch afterwards. Budget Codex usage too: one default-tier `gpt-6.1-sol` `xhigh` review took about 9 percent of the 5-hour window (see [The Codex priority service tier costs 2.5x subscription usage](codex-priority-tier-costs-2-5x-subscription-usage-for-review-peer.md)).
 
-**Run the candidates one at a time, with the same isolation as a real peer.** Launch each with `delegate_task`, `isolation: "worktree"`, `runtimeMode: "full-access"`, and the effort in `target.options` (`{"variant": "high"}` for OpenCode). `task_status` reports the served model and `options` (`[{"id": "variant", "value": "high"}]`), which is the receipt that the variant arrived. OpenCode was removed from this repository on 2026-10-23, so the OpenCode variant, the `opencode` instance, and its database below describe how the 2026-10-21 runs were taken, not a route that still exists; a Synthetic model now runs only on the `pi` instance, with its effort as `thinking` in `target.options`.
+**Run the candidates one at a time, with the same isolation as a real peer.** The historical runs used `delegate_task`, `isolation: "worktree"`, `runtimeMode: "full-access"`, and OpenCode's `{"variant": "high"}` in `target.options`. For a new run, discover the provider's current option descriptors and preserve the owning workflow's permission and isolation requirements. A worktree alone does not enforce read-only execution. `task_status` reports the returned model selection and options; these confirm configuration receipt, not actual serving identity or independently attested reasoning effort.
+
+OpenCode and Pi are now retired. Synthetic models use the `omp` API instance, with effort passed as `thinking` in `target.options`; `omp-codex` discovers subscription models natively. The OpenCode options, instance, database, and measurements below remain historical evidence from 2026-10-21. They do not establish current OMP performance or authorize changing its default model.
 
 **Time the run, not the setup or the last step.**
 
