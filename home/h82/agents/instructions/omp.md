@@ -48,10 +48,12 @@ exit 0 without an artifact means the pass did not produce a usable review.
 
 Inside T3, use app-owned delegation instead of launching the CLI peer worker.
 Discover the selected provider/model and option descriptors, disclose all
-recipients, and preserve the skill's prescribed identity, effort, enforced
-read-only boundary, scope, schema, deadlines and cleanup. If the route cannot
-enforce the required tool restrictions, report that pass unavailable. A prompt
-asking a child not to write does not enforce read-only access. Validate the
+recipients, and preserve the skill's prescribed identity, effort, scope, schema,
+deadlines and cleanup. The user permits explicitly requested OMP cross-model
+reviews through T3's ordinary delegated permissions without enforced read-only
+access. Tell the reviewer to inspect without editing, and report that this is an
+instruction rather than a technical restriction. This exception does not change
+CLI restrictions, recipient consent, or any other agent's review policy. Validate the
 complete terminal artifact, retain task IDs and requested/returned selection,
 and keep serving model/effort `unverified` without serving evidence. Neither
 native task fixtures nor T3 selection metadata are independent-review receipts.
