@@ -168,11 +168,15 @@ let
   modelSelections = {
     defaultModelSelection = {
       instanceId = "codex";
-      model = "gpt-6.1-sol";
+      model = "gpt-6-astra";
       options = [
         {
           id = "reasoningEffort";
           value = "low";
+        }
+        {
+          id = "serviceTier";
+          value = "default";
         }
       ];
     };

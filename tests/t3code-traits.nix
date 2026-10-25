@@ -19,14 +19,9 @@
     claude of its own and its sessions run the flake's.
   - home.activation.t3codeSettings and home.activation.t3codeClientSettings
     exist exactly when either trait is on and run after installPackages. Each
-    script is executed with the packaged merger swapped for a stub that
-    records its arguments: on a live run the stub must run with its file under
-    ~/.t3/userdata, which the desktop app and the CLI share (settings.json and
-    client-settings.json), and a declaration equal to one rendered here, the
-    settings that differ from the pinned T3 Code's defaults; a failing stub
-    must fail the script; and with Home Manager's `run` turned into a no-op,
-    as on a dry run, the stub must not run. T3 Code rewrites both files at
-    runtime, so the keys are merged rather than the files owned. The
+    script is executed by the shared agent-activation harness against scratch
+    files, checking destination/declaration, real file effects, repeat apply,
+    dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
     enabled Antigravity, Claude, Codex, and Pi instances, the
     disabled Grok and OpenCode instances, the Claude instance's launch arguments emptied,
@@ -41,10 +36,7 @@
     any instance with driver "codex" leaves either undeclared, names another
     home, or declares `managed`, since
     T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
-    the skills land. The Pi instance declares no binaryPath and no launch arguments. It
-    owns two model selections whole: the default, Codex GPT-6.1 Sol with low
-    reasoning effort, and text generation, Claude Haiku 5.5 with no option,
-    so options from an earlier model are dropped.
+    the skills land. The Pi instance declares no binaryPath and no launch arguments.
     The declaration retires providerModelPreferences.opencode, which an
     earlier generation wrote, and prunes the object it leaves empty. On a full
     configuration, the real merger also runs over a settings.json that holds
@@ -109,6 +101,7 @@
 }:
 let
   inherit (pkgs) lib;
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
@@ -150,10 +143,6 @@ let
   ) configurations.production;
 
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
-
-  settingsExpected = pkgs.writeText "t3code-expected-settings.json" (
-    builtins.toJSON settingsExpectedBase
-  );
 
   settingsExpectedBase = {
     set = {
@@ -388,11 +377,15 @@ let
     own = {
       defaultModelSelection = {
         instanceId = "codex";
-        model = "gpt-6.1-sol";
+        model = "gpt-6-astra";
         options = [
           {
             id = "reasoningEffort";
             value = "low";
+          }
+          {
+            id = "serviceTier";
+            value = "default";
           }
         ];
       };
@@ -404,15 +397,34 @@ let
     };
   };
 
-  clientSettingsExpected = pkgs.writeText "t3code-expected-client-settings.json" (
-    builtins.toJSON {
-      set.fontFamilyCode = "JetBrains Mono";
-      remove = [ ];
-      setPaths = [ ];
-      own = { };
-    }
-  );
+  selectionSeed = {
+    defaultModelSelection = {
+      instanceId = "old-provider";
+      model = "old-model";
+      options = [
+        {
+          id = "staleOption";
+          value = true;
+        }
+      ];
+      staleField = "remove me";
+    };
+    textGenerationModelSelection = settingsExpectedBase.own.textGenerationModelSelection;
+    unrelated.keep = true;
+    providerInstances.codex.config.env.KEEP = "yes";
+    projectSettingsOverrides.scratch.defaultModelSelection = {
+      instanceId = "codex";
+      model = "gpt-6.1-sol";
+      options = [ ];
+    };
+  };
 
+  clientSettingsExpectedBase = {
+    set.fontFamilyCode = "JetBrains Mono";
+    remove = [ ];
+    setPaths = [ ];
+    own = { };
+  };
   # Without string context, so neither the runtime nor the scripts the
   # activation names are built: the check compares the paths, and the paths
   # are the store hashes of what the module would install.
@@ -435,12 +447,12 @@ let
     {
       attr = "t3codeSettings";
       file = "settings.json";
-      expected = settingsExpected;
+      contract = settingsExpectedBase;
     }
     {
       attr = "t3codeClientSettings";
       file = "client-settings.json";
-      expected = clientSettingsExpected;
+      contract = clientSettingsExpectedBase;
     }
   ];
 
@@ -460,7 +472,37 @@ let
           lib.boolToString (activation != null)
         } ${esc (activation.data or "")} ${
           lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-        } ${esc "${user.home.homeDirectory or ""}/.t3/userdata/${merge.file}"} ${merge.expected} ${lib.boolToString pluginsDeclared}
+        } ${lib.boolToString pluginsDeclared}
+      ''
+      + lib.optionalString (expected && activation != null) ''
+        if ! (
+          failed=0
+          ${executeActivation {
+            script = activation.data or "";
+            home = user.home.homeDirectory or "";
+            contract = {
+              file = ".t3/userdata/${merge.file}";
+              declared = merge.contract;
+            }
+            // lib.optionalAttrs (merge.attr == "t3codeSettings") {
+              seed = selectionSeed;
+              preservePaths = [
+                [ "unrelated" ]
+                [ "projectSettingsOverrides" ]
+                [
+                  "providerInstances"
+                  "codex"
+                  "config"
+                  "env"
+                ]
+              ];
+            };
+          }}
+          exit "$failed"
+        ); then
+          echo ${esc "${name}: the generated activation did not apply the startup selection"} >&2
+          fail=1
+        fi
       ''
     ) merges
     + (
@@ -753,16 +795,10 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     awk -v flag="$1" 'previous == flag { print; exit } { previous = $0 }' args
   }
 
-  # $2 names the activation entry, $3 says whether the merge belongs on this
-  # configuration, $4 whether it is declared; $5 is its script, $6 whether it
-  # runs after installPackages, $7 the settings file it must name, and $8 the
-  # declaration it must pass. $9 says whether the configuration is a full one,
-  # for which settings.json is also merged through the real merger into a
-  # seeded file. The script is executed
-  # rather than matched, so a merger that is only mentioned, echoed, or has its
-  # exit status swallowed fails.
+  # Trait/order checks stay here; the shared file-effect harness owns settings
+  # invocation, destination/declaration, refusal and dry-run behavior.
   checkSettings() {
-    local name=$1 attr=$2 expected=$3 present=$4 after=$6 settings=$7 want=$8 full=$9 merger actual declared
+    local name=$1 attr=$2 expected=$3 present=$4 after=$6 full=$7 merger declared
     if [ "$present" != "$expected" ]; then
       echo "$name: home.activation.$attr is present=$present, either T3 Code trait on is $expected" >&2
       fail=1
@@ -782,23 +818,7 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
       fail=1
       return
     fi
-    sed "s|$merger|$PWD/merger-stub|g" script > swapped
-
-    if ! exercise '"$@"' 0 || [ ! -f args ]; then
-      echo "$name: on a live run the $attr activation does not run the merger" >&2
-      fail=1
-      return
-    fi
-    actual=$(argAfter --settings)
-    if [ "$actual" != "$settings" ]; then
-      echo "$name: the merger must be pointed at $settings, got '$actual'" >&2
-      fail=1
-    fi
-    declared=$(argAfter --declared)
-    if [ -z "$declared" ] || ! cmp -s "$declared" "$want"; then
-      echo "$name: the $attr declaration must equal $want, got '$declared'" >&2
-      fail=1
-    fi
+    declared=$(sed -n 's/.*--declared \([^ ]*\).*/\1/p' script | tr -d "'\"")
     if [ "$attr" = t3codeSettings ] && [ -n "$declared" ] \
       && ! python3 -I ${./t3code-codex-home.py} "$declared" 2> codex-home.log; then
       echo "$name: a declared Codex instance can run outside ~/.codex:" >&2
@@ -806,18 +826,8 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
       fail=1
     fi
 
-    if exercise '"$@"' 23; then
-      echo "$name: the $attr activation swallows the merger's exit status" >&2
-      fail=1
-    fi
-
-    exercise ':' 0 || true
-    if [ -f args ]; then
-      echo "$name: the $attr activation runs the merger outside Home Manager's run, so a dry run changes the settings file" >&2
-      fail=1
-    fi
-
-    [ "$attr" = t3codeSettings ] && [ "$full" = true ] || return 0
+    [ "$attr" = t3codeSettings ] || return 0
+    [ "$full" = true ] || return 0
     checkOpencodeDisabled "$name" "$merger" "$declared"
   }
 

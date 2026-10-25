@@ -18,10 +18,6 @@
   - it does not swallow the merger's exit status.
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
-  - the `--declared` store file is identical to the declaration restated as
-    literals here: the four update-off keys, and `developer_instructions`
-    retired because ~/.codex/AGENTS.md carries the instructions now, so a
-    dropped or changed key turns this red.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
@@ -45,6 +41,32 @@ let
 
   declared = {
     setPaths = [
+      {
+        path = [ "model" ];
+        value = "gpt-6-astra";
+      }
+      {
+        path = [ "model_reasoning_effort" ];
+        value = "low";
+      }
+      {
+        path = [ "service_tier" ];
+        value = "default";
+      }
+      {
+        path = [
+          "agents"
+          "default_subagent_model"
+        ];
+        value = "gpt-6.1-sol";
+      }
+      {
+        path = [
+          "agents"
+          "default_subagent_reasoning_effort"
+        ];
+        value = "medium";
+      }
       {
         path = [ "check_for_update_on_startup" ];
         value = false;
@@ -75,6 +97,41 @@ let
   };
   expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
+  seed = ''
+    # user comment survives
+    model = "old-model"
+    model_reasoning_effort = "high"
+    service_tier = "priority"
+    developer_instructions = "retired"
+    unrelated = "keep me"
+    [agents]
+    default_subagent_model = "old-child"
+    default_subagent_reasoning_effort = "low"
+    max_threads = 3
+    [projects."/scratch/project"]
+    trust_level = "trusted"
+    [plugins."example@local"]
+    enabled = true
+  '';
+  applied = {
+    model = "gpt-6-astra";
+    model_reasoning_effort = "low";
+    service_tier = "default";
+    unrelated = "keep me";
+    agents = {
+      default_subagent_model = "gpt-6.1-sol";
+      default_subagent_reasoning_effort = "medium";
+      max_threads = 3;
+    };
+    projects."/scratch/project".trust_level = "trusted";
+    plugins."example@local".enabled = true;
+    check_for_update_on_startup = false;
+    features = {
+      in_app_updates = false;
+      daemon_auto_start = false;
+      memories = false;
+    };
+  };
   assertHost =
     entry:
     let
@@ -150,6 +207,8 @@ let
           file = settingsFile;
           format = "toml";
           inherit declared;
+          inherit seed;
+          expected = applied;
         };
       }}
       if [ ${esc (lib.boolToString targeted)} != "false" ]; then
@@ -164,9 +223,9 @@ pkgs.runCommand "codex-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ];
 
   ${lib.concatMapStringsSep "\n" assertHost configurations.userEntries}
 
-  if [ "$failed" != "0" ]; then
-    exit 1
-  fi
+    if [ "$failed" != "0" ]; then
+      exit 1
+    fi
 
-  touch $out
+    touch $out
 ''
