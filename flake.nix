@@ -109,6 +109,7 @@
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
+          "omp-settings"
           "pi-models-load"
           "pi-settings"
           "printing"
@@ -138,6 +139,11 @@
           pkgs = import nixpkgs { system = "aarch64-linux"; };
           inherit self;
         };
+        omp-settings = import ./tests/omp-settings.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+          fixtures = linuxFixtures;
+        };
       };
       packages.aarch64-linux.omp = import ./packages/omp.nix {
         pkgs = import nixpkgs { system = "aarch64-linux"; };
@@ -146,6 +152,10 @@
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
       };
       checks.aarch64-darwin.omp-package = import ./tests/omp-package.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
+      checks.aarch64-darwin.omp-settings = import ./tests/omp-settings.nix {
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
         inherit self;
       };
@@ -392,6 +402,10 @@
           claude = import ./tests/claude.nix { inherit pkgs self; };
           codex-package = import ./tests/codex.nix { inherit pkgs self; };
           omp-package = import ./tests/omp-package.nix { inherit pkgs self; };
+          omp-settings = import ./tests/omp-settings.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           codex-settings = import ./tests/codex-settings.nix { inherit pkgs self; };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;

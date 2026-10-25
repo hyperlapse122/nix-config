@@ -50,6 +50,14 @@ let
   agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
   agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
 
+  ompConfigPython = pkgs.python3.withPackages (ps: [
+    ps.pyyaml
+    ps.xxhash
+  ]);
+  ompConfigReconcile =
+    helperWith "omp-config-reconcile" ../scripts/omp-config-reconcile
+      ompConfigPython;
+
   # Runs from home activation, where PATH carries neither home.packages nor
   # the login shell's session variables, so the module hands it the agent CLI
   # by store path and exports the declared environment tier around it.
@@ -160,6 +168,8 @@ in
   inherit
     agentSettings
     agentSettingsPython
+    ompConfigReconcile
+    ompConfigPython
     agentPluginSync
     agentPluginRelease
     claudeDesktopRelease
