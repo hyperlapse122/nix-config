@@ -1,4 +1,9 @@
 { pkgs, omp }:
+let
+  catalogs = import ./omp-model-catalogs.nix;
+  synthetic = pkgs.writeText "omp-synthetic-catalog.json" (builtins.toJSON catalogs.synthetic);
+  openrouter = pkgs.writeText "omp-openrouter-catalog.json" (builtins.toJSON catalogs.openrouter);
+in
 pkgs.runCommand "omp-declared-models.json" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   export HOME=$TMPDIR/home
   mkdir -p "$HOME"
@@ -10,6 +15,6 @@ pkgs.runCommand "omp-declared-models.json" { nativeBuildInputs = [ pkgs.python3 
   SYNTHETIC_API_KEY=sk-fake-synthetic OPENROUTER_API_KEY=sk-fake-openrouter \
     ${omp}/bin/omp models --json > bundled.json
   python3 -I ${./omp-declarations.py} \
-    ${./synthetic-catalog.json} ${./openrouter-catalog.json} bundled.json \
+    ${synthetic} ${openrouter} bundled.json \
     ${omp}/bin/omp-synthetic-key ${omp}/bin/omp-openrouter-key $out
 ''

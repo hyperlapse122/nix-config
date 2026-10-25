@@ -1,4 +1,4 @@
-"""Render complete OMP models.yml from the committed API catalog snapshots.
+"""Render OMP models.yml from the selected API catalog rows.
 
 Bundled rows use overrides so OMP retains their transport and compatibility
 rules. New rows use the providers' OpenAI-compatible chat transport. Codex
