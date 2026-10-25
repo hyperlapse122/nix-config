@@ -49,7 +49,7 @@ with open(os.environ['ACTIVATION_LOG'], 'a') as stream:
                              'updater': os.environ.get('DISABLE_AUTOUPDATER')}) + '\\n')
 if os.environ.get('FAIL_HARNESS') == ('settings' if '--harness' not in args else args[args.index('--harness') + 1]):
     sys.exit(73)
-if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') + 1] == 'pi':
+if os.environ['ACTIVATION_MODE'] == 'settings':
     sys.exit(subprocess.call([os.environ['ACTIVATION_HELPER'], *args]))
 ''')
     recorder.chmod(0o755)
@@ -106,7 +106,20 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
         assert len(calls) == 1, 'activation did not execute exactly one merger'
         args = calls[0]['args']
         assert args[args.index('--settings') + 1] == str(target), 'wrong activation destination'
-        assert json.loads(Path(args[args.index('--declared') + 1]).read_text()) == declared, 'wrong activation declaration'
+        delivered = json.loads(Path(args[args.index('--declared') + 1]).read_text())
+        assert {key: value for key, value in delivered.items() if key != 'ownEntries'} == {
+            key: value for key, value in declared.items() if key != 'ownEntries'
+        }, 'wrong activation declaration'
+        expected_entries = declared.get('ownEntries', [])
+        delivered_entries = delivered.get('ownEntries', [])
+        # Entry contracts may cover only independently specified fields; runtime
+        # command owners check arguments without pinning generated store names.
+        assert len(delivered_entries) == len(expected_entries), 'wrong owned declaration entries'
+        for row, expected in zip(delivered_entries, expected_entries):
+            assert row['path'] == expected['path'], 'wrong owned declaration path'
+            for key, value in expected['entries'].items():
+                assert_types(row['entries'][key], value)
+                assert row['entries'][key] == value, 'wrong owned declaration value: ' + key
         if toml:
             assert args[args.index('--format') + 1] == 'toml'
         applied_bytes = target.read_bytes()
@@ -124,6 +137,11 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
             value = value_at(actual, row['path'])
             assert_types(value, row['value'])
             assert value == row['value'], 'activation did not reassert nested setting'
+        for row in expected_entries:
+            entries = value_at(actual, row['path'])
+            for key, value in row['entries'].items():
+                assert_types(entries[key], value)
+                assert entries[key] == value, 'activation did not reassert owned entry: ' + key
         for key in declared.get('remove', []):
             assert key not in actual, 'activation did not retire ' + key
         for path in contract.get('preservePaths', []):
@@ -140,9 +158,6 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
         result, calls = run('settings')
         assert calls and result.returncode != 0, 'activation swallowed merger refusal'
     else:
-        settings = home / '.pi/agent/settings.json'
-        settings.parent.mkdir(parents=True)
-        settings.write_text('{"skills":["/user/skills"],"theme":"dark"}')
         result, calls = run()
         assert result.returncode == 0, result.stderr
         assert len(calls) == len(contract), 'activation skipped plugin harness rows'
@@ -156,12 +171,6 @@ if os.environ['ACTIVATION_MODE'] == 'settings' or args[args.index('--harness') +
                 assert call['codex_home'] is None, 'Codex inherited CODEX_HOME'
             if expected['harness'] == 'claude':
                 assert call['updater'] == '1', 'Claude updater environment missing'
-        pi = next(row for row in contract if row['harness'] == 'pi')
-        base = Path(pi['base'].replace(original_home, str(home)))
-        link = base / pi['segment']
-        actual = json.loads(settings.read_text())
-        assert actual == {'skills': ['/user/skills', str(link / 'skills')], 'theme': 'dark'}, 'activation did not deliver Pi skills'
-        assert os.readlink(link) == pi['source'], 'activation linked wrong plugin source'
         for row in contract:
             result, calls = run(row['harness'])
             assert any(c['args'][c['args'].index('--harness') + 1] == row['harness'] for c in calls)

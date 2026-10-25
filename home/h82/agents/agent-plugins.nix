@@ -42,7 +42,7 @@ let
         claude = [ ];
         codex = [ ];
         antigravity = [ ];
-        pi = [ ];
+        omp = [ ];
       };
     };
   };
@@ -52,7 +52,7 @@ let
   membership = [
     {
       name = "compound-engineering";
-      harness = "pi";
+      harness = "omp";
     }
     {
       name = "compound-engineering";
@@ -71,11 +71,10 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; Codex's and agy's update overrides travel inside their wrappers
-  # instead. Pi has no plugin command that takes a path, so its "CLI" is the
-  # merger that writes the plugin's skills directory into the `skills` list of
-  # ~/.pi/agent/settings.json.
+  # it; Codex's and agy's update overrides travel inside their wrappers.
   harnesses = {
+    # OMP discovers native directories directly; no mutable plugin registry.
+    omp = { };
     claude = {
       cli = "${claudeCode}/bin/claude";
       env = claudeEnv;
@@ -88,10 +87,6 @@ let
     };
     antigravity = {
       cli = "${antigravityCli}/bin/agy";
-      env = "";
-    };
-    pi = {
-      cli = "${agentTools.agentSettings}/bin/agent-settings";
       env = "";
     };
   };
@@ -116,7 +111,7 @@ let
 
   baseDir = "${config.home.homeDirectory}/.local/share/agent-plugins";
 
-  # Every harness row of a source shares one version-keyed link under
+  # CLI-synchronized rows of a source share one version-keyed link under
   # baseDir. Rows with different exclusions would each re-point it at their
   # own pruned tree, and Claude Code, which records the link path, would read
   # whichever ran last. Differing exclusions stop evaluation until the base
@@ -126,7 +121,7 @@ let
     lib.length (
       lib.unique (
         map (row: sources.${name}.exclude.${row.harness} or [ ]) (
-          lib.filter (row: row.name == name) checkedMembership
+          lib.filter (row: row.name == name && row.harness != "omp") checkedMembership
         )
       )
     ) > 1
@@ -142,15 +137,23 @@ let
     name: spec: harness:
     let
       excluded = spec.exclude.${harness} or [ ];
+      tree =
+        if excluded == [ ] then
+          spec.src
+        else
+          pkgs.runCommand "${name}-${harness}-tree" { } ''
+            cp -r ${spec.src} $out
+            chmod -R u+w $out
+            ${lib.concatMapStringsSep "\n" (path: "rm -rf $out/${path}") excluded}
+          '';
     in
-    if excluded == [ ] then
-      spec.src
+    if harness == "omp" && name == "compound-engineering" then
+      import ./omp-ce.nix {
+        inherit pkgs;
+        src = tree;
+      }
     else
-      pkgs.runCommand "${name}-${harness}-tree" { } ''
-        cp -r ${spec.src} $out
-        chmod -R u+w $out
-        ${lib.concatMapStringsSep "\n" (path: "rm -rf $out/${path}") excluded}
-      '';
+      tree;
 
   # Read the declared values rather than restating them: claude.nix owns this
   # tier, and the activation unit carries neither home.packages on PATH nor
@@ -223,7 +226,9 @@ let
           "agent-plugins: harnesses of ${lib.concatStringsSep ", " divergentExclusions} exclude different paths but share one link"
           (
             lib.concatStringsSep "\n" (
-              map (row: withDryRun (syncInvocation row)) checkedMembership
+              map (row: withDryRun (syncInvocation row)) (
+                lib.filter (row: row.harness != "omp") checkedMembership
+              )
               ++ map (row: withDryRun (retireInvocation row)) retired
             )
           )
@@ -263,4 +268,13 @@ in
   # would not yet exist when the wiring reads it, and creating it here also
   # keeps the superseded version present until the new one is wired.
   config.home.activation.agentPlugins = lib.hm.dag.entryAfter [ "installPackages" ] syncScript;
+  config.home.file = lib.listToAttrs (
+    map (row: {
+      name = ".omp/agent/plugins/${row.name}";
+      value.source = treeFor row.name sources.${row.name} row.harness;
+    }) (lib.filter (row: row.harness == "omp") checkedMembership)
+  );
+  config.my.omp.skillDirectories = map (
+    row: "${config.home.homeDirectory}/.omp/agent/plugins/${row.name}/skills"
+  ) (lib.filter (row: row.harness == "omp") checkedMembership);
 }

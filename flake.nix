@@ -109,8 +109,7 @@
           "minikube-autostart"
           "nix-cleanup"
           "non-nixos-outputs"
-          "pi-models-load"
-          "pi-settings"
+          "omp-settings"
           "printing"
           "proton-vpn"
           "user-avatar"
@@ -133,7 +132,49 @@
     {
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
-      checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+      checks.aarch64-linux = fixtureChecksFor "aarch64-linux" // {
+        omp-package = import ./tests/omp-package.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+        };
+        omp-settings = import ./tests/omp-settings.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+          fixtures = linuxFixtures;
+        };
+        omp-models-load = import ./tests/omp-models-load.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+          fixtures = linuxFixtures;
+        };
+        omp-acp = import ./tests/omp-acp.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+          fixtures = linuxFixtures;
+        };
+      };
+      packages.aarch64-linux.omp = import ./packages/omp.nix {
+        pkgs = import nixpkgs { system = "aarch64-linux"; };
+      };
+      packages.aarch64-darwin.omp = import ./packages/omp.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+      };
+      checks.aarch64-darwin.omp-package = import ./tests/omp-package.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
+      checks.aarch64-darwin.omp-settings = import ./tests/omp-settings.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
+      checks.aarch64-darwin.omp-models-load = import ./tests/omp-models-load.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
+      checks.aarch64-darwin.omp-acp = import ./tests/omp-acp.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
       # Reads what the macOS fixture hosts materialize, so building it builds
       # both fixture systems; only a macOS builder can.
       checks.aarch64-darwin.darwin-outputs = import ./tests/darwin-outputs.nix {
@@ -169,10 +210,9 @@
         mise = import ./packages/mise.nix { inherit pkgs; };
         codex-release = agentTools.codexRelease;
         codex = import ./packages/codex.nix { inherit pkgs; };
-        pi-release = agentTools.piRelease;
-        pi = import ./packages/pi.nix { inherit pkgs; };
+        omp = import ./packages/omp.nix { inherit pkgs; };
+        omp-release = agentTools.ompRelease;
         npm-release = agentTools.npmRelease;
-        pi-acp = import ./packages/pi-acp.nix { inherit pkgs; };
         acpx = import ./packages/acpx.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
@@ -370,6 +410,19 @@
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           codex-package = import ./tests/codex.nix { inherit pkgs self; };
+          omp-package = import ./tests/omp-package.nix { inherit pkgs self; };
+          omp-settings = import ./tests/omp-settings.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          omp-models-load = import ./tests/omp-models-load.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          omp-acp = import ./tests/omp-acp.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           codex-settings = import ./tests/codex-settings.nix { inherit pkgs self; };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
@@ -555,7 +608,6 @@
           };
           antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
           antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
-          pi-sources = pinnedSources "pi-sources" ./packages/pi-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -571,15 +623,12 @@
           agent-plugin-sync =
             pkgs.runCommand "agent-plugin-sync-tests"
               {
-                # The pi cases drive the real merger, whose source imports
-                # tomlkit.
-                nativeBuildInputs = [ (import ./packages/agent-tools.nix { inherit pkgs; }).agentSettingsPython ];
+                nativeBuildInputs = [ pkgs.python3 ];
               }
               ''
                 export PYTHONDONTWRITEBYTECODE=1
                 mkdir -p scripts tests
                 cp ${./scripts/agent-plugin-sync} scripts/agent-plugin-sync
-                cp ${./scripts/agent-settings} scripts/agent-settings
                 cp ${./tests/test_agent_plugin_sync.py} tests/test_agent_plugin_sync.py
                 python tests/test_agent_plugin_sync.py
                 touch $out
@@ -603,7 +652,7 @@
           codex-release =
             pythonScriptCheck "codex-release" ./scripts/codex-release
               ./tests/test_codex_release.py;
-          pi-release = pythonScriptCheck "pi-release" ./scripts/pi-release ./tests/test_pi_release.py;
+          omp-release = pythonScriptCheck "omp-release" ./scripts/omp-release ./tests/test_omp_release.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           antigravity-cli-release =
             pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
@@ -1668,15 +1717,7 @@
             bash tests/nr.sh scripts/nr
             touch $out
           '';
-          pi-settings = import ./tests/pi.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
-          pi-models-load = import ./tests/pi-models-load.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
-          pi-extension = import ./tests/pi-extension.nix {
+          agent-api-key-secrets = import ./tests/agent-api-key-secrets.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
@@ -1700,108 +1741,6 @@
               patchShebangs scripts/tokscale
               bash tests/tokscale.sh scripts/tokscale
               bash tests/tokscale.sh --packaged ${packaged}/bin/tokscale test-host fake-token-123
-              touch $out
-            '';
-          pi-wrapper =
-            let
-              syntheticKeyFile = "/var/empty/pi-test/synthetic_api_key";
-              exaKeyFile = "/var/empty/pi-test/exa_api_key";
-              openrouterKeyFile = "/var/empty/pi-test/openrouter_api_key";
-              packaged = import ./packages/pi.nix {
-                inherit
-                  pkgs
-                  syntheticKeyFile
-                  exaKeyFile
-                  openrouterKeyFile
-                  ;
-              };
-              unsafePaths = [
-                {
-                  label = "a relative path";
-                  path = "run/secrets/cli-auth/key";
-                }
-                {
-                  label = "a quote in the path";
-                  path = "/run/secrets/bad'path";
-                }
-                {
-                  label = "a space in the path";
-                  path = "/run/secrets/bad path";
-                }
-              ];
-              guardCases =
-                lib.concatMap
-                  (
-                    param:
-                    map (case: {
-                      label = "${case.label} as ${param}";
-                      args.${param} = case.path;
-                      accept = false;
-                    }) unsafePaths
-                  )
-                  [
-                    "syntheticKeyFile"
-                    "exaKeyFile"
-                    "openrouterKeyFile"
-                  ]
-                ++ [
-                  {
-                    label = "plain absolute key paths";
-                    args = {
-                      syntheticKeyFile = "/home/test-user/.local/state/cli-auth/synthetic_api_key";
-                      exaKeyFile = "/home/test-user/.local/state/cli-auth/exa_api_key";
-                      openrouterKeyFile = "/home/test-user/.local/state/cli-auth/openrouter_api_key";
-                    };
-                    accept = true;
-                  }
-                ];
-              guardChecks = lib.concatMapStrings (
-                case:
-                let
-                  evaluated = builtins.tryEval (import ./packages/pi.nix ({ inherit pkgs; } // case.args)).drvPath;
-                in
-                lib.optionalString (evaluated.success != case.accept) ''
-                  echo ${lib.escapeShellArg "packages/pi.nix ${if case.accept then "rejects" else "accepts"} ${case.label}"} >&2
-                  exit 1
-                ''
-              ) guardCases;
-            in
-            pkgs.runCommand "pi-wrapper-tests" { } ''
-              export HOME=$TMPDIR
-              ${guardChecks}
-              mkdir -p scripts tests
-              cp ${./scripts/pi} scripts/pi
-              cp ${./scripts/pi-provider-key} scripts/pi-provider-key
-              cp ${./tests/pi.sh} tests/pi.sh
-              chmod +x scripts/pi scripts/pi-provider-key
-              patchShebangs scripts
-              bash tests/pi.sh scripts/pi scripts/pi-provider-key
-              bash tests/pi.sh --packaged ${packaged}/bin ${syntheticKeyFile} ${exaKeyFile} ${openrouterKeyFile}
-              touch $out
-            '';
-          pi-acp =
-            let
-              recordingPi = pkgs.writeShellScriptBin "pi" ''
-                printf '%s\n' "$@" > "$PI_STUB_LOG/argv"
-                env > "$PI_STUB_LOG/env"
-                exit 1
-              '';
-              exitingPi = pkgs.writeShellScriptBin "pi" "exit 0";
-              acpxOver =
-                pi:
-                import ./packages/acpx.nix {
-                  inherit pkgs;
-                  piAcp = import ./packages/pi-acp.nix { inherit pkgs pi; };
-                };
-              recording = acpxOver recordingPi;
-              packaged = import ./packages/acpx.nix { inherit pkgs; };
-              packagedPi = packaged.piAcp.pi;
-            in
-            pkgs.runCommand "pi-acp-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
-              bash ${./tests/pi-acp.sh} stub ${recording} \
-                ${recordingPi}/bin/pi ${recording.piAcp}/libexec/pi-readonly
-              bash ${./tests/pi-acp.sh} real ${packaged} ${packagedPi}
-              bash ${./tests/pi-acp.sh} mutant ${acpxOver exitingPi} ${packagedPi}
               touch $out
             '';
           lint-staged-markdown =

@@ -35,7 +35,7 @@ done
 synthetic=home/h82/agents/synthetic-catalog.json
 openrouter=home/h82/agents/openrouter-catalog.json
 token=fake-gh-token-0123456789
-verify_args='build --no-link --print-build-logs .#checks.x86_64-linux.pi-settings .#checks.x86_64-linux.pi-models-load .#checks.x86_64-linux.synthetic-models'
+verify_args='build --no-link --print-build-logs .#checks.x86_64-linux.omp-settings .#checks.x86_64-linux.omp-models-load .#checks.x86_64-linux.synthetic-models'
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/model-catalogs-reconcile.XXXXXX")
 trap 'rm -rf -- "$scratch"' EXIT

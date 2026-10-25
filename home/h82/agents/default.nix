@@ -8,7 +8,7 @@
     ./gemini.nix
     ./instructions
     ./korean-skills.nix
-    ./pi.nix
+    ./omp.nix
     ./skills.nix
     ./test-audit.nix
     ./tokscale.nix

@@ -85,8 +85,8 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills, ~/.gemini/antigravity-cli/skills, ~/.pi/agent/skills,
-    and ~/.codex/skills, each as exactly one enabled file, and the in-tree
+    ~/.claude/skills, ~/.gemini/antigravity-cli/skills, and ~/.codex/skills,
+    each as exactly one enabled file, and the in-tree
     test-audit skill
     directory beside them, and nothing else under those roots; nothing lands
     under ~/.agents/skills or ~/.gemini/config/skills; my.koreanSkills pins
@@ -384,7 +384,6 @@ let
       koreanRoots = [
         ".claude/skills"
         ".gemini/antigravity-cli/skills"
-        ".pi/agent/skills"
         ".codex/skills"
       ];
       koreanNames = [
@@ -748,6 +747,9 @@ let
         "${entry.name}: the targets under the skill roots must be exactly ${
           builtins.toJSON (koreanTargets ++ testAuditTargets)
         }, got ${builtins.toJSON (sort koreanUnderRoots)}"
+      )
+      (check (lib.length (koreanFilesAt ".omp/agent/skills") == 1)
+        "${entry.name}: OMP must receive the contributed skill root; native OMP checks verify its contents"
       )
       (check (koreanElsewhere == [ ])
         "${entry.name}: Korean skills must not be installed under .agents/skills or .gemini/config/skills, got ${builtins.toJSON koreanElsewhere}"

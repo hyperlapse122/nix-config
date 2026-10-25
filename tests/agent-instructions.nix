@@ -18,12 +18,13 @@ let
   esc = value: lib.escapeShellArg (toString value);
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
   deliveryPaths = [
-    ".pi/agent/AGENTS.md"
+    ".omp/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
     ".gemini/config/AGENTS.md"
   ];
   retiredPaths = [
+    ".pi/agent/AGENTS.md"
     ".t3/instructions/claude-code/CLAUDE.md"
     ".gemini/GEMINI.md"
     ".grok/rules/instructions.md"

@@ -27,21 +27,30 @@ tags:
 
 ## Context
 
+The Pi paths and examples below describe the original incident. Pi provisioning
+was retired in October 2026. The current behavioral owner is
+`tests/omp-settings.nix`, which runs `tests/omp_settings_applied.py` against
+materialized Home Manager activations, including the native Darwin fixture.
+It redirects the real `ompSettings` block into a temporary home, executes it,
+and checks restored settings, preserved skill files, and failure propagation.
+Linux execution does not establish native Darwin execution; that remains a
+separate platform check.
+
 When OpenCode was removed on the `chore/remove-opencode` branch, `tests/darwin-outputs.nix` lost its assertion on the `opencodeSettings` activation step and the assertion was re-pointed at Pi's `piSettings` step. The re-pointed assertion had two predicates: the step's `_iNote "Activating %s" "piSettings"` line comes after `writeBoundary` in `$gen/activate`, and the script contains `--settings /Users/tester/.pi/agent/settings.json`.
 
-The cross-model peer review found that both predicates still hold when the merger call in the step is replaced by `echo` of the same command line. The step order is unchanged, and the argument string is still in the script, so the check stays green while the step writes nothing. The `opencodeSettings` assertion it came from had the same shape and the same hole. `tests/pi.nix` does not cover it either, because `tests/lib/configurations.nix` builds its user entries from NixOS configurations and Linux fixtures only, so no behavioral check ran the macOS step.
+The cross-model peer review found that both predicates still hold when the merger call in the step is replaced by `echo` of the same command line. The step order is unchanged, and the argument string is still in the script, so the check stays green while the step writes nothing. The `opencodeSettings` assertion it came from had the same shape and the same hole. The former `tests/pi.nix` did not cover it either, because its user entries came from NixOS configurations and Linux fixtures only, so no behavioral check ran the macOS step.
 
 ## Guidance
 
 Run the activation step instead of grepping it, and assert the file it writes.
 
-1. Extract the step's lines from `$gen/activate`: everything after its `_iNote "Activating %s" "<name>"` line up to the next step's note. `tests/darwin-outputs.nix` does this with a `stepBlock` helper built on `awk`.
+1. Extract the step's lines from `$gen/activate`: everything after its `_iNote "Activating %s" "<name>"` line up to the next step's note. The original `tests/darwin-outputs.nix` fix used a `stepBlock` helper built on `awk`; the OMP owner extracts its block in Python.
 2. Take the paths the step uses from that block, not from the module: the merger binary (`/nix/store/.../bin/agent-settings`) and the `--declared` document.
 3. Replace the real destination in the block with a scratch file, and fail when the replacement changes nothing, because then the step does not target the path the check names.
 4. Run the redirected block with `bash -euo pipefail -c`.
-5. Assert that the scratch file holds every value the declared document sets. `tests/pi_settings_applied.py` reads the declared document's `set` keys and `setPaths` leaves, compares each against the written file, and fails on a missing or unreadable file and on a document that sets nothing.
+5. Assert that the scratch file holds the required settings. The former `tests/pi_settings_applied.py` read the declaration's `set` keys and `setPaths` leaves. The OMP owner checks observable policy values, restores deliberately drifted settings, and verifies that invalid input propagates failure without replacing the file.
 
-An `echo`-only step now fails with `the activation left no readable settings file`.
+The original fix made an `echo`-only step fail with `the activation left no readable settings file`.
 
 ## Why This Matters
 
@@ -70,7 +79,7 @@ elif ! grep -qF -- "--settings /Users/tester/.pi/agent/settings.json" "$gen/acti
 fi
 ```
 
-After (abridged from the same file):
+Historical fix (abridged from the same file before Pi retirement):
 
 ```sh
 piBlock=$(stepBlock piSettings)

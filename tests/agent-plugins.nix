@@ -107,10 +107,6 @@ let
         }
       ];
 
-      # Pi's row is driven through the merger Pi's own settings merge runs,
-      # read from that activation script.
-      piSettingsScript = userConfig.home.activation.piSettings.data or "";
-
       activation = userConfig.home.activation.agentPlugins or null;
       script = if activation == null then "" else (activation.data or "");
       runsAfterPackages = lib.elem "installPackages" (
@@ -244,50 +240,6 @@ let
           fi
         '') harnessChecks}
 
-        claudeBlock=$(blockForHarness ${esc script} ${esc pluginName} claude)
-        piBlock=$(blockForHarness ${esc script} ${esc pluginName} pi)
-        if [ -z "$piBlock" ]; then
-          echo "the agentPlugins activation script never syncs ${pluginName} for pi on ${hostName}" >&2
-          failed=1
-        else
-          sourceArg=$(argValue "$piBlock" source)
-          if [ "$sourceArg" != ${esc pinnedSource} ]; then
-            echo "the pi helper must be handed the pinned plugin source on ${hostName}, got: '$sourceArg'" >&2
-            failed=1
-          fi
-          segmentArg=$(argValue "$piBlock" segment)
-          if [ "$segmentArg" != ${
-            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
-          } ]; then
-            echo "the pi helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
-            failed=1
-          fi
-          cliArg=$(argValue "$piBlock" cli)
-          merger=$(tr '\n' ' ' <<< ${esc piSettingsScript} \
-            | grep -oE -- '/nix/store/[^[:space:]]+/bin/agent-settings' | sed -n '1p' || true)
-          if [ -z "$merger" ]; then
-            echo 'home.activation.piSettings invokes no packaged merger on ${hostName}' >&2
-            failed=1
-          elif [ "$cliArg" != "$merger" ]; then
-            echo "the pi helper must be handed the merger Pi's settings merge runs on ${hostName}, got: '$cliArg'" >&2
-            failed=1
-          fi
-          baseArg=$(argValue "$piBlock" base)
-          if [ "$baseArg" != "$(argValue "$claudeBlock" base)" ]; then
-            echo "the pi and claude rows must share one base on ${hostName}, got: '$baseArg'" >&2
-            failed=1
-          fi
-          flat=$(tr '\n' ' ' <<< ${esc script})
-          beforePi=''${flat%%--harness pi*}
-          beforeClaude=''${flat%%--harness claude*}
-          if [ "''${#beforePi}" -ge "''${#beforeClaude}" ]; then
-            echo 'the pi row must run before the claude row on ${hostName}' >&2
-            failed=1
-          fi
-
-
-        fi
-
         # T3 Code's Codex sessions run on ~/.codex, so the Codex plugin sync
         # must install there too. It must unset a CODEX_HOME the apply
         # inherits, and nothing in the script may set one, as an env prefix or
@@ -326,30 +278,17 @@ let
         mode = "plugins";
         inherit script;
         home = userConfig.home.homeDirectory or "";
-        contract =
-          map
-            (harness: {
-              harness = harness.name;
-              cli = harness.expectedCli;
-              source = pinnedSource;
-              base = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${pluginName}";
-              segment = lib.removePrefix (
-                if registry == null then "" else (registry.tagPrefix or "")
-              ) originalRef;
-              plugin = pluginName;
-              marketplace = "compound-engineering-plugin";
-            })
-            (
-              [
-                {
-                  name = "pi";
-                  expectedCli = "${
-                    (import ../packages/agent-tools.nix { inherit pkgs; }).agentSettings
-                  }/bin/agent-settings";
-                }
-              ]
-              ++ harnessChecks
-            );
+        contract = map (harness: {
+          harness = harness.name;
+          cli = harness.expectedCli;
+          source = pinnedSource;
+          base = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${pluginName}";
+          segment = lib.removePrefix (
+            if registry == null then "" else (registry.tagPrefix or "")
+          ) originalRef;
+          plugin = pluginName;
+          marketplace = "compound-engineering-plugin";
+        }) harnessChecks;
 
       }}
     '';

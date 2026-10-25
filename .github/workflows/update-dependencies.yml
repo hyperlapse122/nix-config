@@ -108,18 +108,18 @@ jobs:
             git checkout -- packages/wifiman-desktop-version.json
           fi
 
-          # 11. Update Pi. A release can be published before every platform
+          # 11. Update OMP. A release can be published before every platform
           # tarball or its SHA256SUMS line, so a failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
-          if ! nix run .#pi-release -- --output packages/pi-release.json; then
-            echo "::warning title=Pi update skipped::pi-release failed; keeping the current pin in packages/pi-release.json."
-            git checkout -- packages/pi-release.json
+          if ! nix run .#omp-release -- --output packages/omp-release.json; then
+            echo "::warning title=OMP update skipped::omp-release failed; keeping the current pin in packages/omp-release.json."
+            git checkout -- packages/omp-release.json
           fi
 
-          # 12. Update Pi's ACP adapter and client. Each pin moves with its
+          # 12. Update the shared ACP client. Each pin moves with its
           # regenerated lock file, so a failure restores both and lets the
-          # other updates through, as Pi's does.
-          for npm_package in pi-acp acpx; do
+          # other updates through, as OMP's does.
+          for npm_package in acpx; do
             if ! nix run .#npm-release -- --package "$npm_package" \
               --output "packages/$npm_package-release.json" \
               --lock "packages/$npm_package/package-lock.json"; then
@@ -130,7 +130,7 @@ jobs:
 
           # 13. Update Codex. A release can be published before every platform
           # tarball or its digest, so a failure keeps the current pin and lets
-          # the other updates through, as Pi's does.
+          # the other updates through, as OMP's does.
           if ! nix run .#codex-release -- --output packages/codex-release.json; then
             echo "::warning title=Codex update skipped::codex-release failed; keeping the current pin in packages/codex-release.json."
             git checkout -- packages/codex-release.json
@@ -223,13 +223,13 @@ jobs:
           fi
 
 
-          if [ -n "$(git status --porcelain packages/pi-release.json)" ]; then
-            NEW_VER=$(jq -r .version packages/pi-release.json)
-            git add packages/pi-release.json
-            git commit -m "chore(packages): bump pi to $NEW_VER"
+          if [ -n "$(git status --porcelain packages/omp-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/omp-release.json)
+            git add packages/omp-release.json
+            git commit -m "chore(packages): bump omp to $NEW_VER"
           fi
 
-          for npm_package in pi-acp acpx; do
+          for npm_package in acpx; do
             if [ -n "$(git status --porcelain "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json")" ]; then
               NEW_VER=$(jq -r .version "packages/$npm_package-release.json")
               git add "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json"

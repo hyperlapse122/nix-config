@@ -4,12 +4,10 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one. --harness picks the
-agent (claude, codex, antigravity or pi); each has its own adapter
+agent (claude, codex or antigravity); each has its own adapter
 for commands, listings and manifest paths. antigravity has no marketplace: its
 adapter validates and installs the plugin directory, and reads the installed
-version back from disk. pi has no plugin command that takes a path: its --cli
-is the agent-settings merger, which writes <link>/skills into the `skills`
-list of ~/.pi/agent/settings.json.
+version back from disk.
 
 With --retire it does the reverse for a plugin the repository no longer
 declares: unregister it and delete its version-keyed base directory.
@@ -379,77 +377,10 @@ class Antigravity(Harness):
             return 1
 
 
-class Pi(Harness):
-    """Pi reads extra skill directories from the `skills` list in settings.json.
-
-    Pi has no plugin, subagent or command format, so only the plugin's skills
-    directory is listed. The list is shared with the user, so the merger
-    replaces only entries under this plugin's base directory. Pi reads the
-    link on every start, so this adapter prunes nothing: the marketplace rows,
-    which run after it, remove superseded versions once they have confirmed
-    their own source.
-    """
-
-    label = 'Pi skills'
-    list_key = 'skills'
-    required = 'skills'
-    entry_suffix = '/skills'
-
-    def settings(self):
-        return Path.home() / '.pi' / 'agent' / 'settings.json'
-
-    def write_entry(self, base, value, dry_run):
-        if value is None and not dry_run and not self.settings().exists():
-            return
-        document = {'prefixEntries': [
-            {'path': [self.list_key], 'prefix': '{}/'.format(base), 'value': value},
-        ]}
-        with tempfile.TemporaryDirectory(prefix='agent-plugin-sync-') as scratch:
-            declared = Path(scratch) / 'declared.json'
-            declared.write_text(json.dumps(document))
-            require([self.cli, '--label', self.label, '--settings', str(self.settings()),
-                     '--declared', str(declared)], dry_run, 'plugins merge')
-
-    def listed(self):
-        try:
-            entries = json.loads(self.settings().read_text()).get(self.list_key)
-        except (OSError, ValueError, AttributeError):
-            return []
-        return entries if isinstance(entries, list) else []
-
-    def check_source(self, source):
-        if not (source / self.required).is_dir():
-            raise Failure('pinned source is missing {}'.format(source / self.required))
-
-    def sync(self, args):
-        try:
-            self.check_source(args.source)
-            destination = link_version(args.base, args.segment, args.source, args.dry_run)
-            entry = str(destination) + self.entry_suffix
-            self.write_entry(args.base, entry, args.dry_run)
-            if not args.dry_run and entry not in self.listed():
-                raise Failure('{} does not list {} after the merge'.format(
-                    self.settings(), entry))
-            return 0
-        except (Failure, OSError) as exc:
-            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
-            return 1
-
-    def retire(self, args):
-        try:
-            self.write_entry(args.base, None, args.dry_run)
-            remove_base(args.base, args.dry_run)
-            return 0
-        except (Failure, OSError) as exc:
-            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
-            return 1
-
-
 HARNESSES = {
     'claude': Claude,
     'codex': Codex,
     'antigravity': Antigravity,
-    'pi': Pi,
 }
 
 

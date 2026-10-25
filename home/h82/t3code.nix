@@ -30,6 +30,60 @@ let
 
   antigravityInstances = [ "antigravity" ];
 
+  # Separate scopes keep T3's capped discovery from hiding OMP's native Codex
+  # roster. Both processes retain the ordinary OMP auth and session directory.
+  omp = import ../../packages/omp.nix { inherit pkgs; };
+  syntheticModels = import ./agents/synthetic-models.nix;
+  apiDefault = syntheticModels.${syntheticModels.defaultModel};
+  ompScope =
+    name: patterns:
+    pkgs.writeText "omp-t3-${name}.json" (
+      builtins.toJSON (
+        {
+          enabledModels = patterns;
+        }
+        // lib.optionalAttrs (name == "OMP") {
+          modelRoles.default = "synthetic/${apiDefault.id}";
+          defaultThinkingLevel = apiDefault.defaultEffort;
+        }
+      )
+    );
+  # OMP uses path globs: model IDs themselves contain slashes.
+  apiPatterns = [
+    "synthetic/**"
+    "openrouter/**"
+  ];
+  codexPatterns = [ "openai-codex/*" ];
+  apiSelectors = lib.unique (
+    map (row: "synthetic/${row.id}")
+      (builtins.fromJSON (builtins.readFile ./agents/synthetic-catalog.json)).data
+    ++
+      map (row: "openrouter/${row.id}")
+        (builtins.fromJSON (builtins.readFile ./agents/openrouter-catalog.json)).data
+  );
+  ompInstance = name: patterns: customModels: {
+    driver = "acpRegistry";
+    displayName = name;
+    enabled = true;
+    config = {
+      source = "local";
+      commandPath = "${omp}/bin/omp";
+      commandArgs = [
+        "--mode"
+        "acp"
+        "--config"
+        (ompScope name patterns)
+        "--models"
+        (lib.concatStringsSep "," patterns)
+      ];
+      inherit customModels;
+    };
+  };
+  ompInstances = {
+    omp = ompInstance "OMP" apiPatterns apiSelectors;
+    omp-codex = ompInstance "OMP Codex" codexPatterns [ ];
+  };
+
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
   # provider needs only a sign-in.
   antigravity = import ../../packages/antigravity-acp.nix {
@@ -113,12 +167,12 @@ let
         driver = "opencode";
         enabled = false;
       };
-      # The pi on PATH is the packaged wrapper, whose Synthetic provider reads
-      # the key file per request, so no binaryPath is needed and no key reaches
-      # this file. No launch arguments.
+      omp = removeAttrs ompInstances.omp [ "config" ];
+      omp-codex = removeAttrs ompInstances.omp-codex [ "config" ];
+      # Keep the instance and its state, but stop offering it for new work.
       pi = {
         driver = "pi";
-        enabled = true;
+        enabled = false;
       };
     };
     snoozeLimitedThreads = true;
@@ -206,6 +260,7 @@ let
       remove ? [ ],
       removePaths ? [ ],
       migrateInstances ? null,
+      ownEntries ? [ ],
     }:
     {
       inherit remove;
@@ -214,11 +269,13 @@ let
       own = owned;
     }
     // lib.optionalAttrs (removePaths != [ ]) { inherit removePaths; }
+    // lib.optionalAttrs (ownEntries != [ ]) { inherit ownEntries; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
 
   merges = {
     t3codeSettings = {
       file = "settings.json";
+      ledger = "t3code-settings-ownership.json";
       declared = pkgs.writeText "t3code-declared-settings.json" (
         builtins.toJSON (declaration {
           values = settings;
@@ -226,6 +283,16 @@ let
           remove = retiredKeys;
           removePaths = retiredPaths;
           migrateInstances = instanceMigration;
+          # Arrays are whole values. The existing ownership ledger replaces
+          # only these config keys and preserves app-owned environment/auth.
+          ownEntries = lib.mapAttrsToList (id: instance: {
+            path = [
+              "providerInstances"
+              id
+              "config"
+            ];
+            entries = instance.config;
+          }) ompInstances;
         })
       );
     };
@@ -282,7 +349,11 @@ in
         run ${merger} \
           --label 'T3 Code' \
           --settings ${config.home.homeDirectory}/.t3/userdata/${merge.file} \
-          --declared ${merge.declared}
+          --declared ${merge.declared} ${
+            lib.optionalString (
+              merge ? ledger
+            ) "\\\n          --ledger ${config.home.homeDirectory}/.t3/userdata/${merge.ledger}"
+          }
       ''
     ) merges
     // {

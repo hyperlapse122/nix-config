@@ -7,9 +7,9 @@
   The Compound Engineering review tokens a user environment must allow,
   sorted, derived from the `pname`s of its installed `packages` rather than
   from my.agents.crossModelPeers, so a module that installs a peer harness
-  but drops its token fails. Pi has no entry, because Compound
-  Engineering has no route for them, and neither has Antigravity, so none of
-  them is in CROSS_MODEL_PEERS even where its package is installed.
+  but drops its token fails. OMP has no entry, because Compound
+  Engineering has no OMP token. Antigravity is also excluded from the
+  automatic allowlist even where its package is installed.
 */
 { lib }:
 packages:
