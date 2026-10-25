@@ -1930,7 +1930,7 @@
       "pricing": {
         "prompt": "0.0000000422",
         "completion": "0.0000001694",
-        "input_cache_read": "0.000000028"
+        "input_cache_read": "0.000000027"
       },
       "reasoning": {
         "mandatory": false,
@@ -5538,9 +5538,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000002147",
-        "completion": "0.0000076972",
-        "input_cache_read": "0.00000021"
+        "prompt": "0.000000161",
+        "completion": "0.000016",
+        "input_cache_read": "0.000000151"
       },
       "reasoning": {
         "mandatory": false,
@@ -13129,7 +13129,7 @@
       "pricing": {
         "prompt": "0.0000000422",
         "completion": "0.0000001694",
-        "input_cache_read": "0.000000028"
+        "input_cache_read": "0.000000027"
       },
       "reasoning": {
         "mandatory": false,
@@ -13235,9 +13235,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.0000002147",
-        "completion": "0.0000076972",
-        "input_cache_read": "0.00000021"
+        "prompt": "0.000000161",
+        "completion": "0.000016",
+        "input_cache_read": "0.000000151"
       },
       "reasoning": {
         "mandatory": false,
