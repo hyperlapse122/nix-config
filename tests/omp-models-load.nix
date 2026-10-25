@@ -50,11 +50,12 @@ pkgs.runCommand "omp-models-load-tests"
       pkgs.openssl
       pkgs.gitMinimal
       pkgs.jq
+      pkgs.nix
     ];
   }
   ''
     python3 -I ${./omp_models_load.py} ${omp}/bin/omp ${documents} \
-      ${../home/h82/agents/synthetic-catalog.json} ${../home/h82/agents/openrouter-catalog.json} ${keyProbe}/bin
+      ${../home/h82/agents/synthetic-catalog.json} ${../home/h82/agents/openrouter-catalog.json} ${keyProbe}/bin ${../home/h82/agents/omp-model-catalogs.nix}
     python3 -I ${./omp-headless.py} ${omp}/bin/omp ${documents} ${keyProbe}/bin/omp-openrouter-key ${contexts} ${ompCe}
     python3 -I ${./omp-ce-review.py} ${ompCe}
     touch $out

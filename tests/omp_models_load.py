@@ -1,4 +1,4 @@
-"""Compare the pinned runtime's catalog with the independent provider snapshots."""
+"""Check managed API selection and metadata loaded by the pinned runtime."""
 
 import json
 import os
@@ -17,6 +17,10 @@ def environment(home):
 def run(omp, documents, snapshots):
     providers = json.loads(Path(documents["models.yml"]).read_text())["providers"]
     assert set(providers) == {"synthetic", "openrouter"}, "only API providers belong in models.yml"
+    selected_ids = {row["id"] for row in json.loads(Path(snapshots["openrouter"]).read_text())["data"]
+                    if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"}
+    managed = providers["openrouter"]
+    assert ({row["id"] for row in managed["models"]} | managed["modelOverrides"].keys()) == selected_ids, "managed OpenRouter selection"
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         agent = home / ".omp/agent"
@@ -30,6 +34,8 @@ def run(omp, documents, snapshots):
         listed = {row["selector"]: row for row in json.loads(result.stdout)["models"]}
         for provider, path in snapshots.items():
             rows = json.loads(Path(path).read_text())["data"]
+            if provider == "openrouter":
+                rows = [row for row in rows if row["id"] in selected_ids]
             assert rows, f"empty {provider} snapshot"
             missing = {f"{provider}/{row['id']}" for row in rows} - listed.keys()
             assert not missing, f"snapshot selectors missing: {sorted(missing)}"
@@ -53,11 +59,28 @@ def run(omp, documents, snapshots):
                         assert actual["thinking"] == expected, row["id"]
         glm = listed["synthetic/hf:zai-org/GLM-5.3"]
         assert glm["thinking"] == ["low", "high", "max"], glm
-        print(f"OMP loaded all {sum(len(json.loads(Path(p).read_text())['data']) for p in snapshots.values())} snapshot selectors")
+        print("OMP loaded selected API metadata; native Codex remains unmanaged")
 
 
 if __name__ == "__main__":
-    omp, manifest, synthetic, openrouter, helpers = sys.argv[1:]
+    omp, manifest, synthetic, openrouter, helpers, catalog_module = sys.argv[1:]
+    with tempfile.TemporaryDirectory() as temporary:
+        fixture = Path(temporary)
+        (fixture / "catalog.nix").write_bytes(Path(catalog_module).read_bytes())
+        (fixture / "synthetic-catalog.json").write_text(json.dumps({
+            "data": [{"id": "unchanged-synthetic"}]}))
+        (fixture / "openrouter-catalog.json").write_text(json.dumps({"data": [
+            {"id": model} for model in (
+                "openrouter/future-model", "other/model", "other/openrouter/model",
+                "openrouter/bodybuilder", "openrouter/bodybuilder-new")]}))
+        result = subprocess.run([
+            "nix-instantiate", "--eval", "--strict", "--json", "--store", "dummy://",
+            str(fixture / "catalog.nix")], capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, result.stderr
+        selected = json.loads(result.stdout)
+    assert selected["synthetic"]["data"] == [{"id": "unchanged-synthetic"}]
+    assert [row["id"] for row in selected["openrouter"]["data"]] == [
+        "openrouter/future-model", "openrouter/bodybuilder-new"], "raw-ID regex and exact exclusion"
     for helper, env, expected in (
         ("omp-synthetic-key", {}, "sk-fake-file"),
         ("omp-synthetic-key", {"SYNTHETIC_API_KEY": "sk-fake-override"}, "sk-fake-override"),

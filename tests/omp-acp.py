@@ -173,8 +173,8 @@ class Fixture(http.server.BaseHTTPRequestHandler):
                 return
             self.json_response({"jsonrpc": "2.0", "id": body["id"], "result": result})
             return
-        assert self.path == "/openai/v1/chat/completions", self.path
         self.server.requests.append(body)
+        assert self.path == "/openai/v1/chat/completions", self.path
         messages = str(body["messages"])
         last_user = str(next(m for m in reversed(body["messages"]) if m["role"] == "user"))
         if "ACP_CANCEL" in last_user:
@@ -238,8 +238,16 @@ def exchange(config, home, work):
         client.initialize()
         state = client.call("session/new", cwd=str(work), mcpServers=mcp)
         session = state["sessionId"]
-        assert option(state, "model")["currentValue"] == "synthetic/hf:zai-org/GLM-5.3", state
-        assert option(state, "thinking")["currentValue"] == "max", option(state, "thinking")
+        assert option(state, "model")["currentValue"] == "openai-codex/gpt-6-astra", state
+        assert option(state, "thinking")["currentValue"] == "low", option(state, "thinking")
+        reply = client.receive(client.send("session/prompt", {"sessionId": session,
+                               "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
+        assert not server.requests, "Codex startup fell back to a paid API provider"
+        assert "No API key found for openai-codex." in reply.get("error", {}).get("data", {}).get("details", ""), reply
+        print("Unified ACP startup stays on Codex low without auth and sends no API request")
+        state = client.call("session/set_config_option", sessionId=session, configId="model",
+                            value="synthetic/hf:zai-org/GLM-5.3")
+        state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="max")
         reply = client.call("session/prompt", sessionId=session,
                             prompt=[{"type": "text", "text": "ACP_EXCHANGE: write a file and call the MCP fixture."}])
         assert reply["stopReason"] == "end_turn", (reply, server.errors)
@@ -282,20 +290,16 @@ def catalog(config, home, work, expected):
     try:
         client.initialize()
         state = client.call("session/new", cwd=str(work), mcpServers=[])
-        assert expected <= values(state, "model"), ("API scope omitted snapshot selectors",
+        assert expected == values(state, "model"), ("Unified scope changed selected selectors",
                                                    len(values(state, "model")), sorted(values(state, "model"))[:8],
                                                    sorted(expected - values(state, "model"))[:8])
-        assert all(s.startswith(("synthetic/", "openrouter/")) for s in values(state, "model")), "API scope leaked other providers"
         session = state["sessionId"]
-        # Exercise every selector, including rows beyond T3's discovery cap.
+        # T3's custom selectors must all be selectable by the real ACP runtime.
         for selector in sorted(expected):
             state = client.call("session/set_config_option", sessionId=session, configId="model", value=selector)
             assert option(state, "model")["currentValue"] == selector, selector
-        for selector, efforts in (("synthetic/hf:zai-org/GLM-5.3", {"off", "auto", "low", "high", "max"}),
-                                  ("openrouter/openai/gpt-4o", {"off", "auto"})):
-            state = client.call("session/set_config_option", sessionId=session, configId="model", value=selector)
-            assert values(state, "thinking") == efforts, (selector, option(state, "thinking"))
         state = client.call("session/set_config_option", sessionId=session, configId="model", value="synthetic/hf:zai-org/GLM-5.3")
+        assert values(state, "thinking") == {"off", "auto", "low", "high", "max"}, option(state, "thinking")
         state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="max")
         assert option(state, "thinking")["currentValue"] == "max"
         print(f"ACP advertised and selected all {len(expected)} API snapshot selectors; active thinking refreshed")
@@ -303,34 +307,14 @@ def catalog(config, home, work, expected):
         client.close()
 
 
-def codex_scope(config, home, work):
-    server, env, _ = endpoint(home)
-    client = Acp(config, home, work, env)
-    try:
-        client.initialize()
-        state = client.call("session/new", cwd=str(work), mcpServers=[])
-        # This sandbox has API credentials but no subscription login. A
-        # Codex-only advertisement must remain empty, rather than fall back
-        # to the available Synthetic/OpenRouter catalogs or invented rows.
-        assert not any(row["id"] == "model" for row in state["configOptions"]), "Codex scope leaked API models without Codex auth"
-        assert option(state, "thinking")["currentValue"] == "low", state
-        reply = client.receive(client.send("session/prompt", {"sessionId": state["sessionId"],
-                               "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
-        assert not server.requests, "Codex startup fell back to a paid API provider"
-        assert "No API key found for openai-codex." in reply.get("error", {}).get("data", {}).get("details", ""), reply
-        print("ACP Codex scope has no API fallback; authenticated native roster remains pending")
-    finally:
-        client.close()
-        server.shutdown()
-        server.server_close()
-
-
 def applied(entry, home):
     target = home / ".t3/userdata/settings.json"
     target.parent.mkdir(parents=True)
     seed = {"providerInstances": {"pi": {"enabled": True, "config": {"preserved": "Pi state"}},
                                    "omp": {"environment": {"variables": {"KEEP": "yes"}},
-                                           "config": {"authMethodId": "agent", "customModels": ["stale-selector"]}}},
+                                           "config": {"authMethodId": "agent", "customModels": ["stale-selector"]}},
+                                   "omp-codex": {"driver": "acpRegistry", "enabled": True,
+                                                 "config": {"authMethodId": "agent"}}},
             "projectSettingsOverrides": {"example": {"keep": True}}}
     target.write_text(json.dumps(seed))
     script = entry["activation"].replace(entry["home"], str(home))
@@ -345,10 +329,13 @@ def applied(entry, home):
     assert instances["pi"]["config"] == seed["providerInstances"]["pi"]["config"]
     assert instances["omp"]["environment"] == seed["providerInstances"]["omp"]["environment"]
     assert instances["omp"]["config"]["authMethodId"] == "agent"
-    for name in ("omp", "omp-codex"):
-        assert name in instances, f"T3 activation did not register {name}"
-        assert instances[name]["driver"] == "acpRegistry" and instances[name]["enabled"] is True
-        assert instances[name]["config"]["source"] == "local"
+    assert "omp-codex" not in instances, "T3 retained the retired OMP Codex entry"
+    assert instances["omp"]["driver"] == "acpRegistry" and instances["omp"]["enabled"] is True
+    assert instances["omp"]["config"]["source"] == "local"
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", 'run() { "$@"; }\n' + script],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(target.read_text()) == settings, "repeated activation changed consolidated settings"
     return instances
 
 
@@ -357,19 +344,25 @@ if __name__ == "__main__":
     entries = json.loads(Path(deliveries).read_text())
     assert entries, "no T3-enabled host tested"
     expected = {f"{provider}/{row['id']}" for provider, path in (("synthetic", synthetic), ("openrouter", openrouter))
-                for row in json.loads(Path(path).read_text())["data"]}
+                for row in json.loads(Path(path).read_text())["data"]
+                if provider == "synthetic" or (row["id"].startswith("openrouter/")
+                                               and row["id"] != "openrouter/bodybuilder")}
     for entry in entries:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
             instances = applied(entry, home)
             api = instances["omp"]["config"]
-            codex = instances["omp-codex"]["config"]
             assert set(api["customModels"]) == expected and len(api["customModels"]) == len(expected), "T3 API selectors capped or changed"
-            assert codex["customModels"] == [], "T3 must discover Codex models natively"
+            patterns = {"synthetic/**", "openai-codex/*"} | {s for s in expected if s.startswith("openrouter/")}
+            args = api["commandArgs"]
+            assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
+            overlay = json.loads(Path(args[args.index("--config") + 1]).read_text())
+            assert set(overlay["enabledModels"]) == patterns, "overlay scope differs from unified selection"
+            assert overlay["modelRoles"]["default"] == "openai-codex/gpt-6-astra"
+            assert overlay["defaultThinkingLevel"] == "low"
             work = prepare(entry, home)
             common = (home / ".omp/agent/config.yml").read_bytes()
             catalog(api, home, work, expected)
             exchange(api, home, work)
             print("ACP prompt/native tool/MCP result/cancel/persistent resume passed")
-            codex_scope(codex, home, work)
             assert (home / ".omp/agent/config.yml").read_bytes() == common, "ACP scope changed common CLI settings"
