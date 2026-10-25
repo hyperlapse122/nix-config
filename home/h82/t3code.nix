@@ -30,40 +30,24 @@ let
 
   antigravityInstances = [ "antigravity" ];
 
-  # Separate scopes keep T3's capped discovery from hiding OMP's native Codex
-  # roster. Both processes retain the ordinary OMP auth and session directory.
   omp = import ../../packages/omp.nix { inherit pkgs; };
-  syntheticModels = import ./agents/synthetic-models.nix;
-  apiDefault = syntheticModels.${syntheticModels.defaultModel};
-  ompScope =
-    name: patterns:
-    pkgs.writeText "omp-t3-${name}.json" (
-      builtins.toJSON (
-        {
-          enabledModels = patterns;
-        }
-        // lib.optionalAttrs (name == "OMP") {
-          modelRoles.default = "synthetic/${apiDefault.id}";
-          defaultThinkingLevel = apiDefault.defaultEffort;
-        }
-      )
-    );
-  # OMP uses path globs: model IDs themselves contain slashes.
-  apiPatterns = [
-    "synthetic/**"
-    "openrouter/**"
-  ];
-  codexPatterns = [ "openai-codex/*" ];
-  apiSelectors = lib.unique (
-    map (row: "synthetic/${row.id}")
-      (builtins.fromJSON (builtins.readFile ./agents/synthetic-catalog.json)).data
-    ++
-      map (row: "openrouter/${row.id}")
-        (builtins.fromJSON (builtins.readFile ./agents/openrouter-catalog.json)).data
+  catalogs = import ./agents/omp-model-catalogs.nix;
+  ompScope = pkgs.writeText "omp-t3-OMP.json" (
+    builtins.toJSON {
+      enabledModels = ompPatterns;
+      modelRoles.default = "openai-codex/gpt-6-astra";
+      defaultThinkingLevel = "low";
+    }
   );
-  ompInstance = name: patterns: customModels: {
+  # OMP uses path globs: model IDs themselves contain slashes.
+  ompPatterns = [ "synthetic/**" ] ++ openrouterSelectors ++ [ "openai-codex/*" ];
+  openrouterSelectors = map (row: "openrouter/${row.id}") catalogs.openrouter.data;
+  apiSelectors = lib.unique (
+    map (row: "synthetic/${row.id}") catalogs.synthetic.data ++ openrouterSelectors
+  );
+  ompInstances.omp = {
     driver = "acpRegistry";
-    displayName = name;
+    displayName = "OMP";
     enabled = true;
     config = {
       source = "local";
@@ -72,16 +56,18 @@ let
         "--mode"
         "acp"
         "--config"
-        (ompScope name patterns)
+        ompScope
         "--models"
-        (lib.concatStringsSep "," patterns)
+        (lib.concatStringsSep "," ompPatterns)
+        # --models otherwise falls back to the first available API model
+        # when the configured Codex default has no authentication.
+        "--model"
+        "openai-codex/gpt-6-astra"
+        "--thinking"
+        "low"
       ];
-      inherit customModels;
+      customModels = apiSelectors;
     };
-  };
-  ompInstances = {
-    omp = ompInstance "OMP" apiPatterns apiSelectors;
-    omp-codex = ompInstance "OMP Codex" codexPatterns [ ];
   };
 
   # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
@@ -168,7 +154,6 @@ let
         enabled = false;
       };
       omp = removeAttrs ompInstances.omp [ "config" ];
-      omp-codex = removeAttrs ompInstances.omp-codex [ "config" ];
       # Keep the instance and its state, but stop offering it for new work.
       pi = {
         driver = "pi";
@@ -198,6 +183,10 @@ let
   # generation hid OpenCode's text-generation alias here; prune drops the
   # object once that leaves it empty.
   retiredPaths = [
+    {
+      path = [ "providerInstances" ];
+      key = "omp-codex";
+    }
     {
       path = [ "providerModelPreferences" ];
       key = "opencode";

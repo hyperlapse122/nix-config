@@ -23,7 +23,7 @@
     files, checking destination/declaration, real file effects, repeat apply,
     dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, Codex, and two OMP instances, the
+    enabled Antigravity, Claude, Codex, and one OMP instance, the
     disabled Grok, Pi and OpenCode instances, the Claude instance's launch arguments emptied,
     which retires the --add-dir an earlier generation wrote, no environment
     entry upserted, and the Codex instance's launch arguments emptied, which
@@ -158,6 +158,10 @@ let
     remove = [ ];
     removePaths = [
       {
+        path = [ "providerInstances" ];
+        key = "omp-codex";
+      }
+      {
         path = [ "providerModelPreferences" ];
         key = "opencode";
         prune = true;
@@ -172,7 +176,6 @@ let
         "codex"
         "grok"
         "omp"
-        "omp-codex"
         "opencode"
         "pi"
       ];
@@ -314,30 +317,6 @@ let
       {
         path = [
           "providerInstances"
-          "omp-codex"
-          "displayName"
-        ];
-        value = "OMP Codex";
-      }
-      {
-        path = [
-          "providerInstances"
-          "omp-codex"
-          "driver"
-        ];
-        value = "acpRegistry";
-      }
-      {
-        path = [
-          "providerInstances"
-          "omp-codex"
-          "enabled"
-        ];
-        value = true;
-      }
-      {
-        path = [
-          "providerInstances"
           "opencode"
           "driver"
         ];
@@ -435,13 +414,11 @@ let
           entries = {
             source = "local";
             commandPath = noContext "${import ../packages/omp.nix { inherit pkgs; }}/bin/omp";
-            # omp-acp executes the delivered command and owns scope/defaults.
-            customModels = if id == "omp" then snapshotSelectors else [ ];
+            # omp-acp owns custom selectors, runtime scope and defaults.
           };
         })
         [
           "omp"
-          "omp-codex"
         ];
     own = {
       defaultModelSelection = {
@@ -498,12 +475,6 @@ let
   # activation names are built: the check compares the paths, and the paths
   # are the store hashes of what the module would install.
   noContext = builtins.unsafeDiscardStringContext;
-  snapshotSelectors =
-    map (row: "synthetic/${row.id}")
-      (builtins.fromJSON (builtins.readFile ../home/h82/agents/synthetic-catalog.json)).data
-    ++
-      map (row: "openrouter/${row.id}")
-        (builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json)).data;
   binaryPathExpected = noContext "${
     import ../packages/antigravity-acp-path.nix { inherit pkgs; }
   }/bin/agy_acp_server.par";
