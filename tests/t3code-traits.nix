@@ -516,16 +516,22 @@ let
     noContext (
       toString (
         pkgs.writeText (if id == "omp" then "omp-t3-OMP.json" else "omp-t3-OMP-Codex.json") (
-          builtins.toJSON {
-            enabledModels =
-              if id == "omp" then
-                [
-                  "synthetic/**"
-                  "openrouter/**"
-                ]
-              else
-                [ "openai-codex/*" ];
-          }
+          builtins.toJSON (
+            {
+              enabledModels =
+                if id == "omp" then
+                  [
+                    "synthetic/**"
+                    "openrouter/**"
+                  ]
+                else
+                  [ "openai-codex/*" ];
+            }
+            // lib.optionalAttrs (id == "omp") {
+              modelRoles.default = "synthetic/hf:zai-org/GLM-5.3";
+              defaultThinkingLevel = "max";
+            }
+          )
         )
       )
     );

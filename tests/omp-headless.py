@@ -174,7 +174,7 @@ thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
 try:
     for declared in documents:
-        for selector, model, effort in ((None, "hf:zai-org/GLM-5.3", "max"),
+        for selector, model, effort in (("synthetic/hf:zai-org/GLM-5.3:max", "hf:zai-org/GLM-5.3", "max"),
                                         ("synthetic/hf:zai-org/GLM-5.3:low", "hf:zai-org/GLM-5.3", "low"),
                                         ("openrouter/openai/gpt-4o", "openai/gpt-4o", None),
                                         ("missing", "hf:zai-org/GLM-5.3", None)):
@@ -198,8 +198,7 @@ try:
                        "PI_PROXY_OPENROUTER": f"http://127.0.0.1:{server.server_port}"}
                 args = [OMP, "--print", "--mode", "json", "--no-session", "--no-title", "--no-lsp",
                         "--no-extensions", "--no-skills", "--no-rules", "--tools", "write", "--auto-approve"]
-                if selector and selector != "missing":
-                    args += ["--model", selector]
+                args += ["--model", "synthetic/hf:zai-org/GLM-5.3:max" if selector == "missing" else selector]
                 requests.clear()
                 try:
                     result = subprocess.run([*args, "Write provider-proof.txt, then finish."],
@@ -225,7 +224,7 @@ try:
                     assert auth == f"Bearer {expected_key}", "protected key command did not supply the request"
                 assert (work / "provider-proof.txt").read_text() == "tool exchange completed\n"
                 assert "OMP_PROVIDER_OK" in result.stdout, result.stdout
-        print("OMP default max, explicit low, and OpenRouter tool exchanges passed")
+        print("OMP explicit Synthetic max/low and OpenRouter tool exchanges passed")
     for entry in json.loads(Path(CONTEXTS).read_text()):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
@@ -254,6 +253,9 @@ try:
             config["skills"]["customDirectories"] = [p.replace(entry["home"], str(home), 1) for p in directories] + [str(skill_root)]
             # Synchronous dispatch makes the terminal artifact observable before process exit.
             config["async"] = {"enabled": False}
+            # Native children inherit the explicit API fixture's model role.
+            config["modelRoles"]["default"] = "synthetic/hf:zai-org/GLM-5.3"
+            config["defaultThinkingLevel"] = "max"
             (agent / "config.yml").write_text(json.dumps(config))
             models = json.loads(Path(entry["documents"]["models.yml"]).read_text())
             models["providers"]["synthetic"]["apiKey"] = "!SYNTHETIC_API_KEY=sk-fake-synthetic " + models["providers"]["synthetic"]["apiKey"][1:]
@@ -290,6 +292,7 @@ try:
                    "NODE_EXTRA_CA_CERTS": str(cert), "HTTPS_PROXY": f"http://127.0.0.1:{server.server_port}",
                    "PI_PROXY_SYNTHETIC": f"http://127.0.0.1:{server.server_port}"}
             result = subprocess.run([OMP, "--print", "--mode", "json", "--no-title", "--no-lsp", "--no-extensions",
+                                     "--model", "synthetic/hf:zai-org/GLM-5.3:max",
                                      "--tools", "read,write,web_search,task", "--auto-approve", "Exercise OMP_CONTEXT_PROOF."],
                                     cwd=work, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90)
             assert not context_errors, context_errors

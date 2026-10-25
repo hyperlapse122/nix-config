@@ -266,6 +266,12 @@ class Activation(unittest.TestCase):
                 self.assertIs(value["autolearn"]["enabled"], False)
                 self.assertIs(value["startup"]["checkUpdate"], False)
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
+                for key, expected in (("modelRoles", {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}),
+                                      ("defaultThinkingLevel", "low")):
+                    result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
+                                            capture_output=True, text=True, timeout=20)
+                    actual = json.loads(result.stdout) if key == "modelRoles" else result.stdout.strip()
+                    self.assertEqual((result.returncode, actual), (0, expected), result.stderr)
                 self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():
                     self.assertEqual(skill.read_bytes(), contents)

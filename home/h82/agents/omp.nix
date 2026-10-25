@@ -6,8 +6,6 @@
 }:
 let
   tools = import ../../../packages/agent-tools.nix { inherit pkgs; };
-  syntheticModels = import ./synthetic-models.nix;
-  defaultModel = syntheticModels.${syntheticModels.defaultModel};
   keyDirectory =
     if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
   omp = import ../../../packages/omp.nix {
@@ -50,8 +48,8 @@ in
             disabledProviders = [ "omp-managed" ];
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
-            modelRoles.default = "synthetic/${defaultModel.id}";
-            defaultThinkingLevel = defaultModel.defaultEffort;
+            modelRoles.default = "openai-codex/gpt-6-astra";
+            defaultThinkingLevel = "low";
             modelRoles.web = "web/synthetic";
             skills.customDirectories = config.my.omp.skillDirectories;
             contextFiles.extra = [ "OMP.md" ];

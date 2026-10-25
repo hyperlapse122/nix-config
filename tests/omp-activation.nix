@@ -66,8 +66,8 @@ pkgs.testers.nixosTest {
         if quiet:
             expected["startup"]["quiet"] = True
         else:
-            expected["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3", "web": "web/synthetic"}
-            expected["defaultThinkingLevel"] = "max"
+            expected["modelRoles"] = {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}
+            expected["defaultThinkingLevel"] = "low"
             expected["skills"] = {"customDirectories": []}
             expected["contextFiles"] = {"extra": ["OMP.md"]}
             expected["task"] = {"structured": True}

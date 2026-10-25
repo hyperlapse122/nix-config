@@ -33,9 +33,21 @@ let
   # Separate scopes keep T3's capped discovery from hiding OMP's native Codex
   # roster. Both processes retain the ordinary OMP auth and session directory.
   omp = import ../../packages/omp.nix { inherit pkgs; };
+  syntheticModels = import ./agents/synthetic-models.nix;
+  apiDefault = syntheticModels.${syntheticModels.defaultModel};
   ompScope =
     name: patterns:
-    pkgs.writeText "omp-t3-${name}.json" (builtins.toJSON { enabledModels = patterns; });
+    pkgs.writeText "omp-t3-${name}.json" (
+      builtins.toJSON (
+        {
+          enabledModels = patterns;
+        }
+        // lib.optionalAttrs (name == "OMP") {
+          modelRoles.default = "synthetic/${apiDefault.id}";
+          defaultThinkingLevel = apiDefault.defaultEffort;
+        }
+      )
+    );
   # OMP uses path globs: model IDs themselves contain slashes.
   apiPatterns = [
     "synthetic/**"

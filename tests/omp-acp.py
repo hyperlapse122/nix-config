@@ -313,6 +313,7 @@ def codex_scope(config, home, work):
         # Codex-only advertisement must remain empty, rather than fall back
         # to the available Synthetic/OpenRouter catalogs or invented rows.
         assert not any(row["id"] == "model" for row in state["configOptions"]), "Codex scope leaked API models without Codex auth"
+        assert option(state, "thinking")["currentValue"] == "low", state
         reply = client.receive(client.send("session/prompt", {"sessionId": state["sessionId"],
                                "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
         assert not server.requests, "Codex startup fell back to a paid API provider"
