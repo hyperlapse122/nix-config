@@ -435,14 +435,7 @@ let
           entries = {
             source = "local";
             commandPath = noContext "${import ../packages/omp.nix { inherit pkgs; }}/bin/omp";
-            commandArgs = [
-              "--mode"
-              "acp"
-              "--config"
-              (scopeExpected id)
-              "--models"
-              (if id == "omp" then "synthetic/**,openrouter/**" else "openai-codex/*")
-            ];
+            # omp-acp executes the delivered command and owns scope/defaults.
             customModels = if id == "omp" then snapshotSelectors else [ ];
           };
         })
@@ -511,30 +504,6 @@ let
     ++
       map (row: "openrouter/${row.id}")
         (builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json)).data;
-  scopeExpected =
-    id:
-    noContext (
-      toString (
-        pkgs.writeText (if id == "omp" then "omp-t3-OMP.json" else "omp-t3-OMP-Codex.json") (
-          builtins.toJSON (
-            {
-              enabledModels =
-                if id == "omp" then
-                  [
-                    "synthetic/**"
-                    "openrouter/**"
-                  ]
-                else
-                  [ "openai-codex/*" ];
-            }
-            // lib.optionalAttrs (id == "omp") {
-              modelRoles.default = "synthetic/hf:zai-org/GLM-5.3";
-              defaultThinkingLevel = "max";
-            }
-          )
-        )
-      )
-    );
   binaryPathExpected = noContext "${
     import ../packages/antigravity-acp-path.nix { inherit pkgs; }
   }/bin/agy_acp_server.par";

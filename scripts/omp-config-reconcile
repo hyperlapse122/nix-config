@@ -10,6 +10,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import socket
 import stat
 import sys
@@ -119,6 +120,41 @@ def check_credentials(old, new):
             check_credentials(value, replacement)
 
 
+def same_managed_helper(provider, previous, current):
+    if provider not in ("synthetic", "openrouter"):
+        return False
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return False
+    if previous.get("apiKey") == current.get("apiKey"):
+        return False
+    # Catalog rows may change; all provider-level routing/account settings must
+    # stay identical before a credential command can be considered equivalent.
+    identity = lambda value: {k: v for k, v in value.items()
+                              if k not in ("apiKey", "models", "modelOverrides")}
+    if not previous.get("baseUrl") or identity(previous) != identity(current):
+        return False
+    store = r"/nix/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-"
+    command = store + r"omp-[0-9][A-Za-z0-9.+-]*/bin/omp-" + provider + "-key"
+    bodies = []
+    for value in (previous.get("apiKey"), current.get("apiKey")):
+        if not isinstance(value, str) or re.fullmatch("!" + command, value) is None:
+            return False
+        path = Path(value[1:])
+        # Read immutable helper code, never execute it or read its key file.
+        # This also migrates already deployed pre-fix documents with no ledger.
+        if path.resolve() != path or not path.is_file():
+            return False
+        shebang, separator, body = path.read_bytes().partition(b"\n")
+        if not separator or re.fullmatch(
+            ("#!" + store + r"bash-[0-9][A-Za-z0-9.+-]*/bin/bash").encode(), shebang
+        ) is None:
+            return False
+        bodies.append(body)
+    # A bash dependency update is harmless; a changed credential source or
+    # helper implementation requires explicit migration rather than guessing.
+    return bodies[0] == bodies[1]
+
+
 def preserve(name, old, declared):
     new = copy.deepcopy(declared)
     if name == "config.yml":
@@ -149,7 +185,15 @@ def preserve(name, old, declared):
                 for key in ("auth", "oauth"):
                     if previous.get(key) and key not in current:
                         current[key] = copy.deepcopy(previous[key])
-    check_credentials(old, new)
+    checked = old
+    if name == "models.yml" and isinstance(old.get("providers"), dict):
+        checked = copy.deepcopy(old)
+        providers = new.get("providers", {})
+        for provider, previous in checked["providers"].items():
+            current = providers.get(provider) if isinstance(providers, dict) else None
+            if same_managed_helper(provider, previous, current):
+                previous["apiKey"] = current["apiKey"]
+    check_credentials(checked, new)
     return new
 
 

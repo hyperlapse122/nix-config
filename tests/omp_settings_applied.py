@@ -19,6 +19,7 @@ import yaml
 RECONCILER, OMP = sys.argv[1:3]
 del sys.argv[1:3]
 ACTIVATIONS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else []
+HELPERS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {}
 
 
 class Restoration(unittest.TestCase):
@@ -146,6 +147,39 @@ class Restoration(unittest.TestCase):
                 self.assertEqual(json.loads(path.read_text()), value)
                 self.assertFalse((self.agent / "config.yml").exists())
                 path.unlink()
+
+    def test_managed_provider_helpers_upgrade_and_rollback_without_a_ledger(self):
+        self.assertTrue(HELPERS, "no immutable helper generations to verify")
+        for generation in ("previous", "current", "previous"):
+            self.document["models.yml"] = {"providers": {
+                name: {"baseUrl": endpoint, "apiKey": f"!{HELPERS[generation]}/bin/omp-{name}-key",
+                       "models": [], "modelOverrides": {generation: {"name": generation}}}
+                for name, endpoint in (("synthetic", "https://api.synthetic.new/openai/v1"),
+                                       ("openrouter", "https://openrouter.ai/api/v1"))
+            }}
+            self.apply()
+            self.assertEqual(self.read("models.yml"), self.document["models.yml"])
+
+        declared = copy.deepcopy(self.document["models.yml"])
+        for name, provider in self.document["models.yml"]["providers"].items():
+            provider["apiKey"] = f"!{HELPERS['current']}/bin/omp-{name}-key"
+        bindings = ["FAKE_SECRET", "!printf FAKE_SECRET",
+                    f"!{HELPERS['unknown']}/bin/omp-synthetic-key",
+                    f"!{HELPERS['current']}/bin/omp-openrouter-key",
+                    f"!{HELPERS['current']}/bin/omp-synthetic-key --extra"]
+        cases = [{"apiKey": value} for value in bindings]
+        cases += [{"baseUrl": "https://other.example"}, {"api": "different-api"}]
+        # Even a recognized helper cannot hide an unrelated credential change.
+        cases += [{"headers": {"Authorization": "FAKE_SECRET"}}]
+        for changes in cases:
+            with self.subTest(changes=changes):
+                old = copy.deepcopy(declared)
+                old["providers"]["synthetic"].update(changes)
+                (self.agent / "models.yml").write_text(json.dumps(old))
+                (self.agent / "config.yml").write_text("startup: {checkUpdate: true}")
+                before = {name: (self.agent / name).read_bytes() for name in self.document}
+                self.apply(success=False)
+                self.assertEqual({name: (self.agent / name).read_bytes() for name in before}, before)
 
     def test_settings_symlink_cannot_replace_profile_or_auth_state(self):
         profile = self.home / ".omp/profiles/work/agent/config.yml"

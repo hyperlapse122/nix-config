@@ -46,6 +46,24 @@ let
         ".pi/agent/skills/test-audit"
       ]
   );
+  # Real immutable package paths exercise migration without an ownership ledger.
+  previousHelpers = pkgs.runCommand "omp-18.12.5" { } ''
+    mkdir -p $out/bin
+    cp ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp-*-key $out/bin/
+  '';
+  unknownHelpers = pkgs.runCommand "omp-18.12.4" { } ''
+    mkdir -p $out/bin
+    cp ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp-synthetic-key $out/bin/
+    chmod u+w $out/bin/omp-synthetic-key
+    printf '\necho FAKE_SECRET\n' >> $out/bin/omp-synthetic-key
+  '';
+  helpers = pkgs.writeText "omp-helper-generations.json" (
+    builtins.toJSON {
+      previous = toString previousHelpers;
+      current = toString self.packages.${pkgs.stdenv.hostPlatform.system}.omp;
+      unknown = toString unknownHelpers;
+    }
+  );
 in
 pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
   ${lib.optionalString (!pkgs.stdenv.hostPlatform.isDarwin) configurations.userGuard}
@@ -54,7 +72,7 @@ pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
   ${tools.ompConfigPython}/bin/python3 ${./omp_settings_applied.py} \
     ${tools.ompConfigReconcile}/bin/omp-config-reconcile \
     ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp \
-    ${activations}
+    ${activations} ${helpers}
   ${tools.ompConfigPython}/bin/python3 ${./agent-retirement.py} ${activations} ${retiredFiles}
   touch $out
 ''

@@ -106,7 +106,20 @@ if os.environ['ACTIVATION_MODE'] == 'settings':
         assert len(calls) == 1, 'activation did not execute exactly one merger'
         args = calls[0]['args']
         assert args[args.index('--settings') + 1] == str(target), 'wrong activation destination'
-        assert json.loads(Path(args[args.index('--declared') + 1]).read_text()) == declared, 'wrong activation declaration'
+        delivered = json.loads(Path(args[args.index('--declared') + 1]).read_text())
+        assert {key: value for key, value in delivered.items() if key != 'ownEntries'} == {
+            key: value for key, value in declared.items() if key != 'ownEntries'
+        }, 'wrong activation declaration'
+        expected_entries = declared.get('ownEntries', [])
+        delivered_entries = delivered.get('ownEntries', [])
+        # Entry contracts may cover only independently specified fields; runtime
+        # command owners check arguments without pinning generated store names.
+        assert len(delivered_entries) == len(expected_entries), 'wrong owned declaration entries'
+        for row, expected in zip(delivered_entries, expected_entries):
+            assert row['path'] == expected['path'], 'wrong owned declaration path'
+            for key, value in expected['entries'].items():
+                assert_types(row['entries'][key], value)
+                assert row['entries'][key] == value, 'wrong owned declaration value: ' + key
         if toml:
             assert args[args.index('--format') + 1] == 'toml'
         applied_bytes = target.read_bytes()
@@ -124,6 +137,11 @@ if os.environ['ACTIVATION_MODE'] == 'settings':
             value = value_at(actual, row['path'])
             assert_types(value, row['value'])
             assert value == row['value'], 'activation did not reassert nested setting'
+        for row in expected_entries:
+            entries = value_at(actual, row['path'])
+            for key, value in row['entries'].items():
+                assert_types(entries[key], value)
+                assert entries[key] == value, 'activation did not reassert owned entry: ' + key
         for key in declared.get('remove', []):
             assert key not in actual, 'activation did not retire ' + key
         for path in contract.get('preservePaths', []):

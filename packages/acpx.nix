@@ -1,4 +1,3 @@
-# Shared CE ACP client; checkout-authored agent overrides remain disabled.
 { pkgs }:
 
 let

@@ -11,8 +11,8 @@
 # - `roles`: each role a consumer reads from the model, with the effort that
 #   role runs at. An entry no consumer reads a role from carries
 #   `roles = { }`. These models offer no `medium` effort.
-# - `defaultEffort`: the reasoning effort a session outside T3 Code runs the
-#   model at as-is.
+# - `defaultEffort`: the reasoning effort used when this entry supplies the
+#   T3 OMP API startup selection.
 #
 # The DeepSeek `id` pins one dated build and moves only when the user changes
 # it after a reconcile issue reports a newer one.

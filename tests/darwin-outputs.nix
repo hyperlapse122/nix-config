@@ -25,6 +25,7 @@
     one; activation imports pinentry_mac's defaults with UseKeychain false;
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
+  - installed OMP credential helpers read the user's secret state directory;
   - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
     packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
     defines and invokes seed_acp_token so the sign-in seeding is present;
@@ -130,6 +131,7 @@ let
       config = entry.host.config;
       user = config.home-manager.users.${config.my.user.name};
       generation = user.home.activationPackage;
+      state = user.my.secrets.stateDir;
       system = entry.host.system;
       t3Desktop = lib.findFirst (p: (p.pname or "") == "t3code-desktop") null user.home.packages;
       production = if entry.bootstrap then "0" else "1";
@@ -295,6 +297,13 @@ let
         /nix/store/*-nr-darwin-*) ;;
         *) bad "nr on PATH is not nr-darwin" ;;
       esac
+
+      if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/synthetic_api_key'"} "$gen/home-path/bin/omp-synthetic-key"; then
+        bad "OMP's installed key helper does not read ${state}/synthetic_api_key"
+      fi
+      if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} "$gen/home-path/bin/omp-openrouter-key"; then
+        bad "OMP's installed OpenRouter key helper does not read ${state}/openrouter_api_key"
+      fi
 
       # Compound Engineering's Antigravity route takes the helper from the
       # directory agy_acp_server.par is found in. The macOS .par finds its CA
