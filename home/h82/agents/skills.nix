@@ -5,7 +5,6 @@
   ...
 }:
 let
-  # OMP owns one aggregate root below. These harnesses keep per-skill links.
   # Each root is a directory one harness reads skills from. Claude Code reads
   # ~/.claude/skills. The Antigravity CLI and T3 Code's Antigravity instances
   # read ~/.gemini/antigravity-cli/skills; not ~/.gemini/config/skills, which

@@ -95,6 +95,7 @@ let
   # GitHub releases API. Its network call goes through an overridable command
   # so the sandboxed repository check can drive it with fixtures.
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
+  ompRelease = pythonHelper "omp-release" ../scripts/omp-release;
 
   # Resolves the latest Pi release and its per-platform tarball digests from
   # the GitHub releases API and the release's SHA256SUMS. Its network calls go
@@ -178,6 +179,7 @@ in
     claudeCodeRelease
     miseRelease
     codexRelease
+    ompRelease
     piRelease
     npmRelease
     antigravityCliRelease

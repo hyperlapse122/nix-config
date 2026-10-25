@@ -21,7 +21,7 @@ ASSETS = {
 
 
 class Failure(Exception):
-    """A release that cannot be pinned."""
+    pass
 
 
 def fetch(url, destination):

@@ -206,11 +206,7 @@
         pi-release = agentTools.piRelease;
         pi = import ./packages/pi.nix { inherit pkgs; };
         omp = import ./packages/omp.nix { inherit pkgs; };
-        omp-release = pkgs.writeScriptBin "omp-release" (
-          builtins.replaceStrings [ "#!/usr/bin/env python3" ] [ "#!${pkgs.python3}/bin/python3" ] (
-            builtins.readFile ./scripts/omp-release
-          )
-        );
+        omp-release = agentTools.ompRelease;
         npm-release = agentTools.npmRelease;
         pi-acp = import ./packages/pi-acp.nix { inherit pkgs; };
         acpx = import ./packages/acpx.nix { inherit pkgs; };

@@ -103,7 +103,6 @@ def put(document, dotted, value):
 
 
 def check_credentials(old, new):
-    """Refuse credential loss, including unrecognized extension credentials."""
     if isinstance(old, dict):
         for key, value in old.items():
             replacement = new.get(key) if isinstance(new, dict) else None
