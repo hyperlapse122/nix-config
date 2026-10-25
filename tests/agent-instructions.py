@@ -193,11 +193,17 @@ POLICIES = {
         "Use the skill's `CAMPAIGN.md` only when the user asks to prune a whole subsystem's tests.",
     ],
     "Review findings": [
-        "Apply every finding that a review, verification, or check step of any Compound Engineering skill reports about the work the workflow produces or changes, such as `ce-code-review`, `ce-simplify-code`, and `ce-doc-review`, in the same change, whatever its severity, confidence, or list, including testing gaps and residual risks.",
-        "A fix that reaches outside the diff or the change's scope, such as existing behavior or helpers the change did not touch, is made in the same change.",
-        "Leave a finding unapplied only in these cases: you verified it is wrong, quoting the evidence; every fix for it would weaken a safety check; the user declined its fix when asked; its fix would reverse a decision the user made and no person is present to ask; or no change in this repository can fix it.",
+        "Assess every finding that a review, verification, or check step of any Compound Engineering skill reports about the work the workflow produces or changes, including testing gaps and residual risks.",
+        "Apply substantiated defects and requirement violations in the same change, regardless of severity, confidence labels, or which list contains them.",
+        "Reject a finding when evidence shows its facts are wrong, it requires assumptions outside supported behavior, or it depends on a speculative failure chain without a credible execution path.",
+        "Reject preference-only suggestions with no basis in project rules, clarity, or maintainability, and refactoring suggestions with no concrete benefit.",
+        "Reject added complexity for a vanishingly unlikely edge case only when the expected harm does not justify the implementation and maintenance cost; record the failure scenario, likelihood evidence, impact, and cost.",
+        "Rarity alone does not justify rejecting a credible security or data-loss defect, and a reproducer is not required when code analysis establishes the failure path.",
+        "Investigate uncertain claims before deciding; lack of evidence is not proof that a defect is impossible.",
+        "Assess findings yourself without asking for routine approval to reject them, and record each rejection with its evidence or concrete reason.",
+        "Leave a substantiated finding unapplied when every fix would weaken a safety check, the user declined its fix, its fix awaits a user decision, or no change in this repository can fix it.",
         "A fix that would reverse a decision the user made, a brainstorm Scope Boundary or `session-settled` entry included, is asked in every run with a person present, autonomous runs included, and listed as `awaits your decision` in a run with no person present.",
-        "When the user asked only for a review, report the findings and ask once whether to apply them all.",
+        "When the user asked only for a review, report the assessed findings and ask once whether to apply all substantiated fixes.",
     ],
 }
 REMOVED = re.compile(
@@ -395,13 +401,15 @@ def self_test(template):
 # The glossary has different prose, so only its scope and exception boundaries
 # are pinned here, rather than its entire explanation.
 REPOSITORY_SENTENCES = {
-    "AGENTS.md": [POLICIES["Review findings"][i] for i in (0, 2, 3)],
+    "AGENTS.md": POLICIES["Review findings"],
     "CONCEPTS.md": [
         "**Review finding** — any item a review, verification, or check step of a Compound Engineering workflow reports about the work that workflow produces or changes, whatever its severity, its confidence, or the list the step files it in.",
-        "Here every one of those items is a finding and is applied in the same change.",
-        "The only exceptions are an item verified to be wrong, one whose fix would weaken a safety check, one whose fix the user declined when asked, one whose fix would reverse a decision the user made in a run with no person present to ask, and one that no change in the repository can fix.",
+        "Every item is assessed; substantiated defects and requirement violations are fixed in the same change.",
+        "Agents may reject factually wrong claims, unsupported scenarios, preference-only suggestions, refactors without concrete benefit, and edge-case complexity whose expected benefit does not justify its cost.",
+        "Rejections require evidence or a concrete reason; rarity alone does not dismiss credible security or data-loss defects, and code analysis can establish a defect without a reproducer.",
+        "A substantiated finding can remain unapplied when every fix would weaken a safety check, the user declined it, a user decision is pending, or no repository change can fix it.",
         "A fix that would reverse a decision the user already made is asked about whenever a person is present, autonomous runs included, and is left unapplied as awaiting that decision only when nobody is there to ask; any other fix that needs a decision only the user can make is asked about in an interactive run, and an autonomous run applies the recommended fix and reports it.",
-        "Each item left unapplied is reported under the tag of the exception it falls under: verified wrong, weakens a safety check, declined by you, awaits your decision, or no fix in this repository.",
+        "The shared instructions define the disposition tags for unapplied findings; each entry records its evidence or reason.",
     ],
 }
 
