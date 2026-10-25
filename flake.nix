@@ -133,7 +133,22 @@
     {
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
-      checks.aarch64-linux = fixtureChecksFor "aarch64-linux";
+      checks.aarch64-linux = fixtureChecksFor "aarch64-linux" // {
+        omp-package = import ./tests/omp-package.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+        };
+      };
+      packages.aarch64-linux.omp = import ./packages/omp.nix {
+        pkgs = import nixpkgs { system = "aarch64-linux"; };
+      };
+      packages.aarch64-darwin.omp = import ./packages/omp.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+      };
+      checks.aarch64-darwin.omp-package = import ./tests/omp-package.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
       # Reads what the macOS fixture hosts materialize, so building it builds
       # both fixture systems; only a macOS builder can.
       checks.aarch64-darwin.darwin-outputs = import ./tests/darwin-outputs.nix {
@@ -171,6 +186,12 @@
         codex = import ./packages/codex.nix { inherit pkgs; };
         pi-release = agentTools.piRelease;
         pi = import ./packages/pi.nix { inherit pkgs; };
+        omp = import ./packages/omp.nix { inherit pkgs; };
+        omp-release = pkgs.writeScriptBin "omp-release" (
+          builtins.replaceStrings [ "#!/usr/bin/env python3" ] [ "#!${pkgs.python3}/bin/python3" ] (
+            builtins.readFile ./scripts/omp-release
+          )
+        );
         npm-release = agentTools.npmRelease;
         pi-acp = import ./packages/pi-acp.nix { inherit pkgs; };
         acpx = import ./packages/acpx.nix { inherit pkgs; };
@@ -370,6 +391,7 @@
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
           codex-package = import ./tests/codex.nix { inherit pkgs self; };
+          omp-package = import ./tests/omp-package.nix { inherit pkgs self; };
           codex-settings = import ./tests/codex-settings.nix { inherit pkgs self; };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
@@ -604,6 +626,7 @@
             pythonScriptCheck "codex-release" ./scripts/codex-release
               ./tests/test_codex_release.py;
           pi-release = pythonScriptCheck "pi-release" ./scripts/pi-release ./tests/test_pi_release.py;
+          omp-release = pythonScriptCheck "omp-release" ./scripts/omp-release ./tests/test_omp_release.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           antigravity-cli-release =
             pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
