@@ -16,7 +16,7 @@ PROFILES = {
     "P1": ("gpt-6-luna", "low", "Standard"),
     "P2": ("gpt-6-luna", "medium", "Standard"),
     "P3": ("gpt-6.1-sol", "medium", "Standard"),
-    "P4": ("gpt-6.1-sol", "high", "Standard"),
+    "P4": ("gpt-6.1-sol", "medium", "Standard"),
     "P5": ("gpt-6-astra", "low", "Standard"),
     "P6": ("gpt-6-astra", "medium", "Standard"),
     "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
@@ -71,7 +71,7 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 | P1 | Exact lookup, fixed-field extraction, status | `gpt-6-luna` | `low` | Standard |
 | P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `medium` | Standard |
 | P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `medium` | Standard |
-| P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `high` | Standard |
+| P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `medium` | Standard |
 | P5 | Root orchestration, delegation, progress | `gpt-6-astra` | `low` | Standard |
 | P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6-astra` | `medium` | Standard |
 | P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
