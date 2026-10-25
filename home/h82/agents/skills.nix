@@ -1,5 +1,11 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
+  # OMP owns one aggregate root below. These harnesses keep per-skill links.
   # Each root is a directory one harness reads skills from. Claude Code reads
   # ~/.claude/skills. The Antigravity CLI and T3 Code's Antigravity instances
   # read ~/.gemini/antigravity-cli/skills; not ~/.gemini/config/skills, which
@@ -27,7 +33,14 @@ in
   # One link per root and skill, to the skill directory itself: Codex skips a
   # SKILL.md that is a symlink, so the files inside must not be linked one by
   # one with `recursive = true`.
-  config.home.file = lib.listToAttrs (
+  config.home.file = {
+    # Own the whole native root so removed contributed skills stop loading.
+    # OMP's separate managed-skills history remains inactive and untouched.
+    ".omp/agent/skills".source = pkgs.linkFarm "omp-contributed-skills" (
+      lib.mapAttrsToList (name: path: { inherit name path; }) config.my.agentSkills
+    );
+  }
+  // lib.listToAttrs (
     lib.concatMap (
       root:
       lib.mapAttrsToList (

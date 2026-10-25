@@ -23,6 +23,19 @@ let
     )
   );
   omp = self.packages.${pkgs.stdenv.hostPlatform.system}.omp;
+  ompCe = import ../home/h82/agents/omp-ce.nix {
+    inherit pkgs;
+    src = self.inputs.compound-engineering-plugin;
+  };
+  contexts = pkgs.writeText "omp-context-deliveries.json" (
+    builtins.toJSON (
+      map (user: {
+        home = user.home.homeDirectory;
+        files = toString user.home-files;
+        documents = pkgs.lib.mapAttrs (_: path: toString path) user.my.omp.documents;
+      }) users
+    )
+  );
   keyProbe = import ../packages/omp.nix {
     inherit pkgs;
     syntheticKeyFile = toString (pkgs.writeText "omp-fake-key" "sk-fake-file\n");
@@ -35,11 +48,14 @@ pkgs.runCommand "omp-models-load-tests"
       pkgs.python3
       pkgs.bash
       pkgs.openssl
+      pkgs.gitMinimal
+      pkgs.jq
     ];
   }
   ''
     python3 -I ${./omp_models_load.py} ${omp}/bin/omp ${documents} \
       ${../home/h82/agents/synthetic-catalog.json} ${../home/h82/agents/openrouter-catalog.json} ${keyProbe}/bin
-    python3 -I ${./omp-headless.py} ${omp}/bin/omp ${documents} ${keyProbe}/bin/omp-openrouter-key
+    python3 -I ${./omp-headless.py} ${omp}/bin/omp ${documents} ${keyProbe}/bin/omp-openrouter-key ${contexts} ${ompCe}
+    python3 -I ${./omp-ce-review.py} ${ompCe}
     touch $out
   ''

@@ -18,6 +18,7 @@ let
   esc = value: lib.escapeShellArg (toString value);
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
   deliveryPaths = [
+    ".omp/agent/AGENTS.md"
     ".pi/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"

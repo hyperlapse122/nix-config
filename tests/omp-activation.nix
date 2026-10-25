@@ -66,8 +66,11 @@ pkgs.testers.nixosTest {
         if quiet:
             expected["startup"]["quiet"] = True
         else:
-            expected["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3"}
+            expected["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3", "web": "web/synthetic"}
             expected["defaultThinkingLevel"] = "max"
+            expected["skills"] = {"customDirectories": []}
+            expected["contextFiles"] = {"extra": ["OMP.md"]}
+            expected["task"] = {"structured": True}
         assert value == expected, value
         assert machine.succeed("stat -c '%a:%U' " + config).strip() == "600:tester"
         assert machine.succeed("cat " + state) == "FAKE_STATE"

@@ -23,6 +23,10 @@ let
 in
 {
   home.file = {
+    agent-instructions-omp = {
+      target = ".omp/agent/AGENTS.md";
+      source = instructions;
+    };
     agent-instructions-pi = {
       target = ".pi/agent/AGENTS.md";
       source = instructions;

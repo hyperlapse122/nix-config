@@ -22,6 +22,12 @@ let
 in
 {
   options.my.omp = {
+    skillDirectories = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      internal = true;
+      description = "Complete plugin skill trees discovered by native OMP.";
+    };
     documents = lib.mkOption {
       type = lib.types.attrsOf lib.types.path;
       description = "Complete common OMP documents restored on apply; state stays writable and separate.";
@@ -46,6 +52,10 @@ in
             marketplace.autoUpdate = "off";
             modelRoles.default = "synthetic/${defaultModel.id}";
             defaultThinkingLevel = defaultModel.defaultEffort;
+            modelRoles.web = "web/synthetic";
+            skills.customDirectories = config.my.omp.skillDirectories;
+            contextFiles.extra = [ "OMP.md" ];
+            task.structured = true;
           }
         )
       );
@@ -54,6 +64,7 @@ in
     };
 
     home.packages = [ omp ];
+    home.file.".omp/agent/OMP.md".source = ./instructions/omp.md;
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;
     # the system hook covers NixOS even when its home generation is unchanged.
