@@ -5538,9 +5538,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.000000202",
-        "completion": "0.000016",
-        "input_cache_read": "0.000000192"
+        "prompt": "0.0000001814",
+        "completion": "0.0000085226",
+        "input_cache_read": "0.00000018"
       },
       "reasoning": {
         "mandatory": false,
@@ -13235,9 +13235,9 @@
         "max_completion_tokens": 943718
       },
       "pricing": {
-        "prompt": "0.000000202",
-        "completion": "0.000016",
-        "input_cache_read": "0.000000192"
+        "prompt": "0.0000001814",
+        "completion": "0.0000085226",
+        "input_cache_read": "0.00000018"
       },
       "reasoning": {
         "mandatory": false,
