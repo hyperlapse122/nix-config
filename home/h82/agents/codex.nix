@@ -45,7 +45,7 @@ let
         "agents"
         "default_subagent_reasoning_effort"
       ];
-      value = "medium";
+      value = "low";
     }
     {
       path = [ "check_for_update_on_startup" ];

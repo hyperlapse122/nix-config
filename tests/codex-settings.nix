@@ -65,7 +65,7 @@ let
           "agents"
           "default_subagent_reasoning_effort"
         ];
-        value = "medium";
+        value = "low";
       }
       {
         path = [ "check_for_update_on_startup" ];
@@ -106,7 +106,7 @@ let
     unrelated = "keep me"
     [agents]
     default_subagent_model = "old-child"
-    default_subagent_reasoning_effort = "low"
+    default_subagent_reasoning_effort = "medium"
     max_threads = 3
     [projects."/scratch/project"]
     trust_level = "trusted"
@@ -120,7 +120,7 @@ let
     unrelated = "keep me";
     agents = {
       default_subagent_model = "gpt-6.1-sol";
-      default_subagent_reasoning_effort = "medium";
+      default_subagent_reasoning_effort = "low";
       max_threads = 3;
     };
     projects."/scratch/project".trust_level = "trusted";
