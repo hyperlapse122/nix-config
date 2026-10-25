@@ -6,6 +6,8 @@
 }:
 let
   tools = import ../../../packages/agent-tools.nix { inherit pkgs; };
+  syntheticModels = import ./synthetic-models.nix;
+  defaultModel = syntheticModels.${syntheticModels.defaultModel};
   keyDirectory =
     if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
   omp = import ../../../packages/omp.nix {
@@ -42,8 +44,8 @@ in
             disabledProviders = [ "omp-managed" ];
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
-            modelRoles.default = "synthetic/hf:zai-org/GLM-5.3";
-            defaultThinkingLevel = "max";
+            modelRoles.default = "synthetic/${defaultModel.id}";
+            defaultThinkingLevel = defaultModel.defaultEffort;
           }
         )
       );

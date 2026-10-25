@@ -30,7 +30,10 @@ pkgs.testers.nixosTest {
       useGlobalPkgs = true;
       useUserPackages = true;
       users.tester = {
-        imports = [ ../home/h82/agents/omp.nix ];
+        imports = [
+          ../modules/shared/host.nix
+          ../home/h82/agents/omp.nix
+        ];
         home.stateVersion = "26.05";
       };
     };
@@ -62,6 +65,9 @@ pkgs.testers.nixosTest {
                     "disabledProviders": ["omp-managed"]}
         if quiet:
             expected["startup"]["quiet"] = True
+        else:
+            expected["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3"}
+            expected["defaultThinkingLevel"] = "max"
         assert value == expected, value
         assert machine.succeed("stat -c '%a:%U' " + config).strip() == "600:tester"
         assert machine.succeed("cat " + state) == "FAKE_STATE"
