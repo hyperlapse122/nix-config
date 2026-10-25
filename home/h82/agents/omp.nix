@@ -6,6 +6,13 @@
 }:
 let
   tools = import ../../../packages/agent-tools.nix { inherit pkgs; };
+  keyDirectory =
+    if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
+  omp = import ../../../packages/omp.nix {
+    inherit pkgs;
+    syntheticKeyFile = "${keyDirectory}/synthetic_api_key";
+    openrouterKeyFile = "${keyDirectory}/openrouter_api_key";
+  };
   documents = config.my.omp.documents;
   declared = pkgs.writeText "omp-common-documents.json" (
     builtins.toJSON (lib.mapAttrs (_: path: toString path) documents)
@@ -35,14 +42,16 @@ in
             disabledProviders = [ "omp-managed" ];
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
+            modelRoles.default = "synthetic/hf:zai-org/GLM-5.3";
+            defaultThinkingLevel = "max";
           }
         )
       );
-      "models.yml" = lib.mkDefault (pkgs.writeText "omp-models.json" ''{"providers":{}}'');
+      "models.yml" = lib.mkDefault (import ./omp-declarations.nix { inherit pkgs omp; });
       "mcp.json" = lib.mkDefault (pkgs.writeText "omp-mcp.json" ''{"mcpServers":{}}'');
     };
 
-    home.packages = [ (import ../../../packages/omp.nix { inherit pkgs; }) ];
+    home.packages = [ omp ];
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;
     # the system hook covers NixOS even when its home generation is unchanged.

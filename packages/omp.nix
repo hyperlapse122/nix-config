@@ -1,11 +1,20 @@
-{ pkgs }:
+{
+  pkgs,
+  syntheticKeyFile ? "/run/secrets/cli-auth/synthetic_api_key",
+  openrouterKeyFile ? "/run/secrets/cli-auth/openrouter_api_key",
+}:
 
 let
   inherit (pkgs) lib stdenv;
   source = builtins.fromJSON (builtins.readFile ./omp-release.json);
   system = stdenv.hostPlatform.system;
   pin = source.platforms.${system} or (throw "omp: no native release pinned for ${system}");
+  plainPath = path: builtins.match "/[A-Za-z0-9._/+-]+" path != null;
 in
+assert lib.assertMsg (plainPath syntheticKeyFile)
+  "omp: syntheticKeyFile must be a plain absolute path";
+assert lib.assertMsg (plainPath openrouterKeyFile)
+  "omp: openrouterKeyFile must be a plain absolute path";
 stdenv.mkDerivation {
   pname = "omp";
   inherit (source) version;
@@ -30,7 +39,15 @@ stdenv.mkDerivation {
     install -Dm755 $src $out/libexec/omp/omp
     install -Dm755 ${../scripts/omp} $out/bin/omp
     substituteInPlace $out/bin/omp --replace-fail '@OMP@' "$out/libexec/omp/omp"
-    patchShebangs $out/bin/omp
+    install -Dm755 ${../scripts/omp-provider-key} $out/bin/omp-synthetic-key
+    substituteInPlace $out/bin/omp-synthetic-key \
+      --replace-fail '@KEY_VAR@' 'SYNTHETIC_API_KEY' \
+      --replace-fail '@KEY_FILE@' ${lib.escapeShellArg syntheticKeyFile}
+    install -Dm755 ${../scripts/omp-provider-key} $out/bin/omp-openrouter-key
+    substituteInPlace $out/bin/omp-openrouter-key \
+      --replace-fail '@KEY_VAR@' 'OPENROUTER_API_KEY' \
+      --replace-fail '@KEY_FILE@' ${lib.escapeShellArg openrouterKeyFile}
+    patchShebangs $out/bin
     runHook postInstall
   '';
 

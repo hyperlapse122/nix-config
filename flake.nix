@@ -144,6 +144,11 @@
           inherit self;
           fixtures = linuxFixtures;
         };
+        omp-models-load = import ./tests/omp-models-load.nix {
+          pkgs = import nixpkgs { system = "aarch64-linux"; };
+          inherit self;
+          fixtures = linuxFixtures;
+        };
       };
       packages.aarch64-linux.omp = import ./packages/omp.nix {
         pkgs = import nixpkgs { system = "aarch64-linux"; };
@@ -156,6 +161,10 @@
         inherit self;
       };
       checks.aarch64-darwin.omp-settings = import ./tests/omp-settings.nix {
+        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        inherit self;
+      };
+      checks.aarch64-darwin.omp-models-load = import ./tests/omp-models-load.nix {
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
         inherit self;
       };
@@ -403,6 +412,10 @@
           codex-package = import ./tests/codex.nix { inherit pkgs self; };
           omp-package = import ./tests/omp-package.nix { inherit pkgs self; };
           omp-settings = import ./tests/omp-settings.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          omp-models-load = import ./tests/omp-models-load.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
