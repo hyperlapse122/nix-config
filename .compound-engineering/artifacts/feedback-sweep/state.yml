@@ -1,8 +1,4 @@
 schema_version: 1
-lease:
-  writer: "sweep-codex-t3-90dd02f8-20261026"
-  timestamp: "2026-10-26T10:23:16.560816+00:00"
-  ttl_minutes: 60
 sources:
   gh-issues:
     cursor: "2026-10-26T08:18:42Z"
@@ -721,16 +717,13 @@ items:
     origin: "https://github.com/hyperlapse122/nix-config/issues/370"
     updatedAt: "2026-10-26T08:18:42Z"
 last_run:
-  timestamp: "2026-10-26T04:44:11Z"
+  timestamp: "2026-10-26T10:23:27Z"
   outcome: "completed"
-  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26-resweep"
+  writer: "sweep-codex-t3-90dd02f8-20261026"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 0
+      acknowledged: 3
       closed: 0
-      in_plan: 8
-      ingested: 0
-      manual_stuck: 0
-      media_analyzed: 0
-      source_gone: 0
+      ingested: 3
+      recordings_analyzed: 0
