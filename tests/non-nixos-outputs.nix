@@ -28,10 +28,10 @@
   - the system layer manages no file the distribution owns: no user database,
     subordinate id range, login-shell list, or NVIDIA configuration;
   - on fixtures of the builder's own architecture, the materialized system
-    layer runs pcscd with the ccid reader drivers, writes a nix.conf that keeps
-    builds on the nixbld users and trusts only root, and records the host and
-    variant in /etc/nix-config-host. Other architectures are proven by their
-    own build in CI.
+    layer runs pcscd with the ccid reader drivers and a duplicate-free default
+    service PATH, writes a nix.conf that keeps builds on the nixbld users and
+    trusts only root, and records the host and variant in /etc/nix-config-host.
+    Other architectures are proven by their own build in CI.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation.
@@ -244,6 +244,18 @@ let
           dropdir=$(sed -n 's/^Environment="PCSCLITE_HP_DROPDIR=\(.*\)"$/\1/p' "$unit")
           if [ ! -d "$dropdir/ifd-ccid.bundle" ]; then
             ${fail "${entry.name}: pcscd's driver directory holds no ccid bundle"}
+          fi
+          unit_path=$(sed -n 's/^Environment="PATH=\(.*\)"$/\1/p' "$unit")
+          missing_tool=0
+          for tool in mkdir find grep sed systemctl; do
+            if ! (PATH="$unit_path"; command -v "$tool" >/dev/null 2>&1); then
+              missing_tool=1
+            fi
+          done
+          total_entries=$(printf '%s\n' "$unit_path" | tr ':' '\n' | wc -l)
+          unique_entries=$(printf '%s\n' "$unit_path" | tr ':' '\n' | sort -u | wc -l)
+          if [ -z "$unit_path" ] || [ "$missing_tool" != 0 ] || [ "$total_entries" -ne "$unique_entries" ]; then
+            ${fail "${entry.name}: pcscd.service lacks a duplicate-free default service PATH"}
           fi
         fi
         if [ -z "$(jq -r '.["pcscd.socket"].storePath // empty' "$sm/services/services.json")" ]; then

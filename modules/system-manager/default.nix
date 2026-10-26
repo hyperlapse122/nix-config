@@ -25,12 +25,13 @@ in
   # nixpkgs moved the default service PATH into config.systemd.defaultPath,
   # which nixos/lib/systemd-lib.nix reads on every service before
   # system-manager declares it (numtide/system-manager#587). Leave type,
-  # default, and description unset on the option and set the value with
-  # mkDefault so upstream's declaration and list win cleanly once merged.
+  # default, and description unset on the option and set the fallback below
+  # mkOptionDefault (1500) so any upstream default or definition wins cleanly
+  # without duplicate list entries once merged.
   options.systemd.defaultPath = lib.mkOption { };
 
   config = {
-    systemd.defaultPath = lib.mkDefault [
+    systemd.defaultPath = lib.mkOverride 1600 [
       pkgs.coreutils
       pkgs.findutils
       pkgs.gnugrep
