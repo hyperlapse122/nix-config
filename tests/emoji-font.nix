@@ -40,9 +40,8 @@
     they catch Twemoji ordered ahead of a primary font, which `A` cannot.
   - sans-serif resolves `한` to the same font as `A`.
 
-  It cannot see whether a running app draws the glyph in color;
-  docs/verification.md carries that hardware step. Every failure is
-  collected in one build.
+  It cannot see whether a running app draws the glyph in color; confirm that on
+  hardware. Every failure is collected in one build.
 */
 { pkgs, self }:
 let

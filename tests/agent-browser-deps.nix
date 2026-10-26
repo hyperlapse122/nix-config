@@ -29,8 +29,7 @@
   The builder collects every failure instead of exiting at the first, so one
   red build names every missing item across every configuration.
 
-  It cannot see whether Chrome actually launches; docs/verification.md carries
-  that hardware step.
+  It cannot see whether Chrome actually launches; confirm that on hardware.
 */
 { pkgs, self }:
 let

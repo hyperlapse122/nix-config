@@ -554,11 +554,11 @@ pkgs.runCommand "claude-effort-absent-tests"
         }
         END { exit !(count == 1 && anchored == 1) }
       ' "$1"; then
-        echo 'the provisioning guide must state the default-effort release-notes step exactly once as an affirmative sentence' >&2
+        echo 'the repository guidelines must state the default-effort release-notes step exactly once as an affirmative sentence' >&2
         return 1
       fi
     }
-    checkReleaseNotes ${../docs/provisioning.md} || failed=1
+    checkReleaseNotes ${../AGENTS.md} || failed=1
     for mutation in removed negated duplicated moved; do
       sentence=${esc releaseNotesSentence} mutation="$mutation" awk '
         {
@@ -572,10 +572,10 @@ pkgs.runCommand "claude-effort-absent-tests"
           print
         }
         END { if (ENVIRON["mutation"] == "moved") print "\n" ENVIRON["sentence"] }
-      ' ${../docs/provisioning.md} > "$scratch/guide-$mutation-release-notes"
-      if applied "the default-effort release-notes step $mutation" ${../docs/provisioning.md} "$scratch/guide-$mutation-release-notes"; then
+      ' ${../AGENTS.md} > "$scratch/guide-$mutation-release-notes"
+      if applied "the default-effort release-notes step $mutation" ${../AGENTS.md} "$scratch/guide-$mutation-release-notes"; then
         expectFail "the default-effort release-notes step $mutation" \
-          'the provisioning guide must state the default-effort release-notes step exactly once as an affirmative sentence' \
+          'the repository guidelines must state the default-effort release-notes step exactly once as an affirmative sentence' \
           checkReleaseNotes "$scratch/guide-$mutation-release-notes"
       fi
     done

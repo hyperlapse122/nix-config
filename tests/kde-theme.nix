@@ -51,8 +51,8 @@
   value of every copied color entry stay dark, so an activation that forces
   Breeze Light back in fails.
 
-  It cannot see whether a running session switches; docs/verification.md
-  carries the hardware check for that. Every failure is collected in one build.
+  It cannot see whether a running session switches; confirm that on hardware.
+  Every failure is collected in one build.
 */
 { pkgs, self }:
 let

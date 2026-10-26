@@ -6,7 +6,7 @@ This procedure erases the existing operating system and data on the target insta
 
 ## Prepare before erasing the disk
 
-1. Complete [authentication recovery preparation](provisioning.md) on the existing system. Store the public GPG key, encrypted tokens, and per-host age identity encrypted for the YubiKey under `secrets/bootstrap/<host>/` in the repository. Verify decryption.
+1. Complete [bootstrap age preparation](adding-a-host.md#create-bootstrap-age-material) and token encryption (`../secrets/README.md`) on the existing system. Store the public GPG key, encrypted tokens, and per-host age identity encrypted for the YubiKey under `secrets/bootstrap/<host>/` in the repository. Verify decryption.
 2. Push repository changes to the remote and confirm that the installation environment can clone it over HTTPS without SSH authentication. You can also keep a clone on separate media.
 3. Choose a LUKS recovery passphrase. Do not store it in plaintext in the repository or on the target disk. If you will reuse an existing Secure Boot signing bundle, prepare an encrypted external backup.
 4. Prepare a NixOS x86_64 installation USB. If the firmware's current Secure Boot policy does not trust the installation media, temporarily disable Secure Boot. Do not erase all certificates or dbx.
@@ -46,7 +46,7 @@ For the first reboot, keep Secure Boot disabled and enter the LUKS passphrase. V
 
 ## Prepare local decryption and signing keys
 
-On the installed NixOS, fetch the repository again over HTTPS and recover the age identity. This recovery is needed only for initial installation or recovery. See [provisioning](provisioning.md) for what the helper does and the boundary it preserves.
+On the installed NixOS, fetch the repository again over HTTPS and recover the age identity. This recovery is needed only for initial installation or recovery. See `../secrets/README.md` for the pipeline it runs and the boundary it preserves.
 
 ```sh
 ./scripts/recover-age-identity
@@ -54,7 +54,7 @@ On the installed NixOS, fetch the repository again over HTTPS and recover the ag
 
 On the installed system the helper resolves the host from its hostname, which `mkHost` sets to `<host>`. Pass `--host <host>` when running it anywhere else.
 
-Register this card's PIN now so later Git signing does not prompt for it again. See [provisioning](provisioning.md) for the full per-card, multi-serial design. Enter the PIN at the command's prompt, not in its arguments or shell history.
+Register this card's PIN now so later Git signing does not prompt for it again. Three cards carry the same signing key under separate PINs, so Secret Service stores one `gnupg-card-pin` entry per normalized serial and discards only a rejected card's entry (in 1Password > Settings > Developer, also enable the SSH agent and "Integrate with 1Password CLI" once). Enter the PIN at the command's prompt, not in its arguments or shell history.
 
 ```sh
 nix develop
@@ -109,7 +109,7 @@ If the system previously had a separate pcrlock configuration, consult the curre
 
 Reboot to verify automatic unlocking, then confirm that you can also boot with the recovery passphrase. On the production output the passphrase prompt appears on the boot splash, and the boot menu opens only while Space is held at power-on. PCR7 binds to the Secure Boot policy; it does not guarantee the integrity of a particular kernel or root data. Retaining Microsoft certificates also trusts other boot paths signed by those certificates.
 
-After enrollment, encrypt and back up the LUKS header and `/var/lib/sbctl` to external media. A header backup contains the key slots from the time of the backup, so treat old backups as sensitive too. Follow the [recovery guide](recovery.md) and [verification checklist](verification.md).
+After enrollment, encrypt and back up the LUKS header and `/var/lib/sbctl` to external media. A header backup contains the key slots from the time of the backup, so treat old backups as sensitive too. Follow the [recovery guide](recovery.md) and confirm hardware behavior separately from repository builds.
 
 ## Per-host notes
 

@@ -163,7 +163,7 @@ in
         (lib.mkIf (!available) {
           systemd.services.sops-install-secrets.serviceConfig.ExecStart =
             pkgs.writeShellScript "missing-cli-secrets" ''
-              echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See docs/provisioning.md.' >&2
+              echo 'CLI authentication not provisioned: prepare secrets/tokens.yaml and restore the local age identity. See secrets/README.md.' >&2
               exit 1
             '';
         })

@@ -15,6 +15,9 @@ let
   # active Home Manager profile symlink gives GUI tools and non-login services
   # an absolute path without embedding a transient store hash that rollbacks or
   # garbage collection could invalidate.
+  # Retiring sccache requires a removePaths entry for build.rustc-wrapper rather
+  # than dropping this block, or ~/.cargo/config.toml keeps pointing at the
+  # removed binary.
   declared = pkgs.writeText "cargo-declared-settings.json" (
     builtins.toJSON {
       setPaths = [

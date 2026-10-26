@@ -59,7 +59,7 @@ nix develop
   --recipient 621512777E6933FEB4458FDC4945855D4F283F05
 ```
 
-It writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/recipient.txt`, and refuses to overwrite an existing host directory. Do not write either file by hand. [Provisioning](provisioning.md) describes what the helper does with the plaintext.
+It generates the identity in a private runtime directory, verifies GPG round-trip decryption, writes `secrets/bootstrap/<host>/age-key.asc` and `secrets/bootstrap/<host>/recipient.txt`, removes the plaintext, and refuses to overwrite an existing host directory. Do not write either file by hand.
 
 ## Add the recipient to `.sops.yaml` and re-encrypt
 
@@ -115,7 +115,7 @@ nix develop
 
 The recipient output must contain exactly this host's recipient. `ssh.pub` is public metadata for the encrypted source; keep the two files together. Never evaluate or build with temporary plaintext in the checkout. The `desktop-ssh-sources` check verifies encrypted fields, host-only recipients, valid public metadata, and distinct desktop public identities. Source/public correspondence is checked when the real source is provisioned on the target; builds do not decrypt it.
 
-After installation, [desktop provisioning](provisioning.md#ssh-key-on-a-nixos-desktop) creates the passphrase-protected working key through KWallet. Register `ssh.pub` on the required destinations; creating the repository files does not register the key.
+After installation, `desktop-ssh-provision.service` creates the passphrase-protected working key through KWallet (see [desktop SSH recovery](recovery.md#restore-or-rotate-a-desktop-ssh-key)). Register `ssh.pub` on the required destinations; creating the repository files does not register the key.
 
 ## Stage the new files
 
@@ -143,7 +143,7 @@ nix build --no-link .#nixosConfigurations.<host>.config.system.build.toplevel
 nix build --no-link .#nixosConfigurations.<host>-bootstrap.config.system.build.toplevel
 ```
 
-Build every other output too before shipping, using the loop in [verification](verification.md#repository-checks). CI builds every output `nixosConfigurations` lists, so the new host joins its build matrix without a workflow change.
+Build every other output too before shipping, using the host-build loops in `../AGENTS.md`. CI builds every output `nixosConfigurations` lists, so the new host joins its build matrix without a workflow change.
 
 These checks fail when a step above was missed:
 
@@ -154,7 +154,7 @@ These checks fail when a step above was missed:
 
 ## Install
 
-Follow [fresh installation](install.md) with the new host's name. Add a subsection under its per-host notes for anything specific to the machine, such as a secondary disk or firmware quirk, and a matching subsection in [verification](verification.md#per-host-hardware-checks) for the hardware checks it needs.
+Follow [fresh installation](install.md) with the new host's name. Add a subsection under its per-host notes for anything specific to the machine, such as a secondary disk or firmware quirk, and record machine-specific hardware checks separately from build results.
 
 ## Non-NixOS hosts
 
@@ -332,7 +332,7 @@ The steps below run on the target machine, in order. The Ubuntu and Debian comma
    ./scripts/recover-age-identity --user --host <host>
    ```
 
-   It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
+   It verifies the derived public recipient before atomically installing `~/.config/nix-config/age/key.txt` (mode `0600` in a `0700` directory; see `../secrets/README.md`).
 
 8. Apply the production output. It publishes the gh and glab configuration, the tokens, and the SSH key:
 
@@ -340,7 +340,7 @@ The steps below run on the target machine, in order. The Ubuntu and Debian comma
    nr switch
    ```
 
-9. Register the host's SSH public key with GitHub and every server the host must reach; see [provisioning](provisioning.md#ssh-key-on-a-non-nixos-host).
+9. Register the host's SSH public key (`ssh-keygen -y -f ~/.ssh/id_ed25519_nix_config`) as an authentication key on GitHub and in `~/.ssh/authorized_keys` on every server the host must reach.
 
 10. Switch the login shell to the managed zsh. `nr` prints this reminder after each apply until you do:
 

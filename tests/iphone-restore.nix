@@ -24,8 +24,8 @@
     libirecovery that the shipped idevicerestore loads carries it too, so a
     restore of that device gets past "Unable to discover device type".
 
-  It cannot see whether a real device enters DFU mode or restores;
-  docs/verification.md covers that on hardware.
+  It cannot see whether a real device enters DFU mode or restores; confirm that
+  on hardware.
 
   Every /etc lookup carries an `or null` fallback and store paths are
   interpolated only inside the present branch, so a missing entry fails inside
