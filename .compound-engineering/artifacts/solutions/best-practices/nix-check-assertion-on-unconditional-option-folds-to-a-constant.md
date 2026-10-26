@@ -99,4 +99,4 @@ Round 3 is the control: it looks like a pass and is not one. Without reading whe
 
 ## Out of scope
 
-Whether the smart-card daemon actually runs after activation is not a build-time question; `docs/verification.md` carries the hardware checks for the card itself.
+Whether the smart-card daemon actually runs after activation is not a build-time question; confirming card access on the machine stays a hardware check (see `CONCEPTS.md` and `AGENTS.md`).
