@@ -13,14 +13,13 @@
     cleanly without starting a background server.
   - `home.activation.cargoSettings` exists and runs after `installPackages`, so
     a refusal cannot strand `linkGeneration` and `installPackages` behind it.
-  - its script invokes the packaged `agent-settings` merger with `--format toml`
-    and does not swallow its exit status.
-  - `--settings` targets `~/.cargo/config.toml` and `--declared` assigns only
-    `build.rustc-wrapper = "${home.profileDirectory}/bin/sccache"`.
   - executing the activation snippet through `tests/lib/agent-activation.nix`
-    honours `DRY_RUN`, preserves user comments, sibling `[build]` keys, and
-    unowned tables in `~/.cargo/config.toml`, is byte-idempotent on a second
-    run, and propagates merger failures.
+    invokes the packaged `agent-settings` merger with `--format toml` targeting
+    `~/.cargo/config.toml` and `--declared` assigning only
+    `build.rustc-wrapper = "${home.profileDirectory}/bin/sccache"`, honours
+    `DRY_RUN`, preserves user comments, sibling `[build]` keys, and unowned
+    tables, is byte-idempotent on a second run, creates an absent
+    `~/.cargo/config.toml` with mode `0600`, and propagates merger failures.
   - no `home.file` entry targets `.cargo/config.toml`, which Cargo and the user
     own as a writable file.
   - neither `hm-session-vars.sh` nor `.config/environment.d/10-home-manager.conf`
@@ -86,7 +85,6 @@ let
           }
         ];
       };
-      expected = pkgs.writeText "cargo-expected-settings.json" (builtins.toJSON declared);
 
       applied = {
         build = {
@@ -127,45 +125,6 @@ let
           echo 'home.activation.cargoSettings must run after installPackages on ${hostName}' >&2
           failed=1
         fi
-
-        if ! printf '%s' ${esc script} | grep -F '/bin/agent-settings' >/dev/null; then
-          echo 'the cargoSettings activation script must invoke the packaged merger on ${hostName}' >&2
-          failed=1
-        fi
-
-        formatArg=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--format[[:space:]]+[^[:space:]]+' \
-          | sed -n '1p' | awk '{print $2}' || true)
-        if [ "$formatArg" != toml ]; then
-          echo "cargoSettings must run the merger with --format toml on ${hostName}, got: '$formatArg'" >&2
-          failed=1
-        fi
-
-        if printf '%s' ${esc script} | grep -v '^[[:space:]]*#' \
-          | grep -E '(\|\|[[:space:]]*(true|:|echo)|;[[:space:]]*true|set \+e)' >/dev/null; then
-          echo 'the cargoSettings activation script must not swallow the merger exit status on ${hostName}' >&2
-          failed=1
-        fi
-
-        settingsArg=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--settings[[:space:]]+[^[:space:]]+' \
-          | sed -n '1p' | awk '{print $2}' || true)
-        if [ "$settingsArg" != ${esc "${homeDirectory}/${settingsFile}"} ]; then
-          echo "cargoSettings must point the merger at ~/${settingsFile} on ${hostName}, got: '$settingsArg'" >&2
-          failed=1
-        fi
-
-        declaredPath=$(printf '%s' ${esc script} \
-          | tr '\n' ' ' | grep -oE -- '--declared[[:space:]]+/nix/store/[^[:space:]]+' \
-          | sed -n '1p' | awk '{print $2}' || true)
-        if [ -z "$declaredPath" ]; then
-          echo 'the cargoSettings activation script passes no declared-settings file on ${hostName}' >&2
-          failed=1
-        elif ! diff -u "$declaredPath" ${expected} >/dev/null; then
-          echo 'the declared keys cargoSettings renders drifted from the asserted values on ${hostName}' >&2
-          failed=1
-        fi
-
         ${executeActivation {
           inherit script;
           home = homeDirectory;
@@ -208,7 +167,7 @@ let
       fi
     '';
 in
-pkgs.runCommand "cargo-settings-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
+pkgs.runCommand "cargo-settings-tests" { } ''
   ${configurations.userGuard}
   failed=0
 
