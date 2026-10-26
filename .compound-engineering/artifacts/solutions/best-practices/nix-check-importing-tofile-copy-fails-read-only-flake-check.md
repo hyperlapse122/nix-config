@@ -2,7 +2,7 @@
 title: "A check that imports a builtins.toFile copy passes locally and fails nix flake check --no-build"
 date: "2026-10-19"
 category: best-practices
-module: NixOS flake checks (tests/antigravity-acp-path-profiles.nix, tests/t3code-traits.nix)
+module: "NixOS flake checks (read-only flake-check evaluation, tests/t3code-traits.nix)"
 problem_type: best_practice
 component: testing_framework
 severity: high
@@ -28,7 +28,7 @@ tags:
 
 ## Context
 
-To prove which pin file a package reads even when both pins name the same release, two checks evaluated a rewritten copy of the source. They read `packages/antigravity-acp-path.nix` (and `home/h82/t3code.nix`), pointed its sibling paths at synthetic pin files with `builtins.replaceStrings`, wrote the result with `builtins.toFile`, and imported it. Every local `nix flake check` and `nix build .#checks...` passed. CI's `flake-check` job, which runs `nix flake check --no-build` (`.github/workflows/check.yml`), failed at evaluation:
+To prove which pin file a package reads even when both pins name the same release, two checks evaluated a rewritten copy of the source. They read `packages/antigravity-acp-path.nix` (and `home/h82/t3code.nix`), pointed its sibling paths at synthetic pin files with `builtins.replaceStrings`, wrote the result with `builtins.toFile`, and imported it. (`packages/antigravity-acp-path.nix`, `packages/antigravity-acp.nix`, `tests/antigravity-acp-path-profiles.nix`, and `home/h82/t3code.nix`'s Antigravity pin check were later removed when standalone Antigravity ACP packaging was retired; `home/h82/t3code.nix`, `tests/t3code-traits.nix`, and CI's `nix flake check --no-build` gate remain.) Every local `nix flake check` and `nix build .#checks...` passed. CI's `flake-check` job, which runs `nix flake check --no-build` (`.github/workflows/check.yml`), failed at evaluation:
 
 ```text
 … while realising the context of path '/nix/store/h99aaqqs6ip7vsgr6f55cb9ajn1qp5h5-antigravity-acp-path.nix'
@@ -41,7 +41,7 @@ error: path '/nix/store/h99aaqqs6ip7vsgr6f55cb9ajn1qp5h5-antigravity-acp-path.ni
 
 - Never `import` (or pass to the module system) a path produced by `builtins.toFile` in anything a flake check evaluates. It works only when the store already holds that exact path.
 - A symlinked fixture directory does not work either: Nix resolves `./sibling` paths inside an imported file against the symlink's target, so the real siblings load, not the fixtures.
-- When the question is which file a source reads, check the source text with `builtins.readFile` and `lib.hasInfix`, and fail inside the builder. Require the expected read expression and reject any mention of the wrong file:
+- When the question is which file a source reads, check the source text with `builtins.readFile` and `lib.hasInfix`, and fail inside the builder. Require the expected read expression and reject any mention of the wrong file (shown below on the historical `antigravity-acp-path.nix` check):
 
 ```nix
 pathPackageSource = builtins.readFile ../packages/antigravity-acp-path.nix;
@@ -63,7 +63,7 @@ Any check that builds Nix source at evaluation time and then evaluates it. `buil
 
 ## Examples
 
-Before (`tests/antigravity-acp-path-profiles.nix`, passed locally, failed in CI):
+Before (historical `tests/antigravity-acp-path-profiles.nix`, passed locally, failed in CI):
 
 ```nix
 syntheticPathPackage = import (builtins.toFile "antigravity-acp-path.nix" (
