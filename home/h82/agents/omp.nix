@@ -6,6 +6,7 @@
 }:
 let
   tools = import ../../../packages/agent-tools.nix { inherit pkgs; };
+  catalogs = import ./omp-model-catalogs.nix;
   keyDirectory =
     if config.my.kind != "nixos" then config.my.secrets.stateDir else "/run/secrets/cli-auth";
   omp = import ../../../packages/omp.nix {
@@ -46,6 +47,7 @@ in
             memory.backend = "off";
             autolearn.enabled = false;
             disabledProviders = [ "omp-managed" ];
+            enabledModels = catalogs.patterns;
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
             modelRoles.default = "openai-codex/gpt-6-astra";

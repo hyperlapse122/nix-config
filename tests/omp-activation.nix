@@ -1,5 +1,20 @@
 { pkgs, inputs }:
 let
+  openrouter = builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json);
+  expectedPatterns = builtins.toJSON (
+    [
+      "synthetic/**"
+      "google-antigravity/gemini-*"
+      "google-antigravity/claude-*"
+      "google-antigravity/gpt-*"
+    ]
+    ++ map (row: "openrouter/${row.id}") (
+      builtins.filter (
+        row: builtins.match "^openrouter/.*$" row.id != null && row.id != "openrouter/bodybuilder"
+      ) openrouter.data
+    )
+    ++ [ "openai-codex/*" ]
+  );
   changed = pkgs.writeText "omp-changed-config.json" (
     builtins.toJSON {
       memory.backend = "off";
@@ -66,6 +81,7 @@ pkgs.testers.nixosTest {
         if quiet:
             expected["startup"]["quiet"] = True
         else:
+            expected["enabledModels"] = json.loads(${pkgs.lib.escapeShellArg expectedPatterns})
             expected["modelRoles"] = {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}
             expected["defaultThinkingLevel"] = "low"
             expected["skills"] = {"customDirectories": []}

@@ -72,7 +72,7 @@ pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
   ${tools.ompConfigPython}/bin/python3 ${./omp_settings_applied.py} \
     ${tools.ompConfigReconcile}/bin/omp-config-reconcile \
     ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp \
-    ${activations} ${helpers}
+    ${activations} ${helpers} ${../home/h82/agents/openrouter-catalog.json}
   ${tools.ompConfigPython}/bin/python3 ${./agent-retirement.py} ${activations} ${retiredFiles}
   touch $out
 ''

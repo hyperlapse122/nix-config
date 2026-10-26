@@ -91,6 +91,15 @@ if __name__ == "__main__":
     assert selected["synthetic"]["data"] == [{"id": "unchanged-synthetic"}]
     assert [row["id"] for row in selected["openrouter"]["data"]] == [
         "openrouter/future-model", "openrouter/bodybuilder-new"], "raw-ID regex and exact exclusion"
+    assert selected["patterns"] == [
+        "synthetic/**",
+        "google-antigravity/gemini-*",
+        "google-antigravity/claude-*",
+        "google-antigravity/gpt-*",
+        "openrouter/openrouter/future-model",
+        "openrouter/openrouter/bodybuilder-new",
+        "openai-codex/*",
+    ], selected.get("patterns")
     with tempfile.TemporaryDirectory() as temporary:
         fixture = Path(temporary)
         bundled = subprocess.run([omp, "models", "--json"], cwd=fixture,

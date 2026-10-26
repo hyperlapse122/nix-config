@@ -35,13 +35,7 @@ let
       defaultThinkingLevel = "low";
     }
   );
-  # OMP uses path globs: model IDs themselves contain slashes.
-  ompPatterns = [
-    "synthetic/**"
-    "google-antigravity/**"
-  ]
-  ++ openrouterSelectors
-  ++ [ "openai-codex/*" ];
+  ompPatterns = catalogs.patterns;
   openrouterSelectors = map (row: "openrouter/${row.id}") catalogs.openrouter.data;
   apiSelectors = lib.unique (
     map (row: "synthetic/${row.id}") catalogs.synthetic.data ++ openrouterSelectors
