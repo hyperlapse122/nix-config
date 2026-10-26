@@ -23,7 +23,7 @@ let
   declaredPaths = [
     {
       path = [ "model" ];
-      value = "gpt-6-astra";
+      value = "gpt-6.1-sol";
     }
     {
       path = [ "model_reasoning_effort" ];

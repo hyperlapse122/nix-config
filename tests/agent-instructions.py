@@ -17,8 +17,8 @@ PROFILES = {
     "P2": ("gpt-6-luna", "low", "Fast"),
     "P3": ("gpt-6.1-sol", "low", "Standard"),
     "P4": ("gpt-6.1-sol", "medium", "Standard"),
-    "P5": ("gpt-6.1-sol", "medium", "Standard"),
-    "P6": ("gpt-6.1-sol", "high", "Standard"),
+    "P5": ("gpt-6.1-sol", "low", "Standard"),
+    "P6": ("gpt-6.1-sol", "medium", "Standard"),
     "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
 }
 CODEX_SENTENCES = [
@@ -74,8 +74,8 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 | P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `low` | Fast |
 | P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `low` | Standard |
 | P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `medium` | Standard |
-| P5 | Root orchestration, delegation, progress | `gpt-6.1-sol` | `medium` | Standard |
-| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6.1-sol` | `high` | Standard |
+| P5 | Root orchestration, delegation, progress | `gpt-6.1-sol` | `low` | Standard |
+| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6.1-sol` | `medium` | Standard |
 | P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
 
 - Resolve current user overrides for their stated task, recipient, fields and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent. A root-only selection does not change child profiles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence. Managed startup defaults are reasserted by apply, not a promise to preserve edits to owned baseline fields.
