@@ -41,6 +41,8 @@
     "fs.inotify.max_user_instances" = 524288;
     "net.ipv4.ip_forward" = 1;
     "net.ipv6.conf.all.forwarding" = 1;
+    "net.core.wmem_default" = 4194304;
+    "net.core.wmem_max" = 4194304;
   };
   programs.zsh.enable = true;
   services.pcscd.enable = true;

@@ -9,9 +9,9 @@
 
   Verifies, on every configuration `tests/lib/configurations.nix` yields,
   production and bootstrap alike:
-  - the rendered file carries the inotify limits and IPv4/IPv6 forwarding
-    lines exactly, matched as whole lines so a longer value cannot satisfy
-    the assertion.
+  - the rendered file carries the inotify limits, network send buffer sizes,
+    and IPv4/IPv6 forwarding lines exactly, matched as whole lines so a longer
+    value cannot satisfy the assertion.
 
   The builder collects every failure before it exits, so one red build names
   every affected configuration.
@@ -25,6 +25,8 @@ let
     "fs.inotify.max_user_instances=524288"
     "net.ipv4.ip_forward=1"
     "net.ipv6.conf.all.forwarding=1"
+    "net.core.wmem_default=4194304"
+    "net.core.wmem_max=4194304"
   ];
 
   assertEntry =
