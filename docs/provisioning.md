@@ -495,3 +495,11 @@ VSCodium owns `~/.config/VSCodium/User/settings.json`, so activation runs the sa
 On macOS, VSCodium's user directory is `~/Library/Application Support/VSCodium/User` instead of `~/.config/VSCodium/User`, for both files.
 
 `~/.config/VSCodium/User/keybindings.json` is a read-only store link, forced over the regular file the legacy dotfiles left there. A keybinding added through VSCodium's keyboard shortcuts editor cannot be saved; add it to `home/h82/dev/vscodium.nix` instead.
+
+## Rust and Cargo
+
+`home/h82/dev/rust.nix` installs `rustup` and `sccache` on every host kind, production and bootstrap alike, and adds `~/.cargo/bin` to the user session `PATH`.
+
+Cargo and the user share `~/.cargo/config.toml`, so Home Manager activation runs `agent-settings --format toml` after `installPackages` instead of placing a read-only store symlink there. Activation sets `build.rustc-wrapper` to the active Home Manager profile path (`/etc/profiles/per-user/<user>/bin/sccache` on NixOS and macOS, `~/.nix-profile/bin/sccache` on standalone non-NixOS Linux) and leaves comments, sibling `[build]` keys, registries, aliases, and other user tables untouched. On NixOS, a modified value returns to the declared path only when a rebuild produces a new Home Manager generation; on non-NixOS Linux and macOS, every `nr switch` runs activation and reasserts it.
+
+Cargo resolves user configuration at the lowest priority, so a repository's `.cargo/config.toml` or an explicit `RUSTC_WRAPPER` override (`RUSTC_WRAPPER=""` disables the wrapper for one command) still wins. Cargo's default incremental compilation and global C/C++ compilers remain untouched: external registry and Git `rlib` dependencies hit `sccache` across worktrees and repositories, `--release` library builds reuse cached artifacts within the same checkout path, and `dev` workspace crates keep Cargo's native incremental compilation. `sccache` starts its idle-exiting local server on demand and stores up to 10 GiB in its upstream platform cache directory (`~/.cache/sccache` on Linux, `~/Library/Caches/Mozilla.sccache` on macOS), with no persistent service unit or remote storage backend.
