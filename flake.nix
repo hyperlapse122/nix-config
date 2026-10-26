@@ -100,6 +100,7 @@
         hostClosureChecks = [
           "agent-browser-deps"
           "baloo-extractor"
+          "cargo-settings"
           "chatgpt"
           "desktop-ssh"
           "elf-load-segments"
@@ -416,6 +417,10 @@
             fixtures = linuxFixtures;
           };
           codex-settings = import ./tests/codex-settings.nix { inherit pkgs self; };
+          cargo-settings = import ./tests/cargo-settings.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.

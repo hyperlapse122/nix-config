@@ -32,6 +32,9 @@
     localharness_external beside it resolves into the same runtime;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
+  - sccache is on PATH, and the Cargo settings merge updates
+    ~/.cargo/config.toml with the profile sccache wrapper while preserving
+    unowned state;
   - ~/Library/Android/sdk holds what T3 Code's device hub needs:
     cmdline-tools/latest/bin/avdmanager, platform-tools/adb, an arm64-v8a
     Google APIs system.img for every platform the pin file names, and an
@@ -108,6 +111,42 @@ let
         result = run()
         assert result.returncode != 0, "Codex activation swallowed malformed-input refusal"
         assert target.read_bytes() == protected, "Codex activation altered protected malformed input"
+  '';
+
+  cargoEffects = pkgs.writeText "cargo-activation-effects.py" ''
+    import os, subprocess, sys, tempfile, tomllib
+    from pathlib import Path
+    body = Path(sys.argv[1]).read_text()
+    original = sys.argv[2]
+    wrapper = sys.argv[3]
+    with tempfile.TemporaryDirectory() as work:
+        home = Path(work) / "home"
+        target = home / ".cargo/config.toml"
+        home.mkdir(parents=True)
+        redirected = body.replace(original, str(home))
+        assert redirected != body and original not in redirected, "Cargo destination was not redirected"
+        env = dict(os.environ, HOME=str(home))
+        env.pop("DRY_RUN", None)
+        def run():
+            return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
+        result = run()
+        assert result.returncode == 0, result.stderr
+        assert tomllib.loads(target.read_text()) == {"build": {"rustc-wrapper": wrapper}}, "Cargo activation did not initialize missing config.toml"
+        target.write_text('# user comment\n[build]\njobs = 4\nrustc-wrapper = "old"\n[alias]\nb = "build"\n[net]\ngit-fetch-with-cli = true\n')
+        result = run()
+        assert result.returncode == 0, result.stderr
+        rendered = target.read_text()
+        assert "# user comment" in rendered, "Cargo activation dropped user TOML comment"
+        assert tomllib.loads(rendered) == {
+            "build": {"jobs": 4, "rustc-wrapper": wrapper},
+            "alias": {"b": "build"},
+            "net": {"git-fetch-with-cli": True},
+        }, "Cargo activation did not apply build.rustc-wrapper and preserve unmanaged state"
+        protected = b'[build\nmalformed = true\n'
+        target.write_bytes(protected)
+        result = run()
+        assert result.returncode != 0, "Cargo activation swallowed malformed-input refusal"
+        assert target.read_bytes() == protected, "Cargo activation altered protected malformed input"
   '';
 
   authEffects = ./lib/containers-auth-effects.py;
@@ -311,6 +350,13 @@ let
       stepBlock codexSettings > "$codexBlock"
       if ! python3 ${codexEffects} "$codexBlock" ${lib.escapeShellArg config.my.user.home}; then
         bad "Codex activation effect contract failed"
+      fi
+
+      [ -x "$gen/home-path/bin/sccache" ] || bad "sccache is missing from PATH"
+      cargoBlock=$TMPDIR/cargo-settings-$variant.sh
+      stepBlock cargoSettings > "$cargoBlock"
+      if ! python3 ${cargoEffects} "$cargoBlock" ${lib.escapeShellArg config.my.user.home} ${lib.escapeShellArg "${user.home.profileDirectory}/bin/sccache"}; then
+        bad "Cargo activation effect contract failed"
       fi
 
       grep -q 'Library/Application Support/VSCodium/User/settings.json' "$gen/activate" \

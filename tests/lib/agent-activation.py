@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -155,6 +156,13 @@ if os.environ['ACTIVATION_MODE'] == 'settings':
         result, calls = run()
         assert result.returncode == 0 and len(calls) == 1, 'repeated activation failed'
         assert target.read_bytes() == applied_bytes, 'repeated activation changed settings'
+        if target.parent != home:
+            shutil.rmtree(target.parent)
+        else:
+            target.unlink()
+        result, calls = run()
+        assert result.returncode == 0 and len(calls) == 1, 'absent-file activation failed'
+        assert target.is_file() and (target.stat().st_mode & 0o777) == 0o600, 'absent-file mode is not 0600'
         result, calls = run('settings')
         assert calls and result.returncode != 0, 'activation swallowed merger refusal'
     else:
