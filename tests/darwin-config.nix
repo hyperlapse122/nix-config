@@ -383,7 +383,6 @@ let
       # literals, so a mutated registry or root cannot move the expectation.
       koreanRoots = [
         ".claude/skills"
-        ".gemini/antigravity-cli/skills"
         ".codex/skills"
       ];
       koreanNames = [

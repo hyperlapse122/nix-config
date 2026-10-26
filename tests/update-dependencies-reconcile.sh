@@ -27,12 +27,6 @@
 #   pin change on its own, as `chore(packages): bump t3code to <version>`.
 # - The update step must run t3code-release, and a failing t3code-release
 #   must warn and keep the pin rather than abort the other updates.
-# - The same holds for antigravity-acp-release and the Antigravity ACP
-#   runtime pin, committed as `chore(packages): bump antigravity-acp to
-#   <version>`. When that update also changes t3code-release.json, the
-#   commit contains both files. A T3-only change stays its own commit.
-# - A failing antigravity-acp-release keeps a T3 version bump already in
-#   t3code-release.json and restores only that file's antigravity section.
 # - The update step runs omp-release, and a failing omp-release warns, keeps
 #   the pin, and lets the other updates through. It runs npm-release for
 #   acpx with its pin and lock file; a failure restores both files and warns
@@ -115,14 +109,12 @@ setup_clone() {
   "$git_bin" -C "$clone" checkout -qb main
   mkdir -p "$clone/packages"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
-  printf '{"version": "1.4.1", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
   printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
   mkdir -p "$clone/packages/acpx"
   printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json \
-    packages/antigravity-acp-release.json packages/omp-release.json \
     packages/acpx-release.json packages/acpx/package-lock.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
@@ -373,149 +365,6 @@ if grep -q '^::warning' "$scratch/t3-succeeds-step.log"; then
   fail 'a succeeding t3code-release still emitted a warning'
 fi
 pass 'a succeeding t3code-release updates the pin without a warning'
-
-# --- Antigravity ACP runtime bump commit ------------------------------------
-
-read -r origin clone <<<"$(setup_clone acp)"
-acp_version=1.5.0
-printf '{"version": "%s", "platforms": {}}\n' "$acp_version" >"$clone/packages/antigravity-acp-release.json"
-# A second changed file, so a commit that sweeps in more than the pin shows.
-printf 'changed\n' >>"$clone/tracked.txt"
-base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/acp-step.log" 2>&1 ||
-  fail "the push step failed on an Antigravity ACP pin change: $(tail -n 5 "$scratch/acp-step.log")"
-bump_shas=$("$git_bin" --git-dir "$origin" log --format=%H \
-  --grep "^chore(packages): bump antigravity-acp to $acp_version\$" "$base_sha..main")
-[[ -n $bump_shas && $(wc -l <<<"$bump_shas") -eq 1 ]] ||
-  fail "an Antigravity ACP pin change did not land as exactly one bump commit: ${bump_shas:-none}"
-files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$bump_shas")
-[[ $files == packages/antigravity-acp-release.json ]] ||
-  fail "the antigravity-acp bump commit carries more than the pin: $files"
-pass 'an Antigravity ACP pin change lands as its own chore(packages): bump antigravity-acp commit'
-
-read -r origin clone <<<"$(setup_clone acp-both)"
-base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
-printf '%s\n' '{"version":"0.0.47-nightly.20261021.1","antigravity":{"x86_64-linux":{"version":"1.5.0"}}}' \
-  >"$clone/packages/t3code-release.json"
-printf '%s\n' '{"version":"1.5.0","platforms":{}}' >"$clone/packages/antigravity-acp-release.json"
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/acp-both-step.log" 2>&1 ||
-  fail "the push step failed when both Antigravity pins changed: $(tail -n 5 "$scratch/acp-both-step.log")"
-new_count=$("$git_bin" --git-dir "$origin" rev-list --count "$base_sha..main")
-[[ $new_count -eq 1 ]] ||
-  fail "both Antigravity pins should land as one commit, found $new_count: $("$git_bin" --git-dir "$origin" log --oneline "$base_sha..main")"
-subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s main)
-[[ $subject == "chore(packages): bump antigravity-acp to 1.5.0" ]] ||
-  fail "the joint pin commit subject was '$subject'"
-body=$("$git_bin" --git-dir "$origin" log -1 --format=%b main)
-[[ $body == *"Also bumps t3code to 0.0.47-nightly.20261021.1."* ]] ||
-  fail "the joint pin commit did not name the T3 version bump: $body"
-files=$("$git_bin" --git-dir "$origin" show --format= --name-only main)
-file_count=$(printf '%s\n' "$files" | grep -c .)
-[[ $file_count -eq 2 ]] ||
-  fail "the joint pin commit should carry two files: $files"
-grep -qx 'packages/antigravity-acp-release.json' <<<"$files" ||
-  fail "the joint pin commit omitted the PATH pin: $files"
-grep -qx 'packages/t3code-release.json' <<<"$files" ||
-  fail "the joint pin commit omitted the t3 pin: $files"
-while read -r sha; do
-  path_ver=$("$git_bin" --git-dir "$origin" show "$sha:packages/antigravity-acp-release.json" | jq -r .version)
-  agy_ver=$("$git_bin" --git-dir "$origin" show "$sha:packages/t3code-release.json" | jq -r '.antigravity["x86_64-linux"].version // empty')
-  if [[ $agy_ver == 1.5.0 && $path_ver != 1.5.0 ]]; then
-    fail "commit $sha has antigravity 1.5.0 beside PATH pin $path_ver"
-  fi
-done < <("$git_bin" --git-dir "$origin" rev-list "$base_sha..main")
-pass 'both Antigravity pins land in one commit, and no revision splits them'
-
-read -r origin clone <<<"$(setup_clone acp-section-only)"
-base_sha=$("$git_bin" --git-dir "$origin" rev-parse main)
-printf '%s\n' '{"version":"0.0.46-nightly.20261003.2600","antigravity":{"x86_64-linux":{"version":"1.5.0"}}}' \
-  >"$clone/packages/t3code-release.json"
-printf '%s\n' '{"version":"1.5.0","platforms":{}}' >"$clone/packages/antigravity-acp-release.json"
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/acp-section-step.log" 2>&1 ||
-  fail "the push step failed when the antigravity section and the PATH pin changed: $(tail -n 5 "$scratch/acp-section-step.log")"
-subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s main)
-[[ $subject == "chore(packages): bump antigravity-acp to 1.5.0" ]] ||
-  fail "a section-only joint commit subject was '$subject'"
-body=$("$git_bin" --git-dir "$origin" log -1 --format=%b main)
-[[ -z $body ]] || fail "a section-only joint commit added a body: $body"
-new_count=$("$git_bin" --git-dir "$origin" rev-list --count "$base_sha..main")
-[[ $new_count -eq 1 ]] ||
-  fail "a section-only Antigravity update should be one commit, found $new_count"
-pass 'an antigravity section update with an unchanged T3 version shares the ACP commit and names no T3 bump'
-
-# --- Antigravity ACP runtime update -----------------------------------------
-
-grep -Eq '^[^#]*nix run \.#antigravity-acp-release -- --output packages/antigravity-acp-release\.json' <<<"$update_script" ||
-  fail 'the update step no longer runs antigravity-acp-release against packages/antigravity-acp-release.json'
-pass 'the update step runs antigravity-acp-release against packages/antigravity-acp-release.json'
-
-# The Antigravity ACP part of the update step, cut the way the T3 Code part
-# is. A probe or a download can fail, so antigravity-acp-release failing must
-# leave the pin alone and let the step go on.
-acp_script=$(awk '/^# [0-9]+\. Update the Antigravity ACP runtime/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $acp_script ]] || fail "could not find the Antigravity ACP part of the update step in $workflow"
-
-# run_acp_step <name> <fails>: as run_t3_step, for the Antigravity ACP part.
-run_acp_step() {
-  local name=$1 fails=$2 origin clone
-  read -r origin clone <<<"$(setup_clone "$name")"
-  mkdir -p "$scratch/$name-bin"
-  cat >"$scratch/$name-bin/nix" <<EOF
-#!$BASH
-if [[ $fails == 1 ]]; then
-  printf '{"version": "partial' >packages/antigravity-acp-release.json
-  echo 'antigravity-acp-release: an archive downloaded 1 bytes, not the 2 its HEAD reported' >&2
-  exit 1
-fi
-if [[ $fails == 2 ]]; then
-  jq --indent 2 '.antigravity = {"broken": true}' packages/t3code-release.json > packages/t3code-release.json.tmp &&
-    mv packages/t3code-release.json.tmp packages/t3code-release.json
-  printf '{"version": "partial' >packages/antigravity-acp-release.json
-  echo 'antigravity-acp-release: an archive downloaded 1 bytes, not the 2 its HEAD reported' >&2
-  exit 1
-fi
-printf '{"version": "1.5.0", "platforms": {}}\n' >packages/antigravity-acp-release.json
-EOF
-  chmod +x "$scratch/$name-bin/nix"
-  if [[ $fails == 2 ]]; then
-    jq --indent 2 '.version = "0.0.47-nightly.20261021.1" | .antigravity = {"x86_64-linux": {"version": "1.4.1"}}' \
-      "$clone/packages/t3code-release.json" >"$clone/packages/t3code-release.json.tmp"
-    mv "$clone/packages/t3code-release.json.tmp" "$clone/packages/t3code-release.json"
-  fi
-  (
-    cd "$clone"
-    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
-$acp_script
-echo after-acp"
-  ) >"$scratch/$name-step.log" 2>&1 ||
-    fail "the Antigravity ACP update aborted the update step ($name): $(tail -n 5 "$scratch/$name-step.log")"
-  grep -qx after-acp "$scratch/$name-step.log" ||
-    fail "the update step stopped after the Antigravity ACP update ($name)"
-  printf '%s\n' "$clone"
-}
-
-clone=$(run_acp_step acp-fails 1)
-grep -q '^::warning' "$scratch/acp-fails-step.log" ||
-  fail "a failing antigravity-acp-release emitted no ::warning:: annotation: $(cat "$scratch/acp-fails-step.log")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/antigravity-acp-release.json) ]] ||
-  fail 'a failing antigravity-acp-release left packages/antigravity-acp-release.json changed'
-pass 'a failing antigravity-acp-release warns, keeps the pin, and lets the update step go on'
-
-clone=$(run_acp_step acp-succeeds 0)
-grep -q '"1.5.0"' "$clone/packages/antigravity-acp-release.json" ||
-  fail 'a succeeding antigravity-acp-release did not update the pin'
-if grep -q '^::warning' "$scratch/acp-succeeds-step.log"; then
-  fail 'a succeeding antigravity-acp-release still emitted a warning'
-fi
-pass 'a succeeding antigravity-acp-release updates the pin without a warning'
-
-clone=$(run_acp_step acp-fails-keeps-t3 2)
-jq -e '.version == "0.0.47-nightly.20261021.1" and .antigravity == {"x86_64-linux": {"version": "1.4.1"}}' \
-  "$clone/packages/t3code-release.json" >/dev/null ||
-  fail "a failing antigravity-acp-release did not keep the T3 version and restore only the antigravity section: $(cat "$clone/packages/t3code-release.json")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/antigravity-acp-release.json) ]] ||
-  fail 'a failing antigravity-acp-release left the PATH pin changed while restoring the t3 section'
-pass 'a failing antigravity-acp-release keeps a T3 version bump and restores the antigravity section'
 
 # --- OMP, its ACP packages, and the catalog keys -----------------------------
 

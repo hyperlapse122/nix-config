@@ -21,12 +21,12 @@ let
     ".omp/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
-    ".gemini/config/AGENTS.md"
   ];
   retiredPaths = [
     ".pi/agent/AGENTS.md"
     ".t3/instructions/claude-code/CLAUDE.md"
     ".gemini/GEMINI.md"
+    ".gemini/config/AGENTS.md"
     ".grok/rules/instructions.md"
   ];
   homeFile =

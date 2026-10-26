@@ -35,9 +35,5 @@ in
       target = ".codex/AGENTS.md";
       source = render "codex";
     };
-    agent-instructions-antigravity = {
-      target = ".gemini/config/AGENTS.md";
-      source = instructions;
-    };
   };
 }
