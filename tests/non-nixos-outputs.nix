@@ -21,6 +21,8 @@
   - Codex is installed, allowed as a Compound Engineering peer, reads
     ~/.codex/AGENTS.md, and its settings merge targets ~/.codex/config.toml
     after installPackages;
+  - sccache is installed and the Cargo settings merge targets
+    ~/.cargo/config.toml after installPackages;
   - on fixtures of the builder's own architecture, the Tokscale wrapper,
     OMP's key helper, and the registry credential helper read the tokens
     host-secrets publishes, not /run/secrets, which a non-NixOS host does not
@@ -161,6 +163,19 @@ let
           )
         )
         "${entry.name}: activation must merge the declared Codex settings into ~/.codex/config.toml after installPackages"
+      )
+      (check (lib.elem "sccache" pnames) "${entry.name}: sccache must be installed")
+      (check
+        (
+          lib.elem "installPackages" (activation.cargoSettings.after or [ ])
+          && lib.hasInfix "--format toml" (
+            builtins.unsafeDiscardStringContext (activation.cargoSettings.data or "")
+          )
+          && lib.hasInfix "--settings ${hm.home.homeDirectory}/.cargo/config.toml" (
+            builtins.unsafeDiscardStringContext (activation.cargoSettings.data or "")
+          )
+        )
+        "${entry.name}: activation must merge the declared Cargo settings into ~/.cargo/config.toml as TOML after installPackages"
       )
       (check (desktopFiles == [ ])
         "${entry.name}: desktop configuration reached a non-NixOS host: ${lib.concatStringsSep ", " desktopFiles}"

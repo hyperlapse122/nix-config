@@ -38,6 +38,8 @@
   - Codex: the pinned package is installed, the Codex settings merge runs
     with `--format toml` on ~/.codex/config.toml after installPackages, and
     `codex` is among the Compound Engineering peers.
+  - Rust: sccache is installed and the Cargo settings merge runs with
+    `--format toml` on ~/.cargo/config.toml after installPackages.
   - Compound Engineering peers: a login agent enabled at load runs
     `/bin/sh -c` with exactly two `/bin/launchctl setenv` lines, which set
     CROSS_MODEL_PEERS, joined with `,` alone, to the set of peers the
@@ -310,6 +312,7 @@ let
       pinentry = user.services.gpg-agent.pinentry.package;
       vscodiumData = plain (activation.vscodiumSettings.data or "");
       codexData = plain (activation.codexSettings.data or "");
+      cargoData = plain (activation.cargoSettings.data or "");
       marker = config.environment.etc."nix-config-host".text or "";
       production = !entry.bootstrap;
       primaryUser = config.system.primaryUser;
@@ -461,6 +464,15 @@ let
           && lib.hasInfix "--settings ${config.my.user.home}/.codex/config.toml" codexData
         )
         "${entry.name}: activation must merge the declared Codex settings into ~/.codex/config.toml as TOML after installPackages"
+      )
+      (check (lib.elem "sccache" pnames) "${entry.name}: sccache must be installed")
+      (check
+        (
+          lib.elem "installPackages" (activation.cargoSettings.after or [ ])
+          && lib.hasInfix "--format toml" cargoData
+          && lib.hasInfix "--settings ${config.my.user.home}/.cargo/config.toml" cargoData
+        )
+        "${entry.name}: activation must merge the declared Cargo settings into ~/.cargo/config.toml as TOML after installPackages"
       )
       (lib.concatMapStrings (
         cask:
