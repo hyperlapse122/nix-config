@@ -115,6 +115,7 @@ setup_clone() {
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json \
+    packages/omp-release.json \
     packages/acpx-release.json packages/acpx/package-lock.json
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
