@@ -71,6 +71,25 @@ pkgs.testers.nixosTest {
             expected["skills"] = {"customDirectories": []}
             expected["contextFiles"] = {"extra": ["OMP.md"]}
             expected["task"] = {"structured": True}
+            expected["symbolPreset"] = "nerd"
+            expected["composer"] = {"shape": "band"}
+            expected["theme"] = {"dark": "titanium", "light": "light"}
+            expected["setupVersion"] = 2
+            expected["tui"] = {
+                "resizeScrollback": "rebuild",
+                "completeScrollback": True,
+                "textSizing": True,
+                "codexResetFireworks": True,
+                "mouse": True,
+                "imeSafeCursor": True,
+            }
+            expected["terminal"] = {"showProgress": True}
+            expected["display"] = {
+                "subagentLivePreview": True,
+                "shimmer": "kitt",
+                "showTokenUsage": True,
+                "showTurnTime": True,
+            }
         assert value == expected, value
         assert machine.succeed("stat -c '%a:%U' " + config).strip() == "600:tester"
         assert machine.succeed("cat " + state) == "FAKE_STATE"

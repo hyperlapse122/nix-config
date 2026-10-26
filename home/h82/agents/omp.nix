@@ -54,6 +54,28 @@ in
             skills.customDirectories = config.my.omp.skillDirectories;
             contextFiles.extra = [ "OMP.md" ];
             task.structured = true;
+            symbolPreset = "nerd";
+            composer.shape = "band";
+            theme = {
+              dark = "titanium";
+              light = "light";
+            };
+            setupVersion = 2;
+            tui = {
+              resizeScrollback = "rebuild";
+              completeScrollback = true;
+              textSizing = true;
+              codexResetFireworks = true;
+              mouse = true;
+              imeSafeCursor = true;
+            };
+            terminal.showProgress = true;
+            display = {
+              subagentLivePreview = true;
+              shimmer = "kitt";
+              showTokenUsage = true;
+              showTurnTime = true;
+            };
           }
         )
       );
