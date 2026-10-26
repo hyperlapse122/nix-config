@@ -25,7 +25,7 @@ tags:
 
 `tests/logind-lid-switch.nix` and `home/h82/desktop/kde/power-lid.nix` were removed with the ThinkPad host in e857618. The example is kept because the pattern recurs.
 
-`tests/logind-lid-switch.nix` guards the KDE Powerdevil lid-action configuration `home/h82/kde/power-lid.nix` writes via eight `kwriteconfig6 --file powerdevilrc --group <profile> --group SuspendAndShutdown --key <key> ...` invocations. Its `assertPowerdevilHandled` helper reads the materialized `home.activation.kdePowerLid` script and asserts each invocation's shape is present, using `grep -Fq` (substring match) against fragments such as `--group Battery --group SuspendAndShutdown --key LidAction -- 1`.
+`tests/logind-lid-switch.nix` guards the KDE Powerdevil lid-action configuration `home/h82/desktop/kde/power-lid.nix` writes via eight `kwriteconfig6 --file powerdevilrc --group <profile> --group SuspendAndShutdown --key <key> ...` invocations. Its `assertPowerdevilHandled` helper reads the materialized `home.activation.kdePowerLid` script and asserts each invocation's shape is present, using `grep -Fq` (substring match) against fragments such as `--group Battery --group SuspendAndShutdown --key LidAction -- 1`.
 
 This repository already carries six learnings about checks that pass without proving what they claim. None of them predicted this one: the assertion here is sound by every test those six apply. The shell can fail (`if ! grep ...; then exit 1; fi`, never a bare `! grep` under `set -e`). The value read is materialized output — the rendered activation script — not an unreachable option. The fixture states genuinely diverge across the three `assertHost`-style calls (at the time: ThinkPad production, ThinkPad bootstrap, MS-7D91). No operand folds to a constant the module under test cannot change. No shell comparison sees an empty numeric operand. All five checks pass, and the check still could not tell a correct write from one aimed at the wrong file.
 
@@ -72,4 +72,4 @@ The same tree and the same mutation go from a false pass to a correct failure pu
 
 ## Out of scope
 
-Whether Powerdevil's own runtime actually applies a written `powerdevilrc` value (live-reload versus needing a relogin) is not a build-time question; it is a hardware-verification item in `docs/verification.md`. This check proves the activation script writes the right value to the right file, nothing about the running KDE session's response to it.
+Whether Powerdevil's own runtime actually applies a written `powerdevilrc` value (live-reload versus needing a relogin) is not a build-time question; it is a hardware check rather than a repository check (see `CONCEPTS.md` and `AGENTS.md`). This check proves the activation script writes the right value to the right file, nothing about the running KDE session's response to it.
