@@ -383,10 +383,13 @@ def standalone_cli_scope(entry, api, api_expected_names):
             )
         finally:
             client.close()
-    # Also verify T3's ACP command filters google-antigravity when Antigravity OAuth is present.
+    # Also verify T3's ACP command isolates T3 sessions when ~/.omp/agent/config.yml drifts wider.
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         work = prepare(entry, home)
+        drifted = json.loads((home / ".omp/agent/config.yml").read_text())
+        drifted["enabledModels"] = ["synthetic/**", "google-antigravity/**", "openrouter/**", "openai-codex/*"]
+        (home / ".omp/agent/config.yml").write_text(json.dumps(drifted))
         import_fake_oauth(api["commandPath"], home, ("google-antigravity",))
         catalog(api, home, work, {**api_expected_names, **antigravity_names})
 

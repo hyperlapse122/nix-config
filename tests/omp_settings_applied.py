@@ -323,6 +323,7 @@ class Activation(unittest.TestCase):
                                             capture_output=True, text=True, timeout=20)
                     actual = json.loads(result.stdout) if key in ("modelRoles", "enabledModels") else result.stdout.strip()
                     self.assertEqual((result.returncode, actual), (0, expected), result.stderr)
+                self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():
                     self.assertEqual(skill.read_bytes(), contents)
                 target.write_text("memory: {backend: local}\nnewSetting: true\n")
