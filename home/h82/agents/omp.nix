@@ -66,7 +66,7 @@ in
               completeScrollback = true;
               textSizing = true;
               codexResetFireworks = true;
-              mouse = true;
+              mouse = false;
               imeSafeCursor = true;
             };
             terminal.showProgress = true;
