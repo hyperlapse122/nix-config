@@ -2,7 +2,7 @@
 title: "A mutation that only breaks Nix evaluation proves nothing about a check"
 date: 2026-09-21
 category: best-practices
-module: "NixOS flake checks (kleopatra-gui derivation guard, assertUserPackage)"
+module: "NixOS flake checks (desktop-packages derivation guard, assertUserPackage)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -31,7 +31,7 @@ tags:
 
 The `feat/kleopatra-gpg-gui` work added `kdePackages.kleopatra` to the user package list in `home/h82/default.nix` and registered a `kleopatra-gui` check in `flake.nix` to guard it. Unlike its sibling `python3-runtime` as it was then, this check could not settle for a boolean: it asserts that the package in the configuration ships `bin/kleopatra` and the `org.kde.kleopatra.desktop` entry, so it needs the derivation itself, resolved with `pkgs.lib.lists.findFirst (p: (p.pname or "") == "kleopatra") null ...`.
 
-That logic now lives in the shared `assertUserPackage` helper in `flake.nix`, which `kleopatra-gui`, `python3-runtime`, `telegram-desktop`, and other package checks call through `forEveryConfiguration`. `userPackageOf` does the `findFirst ... null`, and the helper keeps the guard this doc describes. The snippets below show the original single-check form.
+That logic now lives in the shared `assertUserPackage` helper in `flake.nix`, which `desktop-packages` (consolidating the former `kleopatra-gui` and `telegram-desktop` checks), `claude-desktop`, `chatgpt`, and `claude-code` call through `forEveryConfiguration`, and `python3-runtime` calls through `forEveryUser`. `userPackageOf` does the `findFirst ... null`, and the helper keeps the guard this doc describes. The snippets below show the original single-check form.
 
 That one difference — a resolved derivation instead of a boolean — changes what the repo's mutation-testing discipline actually measures. The existing learning on [decorative assertions](mutation-testing-reveals-decorative-nix-check-assertions.md) covers assertions that cannot fail. This is the level below it: the assertion here is sound, and the *mutation* is what silently fails to reach it. Nothing about a red mutation round tells you which of the two you are looking at.
 
@@ -39,12 +39,12 @@ That one difference — a resolved derivation instead of a boolean — changes w
 
 **When you mutate a check, read where it went red, not only that it went red.** A mutation round has proved the assertion only when the failure came out of the builder and carried the assertion's own message. A failure raised by the Nix evaluator before any builder ran is not evidence about the check; it is evidence that the check does not evaluate under that mutation.
 
-For the `kleopatra-gui` check, the two outcomes look identical in a terminal that only watches the exit code:
+For the `desktop-packages` check (originally `kleopatra-gui`), the two outcomes look identical in a terminal that only watches the exit code:
 
 ```sh
 # the mutation: drop the package the check guards
 sed -i '/kdePackages.kleopatra/d' home/h82/default.nix
-nix build --no-link .#checks.x86_64-linux.kleopatra-gui
+nix build --no-link .#checks.x86_64-linux.desktop-packages
 ```
 
 With the store path interpolated **unguarded**, that command fails with
@@ -84,7 +84,7 @@ Copying that shape for a check that resolves a derivation is exactly what invite
 
 ## What was verified
 
-Four rounds, each one `nix build --no-link .#checks.x86_64-linux.kleopatra-gui`:
+Four rounds at capture time against the standalone check (now consolidated into `desktop-packages`), each one `nix build --no-link .#checks.x86_64-linux.kleopatra-gui`:
 
 | Round | Tree | Result |
 | --- | --- | --- |
@@ -109,4 +109,4 @@ The control round separates the unguarded version from the guarded one. Without 
 
 ## Out of scope
 
-That Kleopatra launches, finds the user's GPG keyring, and is reachable from the Plasma launcher is hardware and desktop verification; see `docs/verification.md`. A build-time check on the package's contents cannot reach any of it.
+That Kleopatra launches, finds the user's GPG keyring, and is reachable from the Plasma launcher is hardware and desktop verification; see `CONCEPTS.md` (`Hardware check`) and `AGENTS.md`. A build-time check on the package's contents cannot reach any of it.
