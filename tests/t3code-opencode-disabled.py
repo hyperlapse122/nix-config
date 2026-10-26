@@ -10,8 +10,8 @@ T3 Code's built-in opencode instance is already off, so the declared value alone
 proves nothing. The real merger runs on a settings.json an earlier generation
 wrote, with the instance enabled and the hidden-model preference it declared
 for OpenCode: the merged file must hold the instance disabled and the
-preference gone, also on a second run, and keep another provider's preference
-and the keys the declaration does not touch.
+preference gone, also on a second run, merge "default" into OMP's hiddenModels,
+and keep another provider's preference and the keys the declaration does not touch.
 
 Every failure is printed, and the exit status is 1 when there is any.
 """
@@ -56,6 +56,9 @@ def main(merger, declared_path):
             if preferences.get('codex') != {'hiddenModels': ['gpt-6-luna']}:
                 problems.append('the {} merge changed another provider\'s model preference: {!r}'.format(
                     attempt, preferences.get('codex')))
+            if preferences.get('omp') != {'hiddenModels': ['default']}:
+                problems.append('after the {} merge providerModelPreferences.omp is {!r}, not hidden default'.format(
+                    attempt, preferences.get('omp')))
             if merged.get('unrelated', {}).get('kept') is not True:
                 problems.append('the {} merge dropped a key the declaration does not touch'.format(attempt))
     return problems

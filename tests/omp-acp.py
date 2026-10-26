@@ -398,6 +398,8 @@ def applied(entry, home):
                                            "config": {"authMethodId": "agent", "customModels": ["stale-selector"]}},
                                    "omp-codex": {"driver": "acpRegistry", "enabled": True,
                                                  "config": {"authMethodId": "agent"}}},
+            "providerModelPreferences": {"omp": {"hiddenModels": ["synthetic/hf:moonshotai/Kimi-K3"],
+                                                 "modelOrder": ["openai-codex/gpt-6-astra"]}},
             "projectSettingsOverrides": {"example": {"keep": True}}}
     target.write_text(json.dumps(seed))
     script = entry["activation"].replace(entry["home"], str(home))
@@ -407,6 +409,10 @@ def applied(entry, home):
     assert result.returncode == 0, result.stderr
     settings = json.loads(target.read_text())
     assert settings["projectSettingsOverrides"] == seed["projectSettingsOverrides"]
+    assert settings["providerModelPreferences"] == {
+        "omp": {"hiddenModels": ["synthetic/hf:moonshotai/Kimi-K3", "default"],
+                "modelOrder": ["openai-codex/gpt-6-astra"]}
+    }, settings.get("providerModelPreferences")
     instances = settings["providerInstances"]
     assert instances["pi"]["enabled"] is False, "T3 still enables retired Pi"
     assert instances["pi"]["config"] == seed["providerInstances"]["pi"]["config"]

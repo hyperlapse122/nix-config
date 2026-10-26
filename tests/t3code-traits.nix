@@ -38,11 +38,13 @@
     T3 Code's Codex sessions must run on ~/.codex, where the plugin sync and
     the skills land. The Pi instance declares no binaryPath and no launch arguments.
     The declaration retires providerModelPreferences.opencode, which an
-    earlier generation wrote, and prunes the object it leaves empty. On a full
+    earlier generation wrote, and merges "default" into
+    providerModelPreferences.omp.hiddenModels via prefixEntries. On a full
     configuration, the real merger also runs over a settings.json that holds
     an enabled opencode instance, that preference, and another provider's:
-    the merged file must hold the instance disabled and only the other
-    provider's preference left.
+    the merged file must hold the instance disabled, the opencode preference
+    gone, the other provider's preference preserved, and omp's hiddenModels
+    carrying "default".
   - home.activation.t3codeAntigravity exists exactly when either trait is on
     and runs after installPackages. Its script is executed the same way with
     the packaged installer swapped for a stub: on a live run the stub must
@@ -169,6 +171,17 @@ let
         path = [ "providerModelPreferences" ];
         key = "opencode";
         prune = true;
+      }
+    ];
+    prefixEntries = [
+      {
+        path = [
+          "providerModelPreferences"
+          "omp"
+          "hiddenModels"
+        ];
+        prefix = "default";
+        value = "default";
       }
     ];
     migrateInstances = {
