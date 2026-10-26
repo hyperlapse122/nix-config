@@ -49,6 +49,7 @@ let
     ;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  etcFile = import ./lib/etc-file.nix { inherit (pkgs) lib; };
 
   # Every message and path below is text spliced into a shell script. Escape it
   # rather than trusting the values to be quote-free: an apostrophe in one label
@@ -114,7 +115,7 @@ let
       hostName = entry.name;
       userConfig = entry.user;
       userPath = userConfig.home.path or null;
-      udevRules = entry.config.environment.etc."udev/rules.d".source or null;
+      udevRules = etcFile entry.config "udev/rules.d";
     in
     concatStringsSep "\n" (
       [

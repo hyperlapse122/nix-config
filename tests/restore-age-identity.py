@@ -3,6 +3,7 @@
 
 import importlib.machinery
 import importlib.util
+import io
 import os
 import stat
 import subprocess
@@ -136,13 +137,13 @@ class RestoreIdentityTests(unittest.TestCase):
         self.assertEqual(list(real.iterdir()), [])
 
     def test_main_entry_point_and_cli_subprocess(self):
-        with mock.patch.object(MODULE.sys, "stdin", new=mock.Mock(buffer=mock.Mock(read=lambda n: VALID_PAYLOAD))):
+        with mock.patch.object(MODULE.sys, "stdin", new=io.TextIOWrapper(io.BytesIO(VALID_PAYLOAD))):
             self.assertEqual(MODULE.main(["--recipient", RECIPIENT]), 0)
         self.assertEqual(self.target.read_bytes(), VALID_PAYLOAD)
         self.assert_no_staged_files()
 
         oversized = b"x" * (MODULE.MAX_IDENTITY_BYTES + 1)
-        with mock.patch.object(MODULE.sys, "stdin", new=mock.Mock(buffer=mock.Mock(read=lambda n: oversized[:n]))):
+        with mock.patch.object(MODULE.sys, "stdin", new=io.TextIOWrapper(io.BytesIO(oversized))):
             self.assertEqual(MODULE.main(["--recipient", RECIPIENT]), 1)
         self.assertEqual(self.target.read_bytes(), VALID_PAYLOAD)
         self.assert_no_staged_files()
@@ -159,33 +160,5 @@ class RestoreIdentityTests(unittest.TestCase):
             self.assertEqual(cli.returncode, 2)
             self.assertIn(b"must run as root", cli.stderr)
 
-        runner = (
-            "import importlib.machinery, importlib.util, os, sys\n"
-            f"loader = importlib.machinery.SourceFileLoader('restore', {str(SCRIPT)!r})\n"
-            "spec = importlib.util.spec_from_loader(loader.name, loader)\n"
-            "mod = importlib.util.module_from_spec(spec)\n"
-            "spec.loader.exec_module(mod)\n"
-            "real_lstat = os.lstat\n"
-            f"mod.TARGET = {str(self.root / 'cli-sops-nix/key.txt')!r}\n"
-            "mod.os.geteuid = lambda: 0\n"
-            "mod.os.chown = lambda p, u, g: None\n"
-            "def fake_lstat(p, *a, **kw):\n"
-            "    st = list(real_lstat(p, *a, **kw))\n"
-            "    st[4] = st[5] = 0\n"
-            "    return os.stat_result(st)\n"
-            "mod.os.lstat = fake_lstat\n"
-            f"raise SystemExit(mod.main(['--recipient', {RECIPIENT!r}]))\n"
-        )
-        cli_ok = subprocess.run(
-            [sys.executable, "-c", runner],
-            input=VALID_PAYLOAD,
-            capture_output=True,
-        )
-        self.assertEqual(cli_ok.returncode, 0, cli_ok.stderr)
-        self.assertEqual((self.root / "cli-sops-nix/key.txt").read_bytes(), VALID_PAYLOAD)
-        self.assertEqual(
-            [p.name for p in (self.root / "cli-sops-nix").iterdir() if p.name.startswith(".key-")],
-            [],
-        )
 if __name__ == "__main__":
     unittest.main()

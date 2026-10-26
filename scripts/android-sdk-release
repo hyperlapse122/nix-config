@@ -406,7 +406,7 @@ end
 
 # Fetches one URL with curl and returns the body.
 def fetch url
-  body, status = Open3.capture2('curl', '-sfL', url, stdin_data: '', binmode: true)
+  body, status = Open3.capture2('curl', '-sfL', '--max-time', '60', url, stdin_data: '', binmode: true)
   raise Failure, "fetching #{url} failed with status #{status.exitstatus}" unless status.success?
 
   body

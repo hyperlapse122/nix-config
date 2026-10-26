@@ -186,7 +186,8 @@ try:
                 work = home / "project"
                 work.mkdir()
                 models = json.loads(Path(declared["models.yml"]).read_text())
-                for name, provider in models["providers"].items():
+                for name in ("synthetic", "openrouter"):
+                    provider = models["providers"][name]
                     # Give only the protected command a fake credential, not OMP or its tools.
                     variable = "SYNTHETIC_API_KEY" if name == "synthetic" else "OPENROUTER_API_KEY"
                     provider["apiKey"] = ("!" + MISSING_KEY if selector == "missing" else

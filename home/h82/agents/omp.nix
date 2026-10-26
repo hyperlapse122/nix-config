@@ -51,8 +51,12 @@ in
             enabledModels = catalogs.patterns;
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
-            github.enabled = true;
-            inherit (roles) defaultThinkingLevel modelRoles task;
+            inherit (roles)
+              defaultThinkingLevel
+              github
+              modelRoles
+              task
+              ;
             skills.customDirectories = config.my.omp.skillDirectories;
             symbolPreset = "nerd";
             composer.shape = "band";

@@ -155,10 +155,10 @@ IMAGE_URL = "https://dl.google.com/android/repository/sys-img/google_apis/sys-im
 
 FAKE_CURL = """#!{python}
 import os, sys
-if sys.argv[1:2] != ['-sfL'] or len(sys.argv) != 3:
+if sys.argv[1:4] != ['-sfL', '--max-time', '60'] or len(sys.argv) != 5:
     sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
     sys.exit(99)
-url = sys.argv[2]
+url = sys.argv[4]
 with open(os.environ['FAKE_LOG'], 'a') as log:
     log.write(url + '\\n')
 kind = 'IMAGE' if '/sys-img/' in url else 'REPO'

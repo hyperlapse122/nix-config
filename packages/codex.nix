@@ -63,7 +63,10 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   # package builds for, so a broken host fails the build rather than Code Mode.
   postInstallCheck = ''
     target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' "$out/bin/codex")
-    [ -n "$target" ] && "$(dirname "$target")/codex-code-mode-host" --help > /dev/null
+    if [ -z "$target" ] || ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null; then
+      echo "codex: missing or broken codex-code-mode-host beside '$target'" >&2
+      exit 1
+    fi
   '';
 
   meta = {

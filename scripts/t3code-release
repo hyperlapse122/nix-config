@@ -59,7 +59,7 @@ def fetch(url):
     token = os.environ.get("GH_TOKEN")
     headers = f"Authorization: Bearer {token}\n" if token else ""
     proc = subprocess.run(
-        ["curl", "-sfL", "-H", "@-", url],
+        ["curl", "-sfL", "--max-time", "60", "-H", "@-", url],
         input=headers,
         capture_output=True,
         text=True,

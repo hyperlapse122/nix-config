@@ -52,7 +52,7 @@ DEFAULT_URL = "https://github.com/jdx/mise/releases/latest/download/SHASUMS256.t
 
 FAKE_CURL = """#!{python}
 import os, sys
-expected = ['-sfL', os.environ['FAKE_EXPECTED_URL']]
+expected = ['-sfL', '--max-time', '60', os.environ['FAKE_EXPECTED_URL']]
 if sys.argv[1:] != expected:
     sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}} != {{expected!r}}\\n')
     sys.exit(99)

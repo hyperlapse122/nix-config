@@ -107,7 +107,7 @@ def sri(hex_digest):
 
 FAKE_CURL = """#!{python}
 import json, os, sys
-if sys.argv[1:4] != ['-sfL', '-H', '@-'] or len(sys.argv) != 5:
+if sys.argv[1:6] != ['-sfL', '--max-time', '60', '-H', '@-'] or len(sys.argv) != 7:
     sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
     sys.exit(99)
 with open(os.environ['FAKE_STDIN_LOG'], 'a') as f:

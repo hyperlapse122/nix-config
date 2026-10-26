@@ -32,10 +32,10 @@ SAMPLE_MANIFEST = {
 
 FAKE_CURL = """#!{python}
 import os, sys
-if sys.argv[1:2] != ['-s'] or len(sys.argv) != 3:
+if sys.argv[1:4] != ['-sfL', '--max-time', '60'] or len(sys.argv) != 5:
     sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
     sys.exit(99)
-url = sys.argv[2]
+url = sys.argv[4]
 base = os.environ['FAKE_BASE_URL']
 latest = os.environ.get('FAKE_LATEST_BODY', '').strip()
 if url == f'{{base}}/latest':

@@ -31,7 +31,13 @@ let
   ompScope = pkgs.writeText "omp-t3-OMP.json" (
     builtins.toJSON {
       enabledModels = ompPatterns;
-      inherit (ompRoles) defaultThinkingLevel modelRoles task;
+      inherit (ompRoles)
+        defaultThinkingLevel
+        github
+        modelRoles
+        task
+        ;
+      skills.customDirectories = (config.my.omp or { }).skillDirectories or [ ];
     }
   );
   ompPatterns = catalogs.patterns;

@@ -41,7 +41,7 @@ class Failure(Exception):
 def fetch(url):
     """Fetch one URL with curl and return the raw body."""
     proc = subprocess.run(
-        ["curl", "-sfL", url],
+        ["curl", "-sfL", "--max-time", "60", url],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

@@ -1,5 +1,5 @@
 /*
-  Read each Home Manager generation's four delivered instruction files.
+  Read each Home Manager generation's three delivered instruction files.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
   Linux callers supply self/fixtures; native Darwin callers supply explicit

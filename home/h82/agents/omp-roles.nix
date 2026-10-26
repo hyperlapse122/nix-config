@@ -1,5 +1,6 @@
 {
   defaultThinkingLevel = "high";
+  github.enabled = true;
   modelRoles = {
     default = "google-antigravity/gemini-4-argon";
     smol = "google-antigravity/gemini-3.5-flash-lite:low";

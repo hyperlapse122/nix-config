@@ -151,7 +151,7 @@ OMP_TOOLS_SENTENCES = [
     "Preserve existing GitLab rules (`glab` and `mr://` diffs).",
     "When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.",
     "GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`.",
-    "The user permits explicitly requested OMP cross-model reviews through T3's ordinary delegated permissions without enforced read-only access.",
+    "The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access.",
     "Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction.",
 ]
 
@@ -163,10 +163,84 @@ OMP_ROLE_SENTENCES = [
     "Use P3 for unlisted or newly introduced delegated responsibilities.",
     "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
     "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied.",
-    "Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 or P4 with `effort`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.",
+    'Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.',
     "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
     "This exception assigns no blanket Claude effort and changes no Claude settings or session environment.",
 ]
+
+OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an HTTP URL for fetching. Search uses the managed Synthetic credential command; never read or print keys.
+- Use `read history://` for the agent roster and `read history://current/full` for the current transcript. Runtime model and effort evidence comes from the protocol state or captured provider requests; configuration and model prose do not establish the effective runtime selection.
+- Outside T3, native `task` runs CLI children. Read its advertised schema before dispatch: batch calls require `context` and `tasks`, with `agent` per task when selecting a non-default agent. Structured results are enabled; pass the owning workflow's `outputSchema` and collect the child's terminal `yield` rather than accepting a prose summary. Collect terminal results through `agent://<id>` and inspect `history://<id>` when needed. A started job, partial yield, cancellation, or failure is not a completed child; preserve full result artifacts and required schema fields.
+- Inside T3, use the injected app-owned MCP delegation, status, and cancellation tools according to their live descriptions; do not replace app delegation with new top-level conversations.
+
+## GitHub tools
+
+- Use `read` with `issue://<N>` and `pr://<N>` (including list query parameters and `pr://<N>/diff`, `/diff/<i>`, `/diff/all`) for viewing or listing issues, pull requests, and PR diffs.
+- Use `github` (`xd://github`) for repository summaries (`repo_view`), repository file reads (`file_read`), searches (`search_issues`, `search_prs`, `search_code`, `search_commits`, `search_repos`), Actions run watching (`run_watch`), PR creation (`pr_create`), PR checkout (`pr_checkout`), and pushing `pr_checkout`-managed branches (`pr_push`).
+- Retain `gh` CLI and `git push` as the fallback where OMP's GitHub surfaces lack the required operation, flag, freshness, or safety constraint, including `gh issue create/edit/close/comment`, `gh pr comment/review/edit/merge/ready`, `gh api graphql`, `gh --attach`, explicit cross-checkout `--repo HOST/OWNER/REPO` and `--hostname HOST` qualification, repository `<kind>/short-kebab-slug` branch naming, and uncached head-SHA verification with `git push --force-with-lease=<branch>:<sha>`.
+- Preserve existing GitLab rules (`glab` and `mr://` diffs).
+
+## Cross-model review identity and permissions
+
+- Compound Engineering skills live in the complete pinned tree under `~/.omp/agent/plugins/compound-engineering`; read referenced assets relative to that tree and retain each skill's recipient permission, tool restrictions, identity checks, result schema, and lifecycle rules.
+- When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.
+- GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`. Automatic unknown-host review remains skipped; never invent an OMP peer token, export the opt-in as a session default, substitute a recognized family for GLM, or turn a missing, failed, or cancelled result into a successful empty review.
+- Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
+
+OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions, and artifact contracts.
+- Restrict ordinary orchestration (`P1`-`P6`) to the selected `google-antigravity` Gemini models; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.
+
+## Profiles and responsibility resolution
+
+| Profile | Responsibility | Model | Effort | Service |
+| --- | --- | --- | --- | --- |
+| P1 | Exact lookup, fixed-field extraction, commit messages, status | `google-antigravity/gemini-3.5-flash-lite` | `minimal` | Standard |
+| P2 | Grounding scouts, bounded classification, evidence summaries | `google-antigravity/gemini-3.5-flash-lite` | `low` | Standard |
+| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `google-antigravity/gemini-3.8-flash` | `low` | Standard |
+| P4 | Complex logic, substantive review, security, concurrency, data integrity | `google-antigravity/gemini-3.8-flash` | `medium` | Standard |
+| P5 | Root orchestration, delegation, progress | `google-antigravity/gemini-4-argon` | `high` | Standard |
+| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `google-antigravity/gemini-4-argon` | `high` | Standard |
+| P7 | CE-required independent Claude or Codex review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
+
+- Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.
+- Resolve current user overrides for their stated task, recipient, fields, and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent.
+- Use P3 for unlisted or newly introduced delegated responsibilities. Root-owned work stays Argon P5/P6; delegated authoring assignments do not move that work out of the root.
+- Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Formatting errors, transient network failures, busy slots, and missing credentials do not justify deeper reasoning.
+
+## CE coverage
+
+| Workflow / identity | Profile and boundary |
+| --- | --- |
+| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | P1; unclear connector semantics P3 |
+| `ce-sweep` media analyzer | P3 for frame/transcript interpretation |
+| `ce-sweep` decisions/reconciliation; `lfg` coordination | P5; conflicting evidence or difficult scope P6 |
+| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | P2; brainstorm claim verifier P3 |
+| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | P2 gathering, P3 applicability/reconciliation |
+| `ce-plan` spec-flow analyzer and data-integrity guardian | P4 |
+| `ce-plan` architecture strategist/complex plan author | P6; ordinary delegated plan author P3 |
+| `ce-work` implementation/design-sync; PR comment resolver | P3; complex diagnosis P4, architecture P6 |
+| `ce-debug` investigation/root cause; `ce-optimize` attribution | P4; exact gathering P1/P2 does not transfer diagnosis |
+| `ce-explain` work-recap/behavior-trace scouts | P2; complex causal tracing P4 |
+| `ce-ideate` evidence researchers/issue intelligence | P2 retrieval, P3 interpretation |
+| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | P3/P6/P7 according to the skill's frame and diversity contract |
+| `ce-pov` verdict/synthesis; independent peer | P6; P7 peer |
+| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, adversarial fallback, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | P4 even on small changes |
+| `ce-code-review` learnings researcher; merge/validator/report leaves | P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings |
+| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security, local adversarial lenses | P4; independent peer P7 |
+| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | P4 regardless of output length |
+| `ce-compound` Related Docs Finder | P2 bounded matching; overlap interpretation P3 |
+| `ce-compound` session historian, synthesis, grounding validation | P3; root retains classification/drafting ownership |
+| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | P4; research-only framework/best-practices gathering P2 |
+| `ce-compound-refresh` investigators/replacement authors | P3; complex behavior verification P4; root retains deletion/metadata decisions |
+| Browser/device/prototype execution, ordinary writing, handoff, general workers | P3 with required modalities/tools; status only P1 |
+| Commit/publication/babysitting coordination | P5; deterministic commands need no extra model call; diagnosis P4 |
+
+## Dispatch and compatibility
+
+- Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied. Do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or external providers.
+- Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a P7 Gemini-led review back to `google-antigravity`.
+- Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment."""
 
 ROLE_PROFILES = {
     "source-persona fetch": "P1; unclear connector semantics P3",
@@ -263,7 +337,7 @@ POLICIES = {
     "Cross-model reviews": [
         "When running in T3 Code, conduct cross-model reviews through T3 Code delegated child tasks (`delegate_task`) rather than separate top-level conversations or direct CLI peer workers, selecting the requested provider and model from live capabilities and preserving requested model options.",
         "Run T3 Code cross-model reviews against the current workspace without worktree isolation, and never create a worktree through T3 Code or Git solely for a review; outside T3 Code this rule does not require T3 Code, and implementation tasks may still use worktrees.",
-        "Keep reviewers read-only, supply the review brief, relevant diff, and context including uncommitted workspace changes when those are the review target, and report unavailable capabilities rather than silently substituting another model or execution path.",
+        "Keep reviewers read-only — enforce read-only tool restrictions where `delegate_task` exposes them, and where T3 Code provides only prompt-level read-only delegation over the shared workspace (unless a harness section requires enforced restrictions), instruct the reviewer to inspect without editing and disclose in Coverage that read-only access was prompt-instructed rather than technically enforced — supply the review brief, relevant diff, and context including uncommitted workspace changes when those are the review target, and report unavailable capabilities rather than silently substituting another model or execution path.",
     ],
 }
 
@@ -362,9 +436,10 @@ def content_problems(text, key, delivery="common"):
     if REMOVED_COMMON.search(common):
         problems.append("removed orchestration instructions")
     for heading in HEADINGS:
-        if heading in T3_SCOPED_COMMON_HEADINGS:
-            continue
         sec = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", sections.get(heading, ""))
+        if heading in T3_SCOPED_COMMON_HEADINGS:
+            for approved in POLICIES[heading]:
+                sec = sec.replace("- " + approved, "", 1)
         if REMOVED_NON_T3_SECTIONS.search(sec):
             problems.append("removed orchestration instructions")
             break
@@ -402,6 +477,8 @@ def content_problems(text, key, delivery="common"):
             rows = [line for line in role_body.splitlines() if line.startswith("| ") and role in line]
             if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
                 problems.append(f"missing OMP responsibility mapping: {role}")
+        if tools_body.strip() != OMP_TOOLS_CONTRACT or role_body.strip() != OMP_ROLE_CONTRACT:
+            problems.append("unapproved OMP normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -442,8 +519,8 @@ def self_test(template):
         "- Use T3 Code.\n",
         "- Use `delegate_task` for implementation.\n",
     ):
-        mutated = expected.replace("# Tests\n", "# Tests\n\n" + injected, 1)
-        assert "removed orchestration instructions" in content_problems(mutated, FAKE_KEY, "common"), injected
+        for mutated in (expected.replace("# Tests\n", "# Tests\n\n" + injected, 1), expected + "\n" + injected):
+            assert "removed orchestration instructions" in content_problems(mutated, FAKE_KEY, "common"), injected
     for alias in ("opus", "sonnet", "haiku", "fable"):
         for role in ("reviewers", "workers"):
             text = expected + f"\n- Run {role} on `{alias}`.\n"
@@ -520,12 +597,19 @@ def self_test(template):
             assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, "omp")), sentence
     for profile, (model, effort, service) in OMP_PROFILES.items():
         row = next(line for line in omp.splitlines() if line.startswith(f"| {profile} |"))
+        mutant = row.replace(f"`{model}`", "`synthetic/hf:zai-org/GLM-5.3`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
+        assert mutant != row
+        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
         mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
+        assert mutant != row
+        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
+        mutant = row.replace(f"| {service} |", "| Ultrafast |")
         assert mutant != row
         assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
         if profile in ("P3", "P4", "P5", "P6"):
             min_mutant = row.replace(f"`{effort}`", "`minimal`")
             assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, min_mutant), FAKE_KEY, "omp")
+    assert "unapproved OMP normative section" in content_problems(omp + "\n- Route P3 tasks to `synthetic` automatically.\n", FAKE_KEY, "omp")
     for role in ROLE_PROFILES:
         row = next(line for line in omp.splitlines() if line.startswith("| ") and role in line)
         assert f"missing OMP responsibility mapping: {role}" in content_problems(omp.replace(row, ""), FAKE_KEY, "omp")

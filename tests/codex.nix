@@ -41,11 +41,6 @@ let
   codex = self.packages.${pkgs.stdenv.hostPlatform.system}.codex;
   pinnedVersion = (builtins.fromJSON (builtins.readFile ../packages/codex-release.json)).version;
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
-  flags = [
-    "check_for_update_on_startup=false"
-    "--disable in_app_updates"
-    "--disable daemon_auto_start"
-  ];
   wrapperFlags = [
     "-c check_for_update_on_startup=false"
     "--disable in_app_updates"
@@ -69,18 +64,8 @@ let
           echo 'codex package ships no bin/codex executable on ${entry.name}' >&2
           fail=1
         fi
-        for flag in ${lib.escapeShellArgs wrapperFlags}; do
-          if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
-            echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
-            fail=1
-          fi
-        done
-        target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
-        if [ -z "$target" ]; then
-          echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
-          fail=1
-        elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
-          echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
+        if [ ${codexPkg} != ${codex} ]; then
+          echo "codex on ${entry.name} is ${codexPkg}, expected ${codex}" >&2
           fail=1
         fi
       ''}
@@ -129,7 +114,7 @@ pkgs.runCommand "codex-tests" { } ''
     fi
   done
 
-  for flag in ${lib.escapeShellArgs flags}; do
+  for flag in ${lib.escapeShellArgs wrapperFlags}; do
     if ! grep -qF -- "$flag" "$wrapper"; then
       echo "the codex wrapper lacks $flag" >&2
       fail=1
