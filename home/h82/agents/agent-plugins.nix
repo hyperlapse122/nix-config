@@ -13,7 +13,6 @@ let
   # command's --cli flag can never drift onto a different agent build.
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
   codex = import ../../../packages/codex.nix { inherit pkgs; };
-  antigravityCli = import ../../../packages/antigravity-cli.nix { inherit pkgs; };
 
   # Neutral source registry: what a plugin is and where it comes from, with no
   # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
@@ -41,7 +40,6 @@ let
       exclude = {
         claude = [ ];
         codex = [ ];
-        antigravity = [ ];
         omp = [ ];
       };
     };
@@ -62,10 +60,6 @@ let
       name = "compound-engineering";
       harness = "codex";
     }
-    {
-      name = "compound-engineering";
-      harness = "antigravity";
-    }
   ];
 
   # The CLI each harness is driven through, and the environment it runs with.
@@ -85,12 +79,7 @@ let
       cli = "${codex}/bin/codex";
       env = "-u CODEX_HOME";
     };
-    antigravity = {
-      cli = "${antigravityCli}/bin/agy";
-      env = "";
-    };
   };
-
   knownHarnesses = lib.attrNames harnesses;
 
   badHarness = lib.filter (row: !(lib.elem row.harness knownHarnesses)) membership;

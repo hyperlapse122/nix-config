@@ -61,7 +61,6 @@ let
 
   roots = [
     ".claude/skills"
-    ".gemini/antigravity-cli/skills"
     ".omp/agent/skills"
     ".codex/skills"
   ];

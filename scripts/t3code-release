@@ -8,10 +8,7 @@ excludes stable releases (not prereleases) and preview builds (-preview. tags)
 the sha256 digest GitHub records for the desktop app (an AppImage on Linux, a
 zipped app bundle on macOS) and the t3 CLI tarball of each supported system,
 and writes or checks the pin file both T3 Code packages
-consume, so the two artifacts always come from the same nightly. The same pin
-holds the Antigravity ACP runtime that T3 Code requires on each system, copied
-from the existing pin file so that scripts/antigravity-acp-release is the only
-writer that changes the Antigravity archive identity. Refuses to write a pin
+consume, so the two artifacts always come from the same nightly. Refuses to write a pin
 for a release missing any of those assets or their digests, or a version that
 is not strictly newer than the one already pinned.
 """
@@ -198,10 +195,6 @@ def main(argv=None):
                 )
                 return 0
 
-        current_antigravity = (
-            current_data.get("antigravity", {}) if isinstance(current_data, dict) else {}
-        )
-        resolved["antigravity"] = current_antigravity
         out_json = json.dumps(resolved, indent=2) + "\n"
 
         if not writing:

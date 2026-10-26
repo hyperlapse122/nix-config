@@ -8,8 +8,6 @@
   revision this repository expects:
 
     Claude Code               ~/.claude/skills/<name>
-    Antigravity CLI, and T3 Code's Antigravity instances
-                              ~/.gemini/antigravity-cli/skills/<name>
     OMP                       ~/.omp/agent/skills/<name>
     Codex                     ~/.codex/skills/<name>
 
@@ -85,7 +83,6 @@ let
 
   roots = [
     ".claude/skills"
-    ".gemini/antigravity-cli/skills"
     ".omp/agent/skills"
     ".codex/skills"
   ];

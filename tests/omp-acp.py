@@ -368,7 +368,7 @@ if __name__ == "__main__":
             instances = applied(entry, home)
             api = instances["omp"]["config"]
             assert set(api["customModels"]) == expected and len(api["customModels"]) == len(expected), "T3 API selectors capped or changed"
-            patterns = {"synthetic/**", "openai-codex/*"} | {s for s in expected if s.startswith("openrouter/")}
+            patterns = {"synthetic/**", "google-antigravity/**", "openai-codex/*"} | {s for s in expected if s.startswith("openrouter/")}
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
             overlay = json.loads(Path(args[args.index("--config") + 1]).read_text())

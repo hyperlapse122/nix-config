@@ -19,53 +19,6 @@ ZIP_DARWIN_HEX = "d576a1481c61ff800d013f33295518794c8675da1d30b945dc7c0b587cfdfe
 CLI_DARWIN_HEX = "02c191e2a3ed5c3d8c9808d6039884cda18e72426130d062bfbd1b024a5dc3fe"
 OTHER_HEX = "6ec2232f168c00aa108c04218e92666a7df2f4c2b71c1e93c734294ae71359d0"
 
-AGY_VERSION = "9.8.7"
-
-# Node platform key, Nix system, and (url, sha256, archive bytes, executable
-# bytes, harness bytes) of each releaseAssets entry the pin needs.
-AGY_PLATFORMS = {
-    "darwin-arm64": (
-        "aarch64-darwin",
-        "https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-9.8.7-darwin-arm64.zip",
-        "11d97045f7b4fe81175a107cdf16f9c51484e3c78a5162cae415338bb6aa5b88",
-        111_456_901,
-        278_535_401,
-        118_611_301,
-    ),
-    "linux-x64": (
-        "x86_64-linux",
-        "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-9.8.7-linux-x86_64.zip",
-        "22b60956af0a9d76220a4db91ca9ac88e2a2372ad68f985ab5fceace6b825b96",
-        333_727_102,
-        926_533_902,
-        130_388_002,
-    ),
-    "linux-arm64": (
-        "aarch64-linux",
-        "https://dl.google.com/agy-extensions/releases/linux/agy-acp-server-9.8.7-linux-arm64.zip",
-        "330b0bc0fb858e88f4df404d4cedf80bf9298c178291e39e383d6c50b111cbdf",
-        321_690_303,
-        930_848_903,
-        123_224_903,
-    ),
-}
-
-
-def expected_antigravity():
-    return {
-        system: {
-            "platform": key,
-            "version": AGY_VERSION,
-            "url": url,
-            "sha256": hex_digest,
-            "hash": sri(hex_digest),
-            "archiveBytes": archive,
-            "executable": {"name": "agy_acp_server.par", "bytes": exe},
-            "harness": {"name": "localharness_external", "bytes": harness},
-        }
-        for key, (system, url, hex_digest, archive, exe, harness) in AGY_PLATFORMS.items()
-    }
-
 
 def target_assets(version):
     return {
@@ -133,7 +86,7 @@ def release_list(newest=None):
     )
 
 
-def expected_pin(tag, antigravity=None):
+def expected_pin(tag):
     version = tag[1:]
     return {
         "version": version,
@@ -145,7 +98,6 @@ def expected_pin(tag, antigravity=None):
             }
             for system, components in target_assets(version).items()
         },
-        "antigravity": {} if antigravity is None else antigravity,
     }
 
 
@@ -203,10 +155,8 @@ class T3codeReleaseTestCase(unittest.TestCase):
             return []
         return [json.loads(line)[-1] for line in self.args_log.read_text().splitlines()]
 
-    def write_pin(self, version, antigravity=None):
+    def write_pin(self, version):
         payload = {"version": version, "tag": f"v{version}"}
-        if antigravity is not None:
-            payload["antigravity"] = antigravity
         self.output.write_text(json.dumps(payload))
 
     def assert_refused(self, result, needle):
@@ -216,12 +166,11 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_picks_the_newest_nightly_over_stable_and_preview(self):
-        self.write_pin("0.0.45-nightly.20261001.1000", antigravity=expected_antigravity())
+        self.write_pin("0.0.45-nightly.20261001.1000")
         result = self.run_release(extra_args=["-o", str(self.output)])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("updated", result.stdout)
-        self.assertEqual(json.loads(self.output.read_text()), expected_pin(NEWEST, antigravity=expected_antigravity()))
-
+        self.assertEqual(json.loads(self.output.read_text()), expected_pin(NEWEST))
     def test_refuses_a_nightly_missing_the_arm64_appimage(self):
         name = f"T3-Code-{NEWEST_VERSION}-arm64.AppImage"
         body = release_list(release(NEWEST, omit=(name,)))
@@ -359,19 +308,6 @@ class T3codeReleaseTestCase(unittest.TestCase):
         result = self.run_release(status=22, token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(FAKE_TOKEN, result.stdout + result.stderr)
-
-    def test_preserves_existing_antigravity_section_on_nightly_bump(self):
-        custom_antigravity = {
-            "x86_64-linux": {"version": "release-N", "sha256": "1234"},
-        }
-        self.write_pin("0.0.45-nightly.20261001.1000", antigravity=custom_antigravity)
-        result = self.run_release(
-            extra_args=["-o", str(self.output)],
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        pin = json.loads(self.output.read_text())
-        self.assertEqual(pin["version"], NEWEST_VERSION)
-        self.assertEqual(pin["antigravity"], custom_antigravity)
 
     def test_source_is_not_fetched(self):
         result = self.run_release()

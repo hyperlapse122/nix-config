@@ -143,12 +143,6 @@ let
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
       serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
-      antigravityRuntime = "${
-        import ../packages/antigravity-acp.nix {
-          inherit (entry.host) pkgs;
-          pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
-        }
-      }/libexec/antigravity-acp";
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -306,24 +300,6 @@ let
       fi
 
       # Compound Engineering's Antigravity route takes the helper from the
-      # directory agy_acp_server.par is found in. The macOS .par finds its CA
-      # bundle itself, so the wrapper sets no SSL_CERT_FILE. It seeds
-      # acp_token.json from the ~/.gemini sign-in, then execs the pinned runtime.
-      agyPar=$(readlink -f "$gen/home-path/bin/agy_acp_server.par" || true)
-      if [ -z "$agyPar" ] || [ ! -x "$agyPar" ]; then
-        bad "no agy_acp_server.par on PATH"
-      else
-        grep -qxF ${lib.escapeShellArg "exec ${antigravityRuntime}/agy_acp_server.par \"$@\""} "$agyPar" \
-          || bad "agy_acp_server.par does not exec the pinned runtime's .par"
-        grep -qE '^ *token_target=\$acp_dir/acp_token\.json$' "$agyPar" \
-          && grep -qxF 'seed_acp_token' "$agyPar" \
-          || bad "agy_acp_server.par does not seed acp_token.json"
-        if grep -qF SSL_CERT_FILE "$agyPar"; then
-          bad "the macOS agy_acp_server.par wrapper sets SSL_CERT_FILE"
-        fi
-      fi
-      [ "$(readlink -f "$gen/home-path/bin/localharness_external" || true)" = ${lib.escapeShellArg "${antigravityRuntime}/localharness_external"} ] \
-        || bad "localharness_external on PATH is not the pinned runtime's"
 
       if [ -z ${lib.escapeShellArg serveHtml} ]; then
         bad "packages/agent-tools.nix exports no serveHtml"

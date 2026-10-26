@@ -76,7 +76,6 @@ let
     ".omp/agent/AGENTS.md"
     ".claude/CLAUDE.md"
     ".codex/AGENTS.md"
-    ".gemini/config/AGENTS.md"
   ];
 
   sentenceProgram = pkgs.writeText "claude-effort-absent-sentences.awk" ''

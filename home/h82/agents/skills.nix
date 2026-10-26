@@ -6,15 +6,12 @@
 }:
 let
   # Each root is a directory one harness reads skills from. Claude Code reads
-  # ~/.claude/skills. The Antigravity CLI and T3 Code's Antigravity instances
-  # read ~/.gemini/antigravity-cli/skills; not ~/.gemini/config/skills, which
-  # the CLI lists twice. Codex reads
+  # ~/.claude/skills. Codex reads
   # ~/.codex/skills; not ~/.agents/skills, which no harness here owns. Codex
   # lists a skill it reaches through more than one root once, because every
   # root's link resolves to the same store directory.
   roots = [
     ".claude/skills"
-    ".gemini/antigravity-cli/skills"
     ".codex/skills"
   ];
 in

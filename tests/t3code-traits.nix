@@ -159,6 +159,10 @@ let
     removePaths = [
       {
         path = [ "providerInstances" ];
+        key = "antigravity";
+      }
+      {
+        path = [ "providerInstances" ];
         key = "omp-codex";
       }
       {
@@ -171,7 +175,6 @@ let
       from = "providers";
       to = "providerInstances";
       kinds = [
-        "antigravity"
         "claudeAgent"
         "codex"
         "grok"
@@ -181,31 +184,6 @@ let
       ];
     };
     setPaths = [
-      {
-        path = [
-          "providerInstances"
-          "antigravity"
-          "config"
-          "binaryPath"
-        ];
-        value = binaryPathExpected;
-      }
-      {
-        path = [
-          "providerInstances"
-          "antigravity"
-          "driver"
-        ];
-        value = "antigravity";
-      }
-      {
-        path = [
-          "providerInstances"
-          "antigravity"
-          "enabled"
-        ];
-        value = true;
-      }
       {
         path = [
           "providerInstances"
@@ -475,19 +453,6 @@ let
   # activation names are built: the check compares the paths, and the paths
   # are the store hashes of what the module would install.
   noContext = builtins.unsafeDiscardStringContext;
-  binaryPathExpected = noContext "${
-    import ../packages/antigravity-acp-path.nix { inherit pkgs; }
-  }/bin/agy_acp_server.par";
-  releasePin = builtins.fromJSON (builtins.readFile ../packages/t3code-release.json);
-  runtimeExpected = noContext "${
-    import ../packages/antigravity-acp.nix {
-      inherit pkgs;
-      pins = releasePin.antigravity;
-    }
-  }/libexec/antigravity-acp";
-  pinExpected = noContext "${pkgs.writeText "antigravity-acp-pin.json" (
-    builtins.toJSON (releasePin.antigravity.${pkgs.stdenv.hostPlatform.system} or { })
-  )}";
 
   merges = [
     {
@@ -550,36 +515,7 @@ let
           fail=1
         fi
       ''
-    ) merges
-    + (
-      let
-        activation = user.home.activation.t3codeAntigravity or null;
-      in
-      ''
-        checkRuntime ${esc name} ${lib.boolToString expected} ${lib.boolToString (activation != null)} ${
-          esc (noContext (activation.data or ""))
-        } ${
-          lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))
-        } ${esc "${user.home.homeDirectory or ""}/.t3"}
-      ''
-    )
-    + (
-      let
-        activation = user.home.activation.t3codeAntigravityLinks or null;
-      in
-      ''
-        checkLinks ${esc name} ${lib.boolToString expected} ${lib.boolToString (activation != null)} ${
-          esc (noContext (activation.data or ""))
-        } ${lib.boolToString (lib.elem "installPackages" (activation.after or [ ]))} ${
-          esc (user.home.homeDirectory or "")
-        } ${
-          lib.boolToString (
-            lib.elem "agentPlugins" (activation.after or [ ])
-            && (!pluginsDeclared || user.home.activation ? agentPlugins)
-          )
-        }
-      ''
-    );
+    ) merges;
 
   assertSettings = assertSettingsWith true;
 
@@ -715,17 +651,6 @@ let
   moduleOn = moduleWith ../home/h82/t3code.nix;
 
   moduleSource = builtins.readFile ../home/h82/t3code.nix;
-  assertPinSource = lib.concatStrings [
-    (lib.optionalString
-      (!lib.hasInfix "builtins.readFile ../../packages/t3code-release.json)).antigravity" moduleSource)
-      (
-        fail "home/h82/t3code.nix does not read its Antigravity runtime pins from packages/t3code-release.json's antigravity entry"
-      )
-    )
-    (lib.optionalString (lib.hasInfix "antigravity-acp-release.json" moduleSource) (
-      fail "home/h82/t3code.nix names packages/antigravity-acp-release.json, the PATH runtime's pin, which T3 Code's managed layout must not read"
-    ))
-  ];
 
   assertModule =
     let
@@ -892,128 +817,6 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     fi
   }
 
-  # $2 says whether the runtime install belongs on this configuration, $3
-  # whether it is declared; $4 is its script, $5 whether it runs after
-  # installPackages, and $6 the base directory it must name.
-  checkRuntime() {
-    local name=$1 expected=$2 present=$3 after=$5 base=$6 installer actual
-    if [ "$present" != "$expected" ]; then
-      echo "$name: home.activation.t3codeAntigravity is present=$present, either T3 Code trait on is $expected" >&2
-      fail=1
-      return
-    fi
-    [ "$present" = true ] || return 0
-
-    if [ "$after" != true ]; then
-      echo "$name: home.activation.t3codeAntigravity must run after installPackages" >&2
-      fail=1
-    fi
-
-    printf '%s\n' "$4" > script
-    installer=$(grep -oE '/nix/store/[^[:space:]]+/bin/t3code-antigravity-install' script | head -n 1 || true)
-    if [ -z "$installer" ]; then
-      echo "$name: the t3codeAntigravity activation names no packaged installer" >&2
-      fail=1
-      return
-    fi
-    sed "s|$installer|$PWD/merger-stub|g" script > swapped
-
-    if ! exercise '"$@"' 0 || [ ! -f args ]; then
-      echo "$name: on a live run the t3codeAntigravity activation does not run the installer" >&2
-      fail=1
-      return
-    fi
-    actual=$(argAfter --base-dir)
-    if [ "$actual" != "$base" ]; then
-      echo "$name: the installer must be pointed at $base, got '$actual'" >&2
-      fail=1
-    fi
-    actual=$(argAfter --runtime)
-    if [ "$actual" != ${esc runtimeExpected} ]; then
-      echo "$name: the installer must link ${runtimeExpected}, the runtime this system pins, got '$actual'" >&2
-      fail=1
-    fi
-    actual=$(argAfter --pin)
-    if [ "$actual" != ${esc pinExpected} ]; then
-      echo "$name: the installer must read ${pinExpected}, this system's pin record, got '$actual'" >&2
-      fail=1
-    fi
-
-    if exercise '"$@"' 23; then
-      echo "$name: the t3codeAntigravity activation swallows the installer's exit status" >&2
-      fail=1
-    fi
-
-    exercise ':' 0 || true
-    if [ -f args ]; then
-      echo "$name: the t3codeAntigravity activation runs the installer outside Home Manager's run, so a dry run changes ~/.t3" >&2
-      fail=1
-    fi
-  }
-
-  # $2 says whether the instance links belong on this configuration, $3
-  # whether they are declared; $4 is the script, $5 whether it runs after
-  # installPackages, $6 the home directory its paths must sit under, and $7
-  # whether it runs after an agentPlugins entry that exists.
-  checkLinks() {
-    local name=$1 expected=$2 present=$3 after=$5 home=$6 afterPlugins=$7 linker actual
-    if [ "$present" != "$expected" ]; then
-      echo "$name: home.activation.t3codeAntigravityLinks is present=$present, either T3 Code trait on is $expected" >&2
-      fail=1
-      return
-    fi
-    [ "$present" = true ] || return 0
-
-    if [ "$after" != true ]; then
-      echo "$name: home.activation.t3codeAntigravityLinks must run after installPackages" >&2
-      fail=1
-    fi
-    if [ "$afterPlugins" != true ]; then
-      echo "$name: home.activation.t3codeAntigravityLinks must run after home.activation.agentPlugins" >&2
-      fail=1
-    fi
-
-    printf '%s\n' "$4" > script
-    linker=$(grep -oE '/nix/store/[^[:space:]]+/bin/t3code-antigravity-link' script | head -n 1 || true)
-    if [ -z "$linker" ]; then
-      echo "$name: the t3codeAntigravityLinks activation names no packaged linker" >&2
-      fail=1
-      return
-    fi
-    sed "s|$linker|$PWD/merger-stub|g" script > swapped
-
-    if ! exercise '"$@"' 0 || [ ! -f args ]; then
-      echo "$name: on a live run the t3codeAntigravityLinks activation does not run the linker" >&2
-      fail=1
-      return
-    fi
-    actual=$(argAfter --base-dir)
-    if [ "$actual" != "$home/.t3" ]; then
-      echo "$name: the linker must be pointed at $home/.t3, got '$actual'" >&2
-      fail=1
-    fi
-    actual=$(argAfter --gemini-config)
-    if [ "$actual" != "$home/.gemini/config" ]; then
-      echo "$name: the linker must link to $home/.gemini/config, got '$actual'" >&2
-      fail=1
-    fi
-    actual=$(grep -cxF -- --instance args || true)
-    if [ "$actual" != 1 ] || [ "$(argAfter --instance)" != antigravity ]; then
-      echo "$name: the linker must prepare exactly the antigravity instance home" >&2
-      fail=1
-    fi
-
-    if exercise '"$@"' 23; then
-      echo "$name: the t3codeAntigravityLinks activation swallows the linker's exit status" >&2
-      fail=1
-    fi
-
-    exercise ':' 0 || true
-    if [ -f args ]; then
-      echo "$name: the t3codeAntigravityLinks activation runs the linker outside Home Manager's run, so a dry run changes ~/.t3" >&2
-      fail=1
-    fi
-  }
 
   ${lib.concatMapStrings assertProfile profileEntries}
   ${lib.concatMapStrings assertSettingsOn bothOff}
@@ -1029,7 +832,6 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
   )}
   ${lib.concatMapStrings assertFixture (lib.filter (entry: entry.bootstrap) fixtures)}
   ${assertModule}
-  ${assertPinSource}
 
   [ "$fail" = 0 ] || exit 1
   touch "$out"

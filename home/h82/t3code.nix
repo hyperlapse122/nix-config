@@ -24,11 +24,7 @@ let
 
   agentTools = import ../../packages/agent-tools.nix { inherit pkgs; };
   merger = "${agentTools.agentSettings}/bin/agent-settings";
-  installer = "${agentTools.t3codeAntigravityInstall}/bin/t3code-antigravity-install";
-  linker = "${agentTools.t3codeAntigravityLink}/bin/t3code-antigravity-link";
   t3 = cfg.cli.enable || cfg.desktop.enable;
-
-  antigravityInstances = [ "antigravity" ];
 
   omp = import ../../packages/omp.nix { inherit pkgs; };
   catalogs = import ./agents/omp-model-catalogs.nix;
@@ -40,7 +36,12 @@ let
     }
   );
   # OMP uses path globs: model IDs themselves contain slashes.
-  ompPatterns = [ "synthetic/**" ] ++ openrouterSelectors ++ [ "openai-codex/*" ];
+  ompPatterns = [
+    "synthetic/**"
+    "google-antigravity/**"
+  ]
+  ++ openrouterSelectors
+  ++ [ "openai-codex/*" ];
   openrouterSelectors = map (row: "openrouter/${row.id}") catalogs.openrouter.data;
   apiSelectors = lib.unique (
     map (row: "synthetic/${row.id}") catalogs.synthetic.data ++ openrouterSelectors
@@ -70,24 +71,6 @@ let
     };
   };
 
-  # The Antigravity runtime the pinned T3 Code requires, preinstalled so the
-  # provider needs only a sign-in.
-  antigravity = import ../../packages/antigravity-acp.nix {
-    inherit pkgs;
-    pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
-  };
-  antigravityPin = pkgs.writeText "antigravity-acp-pin.json" (builtins.toJSON antigravity.pin);
-  # A check evaluates this module without home/h82/agents/skills.nix; the
-  # wrapper's default skill list applies there.
-  antigravityPath = import ../../packages/antigravity-acp-path.nix (
-    {
-      inherit pkgs;
-    }
-    // lib.optionalAttrs (config.my ? agentSkills) {
-      skills = lib.attrNames config.my.agentSkills;
-    }
-  );
-
   # The settings that differ from the pinned T3 Code's schema defaults; a
   # value left at its default follows T3 Code when that default changes. Each
   # declared provider instance states `enabled`, even where it equals the
@@ -108,11 +91,6 @@ let
     enableAgentDeviceAccess = true;
     enableDeviceSupport = true;
     providerInstances = {
-      antigravity = {
-        config.binaryPath = "${antigravityPath}/bin/agy_acp_server.par";
-        driver = "antigravity";
-        enabled = true;
-      };
       claudeAgent = {
         driver = "claudeAgent";
         enabled = true;
@@ -181,8 +159,11 @@ let
 
   # Nested entries that used to be declared, retired the same way. An earlier
   # generation hid OpenCode's text-generation alias here; prune drops the
-  # object once that leaves it empty.
   retiredPaths = [
+    {
+      path = [ "providerInstances" ];
+      key = "antigravity";
+    }
     {
       path = [ "providerInstances" ];
       key = "omp-codex";
@@ -345,30 +326,5 @@ in
           }
       ''
     ) merges
-    // {
-      # The script references the package, so this generation keeps the
-      # linked runtime from garbage collection; a later generation relinks.
-      t3codeAntigravity = lib.hm.dag.entryAfter [ "installPackages" ] ''
-        run ${installer} \
-          --base-dir ${config.home.homeDirectory}/.t3 \
-          --runtime ${antigravity}/libexec/antigravity-acp \
-          --pin ${antigravityPin}
-      '';
-      # T3 Code runs each Antigravity instance under its own GEMINI_HOME,
-      # whose ACP runtime loads skills but no plugins, so each plugin skill is
-      # linked into ~/.gemini/antigravity-cli/skills, which T3 Code links into
-      # every instance home; the linker also removes the config links an earlier
-      # version made in each home.
-      # It runs after agentPlugins so a sync's new or retired skills are seen.
-      # An instance added in the app gets its links on the next activation,
-      # which on NixOS runs only when a rebuild produces a new Home Manager
-      # generation.
-      t3codeAntigravityLinks = lib.hm.dag.entryAfter [ "installPackages" "agentPlugins" ] ''
-        run ${linker} \
-          --base-dir ${config.home.homeDirectory}/.t3 \
-          --gemini-config ${config.home.homeDirectory}/.gemini/config \
-          ${lib.concatMapStringsSep " " (id: "--instance ${lib.escapeShellArg id}") antigravityInstances}
-      '';
-    }
   );
 }

@@ -214,19 +214,11 @@
         omp-release = agentTools.ompRelease;
         npm-release = agentTools.npmRelease;
         acpx = import ./packages/acpx.nix { inherit pkgs; };
-        antigravity-cli-release = agentTools.antigravityCliRelease;
-        antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         synthetic-models-watch = agentTools.syntheticModelsWatch;
         openrouter-catalog-snapshot = agentTools.openrouterCatalogSnapshot;
         t3code = import ./packages/t3code.nix { inherit pkgs; };
         t3code-cli = import ./packages/t3code-cli.nix { inherit pkgs; };
-        antigravity-acp = import ./packages/antigravity-acp.nix {
-          inherit pkgs;
-          pins = (builtins.fromJSON (builtins.readFile ./packages/t3code-release.json)).antigravity;
-        };
-        antigravity-acp-release = agentTools.antigravityAcpRelease;
-        antigravity-acp-path = import ./packages/antigravity-acp-path.nix { inherit pkgs; };
         android-sdk-release = agentTools.androidSdkRelease;
       };
       # VM tests live outside `checks` so `nix flake check` stays fast and needs
@@ -427,9 +419,6 @@
           synthetic-models = import ./tests/synthetic-models.nix { inherit pkgs; };
           # The probe needs a signed-in instance home, so no check runs it;
           # this covers its rule verdicts and the cleanup of what it plants.
-          antigravity-acp-probe =
-            pythonScriptCheck "antigravity-acp-probe" ./scripts/antigravity-acp-probe
-              ./tests/test_antigravity_acp_probe.py;
           serve-html = pythonScriptCheck "serve-html" ./scripts/serve-html ./tests/test_serve_html.py;
           agent-settings =
             let
@@ -582,10 +571,6 @@
           ghq = import ./tests/ghq.nix { inherit pkgs self; };
           git-lfs = import ./tests/git-lfs.nix { inherit pkgs self; };
           git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
-          antigravity-acp-path = import ./tests/antigravity-acp-path.nix {
-            inherit pkgs;
-            pluginSource = inputs.compound-engineering-plugin;
-          };
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
           mise-settings = import ./tests/mise-settings.nix {
             inherit pkgs self;
@@ -606,8 +591,6 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
-          antigravity-plugin-install = import ./tests/antigravity-plugin-install.nix { inherit pkgs self; };
-          antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           agent-instructions = import ./tests/agent-instructions.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -654,12 +637,6 @@
               ./tests/test_codex_release.py;
           omp-release = pythonScriptCheck "omp-release" ./scripts/omp-release ./tests/test_omp_release.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
-          antigravity-cli-release =
-            pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
-              ./tests/test_antigravity_cli_release.py;
-          antigravity-acp-release =
-            pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
-              ./tests/test_antigravity_acp_release.py;
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
               ./tests/test_t3code_release.py;
@@ -720,111 +697,6 @@
                   )}
                 touch $out
               '';
-          t3code-antigravity-install =
-            pkgs.runCommand "t3code-antigravity-install-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/t3code-antigravity-install} scripts/t3code-antigravity-install
-                cp ${./tests/test_t3code_antigravity_install.py} tests/test_t3code_antigravity_install.py
-                patchShebangs scripts
-                python tests/test_t3code_antigravity_install.py
-                touch $out
-              '';
-          t3code-antigravity-link =
-            pkgs.runCommand "t3code-antigravity-link-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/t3code-antigravity-link} scripts/t3code-antigravity-link
-                cp ${./tests/test_t3code_antigravity_link.py} tests/test_t3code_antigravity_link.py
-                patchShebangs scripts
-                python tests/test_t3code_antigravity_link.py
-                touch $out
-              '';
-          t3code-antigravity-pin =
-            pkgs.runCommand "t3code-antigravity-pin" { nativeBuildInputs = [ pkgs.python3 ]; }
-              ''
-                                python3 -I ${./tests/t3code-antigravity-pin.py} \
-                                  ${./packages/t3code-release.json} \
-                                  ${./packages/antigravity-acp-release.json}
-
-                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
-                                  nonexistent.json \
-                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
-                                  echo "t3code-antigravity-pin passed with a missing pin file" >&2
-                                  exit 1
-                                fi
-
-                                python3 - <<'PY'
-                import json
-                d = json.load(open('${./packages/t3code-release.json}'))
-                del d["antigravity"]["x86_64-linux"]
-                with open("missing-system.json", "w") as f:
-                    json.dump(d, f)
-                PY
-                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
-                                  missing-system.json \
-                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
-                                  echo "t3code-antigravity-pin passed with a missing supported system" >&2
-                                  exit 1
-                                fi
-
-                                python3 - <<'PY'
-                import base64, json
-                d = json.load(open('${./packages/t3code-release.json}'))
-                d["antigravity"]["x86_64-linux"]["sha256"] = "0" * 64
-                d["antigravity"]["x86_64-linux"]["hash"] = "sha256-" + base64.b64encode(bytes.fromhex("0" * 64)).decode("ascii")
-                with open("differing-sha.json", "w") as f:
-                    json.dump(d, f)
-                PY
-                                if python3 -I ${./tests/t3code-antigravity-pin.py} \
-                                  differing-sha.json \
-                                  ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
-                                  echo "t3code-antigravity-pin passed when sha256 differed" >&2
-                                  exit 1
-                                fi
-
-                                python3 - <<'PY'
-                src = open('${./tests/t3code-antigravity-pin.py}').read()
-                mutant = src.replace("if val_a != val_b:", "if False and val_a != val_b:")
-                assert mutant != src, "equality comparison mutation failed to apply"
-                with open("mutant.py", "w") as f:
-                    f.write(mutant)
-                PY
-                                if ! python3 -I mutant.py differing-sha.json ${./packages/antigravity-acp-release.json} >/dev/null 2>&1; then
-                                  echo "self-test: mutant script without equality comparison still failed mismatched pins" >&2
-                                  exit 1
-                                fi
-
-                                touch $out
-              '';
-          # scripts/t3code-antigravity-link derives each instance home the way
-          # the pinned T3 Code does: the hex SHA-256 of the instance id under
-          # providers/antigravity. A T3 Code bump that changes either fails
-          # here instead of leaving the links in homes T3 Code no longer reads.
-          # The plugin skills reach each home only through T3 Code's own link
-          # of antigravity-cli/skills, so that link is checked as well: the
-          # directories, the loop that symlinks each one, and the call from
-          # profile preparation, so a helper left unused does not pass.
-          t3code-antigravity-layout = pkgs.runCommand "t3code-antigravity-layout" { } ''
-            bundle=${self.packages.${system}.t3code-cli}/libexec/t3code/t3
-            for fragment in \
-              'crypto.digest("SHA-256", new TextEncoder().encode(instanceId))' \
-              'profile: path.join(stateDir, "providers", "antigravity", key),' \
-              'const geminiHome = path.resolve(input.profileDirectory);' \
-              'return [path.join(geminiHome, "config", "skills"), path.join(geminiHome, "antigravity-cli", "skills")];' \
-              'const targets = antigravityUserSkillDirectories(path, path.join(input.userHome, ".gemini"));' \
-              'for (const [link, target] of [[links[0], targets[0]], [links[1], targets[1]]])' \
-              'NodeFSP.symlink(target, link, input.platform === "win32" ? "junction" : "dir")' \
-              'yield* linkAntigravityUserSkills({'; do
-              if ! grep -aqF "$fragment" "$bundle"; then
-                echo "the pinned T3 Code no longer contains: $fragment" >&2
-                exit 1
-              fi
-            done
-            touch $out
-          '';
           # Drives the packaged helper, so a package that lost nokogiri from its
           # interpreter fails here rather than in the update workflow.
           android-sdk-release =
@@ -881,10 +753,6 @@
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
-          antigravity-acp-path-profiles = import ./tests/antigravity-acp-path-profiles.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
@@ -1466,44 +1334,6 @@
               ${lib.concatMapStrings assertDarwin darwinEntries}
               ${report grokApps "modules/shared/darwin-apps.nix still maps Grok apps"}
               [ "$fail" = 0 ] || exit 1
-              touch $out
-            '';
-          antigravity-cli =
-            let
-              # The version is compared with the pin for the reason given on the
-              # claude-code check. The wrapper variable is read from the
-              # installed bin/agy, because it keeps agy from updating itself
-              # under any GEMINI_HOME, such as T3 Code's per-provider homes.
-              pinnedVersion =
-                (builtins.fromJSON (builtins.readFile ./packages/antigravity-cli-release.json)).version;
-              assertConfiguration =
-                entry:
-                let
-                  agyPkg = userPackageOf "antigravity-cli" entry;
-                  versionMismatch = pkgs.lib.optionalString (agyPkg != null && agyPkg.version != pinnedVersion) ''
-                    echo "antigravity-cli on ${entry.name} is built from version '${agyPkg.version}', expected pin ${pinnedVersion}" >&2
-                    fail=1
-                  '';
-                  updaterDisabled = pkgs.lib.optionalString (agyPkg != null) ''
-                    if ! grep -qxF "export AGY_CLI_DISABLE_AUTO_UPDATE='true'" ${agyPkg}/bin/agy; then
-                      echo "agy on ${entry.name} does not turn its self-updater off" >&2
-                      fail=1
-                    fi
-                  '';
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "antigravity-cli";
-                    executables = [ "agy" ];
-                    desktopEntries = [ ];
-                  } entry}
-                  ${versionMismatch}
-                  ${updaterDisabled}
-                '';
-            in
-            pkgs.runCommand "antigravity-cli-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
               touch $out
             '';
           t3code =
