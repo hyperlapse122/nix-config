@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-26T03:23:17Z"
+    cursor: "2026-10-26T04:39:21Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -535,8 +535,8 @@ items:
     id: "hyperlapse122/nix-config#330"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/330"
-    source_gone_reason: "superseded by #362; retired from sweep plan by user decision (2026-10-26)"
-    updatedAt: "2026-10-24T09:09:41Z"
+    source_gone_reason: "closed as not planned at source (wontfix): providerInstances.pi is disabled and retired"
+    updatedAt: "2026-10-26T04:39:18Z"
   "gh-issues:hyperlapse122/nix-config#332":
     source: "gh-issues"
     status: "source_gone"
@@ -668,7 +668,7 @@ items:
     updatedAt: "2026-10-26T02:05:30Z"
   "gh-issues:hyperlapse122/nix-config#362":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "feat(t3code): use OMP google-antigravity Flash Lite for text generation. Route T3 Code's textGenerationModelSelection in home/h82/t3code.nix to a google-antigravity Gemini Flash Lite model on the omp instance, superseding #330."
     author_class: "teammate"
@@ -678,18 +678,19 @@ items:
     id: "hyperlapse122/nix-config#362"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/362"
-    updatedAt: "2026-10-26T03:05:22Z"
+    source_gone_reason: "closed as not planned at source (wontfix): T3 Code acpRegistry hardcodes supportsTextGeneration=false and silently falls back to codex/gpt-6-luna"
+    updatedAt: "2026-10-26T04:39:21Z"
 last_run:
-  timestamp: "2026-10-26T04:10:40Z"
+  timestamp: "2026-10-26T04:39:23Z"
   outcome: "completed"
-  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26"
+  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26-wontfix"
   counts:
     gh-issues:
       ack_deferred: 0
       acknowledged: 9
       closed: 4
-      in_plan: 9
+      in_plan: 8
       ingested: 9
       manual_stuck: 0
       media_analyzed: 0
-      source_gone: 2
+      source_gone: 3
