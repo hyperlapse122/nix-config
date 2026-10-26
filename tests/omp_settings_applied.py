@@ -292,7 +292,7 @@ class Activation(unittest.TestCase):
                                             env=env, capture_output=True, text=True, timeout=20)
                     self.assertEqual(result.returncode == 0, success, result.stderr)
 
-                target.write_text("autolearn: {enabled: true}\ndisabledProviders: []\n")
+                target.write_text("autolearn: {enabled: true}\ndisabledProviders: []\ntui: {mouse: true}\n")
                 self.assertIn("old-generated", discovered_skills())
                 activate()
                 value = yaml.safe_load(target.read_text())
@@ -300,8 +300,10 @@ class Activation(unittest.TestCase):
                 self.assertIs(value["autolearn"]["enabled"], False)
                 self.assertIs(value["startup"]["checkUpdate"], False)
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
+                self.assertIs(value["tui"]["mouse"], False)
                 for key, expected in (("modelRoles", {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}),
-                                      ("defaultThinkingLevel", "low")):
+                                      ("defaultThinkingLevel", "low"),
+                                      ("tui.mouse", "false")):
                     result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
                                             capture_output=True, text=True, timeout=20)
                     actual = json.loads(result.stdout) if key == "modelRoles" else result.stdout.strip()

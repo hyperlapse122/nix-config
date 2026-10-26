@@ -80,7 +80,7 @@ pkgs.testers.nixosTest {
                 "completeScrollback": True,
                 "textSizing": True,
                 "codexResetFireworks": True,
-                "mouse": True,
+                "mouse": False,
                 "imeSafeCursor": True,
             }
             expected["terminal"] = {"showProgress": True}
