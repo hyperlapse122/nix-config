@@ -21,8 +21,6 @@ expect_failure() {
 }
 
 git_bin=$(command -v git) || fail 'git is required'
-# Accept either the packaged nr binary (with store paths substituted) or the
-# raw scripts/nr source (with @...@ placeholders).
 rendered=$scratch/nr
 sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|/nonexistent/nvd|" "$script" >"$rendered"
 chmod +x "$rendered"

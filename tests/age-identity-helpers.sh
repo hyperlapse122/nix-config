@@ -60,11 +60,6 @@ expect_failure env PATH=$pipe_stubs:$PATH "$recover_bin"
 pass 'an undetectable hostname fails and names --host'
 
 # --- the real pipeline -----------------------------------------------------
-# Run the actual gpg | sudo installer composition with both sides stubbed,
-# recording sudo's argv so the privilege boundary is verified directly.
-
-# sudo that records non-validation invocations and runs what it is given, so
-# the installer stub really executes.
 cat >"$pipe_stubs/sudo" <<STUB
 #!$bash_bin_pipe
 [[ \${1:-} == -v ]] && exit 0

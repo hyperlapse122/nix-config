@@ -267,7 +267,6 @@ POLICIES = {
     ],
 }
 
-# Forbidden everywhere in common prose (retired harnesses, model names, internal transport tokens).
 REMOVED_COMMON = re.compile(
     r"\bPi\b|\bOpenCode\b|\.t3/|"
     r"model[- ](?:routing|selection|family)|CROSS_MODEL_|"
@@ -277,7 +276,6 @@ REMOVED_COMMON = re.compile(
     r"t3_thread_|task_status|task_cancel|clientRequestId|runtimeMode",
     re.IGNORECASE,
 )
-# Forbidden outside the two explicitly T3-conditional common sections (R37, R38).
 REMOVED_NON_T3_SECTIONS = re.compile(
     r"\bT3\b|\bsubagents?\b|\bdelegat(?:e|ed|es|ing|ion)\b|delegate_task|cross-model",
     re.IGNORECASE,
