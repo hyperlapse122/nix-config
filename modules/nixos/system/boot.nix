@@ -12,7 +12,6 @@ in
 {
   boot.kernelPackages = pkgs.linuxPackages_latest;
 
-  boot.initrd.systemd.enable = true;
   boot.initrd.luks.devices.cryptroot = {
     device = "/dev/disk/by-partlabel/disk-main-luks";
     crypttabExtraOpts = lib.mkIf (!bootstrap) [
