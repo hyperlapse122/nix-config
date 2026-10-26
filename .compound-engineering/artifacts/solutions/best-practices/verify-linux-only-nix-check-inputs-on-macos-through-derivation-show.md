@@ -1,7 +1,7 @@
 ---
 title: Verify a Linux-only Nix check's text inputs on macOS through nix derivation show
 date: "2026-10-16"
-last_updated: "2026-10-24"
+last_updated: "2026-10-26"
 category: best-practices
 module: "Nix flake checks (local verification on macOS)"
 problem_type: best_practice
@@ -11,8 +11,8 @@ applies_when:
   - "Changing a check that exists only under checks.x86_64-linux while working on the macOS host, which has no Linux builder"
   - "The check compares files built with pkgs.writeText or another text-file builder, such as an expected declaration against a rendered one"
   - "Mutation-testing such a check locally before CI builds it"
-  - "The check greps or runs a fetched upstream artifact, such as the pinned T3 Code CLI bundle in t3code-antigravity-layout"
-  - "The check's assertions live in its builder script and read text derivations, plus built paths the script can be pointed away from, such as the sentence and section assertions of agent-instructions"
+  - "The check greps or runs a fetched upstream artifact, such as a pinned Linux release tarball from packages/t3code-release.json (as the former t3code-antigravity-layout check did)"
+  - "The check's assertions live in its builder script and read text derivations, plus built paths the script can be pointed away from, as the former agent-instructions builder script did before moving to Python"
 tags: ["mutation-testing", "fetched-artifact", "t3code", "prefetch-file", "flake-checks", "macos", "aarch64-darwin", "linux-builder", "derivation-show", "structured-attrs", "write-text", "verification", "agent-instructions", "builder-script", "build-command"]
 related_components:
   - tooling
@@ -136,7 +136,7 @@ This runs the check's real assertions but not its build, so CI's `check-shards` 
 
 ## A check that reads a fetched upstream artifact
 
-`t3code-antigravity-layout` in `flake.nix` greps the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depends on. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. The Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
+Historically, `t3code-antigravity-layout` in `flake.nix` grepped the pinned T3 Code CLI bundle (`${self.packages.${system}.t3code-cli}/libexec/t3code/t3`) for lines it depended on. The bundle is a fixed-output fetch, not a text derivation, so `nix derivation show` has nothing to compare. Any pinned Linux asset is still reachable from the Mac: `packages/t3code-release.json` names it (`t3-<version>-linux-x64.tar.gz`) and its hash, and `packages/t3code-cli.nix` builds the URL from the release tag. Fetch and unpack it into an empty directory, then run the check's own logic against the extracted `t3`:
 
 ```sh
 dir=$(mktemp -d)
