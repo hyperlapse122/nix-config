@@ -11,12 +11,10 @@ import base64
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages"
-DEFAULT_FETCH = "curl -s"
 
 VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)*$")
 SHA256_HEX_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -27,17 +25,9 @@ class Failure(Exception):
 
 
 def fetch(source_url):
-    """Run the overridable fetch command and return text.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command_str = os.environ.get("CLAUDE_DESKTOP_RELEASE_FETCH", DEFAULT_FETCH)
-    command = shlex.split(command_str)
-    if not command:
-        raise Failure("CLAUDE_DESKTOP_RELEASE_FETCH is empty")
+    """Fetch one URL with curl and return text."""
     proc = subprocess.run(
-        command + [source_url],
+        ["curl", "-s", source_url],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

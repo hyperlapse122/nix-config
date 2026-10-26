@@ -173,9 +173,4 @@ apply build >/dev/null 2>&1 || fail "build with stubs failed: $(cat "$log")"
   fail "build did more than build: $(cat "$log")"
 pass 'build builds the system and activates nothing'
 
-out=$(NR_SYSTEM_OUT=/nix/store/fake-system run switch 2>&1) || fail "switch with a prebuilt path failed: $out"
-[[ $out != *"nix build"* && $out == *"/nix/store/fake-system/activate"* ]] ||
-  fail "a prebuilt path did not replace the build: $out"
-pass 'a prebuilt store path skips the build'
-
 printf 'nr-darwin: all tests passed\n'

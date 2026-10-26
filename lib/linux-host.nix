@@ -12,8 +12,8 @@
   its desktop parts gated off, and `systemManager` is the system-manager
   toplevel for the system layer. Both see the same host facts. The flake and
   the checks' fixture hosts both go through this function, so the two cannot
-  assemble a host differently. `extraModules.home` and `extraModules.system`
-  let a fixture supply test-only values, such as fake secret files.
+  assemble a host differently. `extraModules.home` lets a fixture supply
+  test-only values, such as fake secret files.
 */
 { inputs }:
 let
@@ -90,7 +90,6 @@ in
       hostFacts
       ../modules/system-manager
       { nixpkgs.hostPlatform = system; }
-    ]
-    ++ (extraModules.system or [ ]);
+    ];
   };
 }

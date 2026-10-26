@@ -18,16 +18,11 @@ import base64
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
-# -H @- reads extra request headers from stdin, so a GH_TOKEN never appears
-# on the command line.
-DEFAULT_FETCH = "curl -sfL -H @-"
-
 # Every system a host in this flake can be, and the asset names, keyed by
 # component, for a release version.
 TARGET_ASSETS = {
@@ -55,20 +50,16 @@ class Failure(Exception):
 
 
 def fetch(url):
-    """Run the overridable fetch command against one URL and return the raw body.
+    """Fetch one URL with curl and return the raw body.
 
-    The URL is the last argument. Request headers arrive on stdin, one per
-    line: an Authorization header when GH_TOKEN is set, nothing otherwise. The
-    command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
+    Request headers arrive on stdin (-H @-), one per line: an Authorization
+    header when GH_TOKEN is set, nothing otherwise, so GH_TOKEN never appears
+    on the command line.
     """
-    command = shlex.split(os.environ.get("T3CODE_RELEASE_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("T3CODE_RELEASE_FETCH is empty")
     token = os.environ.get("GH_TOKEN")
     headers = f"Authorization: Bearer {token}\n" if token else ""
     proc = subprocess.run(
-        command + [url],
+        ["curl", "-sfL", "-H", "@-", url],
         input=headers,
         capture_output=True,
         text=True,

@@ -11,8 +11,8 @@
   nix-darwin applies the system layer and Home Manager runs inside it, as on
   NixOS, so one activation applies both. The user sees the same host facts and
   traits as the system. The flake and the checks' fixture hosts both go
-  through this function. `extraModules.home` and `extraModules.system` let a
-  fixture supply test-only values, such as fake secret files.
+  through this function. `extraModules.home` lets a fixture supply test-only
+  values, such as fake secret files.
 */
 { inputs }:
 let
@@ -77,6 +77,5 @@ inputs.nix-darwin.lib.darwinSystem {
         home-manager.users.${config.my.user.name} = import ../home/h82;
       }
     )
-  ]
-  ++ (extraModules.system or [ ]);
+  ];
 }

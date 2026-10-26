@@ -29,16 +29,12 @@ import io
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tarfile
 import tempfile
 
 DEFAULT_SOURCE_URL = "https://registry.npmjs.org"
-DEFAULT_FETCH = "curl -sfL --max-time 60"
-DEFAULT_NPM = "npm"
-DEFAULT_PREFETCH = "prefetch-npm-deps"
 DEFAULT_STEP_TIMEOUT = 600
 TARBALL_PREFIX = DEFAULT_SOURCE_URL + "/"
 
@@ -50,13 +46,6 @@ DEPS_HASH_PATTERN = re.compile(r"sha256-[A-Za-z0-9+/]{43}=")
 
 class Failure(Exception):
     """A refusal that should stop the caller with a readable message."""
-
-
-def command_from_env(variable, default):
-    command = shlex.split(os.environ.get(variable, default))
-    if not command:
-        raise Failure(f"{variable} is empty")
-    return command
 
 
 def step_timeout():
@@ -80,13 +69,12 @@ def run_step(label, command, timeout, **kwargs):
 
 
 def fetch(url):
-    """Run the overridable fetch command against one URL and return the raw bytes.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command = command_from_env("NPM_RELEASE_FETCH", DEFAULT_FETCH)
-    proc = subprocess.run(command + [url], stdin=subprocess.DEVNULL, capture_output=True)
+    """Fetch one URL with curl and return the raw bytes."""
+    proc = subprocess.run(
+        ["curl", "-sfL", "--max-time", "60", url],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+    )
     if proc.returncode != 0:
         raise Failure(f"fetching {url} failed with status {proc.returncode}")
     return proc.stdout
@@ -165,16 +153,14 @@ def check_lock(lock):
 
 def lock_and_hash(base, manifest):
     """Return the lock file text npm writes for manifest and its npmDepsHash."""
-    npm = command_from_env("NPM_RELEASE_NPM", DEFAULT_NPM)
-    prefetch = command_from_env("NPM_RELEASE_PREFETCH", DEFAULT_PREFETCH)
     timeout = step_timeout()
     with tempfile.TemporaryDirectory(prefix="npm-release-") as work:
         with open(os.path.join(work, "package.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
         proc = run_step(
             "npm install --package-lock-only",
-            npm
-            + [
+            [
+                "npm",
                 "install",
                 "--package-lock-only",
                 "--ignore-scripts",
@@ -195,7 +181,7 @@ def lock_and_hash(base, manifest):
         except (OSError, json.JSONDecodeError) as exc:
             raise Failure(f"npm wrote no readable package-lock.json: {exc}") from None
         check_lock(lock)
-        proc = run_step("prefetch-npm-deps", prefetch + [lock_path], timeout)
+        proc = run_step("prefetch-npm-deps", ["prefetch-npm-deps", lock_path], timeout)
         if proc.returncode != 0:
             raise Failure(f"prefetch-npm-deps failed with status {proc.returncode}: {proc.stderr.strip()}")
         deps_hash = proc.stdout.strip()

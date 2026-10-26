@@ -113,7 +113,7 @@ nix develop
 )
 ```
 
-The recipient output must contain exactly this host's recipient. `ssh.pub` is public metadata for the encrypted source; keep the two files together. Never evaluate or build with temporary plaintext in the checkout. The `desktop-ssh-sources` check verifies encrypted fields, host-only recipients, valid public metadata, and distinct desktop public identities. Source/public correspondence is checked when the real source is provisioned on the target; builds do not decrypt it.
+The recipient output must contain exactly this host's recipient. `ssh.pub` is public metadata for the encrypted source; keep the two files together. Never evaluate or build with temporary plaintext in the checkout. The `desktop-ssh` check verifies encrypted fields, host-only recipients, valid public metadata, and distinct desktop public identities. Source/public correspondence is checked when the real source is provisioned on the target; builds do not decrypt it.
 
 After installation, `desktop-ssh-provision.service` creates the passphrase-protected working key through KWallet (see [desktop SSH recovery](recovery.md#restore-or-rotate-a-desktop-ssh-key)). Register `ssh.pub` on the required destinations; creating the repository files does not register the key.
 
@@ -150,7 +150,7 @@ These checks fail when a step above was missed:
 - `bootstrap-recipients` (`tests/bootstrap-recipients.nix`) pairs `hosts/` with `secrets/bootstrap/`. It names the side that is missing when a host has no bootstrap material or bootstrap material has no host. It also fails when the recorded recipient does not appear in `.sops.yaml`. Run it alone with `nix build --no-link .#checks.x86_64-linux.bootstrap-recipients`.
 - `boot-layout-invariants` (`tests/boot-layout-invariants.nix`) checks the new host's `disko.nix` for the LUKS, ESP, btrfs, and swapfile layout that `boot.nix` relies on. The `boot-layout` VM test boots only the first host's layout, so this check is what covers the new one.
 - `host-name-guard` fails when the new name appears in one of the paths listed under [Choose the name](#choose-the-name). Rename the directory, or replace the reference in shared code with a trait.
-- `desktop-ssh-sources` fails when a NixOS host lacks its encrypted SSH source or matching public metadata, lists another recipient, or duplicates another desktop's public identity. `desktop-ssh` checks the materialized production services, launchers, and configuration, and their absence from bootstrap and non-NixOS outputs.
+- `desktop-ssh` (`tests/desktop-ssh.nix`) fails when a NixOS host lacks its encrypted SSH source or matching public metadata, lists another recipient, or duplicates another desktop's public identity, and checks the materialized production services, launchers, and configuration, and their absence from bootstrap and non-NixOS outputs.
 
 ## Install
 

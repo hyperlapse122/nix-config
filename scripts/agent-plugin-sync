@@ -4,10 +4,8 @@
 Creates a version-keyed symlink to the pinned source, drives the agent's own
 plugin commands against that path, and removes superseded versions only after
 the registration is observed pointing at the current one. --harness picks the
-agent (claude, codex or antigravity); each has its own adapter
-for commands, listings and manifest paths. antigravity has no marketplace: its
-adapter validates and installs the plugin directory, and reads the installed
-version back from disk.
+agent (claude or codex); each has its own adapter for commands, listings and
+manifest paths.
 
 With --retire it does the reverse for a plugin the repository no longer
 declares: unregister it and delete its version-keyed base directory.
@@ -20,7 +18,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 # A segment names a directory this script creates and later prunes siblings of.
@@ -283,104 +280,9 @@ class Codex(Harness):
         self.add_plugin(plugin_id, False)
 
 
-def manifest_version(path):
-    """The version a plugin.json declares, or None when it is unreadable."""
-    try:
-        manifest = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
-    return manifest.get('version') if isinstance(manifest, dict) else None
-
-
-class Antigravity(Harness):
-    """agy imports a plugin directory by copying it; there is no marketplace.
-
-    Installing over an existing copy replaces the whole tree, so a file removed
-    upstream is gone afterwards. Enablement lives in config.json, which this
-    adapter never writes.
-    """
-
-    def installed_dir(self, plugin):
-        return Path.home() / '.gemini' / 'config' / 'plugins' / plugin
-
-    def installed_version(self, plugin):
-        return manifest_version(self.installed_dir(plugin) / 'plugin.json')
-
-    def sync(self, args):
-        try:
-            package = args.source / '.agy'
-            if not package.is_dir():
-                package = args.source
-            manifest_path = package / 'plugin.json'
-            if not manifest_path.is_file():
-                raise Failure('pinned source is missing {}'.format(manifest_path))
-            try:
-                version = json.loads(manifest_path.read_text()).get('version')
-            except (ValueError, AttributeError) as exc:
-                raise Failure('{} is not a valid plugin manifest: {}'.format(manifest_path, exc))
-            if not version:
-                raise Failure('{} declares no version'.format(manifest_path))
-
-            link_version(args.base, args.segment, args.source, args.dry_run)
-            package = args.base / args.segment / package.relative_to(args.source)
-
-            current = self.installed_version(args.plugin)
-            if args.dry_run or current != version:
-                require([self.cli, 'plugin', 'validate', str(package)], args.dry_run,
-                        'plugin validate')
-                backup = None
-                restorable = False
-                try:
-                    if current is not None and not args.dry_run:
-                        backup = Path(tempfile.mkdtemp(prefix='agent-plugin-sync-'))
-                        shutil.copytree(self.installed_dir(args.plugin), backup / args.plugin)
-                        restorable = True
-                    require([self.cli, 'plugin', 'install', str(package)], args.dry_run,
-                            'plugin install')
-                    if not args.dry_run:
-                        installed = self.installed_version(args.plugin)
-                        if installed != version:
-                            raise Failure(
-                                'installed {} is at version {!r} after install, not {}'.format(
-                                    args.plugin, installed, version))
-                except (Failure, OSError):
-                    if restorable:
-                        self.restore_backup(backup / args.plugin)
-                    raise
-                finally:
-                    if backup is not None:
-                        shutil.rmtree(backup, ignore_errors=True)
-
-            # No prune: agy keeps its own copy and never reads the link again,
-            # so superseded versions in the shared base stay for the
-            # marketplace rows to remove once they have confirmed their source.
-            return 0
-        except (Failure, OSError) as exc:
-            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
-            return 1
-
-    def restore_backup(self, backup):
-        code, output = run([self.cli, 'plugin', 'install', str(backup)], False)
-        if code != 0:
-            print('agent-plugin-sync: could not restore the previous plugin copy: {}'.format(
-                output or 'no output'), file=sys.stderr)
-
-    def retire(self, args):
-        try:
-            # agy reports success for a plugin that is not installed.
-            require([self.cli, 'plugin', 'uninstall', args.plugin], args.dry_run,
-                    'plugin uninstall')
-            remove_base(args.base, args.dry_run)
-            return 0
-        except (Failure, OSError) as exc:
-            print('agent-plugin-sync: {}'.format(exc), file=sys.stderr)
-            return 1
-
-
 HARNESSES = {
     'claude': Claude,
     'codex': Codex,
-    'antigravity': Antigravity,
 }
 
 

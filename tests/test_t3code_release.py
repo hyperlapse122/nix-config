@@ -105,8 +105,11 @@ def sri(hex_digest):
     return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
 
 
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_CURL = """#!{python}
 import json, os, sys
+if sys.argv[1:4] != ['-sfL', '-H', '@-'] or len(sys.argv) != 5:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
 with open(os.environ['FAKE_STDIN_LOG'], 'a') as f:
     f.write(json.dumps(sys.stdin.read()) + '\\n')
 with open(os.environ['FAKE_ARGS_LOG'], 'a') as f:
@@ -123,25 +126,23 @@ class T3codeReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        curl = self.bin_dir / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
         self.stdin_log = root / "stdin.log"
         self.args_log = root / "args.log"
         self.output = root / "t3code-release.json"
 
-    def run_release(
-        self, body=None, extra_args=None, status=0, fetch=None, token=None
-    ):
+    def run_release(self, body=None, extra_args=None, status=0, token=None):
         if body is None:
             body = release_list()
         env = dict(os.environ)
         env.pop("GH_TOKEN", None)
         if token is not None:
             env["GH_TOKEN"] = token
-        env["T3CODE_RELEASE_FETCH"] = (
-            f"{sys.executable} {self.fetch}" if fetch is None else fetch
-        )
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
         env["FAKE_BODY"] = body
         env["FAKE_STATUS"] = str(status)
         env["FAKE_STDIN_LOG"] = str(self.stdin_log)
@@ -308,16 +309,6 @@ class T3codeReleaseTestCase(unittest.TestCase):
         result = self.run_release(status=22, token=FAKE_TOKEN)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(FAKE_TOKEN, result.stdout + result.stderr)
-
-    def test_source_is_not_fetched(self):
-        result = self.run_release()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.fetched_urls(), [DEFAULT_LIST_URL])
-
-    def test_empty_fetch_command_fails(self):
-        result = self.run_release(fetch="")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("T3CODE_RELEASE_FETCH is empty", result.stderr)
 
 
 if __name__ == "__main__":

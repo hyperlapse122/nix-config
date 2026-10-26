@@ -87,12 +87,10 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills, ~/.gemini/antigravity-cli/skills, and ~/.codex/skills,
-    each as exactly one enabled file, and the in-tree
-    test-audit skill
-    directory beside them, and nothing else under those roots; nothing lands
-    under ~/.agents/skills or ~/.gemini/config/skills; my.koreanSkills pins
-    v1.0.0 with those skills.
+    ~/.claude/skills and ~/.codex/skills, each as exactly one enabled file, and
+    the in-tree test-audit skill directory beside them, and nothing else under
+    those roots; OMP receives its contributed ~/.omp/agent/skills root; nothing
+    lands under ~/.agents/skills or ~/.gemini/config/skills.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -231,6 +229,9 @@ let
       mapping.apps.telegram-desktop or null == { cask = "telegram-desktop"; }
     ) "telegram-desktop: the macOS decision must be the telegram-desktop cask")
     (check (!lib.elem "telegram" mapping.casks) "telegram is still among the macOS casks")
+    (check (
+      mapping.tapOf "owner/tap/cask" == "owner/tap" && mapping.tapOf "ghostty" == null
+    ) "tapOf must return owner/tap for a third-party cask and null for a core cask")
   ];
 
   sort = lib.sort lib.lessThan;
@@ -313,7 +314,10 @@ let
       vscodiumData = plain (activation.vscodiumSettings.data or "");
       codexData = plain (activation.codexSettings.data or "");
       cargoData = plain (activation.cargoSettings.data or "");
-      marker = config.environment.etc."nix-config-host".text or "";
+      markerEntry = lib.findFirst (e: (e.enable or false) && (e.target or "") == "nix-config-host") null (
+        lib.attrValues (config.environment.etc or { })
+      );
+      marker = if markerEntry == null then "" else markerEntry.text or "";
       production = !entry.bootstrap;
       primaryUser = config.system.primaryUser;
       xcodeId = "497799835";
@@ -411,7 +415,6 @@ let
       koreanElsewhere = lib.filter (
         target: underDir ".agents/skills" target || underDir ".gemini/config/skills" target
       ) enabledTargets;
-      koreanSkills = user.my.koreanSkills or { };
       devicesStep = activation.mobileDevices or { };
       devicesData = plain (devicesStep.data or "");
       # The helper creates devices, so a dry run must reach only the echo:
@@ -474,12 +477,13 @@ let
         )
         "${entry.name}: activation must merge the declared Cargo settings into ~/.cargo/config.toml as TOML after installPackages"
       )
-      (lib.concatMapStrings (
-        cask:
-        check (
-          lib.elem (mapping.tapOf cask) taps && lib.elem cask config.nix-homebrew.trust.casks
-        ) "${entry.name}: ${cask} needs its tap tapped and the cask trusted"
-      ) thirdParty)
+      (check
+        (
+          sort taps == sort (lib.unique (map mapping.tapOf thirdParty))
+          && sort config.nix-homebrew.trust.casks == sort thirdParty
+        )
+        "${entry.name}: homebrew.taps and nix-homebrew.trust.casks must match the third-party casks in expectedCasks"
+      )
       (check config.nix-homebrew.enable "${entry.name}: nix-homebrew is off, so a new Mac needs Homebrew installed by hand")
       (check (
         activation ? nixConfigSecretsStage == production
@@ -516,7 +520,8 @@ let
       (check (lib.hasInfix "TMPDIR=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR)" (lib.last resourcesBranches)) "${entry.name}: the reconciliation helper must run with the user's temporary directory")
       (check
         (
-          (watchdog.AbandonProcessGroup or null) == true
+          (agents.podman-machine-podman-machine-default.enable or false)
+          && (watchdog.AbandonProcessGroup or null) == true
           && (watchdog.ProcessType or null) == "Interactive"
           && (watchdog.RunAtLoad or null) == true
         )
@@ -532,7 +537,8 @@ let
         "${entry.name}: the session must name the machine's socket, auth.json and the VM's Docker socket, and no Ryuk privilege variable"
       )
       (check (
-        lib.hasInfix "launchctl setenv DOCKER_HOST" guiEnvironment
+        (agents.container-environment.enable or false)
+        && lib.hasInfix "launchctl setenv DOCKER_HOST" guiEnvironment
         && lib.hasInfix "podman/podman-machine-default-api.sock" guiEnvironment
         && lib.hasInfix "launchctl setenv TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE" guiEnvironment
         && ((agentConfig "container-environment").RunAtLoad or null) == true
@@ -570,7 +576,8 @@ let
       (check
         (
           if production then
-            lib.hasInfix "minikube-darwin-start" minikubeArgs
+            (agents.minikube.enable or false)
+            && lib.hasInfix "minikube-darwin-start" minikubeArgs
             # The node gets half of the machine: 4096 MiB and 2 CPUs, last.
             && lib.hasSuffix " 4096 2" minikubeArgs
             && (minikubeAgent.RunAtLoad or null) == true
@@ -579,7 +586,7 @@ let
             && lib.hasInfix "-podman-" minikubePath
             && lib.hasInfix "-minikube-" minikubePath
           else
-            !agents ? minikube
+            !(agents.minikube.enable or false)
         )
         "${entry.name}: the minikube login agent must run in production, retried on failure, and never in bootstrap"
       )
@@ -764,12 +771,6 @@ let
       )
       (check (koreanElsewhere == [ ])
         "${entry.name}: Korean skills must not be installed under .agents/skills or .gemini/config/skills, got ${builtins.toJSON koreanElsewhere}"
-      )
-      (check
-        ((koreanSkills.tag or null) == "v1.0.0" && sort (koreanSkills.skills or [ ]) == sort koreanNames)
-        "${entry.name}: my.koreanSkills must pin tag v1.0.0 with skills ${builtins.toJSON koreanNames}, got ${
-          builtins.toJSON (koreanSkills.tag or null)
-        } and ${builtins.toJSON (koreanSkills.skills or [ ])}"
       )
       (check (androidSdkFile != null && androidDataFiles == [ ])
         "${entry.name}: the Android SDK must be linked at ~/Library/Android/sdk, and no android-sdk data file declared"

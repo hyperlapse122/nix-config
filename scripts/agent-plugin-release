@@ -9,9 +9,7 @@ admitting candidates from it would let an unreleased tag win.
 
 import argparse
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
@@ -21,24 +19,15 @@ VERSION = re.compile(r'^v?(\d+(?:\.\d+)*)$')
 
 SOURCE = re.compile(r'^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$')
 
-DEFAULT_FETCH = 'gh api'
-
 
 class Failure(Exception):
     """A refusal that should stop the caller with a readable message."""
 
 
 def fetch(source, path):
-    """Run the overridable fetch command and return parsed JSON.
-
-    The command is overridable so a sandboxed check, which has no network, can
-    feed fixtures instead.
-    """
-    command = shlex.split(os.environ.get('AGENT_PLUGIN_RELEASE_FETCH', DEFAULT_FETCH))
-    if not command:
-        raise Failure('AGENT_PLUGIN_RELEASE_FETCH is empty')
+    """Query GitHub's REST API via `gh api` and return parsed JSON."""
     proc = subprocess.run(
-        command + ['repos/{}/{}'.format(source, path)],
+        ['gh', 'api', 'repos/{}/{}'.format(source, path)],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

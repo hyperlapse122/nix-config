@@ -39,7 +39,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # Pinned to a release tag rather than a branch, and the registry in
-    # home/h82/agents/agent-plugins.nix records the revision that tag is expected to
+    # home/h82/agents/agent-plugin-pins.nix records the revision that tag is expected to
     # name. A tag is mutable and a relock re-resolves the ref, so the tag alone
     # is not a pin -- the agent-plugins check compares this input's locked
     # revision against that recorded value and fails when upstream moves it.
@@ -99,32 +99,49 @@
         # through fixtureChecksFor because their names embed a fixture host.
         hostClosureChecks = [
           "agent-browser-deps"
+          "agent-instructions"
+          "android-sdk"
           "baloo-extractor"
           "cargo-settings"
-          "chatgpt"
+          "claude-effort-absent"
+          "desktop-autostart"
           "desktop-ssh"
           "elf-load-segments"
           "emoji-font"
+          "gemini"
+          "ghostty-font"
+          "ghq"
+          "git-lfs"
+          "git-trim"
+          "gpg-agent-no-cache"
           "iphone-restore"
           "kde-theme"
+          "kernel-sysctl"
+          "korean-skills"
+          "kubernetes-tools"
           "minikube-autostart"
+          "mise-settings"
           "nix-cleanup"
           "non-nixos-outputs"
+          "omp-models-load"
           "omp-settings"
+          "podman-containers"
           "printing"
           "proton-vpn"
+          "python3-runtime"
+          "serve-html-profiles"
+          "session-variables"
+          "shell-utilities"
+          "t3code-traits"
+          "test-audit-skill"
+          "tokscale"
+          "udev-device-access"
           "user-avatar"
+          "vscodium"
           "wifiman"
           "winbox"
           "yubikey-fido"
-          "gemini"
-          "ghostty-font"
-          "gpg-agent-no-cache"
-          "kernel-sysctl"
-          "logitech-wakeup"
-          "podman-containers"
           "zsh-prezto"
-          "python3-runtime"
         ]
         ++ lib.attrNames (fixtureChecksFor system);
         lightCount = 3;
@@ -134,10 +151,6 @@
       homeConfigurations = lib.mapAttrs (_: host: host.home) linuxHosts;
       systemConfigs = lib.mapAttrs (_: host: host.systemManager) linuxHosts;
       checks.aarch64-linux = fixtureChecksFor "aarch64-linux" // {
-        omp-package = import ./tests/omp-package.nix {
-          pkgs = import nixpkgs { system = "aarch64-linux"; };
-          inherit self;
-        };
         omp-settings = import ./tests/omp-settings.nix {
           pkgs = import nixpkgs { system = "aarch64-linux"; };
           inherit self;
@@ -159,10 +172,6 @@
       };
       packages.aarch64-darwin.omp = import ./packages/omp.nix {
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
-      };
-      checks.aarch64-darwin.omp-package = import ./tests/omp-package.nix {
-        pkgs = import nixpkgs { system = "aarch64-darwin"; };
-        inherit self;
       };
       checks.aarch64-darwin.omp-settings = import ./tests/omp-settings.nix {
         pkgs = import nixpkgs { system = "aarch64-darwin"; };
@@ -398,12 +407,16 @@
                 touch $out
               '';
           restore-age-identity =
-            pythonScriptCheck "restore-age-identity" ./scripts/restore-age-identity
+            pythonScriptCheckWith
+              {
+                nativeBuildInputs = [ pkgs.age ];
+              }
+              "restore-age-identity"
+              "${(import ./packages/gpg-tools.nix { inherit pkgs; }).restoreAgeIdentity}/bin/restore-age-identity"
               ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
-          codex-package = import ./tests/codex.nix { inherit pkgs self; };
-          omp-package = import ./tests/omp-package.nix { inherit pkgs self; };
+          codex = import ./tests/codex.nix { inherit pkgs self; };
           omp-settings = import ./tests/omp-settings.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -451,96 +464,6 @@
                   ;;
               esac
 
-              mkdir -p home/.claude
-              printf '{"model":"sonnet","numStartups":41,"retired":"gone"}\n' > home/.claude/settings.json
-              printf '{"set":{"model":"opus[1m]"},"remove":["retired"]}\n' > declared.json
-              env -i ${packaged}/bin/agent-settings \
-                --settings "$PWD/home/.claude/settings.json" --declared "$PWD/declared.json"
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import json
-              merged = json.load(open('home/.claude/settings.json'))
-              assert merged['model'] == 'opus[1m]', merged
-              assert merged['numStartups'] == 41, merged
-              assert 'retired' not in merged, merged
-              PY
-
-              # Nested assignment through the packaged binary: the declared leaves
-              # start divergent and every nested object carries a sibling, so a
-              # whole-object replace drops a key here instead of matching.
-              mkdir -p home/.config/tokscale
-              printf '{"autoRefreshMs":60000,"tuiLightMode":true,"scanner":{"opencodeDbPaths":["x"],"bucketTimezone":"UTC"},"autosubmit":{"enabled":true,"lastRunAtMs":1700000000000},"scanner.bucketTimezone":"literal"}\n' \
-                > home/.config/tokscale/settings.json
-              printf '{"set":{"autoRefreshMs":30000},"setPaths":[{"path":["scanner","bucketTimezone"],"value":"Asia/Seoul"},{"path":["autosubmit","enabled"],"value":false}]}\n' \
-                > nested.json
-              env -i ${packaged}/bin/agent-settings --label Tokscale \
-                --settings "$PWD/home/.config/tokscale/settings.json" --declared "$PWD/nested.json"
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import json
-              merged = json.load(open('home/.config/tokscale/settings.json'))
-              assert merged['autoRefreshMs'] == 30000, merged
-              assert merged['tuiLightMode'] is True, merged
-              assert merged['scanner'] == {'opencodeDbPaths': ['x'], 'bucketTimezone': 'Asia/Seoul'}, merged
-              assert merged['autosubmit'] == {'enabled': False, 'lastRunAtMs': 1700000000000}, merged
-              assert merged['scanner.bucketTimezone'] == 'literal', merged
-              PY
-
-              # A non-object intermediate must fail the process and leave the file alone.
-              printf '{"scanner":"flat"}\n' > home/.config/tokscale/settings.json
-              if env -i ${packaged}/bin/agent-settings --label Tokscale \
-                  --settings "$PWD/home/.config/tokscale/settings.json" --declared "$PWD/nested.json"; then
-                echo "packaged merger accepted a non-object intermediate" >&2
-                exit 1
-              fi
-              if [ "$(cat home/.config/tokscale/settings.json)" != '{"scanner":"flat"}' ]; then
-                echo "refused nested merge still rewrote the settings file" >&2
-                exit 1
-              fi
-
-              mkdir -p home/.claude-pruned
-              printf '{"modelSettings":{"claude-opus-5-5":{"effortLevel":"medium"},"claude-sonnet-5-5":{"effortLevel":"low"}},"worktree":{"symlinkDirectories":["node_modules"]}}\n' \
-                > home/.claude-pruned/settings.json
-              printf '{"setPaths":[{"path":["worktree","baseRef"],"value":"head"}],"removePaths":[{"path":["modelSettings","claude-opus-5-5"],"key":"effortLevel","prune":true,"value":"medium"}]}\n' \
-                > pruned.json
-              env -i ${packaged}/bin/agent-settings --label 'Claude Code' \
-                --settings "$PWD/home/.claude-pruned/settings.json" --declared "$PWD/pruned.json"
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import json
-              merged = json.load(open('home/.claude-pruned/settings.json'))
-              assert merged == {
-                  'modelSettings': {'claude-sonnet-5-5': {'effortLevel': 'low'}},
-                  'worktree': {'symlinkDirectories': ['node_modules'], 'baseRef': 'head'},
-              }, merged
-              PY
-
-              # A level the user chose since stays: the declaration removes
-              # only the value this repository wrote.
-              printf '{"modelSettings":{"claude-opus-5-5":{"effortLevel":"xhigh"}}}\n' \
-                > home/.claude-pruned/settings.json
-              env -i ${packaged}/bin/agent-settings --label 'Claude Code' \
-                --settings "$PWD/home/.claude-pruned/settings.json" --declared "$PWD/pruned.json"
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import json
-              merged = json.load(open('home/.claude-pruned/settings.json'))
-              assert merged['modelSettings'] == {'claude-opus-5-5': {'effortLevel': 'xhigh'}}, merged
-              PY
-
-              # An owned key through the packaged binary: the repository's entry
-              # starts stale with an extra event, and another writer's entry
-              # beside it must come through byte for byte.
-              mkdir -p home/.gemini/config
-              printf '{"foreign-status":{"enabled":true,"Stop":[{"type":"command","command":"foreign-hook","timeout":10}]},"repo-owned":{"enabled":false,"Stop":[]}}\n' \
-                > home/.gemini/config/hooks.json
-              printf '{"own":{"repo-owned":{"enabled":true,"SessionStart":[{"type":"command","command":"x","timeout":10}]}}}\n' \
-                > owned.json
-              env -i ${packaged}/bin/agent-settings --label 'Antigravity hooks' \
-                --settings "$PWD/home/.gemini/config/hooks.json" --declared "$PWD/owned.json"
-              ${pkgs.python3}/bin/python3 - <<'PY'
-              import json
-              merged = json.load(open('home/.gemini/config/hooks.json'))
-              assert merged['foreign-status'] == {'enabled': True, 'Stop': [{'type': 'command', 'command': 'foreign-hook', 'timeout': 10}]}, merged
-              assert merged['repo-owned'] == {'enabled': True, 'SessionStart': [{'type': 'command', 'command': 'x', 'timeout': 10}]}, merged
-              PY
-
               # TOML mode through the packaged binary, which proves the built
               # interpreter carries tomlkit: a comment and a table the merge does
               # not own must survive, and the declared leaves start divergent.
@@ -573,9 +496,18 @@
               touch $out
             '';
           gemini = import ./tests/gemini.nix { inherit pkgs self; };
-          ghq = import ./tests/ghq.nix { inherit pkgs self; };
-          git-lfs = import ./tests/git-lfs.nix { inherit pkgs self; };
-          git-trim = import ./tests/git-trim.nix { inherit pkgs self; };
+          ghq = import ./tests/ghq.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          git-lfs = import ./tests/git-lfs.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          git-trim = import ./tests/git-trim.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
           mise-settings = import ./tests/mise-settings.nix {
             inherit pkgs self;
@@ -609,18 +541,8 @@
             fixtures = linuxFixtures;
           };
           agent-plugin-sync =
-            pkgs.runCommand "agent-plugin-sync-tests"
-              {
-                nativeBuildInputs = [ pkgs.python3 ];
-              }
-              ''
-                export PYTHONDONTWRITEBYTECODE=1
-                mkdir -p scripts tests
-                cp ${./scripts/agent-plugin-sync} scripts/agent-plugin-sync
-                cp ${./tests/test_agent_plugin_sync.py} tests/test_agent_plugin_sync.py
-                python tests/test_agent_plugin_sync.py
-                touch $out
-              '';
+            pythonScriptCheck "agent-plugin-sync" ./scripts/agent-plugin-sync
+              ./tests/test_agent_plugin_sync.py;
           agent-plugin-release =
             pythonScriptCheck "agent-plugin-release" ./scripts/agent-plugin-release
               ./tests/test_agent_plugin_release.py;
@@ -658,15 +580,6 @@
               setup = ''
                 mkdir -p tests/fixtures
                 cp -r ${./tests/fixtures/synthetic-models} tests/fixtures/synthetic-models
-                python scripts/synthetic-models-watch --source-json ${realSource} \
-                  --catalog tests/fixtures/synthetic-models/catalog-2026-10-21.json --result result.json
-                python - <<'PY'
-                import json, sys
-                result = json.load(open("result.json"))
-                if result["status"] != "clean" or result["findings"] != []:
-                    sys.exit("synthetic-models-watch: home/h82/agents/synthetic-models.nix drifts from the "
-                             f"2026-10-21 catalog snapshot: {json.dumps(result['findings'])}")
-                PY
                 export SYNTHETIC_MODELS_SOURCE_JSON=${realSource}
               '';
             } "synthetic-models-watch" ./scripts/synthetic-models-watch ./tests/test_synthetic_models_watch.py;
@@ -723,7 +636,6 @@
                   ${pkgs.path}/pkgs/development/mobile/androidenv/repo.json
                 touch $out
               '';
-          nix-ld = import ./tests/nix-ld.nix { inherit pkgs self; };
           agent-browser-deps = import ./tests/agent-browser-deps.nix { inherit pkgs self; };
           wifi-assertions = import ./tests/wifi-assertions.nix { inherit pkgs inputs; };
           tailscale-single-router =
@@ -952,85 +864,51 @@
               ${forEveryUser assertConfiguration}
               touch $out
             '';
-          yubikey-manager-shell =
+          yubikey-fido = import ./tests/yubikey-fido.nix { inherit pkgs self; };
+          desktop-packages =
             let
-              shellPackages = self.devShells.${system}.default.nativeBuildInputs;
-              ykman = pkgs.lib.lists.findFirst (p: (p.pname or "") == "yubikey-manager") null shellPackages;
-              # The store-path interpolation stays inside an optionalString guard so that
-              # dropping the package fails inside the builder with the message below, rather
-              # than aborting evaluation with a null coercion error.
-              absent = pkgs.lib.optionalString (ykman == null) ''
-                echo 'missing yubikey-manager in the development shell' >&2
-                exit 1
-              '';
-              present = pkgs.lib.optionalString (ykman != null) ''
-                if [ ! -x ${ykman}/bin/ykman ]; then
-                  echo 'yubikey-manager package ships no bin/ykman executable' >&2
-                  exit 1
-                fi
-              '';
+              packages = [
+                {
+                  pname = "kleopatra";
+                  executables = [ "kleopatra" ];
+                  desktopEntries = [ "org.kde.kleopatra.desktop" ];
+                }
+                {
+                  pname = "telegram-desktop";
+                  executables = [ "Telegram" ];
+                  desktopEntries = [ "org.telegram.desktop.desktop" ];
+                }
+                {
+                  pname = "libreoffice";
+                  executables = [ "libreoffice" ];
+                  desktopEntries = [
+                    "writer.desktop"
+                    "calc.desktop"
+                    "impress.desktop"
+                  ];
+                }
+                {
+                  pname = "okular";
+                  executables = [ "okular" ];
+                  # okularApplication_pdf.desktop is NoDisplay and only proves PDF handling;
+                  # org.kde.okular.desktop is the entry the application launcher shows.
+                  desktopEntries = [
+                    "org.kde.okular.desktop"
+                    "okularApplication_pdf.desktop"
+                  ];
+                }
+                {
+                  pname = "discord";
+                  executables = [ "discord" ];
+                  desktopEntries = [ "discord.desktop" ];
+                }
+              ];
             in
-            pkgs.runCommand "yubikey-manager-shell-tests" { } ''
+            pkgs.runCommand "desktop-packages-tests" { } ''
               set -x
-              ${absent}
-              ${present}
+              ${pkgs.lib.concatMapStrings (spec: forEveryConfiguration (assertUserPackage spec)) packages}
               touch $out
             '';
-          yubikey-fido = import ./tests/yubikey-fido.nix { inherit pkgs self; };
-          kleopatra-gui = pkgs.runCommand "kleopatra-gui-tests" { } ''
-            set -x
-            ${forEveryConfiguration (assertUserPackage {
-              pname = "kleopatra";
-              executables = [ "kleopatra" ];
-              desktopEntries = [ "org.kde.kleopatra.desktop" ];
-            })}
-            touch $out
-          '';
-          telegram-desktop = pkgs.runCommand "telegram-desktop-tests" { } ''
-            set -x
-            ${forEveryConfiguration (assertUserPackage {
-              pname = "telegram-desktop";
-              executables = [ "Telegram" ];
-              desktopEntries = [ "org.telegram.desktop.desktop" ];
-            })}
-            touch $out
-          '';
-          libreoffice-office = pkgs.runCommand "libreoffice-office-tests" { } ''
-            set -x
-            ${forEveryConfiguration (assertUserPackage {
-              pname = "libreoffice";
-              executables = [ "libreoffice" ];
-              desktopEntries = [
-                "writer.desktop"
-                "calc.desktop"
-                "impress.desktop"
-              ];
-            })}
-            touch $out
-          '';
-          okular-pdf = pkgs.runCommand "okular-pdf-tests" { } ''
-            set -x
-            ${forEveryConfiguration (assertUserPackage {
-              pname = "okular";
-              executables = [ "okular" ];
-              # okularApplication_pdf.desktop is NoDisplay and only proves PDF handling;
-              # org.kde.okular.desktop is the entry the application launcher shows.
-              desktopEntries = [
-                "org.kde.okular.desktop"
-                "okularApplication_pdf.desktop"
-              ];
-            })}
-            touch $out
-          '';
-          discord = pkgs.runCommand "discord-tests" { } ''
-            set -x
-            ${forEveryConfiguration (assertUserPackage {
-              pname = "discord";
-              executables = [ "discord" ];
-              desktopEntries = [ "discord.desktop" ];
-            })}
-            touch $out
-          '';
           claude-desktop =
             let
               assertConfiguration =
@@ -1169,68 +1047,6 @@
                 '';
             in
             pkgs.runCommand "claude-code-tests" { } ''
-              set -x
-              ${forEveryConfiguration assertConfiguration}
-              touch $out
-            '';
-          codex =
-            let
-              # The version attribute is compared with the pin for the reason
-              # given on the claude-code check: versionCheckHook already proves
-              # the binary reports that attribute. The wrapper flags are read
-              # from the installed bin/codex itself, because they are what keep
-              # Codex from updating itself under any other CODEX_HOME, such as
-              # a home a T3 Code instance gets when it declares one, which
-              # never receives the declared config.toml keys.
-              pinnedVersion = (builtins.fromJSON (builtins.readFile ./packages/codex-release.json)).version;
-              wrapperFlags = [
-                "-c check_for_update_on_startup=false"
-                "--disable in_app_updates"
-                "--disable daemon_auto_start"
-              ];
-              assertConfiguration =
-                entry:
-                let
-                  codexPkg = userPackageOf "codex" entry;
-                  versionMismatch = pkgs.lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
-                    echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
-                    fail=1
-                  '';
-                  flagsMissing = pkgs.lib.optionalString (codexPkg != null) ''
-                    for flag in ${pkgs.lib.escapeShellArgs wrapperFlags}; do
-                      if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
-                        echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
-                        fail=1
-                      fi
-                    done
-                  '';
-                  # Codex looks for codex-code-mode-host beside the binary the
-                  # wrapper execs, never on PATH, so the host is found from that
-                  # exec target. It is run, not just inspected, because a binary
-                  # that exists and is executable can still fail to start.
-                  codeModeHostMissing = pkgs.lib.optionalString (codexPkg != null) ''
-                    target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
-                    if [ -z "$target" ]; then
-                      echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
-                      fail=1
-                    elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
-                      echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
-                      fail=1
-                    fi
-                  '';
-                in
-                ''
-                  ${assertUserPackage {
-                    pname = "codex";
-                    executables = [ "codex" ];
-                    desktopEntries = [ ];
-                  } entry}
-                  ${versionMismatch}
-                  ${flagsMissing}
-                  ${codeModeHostMissing}
-                '';
-            in
-            pkgs.runCommand "codex-tests" { } ''
               set -x
               ${forEveryConfiguration assertConfiguration}
               touch $out
@@ -1444,35 +1260,21 @@
           bootstrap-recipients = import ./tests/bootstrap-recipients.nix { inherit pkgs; };
           linux-host-secrets = import ./tests/linux-host-secrets.nix { inherit pkgs self; };
           sops-recipients = import ./tests/sops-recipients.nix { inherit pkgs self; };
-          update-dependencies-push-order =
-            pkgs.runCommand "update-dependencies-push-order-tests" { nativeBuildInputs = [ pkgs.git ]; }
-              ''
-                export HOME=$TMPDIR
-                bash ${./tests/update-dependencies-push-order.sh} \
-                  ${./.github/workflows/update-dependencies.yml} \
-                  ${./.gitignore}
-                touch $out
-              '';
-          update-dependencies-verify-status =
-            pkgs.runCommand "update-dependencies-verify-status-tests" { nativeBuildInputs = [ pkgs.gawk ]; }
-              ''
-                bash ${./tests/update-dependencies-verify-status.sh} \
-                  ${./.github/workflows/update-dependencies.yml}
-                touch $out
-              '';
           update-dependencies-reconcile =
             pkgs.runCommand "update-dependencies-reconcile-tests"
               {
                 nativeBuildInputs = [
                   pkgs.git
                   pkgs.jq
+                  pkgs.yq-go
                   pkgs.gawk
                 ];
               }
               ''
                 export HOME=$TMPDIR
                 bash ${./tests/update-dependencies-reconcile.sh} \
-                  ${./.github/workflows/update-dependencies.yml}
+                  ${./.github/workflows/update-dependencies.yml} \
+                  ${./.gitignore}
                 touch $out
               '';
           model-catalogs-reconcile =
@@ -1506,13 +1308,11 @@
               '';
           desktop-autostart = import ./tests/desktop-autostart.nix { inherit pkgs self; };
           desktop-ssh = import ./tests/desktop-ssh.nix { inherit pkgs self; };
-          desktop-ssh-sources = import ./tests/desktop-ssh-sources.nix { inherit pkgs self; };
           plasma-taskbar = import ./tests/plasma-taskbar.nix { inherit pkgs self; };
           kde-theme = import ./tests/kde-theme.nix { inherit pkgs self; };
           baloo-extractor = import ./tests/baloo-extractor.nix { inherit pkgs self; };
           emoji-font = import ./tests/emoji-font.nix { inherit pkgs self; };
           user-avatar = import ./tests/user-avatar.nix { inherit pkgs self; };
-          logitech-wakeup = import ./tests/logitech-wakeup.nix { inherit pkgs self; };
           udev-device-access = import ./tests/udev-device-access.nix { inherit pkgs self; };
           kernel-sysctl = import ./tests/kernel-sysctl.nix { inherit pkgs self; };
           proton-vpn = import ./tests/proton-vpn.nix { inherit pkgs self; };
@@ -1521,7 +1321,6 @@
           printing = import ./tests/printing.nix { inherit pkgs self; };
           winbox = import ./tests/winbox.nix { inherit pkgs self; };
           wifiman = import ./tests/wifiman.nix { inherit pkgs self; };
-          nixos-rebuild-helper = import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; };
           host-name-guard = import ./tests/host-name-guard.nix { inherit pkgs self; };
           vm-checks-guard = import ./tests/vm-checks-guard.nix {
             inherit pkgs vmChecks;
@@ -1542,20 +1341,8 @@
             nr-linux
             nr-darwin
             ;
-          nr = pkgs.runCommand "nr-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-            export HOME=$TMPDIR
-            mkdir -p scripts tests
-            cp ${./scripts/nr} scripts/nr
-            cp ${./tests/nr.sh} tests/nr.sh
-            chmod +x scripts/nr
-            patchShebangs scripts/nr
-            bash tests/nr.sh scripts/nr
-            touch $out
-          '';
-          agent-api-key-secrets = import ./tests/agent-api-key-secrets.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
+          nr = import ./tests/nr.nix { inherit pkgs self; };
+          agent-api-key-secrets = import ./tests/agent-api-key-secrets.nix { inherit pkgs self; };
           text-template = import ./tests/text-template.nix { inherit pkgs; };
           tokscale = import ./tests/tokscale.nix { inherit pkgs self; };
           vscodium = import ./tests/vscodium.nix { inherit pkgs self; };

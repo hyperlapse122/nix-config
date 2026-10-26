@@ -10,10 +10,10 @@
 #   secrets/tokens.yaml is actually encrypted to, so production can decrypt
 #   the tokens it publishes. The rule alone is not enough: a recipient added to
 #   it without `sops updatekeys` passes the rule and fails at the first apply.
-# - the recipient is in neither the rule nor the encrypted file of wifi.yaml
-#   and tailscale.yaml, so a non-NixOS host, whose identity rests on the
-#   distribution's disk encryption, never decrypts the Wi-Fi or Tailscale
-#   material only NixOS hosts use.
+# - the recipient is in neither the rule nor the encrypted file of wifi.yaml,
+#   tailscale.yaml, and printers.yaml, so a non-NixOS host, whose identity
+#   rests on the distribution's disk encryption, never decrypts the Wi-Fi,
+#   Tailscale, or printer material only NixOS hosts use.
 #
 # usage: linux-host-secrets.sh ROOT
 set -euo pipefail
@@ -26,10 +26,10 @@ fail() {
   status=1
 }
 
-# The comma-separated age recipients of the .sops.yaml rule whose path_regex
-# names FILE.
+# The age recipients of the first .sops.yaml rule whose path_regex matches
+# secrets/NAME.yaml, one per line.
 rule_recipients() {
-  yq -r ".creation_rules[] | select(.path_regex | test(\"$1\")) | .age" "$root/.sops.yaml" | tr ',' '\n' | sed '/^$/d'
+  FILE="secrets/$1.yaml" yq -r '[.creation_rules[] | . as $rule | select(strenv(FILE) | test($rule.path_regex // ""))][0].age // ""' "$root/.sops.yaml" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
 }
 
 # The age recipients secrets/NAME.yaml is encrypted to, read from the file;
@@ -63,17 +63,21 @@ for dir in "$root"/hosts/*/; do
     fi
   fi
 
-  if ! rule_recipients 'tokens' | grep -qxF -- "$recipient"; then
+  tokens_rule_recipients=$(rule_recipients tokens)
+  if ! grep -qxF -- "$recipient" <<<"$tokens_rule_recipients"; then
     fail "$host: its recipient is not in the tokens.yaml rule of .sops.yaml"
   fi
-  if ! file_recipients tokens | grep -qxF -- "$recipient"; then
+  tokens_file_recipients=$(file_recipients tokens)
+  if ! grep -qxF -- "$recipient" <<<"$tokens_file_recipients"; then
     fail "$host: secrets/tokens.yaml is not encrypted to its recipient; run sops updatekeys secrets/tokens.yaml"
   fi
-  for other in wifi tailscale; do
-    if rule_recipients "$other" | grep -qxF -- "$recipient"; then
+  for other in wifi tailscale printers; do
+    other_rule_recipients=$(rule_recipients "$other")
+    if grep -qxF -- "$recipient" <<<"$other_rule_recipients"; then
       fail "$host: its recipient is in the $other.yaml rule of .sops.yaml; non-NixOS hosts must not decrypt it"
     fi
-    if file_recipients "$other" | grep -qxF -- "$recipient"; then
+    other_file_recipients=$(file_recipients "$other")
+    if grep -qxF -- "$recipient" <<<"$other_file_recipients"; then
       fail "$host: secrets/$other.yaml is encrypted to its recipient; non-NixOS hosts must not decrypt it"
     fi
   done

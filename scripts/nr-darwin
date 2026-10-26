@@ -12,8 +12,6 @@ GIT="@GIT@"
 ROOT=${NR_ROOT:-}
 MARKER=$ROOT/etc/nix-config-host
 PROFILE=/nix/var/nix/profiles/system
-# A prebuilt store path to activate instead of building from the flake.
-SYSTEM_OUT=${NR_SYSTEM_OUT:-}
 # Set to any non-empty value to print the resolved commands instead of running them.
 DRY_RUN=${NR_DRY_RUN:-}
 
@@ -105,10 +103,6 @@ preflight() {
 }
 
 build() {
-  if [[ -n $SYSTEM_OUT ]]; then
-    system_out=$SYSTEM_OUT
-    return
-  fi
   if [[ -z $flake_dir ]]; then
     flake_dir=$("$GIT" rev-parse --show-toplevel 2>/dev/null) ||
       die 'not inside a git repository; name the checkout with --flake-dir PATH'

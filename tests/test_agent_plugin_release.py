@@ -1,7 +1,6 @@
 """Drive agent-plugin-release against fixture release feeds.
 
-The helper's network call goes through an overridable command, so these tests
-feed it JSON instead. Every fixture gives each tag train a different version:
+Every fixture gives each tag train a different version:
 if two trains shared one, a correct prefix filter and a broken one would print
 the same answer and the round would prove nothing.
 """
@@ -17,8 +16,12 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/agent-plugin-release'
 PREFIX = 'compound-engineering-'
 
-FAKE_FETCH = '''#!/usr/bin/env python3
+FAKE_GH = '''#!{python}
 import os, sys
+expected = ['api', f"repos/{{os.environ['EXPECTED_SOURCE']}}/releases?per_page=100"]
+if sys.argv[1:] != expected:
+    sys.stderr.write(f'unexpected gh args: {{sys.argv[1:]!r}} != {{expected!r}}\\n')
+    sys.exit(99)
 status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
 sys.stdout.write(os.environ['FAKE_FETCH_BODY'])
 if status:
@@ -36,14 +39,17 @@ class ReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / 'fake-fetch'
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / 'bin'
+        self.bin_dir.mkdir()
+        gh = self.bin_dir / 'gh'
+        gh.write_text(FAKE_GH.format(python=sys.executable))
+        gh.chmod(0o755)
 
     def run_release(self, body, prefix=PREFIX, source='EveryInc/compound-engineering-plugin',
                     status=0):
         env = dict(os.environ)
-        env['AGENT_PLUGIN_RELEASE_FETCH'] = '{} {}'.format(sys.executable, self.fetch)
+        env['PATH'] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env['EXPECTED_SOURCE'] = source
         env['FAKE_FETCH_BODY'] = body if isinstance(body, str) else json.dumps(body)
         env['FAKE_FETCH_STATUS'] = str(status)
         return subprocess.run(

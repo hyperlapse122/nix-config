@@ -6,7 +6,6 @@
 #
 #   hostFacts = import ./lib/host-facts.nix { inherit lib; };
 #   hostFacts.of config.my  -> { bootstrap, hostName, kind, user, nuphyGem80, ... }
-#   hostFacts.paths         -> [ [ "bootstrap" ] [ "user" "name" ] ... ]
 { lib }:
 let
   declared = (import ../modules/shared/host.nix { inherit lib; }).options.my;
@@ -17,16 +16,7 @@ let
       name: option: if lib.isOption option then values.${name} else project option values.${name}
     ) options;
 
-  pathsOf =
-    prefix: options:
-    lib.concatLists (
-      lib.mapAttrsToList (
-        name: option:
-        if lib.isOption option then [ (prefix ++ [ name ]) ] else pathsOf (prefix ++ [ name ]) option
-      ) options
-    );
 in
 {
   of = project declared;
-  paths = pathsOf [ ] declared;
 }

@@ -1,11 +1,12 @@
 /*
   Check interface:
 
-    import ./tests/ghq.nix { inherit pkgs self; }
+    import ./tests/ghq.nix { inherit pkgs self fixtures; }
 
   Asserts that ghq organizes repositories under ~/src for user `h82` on every
-  configuration `tests/lib/configurations.nix` yields, bootstrap outputs
-  included. The bootstrap outputs import the same Home Manager profile and ghq
+  Home Manager user `tests/lib/configurations.nix` yields (NixOS and non-NixOS
+  hosts, bootstrap outputs included). The bootstrap outputs import the same
+  Home Manager profile and ghq
   is meant to reach them too, so they are checked rather than assumed
   identical: a change that gates the profile on `my.bootstrap` fails here.
 
@@ -14,7 +15,8 @@
   text. Per configuration:
 
   - home.path carries bin/ghq.
-  - with the rendered git/config installed at $XDG_CONFIG_HOME/git/config,
+  - with the materialized home-files/.config/git/config installed at
+    $XDG_CONFIG_HOME/git/config,
     `ghq root` prints $HOME/src, not ghq's ~/ghq default.
   - `ghq create github.com/example/project` initializes the repository at
     $HOME/src/github.com/example/project, and `ghq list --full-path` reports it.
@@ -29,11 +31,15 @@
   helper's guard runs first, so an empty configuration list fails the build
   instead of passing it.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures ? [ ],
+}:
 let
   inherit (pkgs) lib;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -41,14 +47,18 @@ let
     entry:
     let
       homePath = entry.user.home.path or "";
-      gitConfig = entry.user.xdg.configFile."git/config".source or "";
+      gitConfig =
+        if (entry.user.home-files or null) != null then
+          "${entry.user.home-files}/.config/git/config"
+        else
+          "";
     in
     ''
       checkHost ${esc entry.name} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "ghq-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -83,7 +93,7 @@ pkgs.runCommand "ghq-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     [ "$listed" = "$project" ] || fail "ghq list reports '$listed', expected '$project'"
   )
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

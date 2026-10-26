@@ -14,26 +14,12 @@ let
   claudeCode = import ../../../packages/claude-code.nix { inherit pkgs; };
   codex = import ../../../packages/codex.nix { inherit pkgs; };
 
-  # Neutral source registry: what a plugin is and where it comes from, with no
-  # opinion about which agent gets it. `tag` is the pin; `expectedRev` is the
-  # revision that tag is expected to name, because a git tag is mutable and a
-  # relock re-resolves the ref rather than the revision. tests/agent-plugins.nix
-  # compares expectedRev against what flake.lock actually recorded, so a
-  # re-pointed upstream tag fails a check instead of arriving as a lock diff.
+  pins = import ./agent-plugin-pins.nix;
+
   sources = {
-    compound-engineering = {
+    compound-engineering = pins.compound-engineering // {
       src = inputs.compound-engineering-plugin;
-      upstream = "EveryInc/compound-engineering-plugin";
-      # Upstream interleaves several tag trains in one namespace, so resolution
-      # filters on this prefix. Stripping it from `tag` also yields the version
-      # segment the materialized path is keyed by.
-      tagPrefix = "compound-engineering-";
-      tag = "compound-engineering-v3.32.2";
-      expectedRev = "9f5b16fc617fb5bf4817c8f42537b626c17abd05";
-      # Read from the source's own manifests, never invented here: the install
-      # identifier is `<plugin>@<marketplace>`.
-      plugin = "compound-engineering";
-      marketplace = "compound-engineering-plugin";
+
       # Repository-relative path prefixes withheld from a given harness; an
       # empty list offers the whole tree. The field exists from the outset
       # because one harness can misclassify a tree another accepts.
@@ -65,7 +51,7 @@ let
   # The CLI each harness is driven through, and the environment it runs with.
   # Activation carries neither home.packages on PATH nor
   # home.sessionVariables, so Claude Code's declared tier is exported around
-  # it; Codex's and agy's update overrides travel inside their wrappers.
+  # it; Codex's update overrides travel inside its wrapper.
   harnesses = {
     # OMP discovers native directories directly; no mutable plugin registry.
     omp = { };
@@ -224,27 +210,6 @@ let
       );
 in
 {
-  # Exposed so tests/agent-plugins.nix can compare the recorded expectation
-  # against what flake.lock actually resolved. The two are genuinely separate
-  # sources: this registry is hand-written, the lock is produced by Nix, and a
-  # mutation of either turns the check red.
-  options.my.agentPlugins = lib.mkOption {
-    type = lib.types.attrs;
-    internal = true;
-    readOnly = true;
-    # Every declared field except the source tree itself, so each source keeps
-    # its pin bookkeeping.
-    default = lib.mapAttrs (
-      name: spec:
-      removeAttrs spec [ "src" ]
-      // {
-        segment = segmentOf spec;
-        destination = "${baseDir}/${name}/${segmentOf spec}";
-      }
-    ) sources;
-    description = "Resolved agent plugin registry, for repository checks.";
-  };
-
   # Unguarded and after installPackages for the same reasons as the merges in
   # claude.nix and gemini.nix: the tool is a store path built from this module,
   # so a guard could only ever be true, and a refusal ordered before
@@ -256,14 +221,14 @@ in
   # Manager file: this entry runs before linkGeneration, so a declared link
   # would not yet exist when the wiring reads it, and creating it here also
   # keeps the superseded version present until the new one is wired.
-  config.home.activation.agentPlugins = lib.hm.dag.entryAfter [ "installPackages" ] syncScript;
-  config.home.file = lib.listToAttrs (
+  home.activation.agentPlugins = lib.hm.dag.entryAfter [ "installPackages" ] syncScript;
+  home.file = lib.listToAttrs (
     map (row: {
       name = ".omp/agent/plugins/${row.name}";
       value.source = treeFor row.name sources.${row.name} row.harness;
     }) (lib.filter (row: row.harness == "omp") checkedMembership)
   );
-  config.my.omp.skillDirectories = map (
+  my.omp.skillDirectories = map (
     row: "${config.home.homeDirectory}/.omp/agent/plugins/${row.name}/skills"
   ) (lib.filter (row: row.harness == "omp") checkedMembership);
 }

@@ -27,6 +27,11 @@
     root home/h82/agents/skills.nix links into and Codex calls deprecated,
     lists it zero times; one that stops deduplicating by the resolved
     SKILL.md lists it twice.
+  - the wrapper execs a binary beside which a runnable `codex-code-mode-host`
+    lives.
+  - every NixOS configuration installs `codex` in user packages with an
+    executable `bin/codex`, the pinned version, the wrapper flags, and a
+    runnable sibling `codex-code-mode-host`.
 
   The builder collects every failure instead of exiting at the first.
 */
@@ -35,13 +40,58 @@ let
   inherit (pkgs) lib;
   codex = self.packages.${pkgs.stdenv.hostPlatform.system}.codex;
   pinnedVersion = (builtins.fromJSON (builtins.readFile ../packages/codex-release.json)).version;
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
   flags = [
     "check_for_update_on_startup=false"
     "--disable in_app_updates"
     "--disable daemon_auto_start"
   ];
+  wrapperFlags = [
+    "-c check_for_update_on_startup=false"
+    "--disable in_app_updates"
+    "--disable daemon_auto_start"
+  ];
+  userPackageOf =
+    pname: entry:
+    lib.lists.findFirst (p: (p.pname or "") == pname) null (entry.user.home.packages or [ ]);
+  assertConfiguration =
+    entry:
+    let
+      codexPkg = userPackageOf "codex" entry;
+    in
+    ''
+      ${lib.optionalString (codexPkg == null) ''
+        echo 'missing codex in user packages on ${entry.name}' >&2
+        fail=1
+      ''}
+      ${lib.optionalString (codexPkg != null) ''
+        if [ ! -x ${codexPkg}/bin/codex ]; then
+          echo 'codex package ships no bin/codex executable on ${entry.name}' >&2
+          fail=1
+        fi
+        for flag in ${lib.escapeShellArgs wrapperFlags}; do
+          if ! grep -qF -- "$flag" ${codexPkg}/bin/codex; then
+            echo "codex on ${entry.name} lacks the wrapper flag $flag" >&2
+            fail=1
+          fi
+        done
+        target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' ${codexPkg}/bin/codex)
+        if [ -z "$target" ]; then
+          echo "the codex wrapper on ${entry.name} execs no binary this check can find" >&2
+          fail=1
+        elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
+          echo "codex on ${entry.name} has no runnable codex-code-mode-host beside $target" >&2
+          fail=1
+        fi
+      ''}
+      ${lib.optionalString (codexPkg != null && codexPkg.version != pinnedVersion) ''
+        echo "codex on ${entry.name} is built from version '${codexPkg.version}', expected pin ${pinnedVersion}" >&2
+        fail=1
+      ''}
+    '';
 in
-pkgs.runCommand "codex-package-tests" { } ''
+pkgs.runCommand "codex-tests" { } ''
+  ${configurations.guard}
   fail=0
   export HOME="$PWD/home"
   mkdir -p "$HOME"
@@ -85,6 +135,15 @@ pkgs.runCommand "codex-package-tests" { } ''
       fail=1
     fi
   done
+
+  target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' "$wrapper")
+  if [ -z "$target" ]; then
+    echo "the codex wrapper execs no binary this check can find" >&2
+    fail=1
+  elif ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null 2>&1; then
+    echo "codex has no runnable codex-code-mode-host beside $target" >&2
+    fail=1
+  fi
 
   models=$(CODEX_HOME="$PWD/default-home" "$wrapper" debug models 2>/dev/null) || {
     echo "codex debug models failed" >&2
@@ -138,6 +197,8 @@ pkgs.runCommand "codex-package-tests" { } ''
     fail=1
   fi
 
-  [ "$fail" -eq 0 ]
+  ${lib.concatMapStrings assertConfiguration configurations.entries}
+
+  [ "$fail" -eq 0 ] || exit 1
   touch $out
 ''

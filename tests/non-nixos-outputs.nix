@@ -110,7 +110,10 @@ let
     in
     lib.concatStrings [
       (check (
-        (hm.xdg.dataFile ? "android-sdk") == x86 && (hm.home.sessionVariables ? ANDROID_HOME) == x86
+        lib.any (
+          file: file.target == "${lib.removePrefix "${hm.home.homeDirectory}/" hm.xdg.dataHome}/android-sdk"
+        ) (enabledTargets hm.xdg.dataFile) == x86
+        && (hm.home.sessionVariables ? ANDROID_HOME) == x86
       ) "${entry.name}: the x86_64-only Android SDK must be present exactly on x86_64 hosts")
       (check (
         hm.home.username == hm.my.user.name

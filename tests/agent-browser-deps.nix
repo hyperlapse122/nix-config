@@ -11,8 +11,12 @@
   lists it derives from:
 
   - the system path's share/nix-ld/lib, which is NIX_LD_LIBRARY_PATH, carries
-    every soname Chrome for Testing names in its NEEDED entries, plus the GTK,
-    Xcursor, and X11-xcb libraries it dlopens;
+    ld.so, the baseline gcc/zlib/openssl libraries, and every soname Chrome for
+    Testing names in its NEEDED entries, plus the GTK, Xcursor, and X11-xcb
+    libraries it dlopens;
+  - built /etc/set-environment exports NIX_LD and NIX_LD_LIBRARY_PATH, and
+    built /etc/tmpfiles.d/00-nixos.conf links /lib64/ld-linux-x86-64.so.2 to an
+    executable /libexec/nix-ld binary;
   - the system path carries an executable bin/certutil, which agent-browser
     runs to import a CA certificate;
   - fontconfig, loaded from the built /etc/fonts/conf.d/00-nixos-cache.conf,
@@ -40,6 +44,10 @@ let
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
 
   sonames = [
+    "ld.so"
+    "libz.so.1"
+    "libssl.so.3"
+    "libcrypto.so.3"
     "libglib-2.0.so.0"
     "libgobject-2.0.so.0"
     "libgio-2.0.so.0"
@@ -86,6 +94,8 @@ let
       libDir = "${config.system.path}/share/nix-ld/lib";
       certutil = "${config.system.path}/bin/certutil";
       fontsConf = "${config.system.build.etc}/etc/fonts/conf.d/00-nixos-cache.conf";
+      setEnv = "${config.system.build.etc}/etc/set-environment";
+      tmpfiles = "${config.system.build.etc}/etc/tmpfiles.d/00-nixos.conf";
     in
     ''
       host=${esc name}
@@ -98,6 +108,37 @@ let
       if [ ! -x ${esc certutil} ]; then
         echo "$host: system path lacks an executable bin/certutil" >&2
         failed=1
+      fi
+      if [ ! -e ${esc setEnv} ]; then
+        echo "$host: built /etc lacks set-environment" >&2
+        failed=1
+      else
+        if ! grep -Fxq 'export NIX_LD="/run/current-system/sw/share/nix-ld/lib/ld.so"' ${esc setEnv}; then
+          echo "$host: set-environment does not export NIX_LD" >&2
+          failed=1
+        fi
+        if ! grep -Fxq 'export NIX_LD_LIBRARY_PATH="/run/current-system/sw/share/nix-ld/lib"' ${esc setEnv}; then
+          echo "$host: set-environment does not export NIX_LD_LIBRARY_PATH" >&2
+          failed=1
+        fi
+      fi
+      if [ ! -e ${esc tmpfiles} ]; then
+        echo "$host: built /etc lacks tmpfiles.d/00-nixos.conf" >&2
+        failed=1
+      else
+        ldso=$(awk '$1 == "L+" && $2 == "/lib64/ld-linux-x86-64.so.2" { print $NF }' ${esc tmpfiles})
+        case $ldso in
+          /nix/store/*/libexec/nix-ld)
+            if [ ! -x "$ldso" ]; then
+              echo "$host: nix-ld loader $ldso is not executable" >&2
+              failed=1
+            fi
+            ;;
+          *)
+            echo "$host: tmpfiles.d/00-nixos.conf does not link /lib64/ld-linux-x86-64.so.2 to /libexec/nix-ld (got '$ldso')" >&2
+            failed=1
+            ;;
+        esac
       fi
       if [ ! -e ${esc fontsConf} ]; then
         echo "$host: built /etc lacks fonts/conf.d/00-nixos-cache.conf" >&2
@@ -118,6 +159,7 @@ pkgs.runCommand "agent-browser-deps-tests"
     nativeBuildInputs = [
       pkgs.fontconfig
       pkgs.gnugrep
+      pkgs.gawk
     ];
   }
   ''

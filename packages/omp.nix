@@ -54,6 +54,24 @@ stdenv.mkDerivation {
   doInstallCheck = true;
   nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
   versionCheckKeepEnvironment = [ "HOME" ];
+  postInstallCheck = ''
+    "$out/bin/omp" --help > /dev/null
+    # Enter print mode without credentials or a network request. The expected
+    # model-resolution failure proves the bundled application starts headlessly.
+    if "$out/bin/omp" --no-extensions --no-session \
+      --model u1-nonexistent-provider/u1-nonexistent-model -p smoke > stdout 2> stderr; then
+      echo "omp unexpectedly accepted the nonexistent smoke-test model" >&2
+      exit 1
+    fi
+    grep -F 'Model "u1-nonexistent-provider/u1-nonexistent-model" not found' stderr
+    ${lib.optionalString stdenv.hostPlatform.isLinux ''
+      test "$(patchelf --print-interpreter "$out/libexec/omp/omp")" = ${lib.escapeShellArg stdenv.cc.bintools.dynamicLinker}
+    ''}
+    ${lib.optionalString stdenv.hostPlatform.isDarwin ''
+      # A byte-identical installed executable preserves the upstream signature.
+      cmp -s "$src" "$out/libexec/omp/omp"
+    ''}
+  '';
 
   meta = {
     description = "Oh My Pi terminal coding agent";

@@ -44,10 +44,10 @@ def _prepare_directory(parent):
     return True
 
 
-def _derive_recipient(identity_path, age_keygen):
+def _derive_recipient(identity_path):
     try:
         result = subprocess.run(
-            [age_keygen, "-y", identity_path],
+            [AGE_KEYGEN, "-y", identity_path],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -60,15 +60,9 @@ def _derive_recipient(identity_path, age_keygen):
     return result.stdout.strip()
 
 
-def install_identity(payload, expected_recipient, target=TARGET, age_keygen=AGE_KEYGEN, uid=None):
-    """Validate *payload*, then atomically install it at the fixed target.
-
-    Optional arguments are injectable for the non-privileged unit fixture; the
-    command-line entry point always uses the fixed target and packaged binary.
-    """
-    if uid is None:
-        uid = os.geteuid()
-    if uid != 0:
+def install_identity(payload, expected_recipient):
+    """Validate *payload*, then atomically install it at the fixed target."""
+    if os.geteuid() != 0:
         return _fail("must run as root")
     if not RECIPIENT_RE.fullmatch(expected_recipient):
         return _fail("expected recipient is invalid")
@@ -77,7 +71,7 @@ def install_identity(payload, expected_recipient, target=TARGET, age_keygen=AGE_
     if b"\x00" in payload:
         return _fail("identity contains NUL bytes")
 
-    parent = os.path.dirname(target)
+    parent = os.path.dirname(TARGET)
     if not _prepare_directory(parent):
         return False
 
@@ -92,7 +86,7 @@ def install_identity(payload, expected_recipient, target=TARGET, age_keygen=AGE_
             stream.flush()
             os.fsync(stream.fileno())
 
-        derived = _derive_recipient(input_path, age_keygen)
+        derived = _derive_recipient(input_path)
         if derived != expected_recipient:
             return _fail("recipient mismatch; existing identity was preserved")
 
@@ -104,7 +98,7 @@ def install_identity(payload, expected_recipient, target=TARGET, age_keygen=AGE_
             stream.flush()
             os.fsync(stream.fileno())
 
-        os.replace(staged_path, target)
+        os.replace(staged_path, TARGET)
         staged_path = None
         return True
     except OSError as error:

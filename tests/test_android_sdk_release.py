@@ -1,7 +1,7 @@
 """Drive the Ruby android-sdk-release against a fake repository2-3.xml.
 
-The helper's network call goes through an overridable command, so these tests
-serve a fixture repository instead. The fixture holds a stable and a preview
+The helper's `curl` command is stubbed on `PATH` so these tests serve a
+fixture repository instead. The fixture holds a stable and a preview
 release of each tracked package, an obsolete duplicate revision, and a
 `;latest` alias, which are the cases the selection rules have to tell apart.
 A second fixture stands in for the Google APIs system image XML, served for
@@ -153,9 +153,12 @@ IMAGES = [
 
 IMAGE_URL = "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
 
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_CURL = """#!{python}
 import os, sys
-url = sys.argv[-1]
+if sys.argv[1:2] != ['-sfL'] or len(sys.argv) != 3:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
+url = sys.argv[2]
 with open(os.environ['FAKE_LOG'], 'a') as log:
     log.write(url + '\\n')
 kind = 'IMAGE' if '/sys-img/' in url else 'REPO'
@@ -171,15 +174,17 @@ class AndroidSdkReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        curl = self.bin_dir / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
         self.output = root / "android-sdk-repo.json"
         self.log = root / "fetched"
 
     def run_release(self, args, body=None, status=0, image_body=None, image_status=0):
         env = dict(os.environ)
-        env["ANDROID_SDK_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
         env["FAKE_LOG"] = str(self.log)
         env["FAKE_REPO_BODY"] = repository(*BASE) if body is None else body
         env["FAKE_REPO_STATUS"] = str(status)

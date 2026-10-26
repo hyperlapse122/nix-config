@@ -142,7 +142,7 @@ keys exposed through historical ciphertext; revoke public SSH keys on their
 destinations when a host is compromised.
 
 For NixOS desktops, `secrets/hosts/<host>/ssh.pub` holds the matching public
-Ed25519 identity. The `desktop-ssh-sources` check reads ciphertext recipients,
+Ed25519 identity. The `desktop-ssh` check reads ciphertext recipients,
 checks the encrypted field and creation rule, and rejects missing, invalid,
 or duplicate public metadata without decrypting real keys. SOPS keeps the
 decrypted recovery source root-only. The fixed `desktop-ssh-provision.service`

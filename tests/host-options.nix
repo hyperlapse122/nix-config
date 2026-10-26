@@ -6,9 +6,9 @@
   Guards the shared host options in modules/shared/host.nix, the one place
   host facts and traits are declared for every assembly.
 
-  - On every NixOS configuration, the Home Manager user sees the same
-    bootstrap flag, host name, host kind, account, and traits as the system.
-    A trait the flake forgets to hand to Home Manager falls back to the
+  - On every NixOS and Darwin configuration, the Home Manager user sees the
+    same bootstrap flag, host name, host kind, account, and traits as the
+    system. A trait the flake forgets to hand to Home Manager falls back to the
     option's default there, so the user side silently disagrees with the
     system side; this compares the two values rather than either one alone.
   - No file under home/ reads `osConfig`: a standalone Home Manager output has
@@ -23,12 +23,25 @@ let
   inherit (pkgs) lib;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  darwinFixtures = map (e: {
+    inherit (e) name;
+    inherit (e.host) config;
+    user = e.host.config.home-manager.users.${e.host.config.my.user.name};
+  }) (import ./lib/darwin-fixtures.nix { inherit (self) inputs; });
+
+  pathsOf =
+    prefix: options:
+    lib.concatLists (
+      lib.mapAttrsToList (
+        name: option:
+        if lib.isOption option then [ (prefix ++ [ name ]) ] else pathsOf (prefix ++ [ name ]) option
+      ) options
+    );
 
   # Every option modules/shared/host.nix declares: the user must see each one
   # exactly as the system does. Derived from the declarations, so a new trait
   # is compared the day it is added.
-  shared = (import ../lib/host-facts.nix { inherit lib; }).paths;
-
+  shared = pathsOf [ ] (import ../modules/shared/host.nix { inherit lib; }).options.my;
   valueOf = config: path: builtins.toJSON (lib.attrByPath ([ "my" ] ++ path) null config);
 
   assertEntry =
@@ -54,7 +67,11 @@ pkgs.runCommand "host-options"
   ''
     ${configurations.guard}
     fail=0
-    ${lib.concatMapStrings assertEntry configurations.entries}
+    ${lib.optionalString (darwinFixtures == [ ]) ''
+      echo "tests/fixtures/hosts holds no macOS fixture host" >&2
+      fail=1
+    ''}
+    ${lib.concatMapStrings assertEntry (configurations.entries ++ darwinFixtures)}
     if grep -rn -w osConfig "$home" >&2; then
       echo 'files under home/ read osConfig, which a standalone Home Manager output does not have' >&2
       fail=1

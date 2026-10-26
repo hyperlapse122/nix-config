@@ -15,8 +15,8 @@
   - a host recipient missing from the tokens.yaml rule fails;
   - a tokens.yaml rule that names the host while the file was never re-keyed
     for it fails;
-  - a host recipient in the wifi.yaml or tailscale.yaml rule fails;
-  - a wifi.yaml encrypted to the host while its rule does not name it fails.
+  - a host recipient in the wifi.yaml, tailscale.yaml, or printers.yaml rule fails;
+  - a wifi.yaml or printers.yaml encrypted to the host while its rule does not name it fails.
 */
 { pkgs, self }:
 pkgs.runCommand "linux-host-secrets-tests"
@@ -51,20 +51,24 @@ pkgs.runCommand "linux-host-secrets-tests"
       printf '{ kind = "linux"; system = "x86_64-linux"; }\n' >"$tree/hosts/fakehost/host.nix"
       printf '%s\n' "$host" >"$tree/secrets/bootstrap/fakehost/recipient.txt"
       local tokens_rule="$nixos,$host" tokens_file="$nixos,$host"
-      local wifi_rule=$nixos wifi_file=$nixos tailscale_rule=$nixos ssh=$host
+      local wifi_rule=$nixos wifi_file=$nixos tailscale_rule=$nixos printers_rule=$nixos printers_file=$nixos ssh=$host
       case $1 in
         second-recipient) ssh="$host,$nixos" ;;
         not-in-tokens-rule) tokens_rule=$nixos tokens_file=$nixos ;;
         tokens-not-rekeyed) tokens_file=$nixos ;;
         in-wifi-rule) wifi_rule="$nixos,$host" wifi_file="$nixos,$host" ;;
+        in-wifi-rule-comma-space) wifi_rule="$nixos, $host" ;;
         in-tailscale-rule) tailscale_rule="$nixos,$host" ;;
+        in-printers-rule) printers_rule="$nixos, $host" ;;
         wifi-file-only) wifi_file="$nixos,$host" ;;
+        printers-file-only) printers_file="$nixos,$host" ;;
       esac
-      printf 'creation_rules:\n  - path_regex: secrets/tokens\\.yaml$\n    age: %s\n  - path_regex: secrets/wifi\\.yaml$\n    age: %s\n  - path_regex: secrets/tailscale\\.yaml$\n    age: %s\n' \
-        "$tokens_rule" "$wifi_rule" "$tailscale_rule" >"$tree/.sops.yaml"
+      printf 'creation_rules:\n  - path_regex: secrets/tokens\\.yaml$\n    age: %s\n  - path_regex: secrets/wifi\\.yaml$\n    age: %s\n  - path_regex: secrets/tailscale\\.yaml$\n    age: %s\n  - path_regex: secrets/printers\\.yaml$\n    age: %s\n' \
+        "$tokens_rule" "$wifi_rule" "$tailscale_rule" "$printers_rule" >"$tree/.sops.yaml"
       encrypt "$tokens_file" "$tree/secrets/tokens.yaml"
       encrypt "$wifi_file" "$tree/secrets/wifi.yaml"
       encrypt "$tailscale_rule" "$tree/secrets/tailscale.yaml"
+      encrypt "$printers_file" "$tree/secrets/printers.yaml"
       encrypt "$ssh" "$tree/secrets/hosts/fakehost/ssh.yaml"
       case $1 in
         missing-ssh) rm "$tree/secrets/hosts/fakehost/ssh.yaml" ;;
@@ -95,8 +99,10 @@ pkgs.runCommand "linux-host-secrets-tests"
     expect_failure not-in-tokens-rule 'tokens.yaml rule'
     expect_failure tokens-not-rekeyed 'secrets/tokens.yaml is not encrypted to its recipient'
     expect_failure in-wifi-rule 'wifi.yaml rule'
+    expect_failure in-wifi-rule-comma-space 'wifi.yaml rule'
     expect_failure in-tailscale-rule 'tailscale.yaml rule'
+    expect_failure in-printers-rule 'printers.yaml rule'
     expect_failure wifi-file-only 'secrets/wifi.yaml is encrypted to its recipient'
-
+    expect_failure printers-file-only 'secrets/printers.yaml is encrypted to its recipient'
     touch $out
   ''

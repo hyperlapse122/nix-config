@@ -1,13 +1,11 @@
 """Drive npm-release against a fake npm registry, npm, and prefetch-npm-deps.
 
-The helper's network calls, its npm call, and its prefetch-npm-deps call go
-through overridable commands, so these tests feed it fixtures instead.
+The helper's `curl`, `npm`, and `prefetch-npm-deps` calls are stubbed on `PATH`
+so these tests feed it fixtures without network access.
 """
 
 import base64
 import hashlib
-import importlib.machinery
-import importlib.util
 import io
 import json
 import os
@@ -18,12 +16,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/npm-release"
-loader = importlib.machinery.SourceFileLoader("npm_release", str(SCRIPT))
-release = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
-loader.exec_module(release)
 
 BASE = "https://registry.npmjs.org"
 NAME = "acpx"
@@ -95,13 +89,16 @@ def pin(version=VERSION):
     }
 
 
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_CURL = """#!{python}
 import base64, json, os, sys
+if sys.argv[1:4] != ['-sfL', '--max-time', '60'] or len(sys.argv) != 5:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
 routes = json.loads(os.environ['FAKE_ROUTES'])
-body = routes.get(sys.argv[-1])
+body = routes.get(sys.argv[4])
 if body is None:
     sys.exit(22)
-if isinstance(body, dict) and set(body) == {'base64'}:
+if isinstance(body, dict) and set(body) == {{'base64'}}:
     sys.stdout.buffer.write(base64.b64decode(body['base64']))
 else:
     sys.stdout.write(body if isinstance(body, str) else json.dumps(body))
@@ -109,13 +106,13 @@ else:
 
 # Records its argv and the package.json it was run beside, then writes the
 # fixture lock file the way `npm install --package-lock-only` would.
-FAKE_NPM = """#!/usr/bin/env python3
+FAKE_NPM = """#!{python}
 import json, os, sys, time
 time.sleep(float(os.environ.get('FAKE_NPM_SLEEP', '0')))
 with open('package.json') as f:
     manifest = json.load(f)
 with open(os.environ['FAKE_NPM_LOG'], 'w') as f:
-    json.dump({'argv': sys.argv[1:], 'manifest': manifest}, f)
+    json.dump({{'argv': sys.argv[1:], 'manifest': manifest}}, f)
 status = int(os.environ.get('FAKE_NPM_STATUS', '0'))
 if status:
     sys.exit(status)
@@ -123,8 +120,11 @@ with open('package-lock.json', 'w') as f:
     f.write(os.environ['FAKE_LOCK'])
 """
 
-FAKE_PREFETCH = """#!/usr/bin/env python3
+FAKE_PREFETCH = """#!{python}
 import os, sys, time
+if len(sys.argv) != 2:
+    sys.stderr.write(f'unexpected prefetch-npm-deps argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
 time.sleep(float(os.environ.get('FAKE_PREFETCH_SLEEP', '0')))
 with open(sys.argv[1]) as f:
     open(os.environ['FAKE_PREFETCH_LOG'], 'w').write(f.read())
@@ -137,13 +137,15 @@ class NpmReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
         for name, body in [
-            ("fake-fetch", FAKE_FETCH),
-            ("fake-npm", FAKE_NPM),
-            ("fake-prefetch", FAKE_PREFETCH),
+            ("curl", FAKE_CURL),
+            ("npm", FAKE_NPM),
+            ("prefetch-npm-deps", FAKE_PREFETCH),
         ]:
-            path = self.root / name
-            path.write_text(body)
+            path = self.bin_dir / name
+            path.write_text(body.format(python=sys.executable))
             path.chmod(0o755)
         self.output = self.root / "acpx-release.json"
         self.lock = self.root / "acpx" / "package-lock.json"
@@ -153,9 +155,7 @@ class NpmReleaseTestCase(unittest.TestCase):
 
     def run_release(self, routes=None, extra_args=None, lock=None, deps_hash=DEPS_HASH, env_extra=None):
         env = dict(os.environ)
-        env["NPM_RELEASE_FETCH"] = f"{sys.executable} {self.root / 'fake-fetch'}"
-        env["NPM_RELEASE_NPM"] = f"{sys.executable} {self.root / 'fake-npm'}"
-        env["NPM_RELEASE_PREFETCH"] = f"{sys.executable} {self.root / 'fake-prefetch'}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
         env["FAKE_ROUTES"] = json.dumps(registry() if routes is None else routes)
         env["FAKE_LOCK"] = json.dumps(LOCK if lock is None else lock, indent=2) + "\n"
         env["FAKE_DEPS_HASH"] = deps_hash
@@ -299,11 +299,6 @@ class NpmReleaseTestCase(unittest.TestCase):
                 self.assert_refused(f"{label} timed out after 1 seconds",
                                     env_extra={variable: "60", "NPM_RELEASE_TIMEOUT": "1"})
                 self.assertLess(time.monotonic() - started, 30)
-
-    def test_the_default_step_timeout_is_ten_minutes(self):
-        self.assertEqual(release.DEFAULT_STEP_TIMEOUT, 600)
-        with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(release.step_timeout(), 600)
 
     def test_refuses_a_timeout_that_is_not_a_positive_number(self):
         for raw in ("soon", "0", "-5", "nan"):

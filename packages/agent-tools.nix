@@ -25,8 +25,7 @@ let
 
   # The two catalog scripts import scripts/catalog_snapshot.py from their own
   # directory, so each is installed beside it under libexec and linked into
-  # bin. Their fetch goes through an overridable command so the sandboxed
-  # repository check can drive it with fixtures.
+  # bin.
   catalogHelper =
     name: src:
     pkgs.stdenvNoCC.mkDerivation {
@@ -63,9 +62,7 @@ let
   # by store path and exports the declared environment tier around it.
   agentPluginSync = pythonHelper "agent-plugin-sync" ../scripts/agent-plugin-sync;
 
-  # Runs in continuous integration rather than at activation. Its network call
-  # goes through an overridable command so the repository check can drive it
-  # with fixtures; a sandboxed check has no network.
+  # Runs in continuous integration rather than at activation.
   agentPluginRelease = pythonHelper "agent-plugin-release" ../scripts/agent-plugin-release;
 
   serveHtml = pythonHelper "serve-html" ../scripts/serve-html;
@@ -76,32 +73,26 @@ let
   claudeDesktopRelease = pythonHelper "claude-desktop-release" ../scripts/claude-desktop-release;
 
   # Resolves the latest WiFiman Desktop release from Ubiquiti's releases API
-  # and hashes its .deb, which upstream publishes no checksum for. Its network
-  # calls go through overridable commands so the sandboxed repository check
-  # can drive it with fixtures.
+  # and hashes its .deb, which upstream publishes no checksum for.
   wifimanDesktopRelease = pythonHelper "wifiman-desktop-release" ../scripts/wifiman-desktop-release;
 
   # Resolves the latest claude-code release manifest from Anthropic's own
-  # release endpoints. Its network calls go through an overridable command so
-  # the sandboxed repository check can drive it with fixtures.
+  # release endpoints.
   claudeCodeRelease = pythonHelper "claude-code-release" ../scripts/claude-code-release;
 
   # Resolves the latest mise release from the SHASUMS256.txt asset of its
-  # latest GitHub release. Its network call goes through an overridable
-  # command so the sandboxed repository check can drive it with fixtures.
+  # latest GitHub release.
   miseRelease = pythonHelper "mise-release" ../scripts/mise-release;
 
   # Resolves the latest Codex release and its musl asset digest from the
-  # GitHub releases API. Its network call goes through an overridable command
-  # so the sandboxed repository check can drive it with fixtures.
+  # GitHub releases API.
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
   ompRelease = pythonHelper "omp-release" ../scripts/omp-release;
 
   # Resolves the latest release of an npm package that ships no lock file,
   # such as acpx, and regenerates its lock file and npmDepsHash.
-  # Its network call goes through an overridable command so the sandboxed
-  # repository check can drive it with fixtures; npm and prefetch-npm-deps
-  # come from the store so the update workflow's runner needs neither.
+  # npm and prefetch-npm-deps come from the store so the update workflow's
+  # runner needs neither.
   npmRelease = pkgs.symlinkJoin {
     name = "npm-release";
     paths = [ (pythonHelper "npm-release" ../scripts/npm-release) ];
@@ -119,8 +110,7 @@ let
   };
 
   # Resolves the newest T3 Code nightly and its asset digests from the GitHub
-  # releases API. Its network call goes through an overridable command so the
-  # sandboxed repository check can drive it with fixtures.
+  # releases API.
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
 
   # Compares the Synthetic models in home/h82/agents/synthetic-models.nix with
@@ -131,8 +121,7 @@ let
   # /models/user endpoint.
   openrouterCatalogSnapshot = catalogHelper "openrouter-catalog-snapshot" ../scripts/openrouter-catalog-snapshot;
 
-  # Pins the Android SDK packages from Google's repository XML. Its network
-  # call goes through an overridable command for the same reason. It is Ruby
+  # Pins the Android SDK packages from Google's repository XML. It is Ruby
   # because it vendors nixpkgs' androidenv update.rb, which parses with
   # nokogiri.
   androidSdkRelease = helperWith "android-sdk-release" ../scripts/android-sdk-release (

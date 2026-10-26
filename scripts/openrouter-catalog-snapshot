@@ -35,10 +35,8 @@ import sys
 # path or Python runs it isolated.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from catalog_snapshot import (  # noqa: E402
-    DEFAULT_FETCH,
     Failure,
     check_shrink_floor,
-    command_from,
     existing_rows,
     is_int,
     is_strings,
@@ -49,7 +47,6 @@ from catalog_snapshot import (  # noqa: E402
 
 DEFAULT_URL = "https://openrouter.ai/api/v1/models/user"
 KEY_VARIABLE = "OPENROUTER_API_KEY"
-FETCH_COMMAND = "OPENROUTER_CATALOG_FETCH"
 NAME = "openrouter-catalog-snapshot"
 
 PRICE_FIELDS = ("prompt", "completion", "input_cache_read", "input_cache_write")
@@ -62,7 +59,7 @@ def fetch(url):
     key = os.environ.get(KEY_VARIABLE, "")
     if not key:
         raise Failure(f"{KEY_VARIABLE} is not set")
-    proc = run_fetch(command_from(FETCH_COMMAND, DEFAULT_FETCH), url, key, KEY_VARIABLE)
+    proc = run_fetch(url, key, KEY_VARIABLE)
     if proc.returncode != 0:
         raise Failure(f"fetching {url} failed with status {proc.returncode}")
     try:

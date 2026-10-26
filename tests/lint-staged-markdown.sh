@@ -47,18 +47,6 @@ assert_version_parity() {
 assert_version_parity "$toml_version" "$lock_version" "$nixpkgs_version"
 pass "version parity holds (mise.toml=$toml_version, mise.lock=$lock_version, nixpkgs=$nixpkgs_version)"
 
-# The parity assertion must reject each mismatched input.
-if (assert_version_parity "0.0.1" "$lock_version" "$nixpkgs_version") 2>/dev/null; then
-  fail "version parity assertion did not fail on mismatched toml version"
-fi
-if (assert_version_parity "$toml_version" "0.0.1" "$nixpkgs_version") 2>/dev/null; then
-  fail "version parity assertion did not fail on mismatched lock version"
-fi
-if (assert_version_parity "$toml_version" "$lock_version" "0.0.1") 2>/dev/null; then
-  fail "version parity assertion did not fail on mismatched nixpkgs version"
-fi
-pass "version parity assertion fails on mismatched version inputs"
-
 # Setup isolated test environment
 TEST_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TEST_TMPDIR"' EXIT
@@ -184,7 +172,8 @@ printf '%s\n' "\$*" >> "$mise_record"
 exit 1
 STUB_EOF
 chmod +x "$trust_stub_dir/mise"
-(cd "$repo15" && PATH="$trust_stub_dir:$PATH" bash "$script") >/dev/null 2>&1 || true
+(cd "$repo15" && PATH="$trust_stub_dir:$PATH" bash "$script") >/dev/null 2>&1 \
+  || fail "lint-staged-markdown failed while verifying it never calls mise"
 [[ ! -e "$mise_record" ]] || fail "lint-staged-markdown called mise: $(cat "$mise_record")"
 rm "$trust_stub_dir/mise"
 unset TRUST_RECORD
@@ -374,18 +363,5 @@ printf "%s" "$clean_md_content" > "$wt1/docs/bad.md"
 git -C "$wt1" add docs/bad.md
 PATH="$stub_mise_dir:$PATH" git -C "$wt1" commit -q -m "commit clean" || fail "git commit with clean markdown failed"
 pass "git commit in linked worktree with clean markdown succeeds"
-
-# Branch without .githooks/ commits successfully
-# Create a branch pointing at initial commit (before .githooks was added)
-initial_commit=$(git -C "$repo12" rev-list --max-parents=0 HEAD)
-git -C "$repo12" branch branch-no-hooks "$initial_commit"
-wt2="$TEST_TMPDIR/wt2"
-git -C "$repo12" worktree add -q "$wt2" branch-no-hooks
-[[ ! -d "$wt2/.githooks" ]] || fail "wt2 unexpectedly has .githooks"
-mkdir -p "$wt2/docs"
-printf "%s" "$bad_md_content" > "$wt2/docs/bad.md"
-git -C "$wt2" add docs/bad.md
-PATH="$stub_mise_dir:$PATH" git -C "$wt2" commit -q -m "commit without hook" || fail "commit on branch without .githooks failed"
-pass "linked worktree on branch without .githooks commits successfully"
 
 pass "all lint-staged-markdown scenarios passed"

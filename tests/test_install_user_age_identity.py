@@ -2,15 +2,14 @@
 """Focused, secret-free tests for the user-mode age identity installer.
 
 The installer places a host's recovered age identity at
-~/.config/nix-config/age/key.txt on a non-NixOS host. Each test runs the real
-script as a subprocess against a temporary HOME and a fake age-keygen, so no
-real key or card is involved.
+~/.config/nix-config/age/key.txt on a non-NixOS host. Each test runs the
+packaged script directly as a subprocess against a temporary HOME and
+ephemeral age-keygen identities, so no real card is involved.
 """
 
 import os
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,8 +17,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/install-user-age-identity"
-RECIPIENT = "age1mzqjkevvl4zvp272ecmpvjmp77espnaxz9uedjsmahkz7eecsdeqxkayjk"
-OTHER_RECIPIENT = "age15qrswvhypr4567stux59nc2gx8xt7hujtxd7pkqn8v8shyqh2d9ql6y4zg"
+
+def _generate_identity():
+    with tempfile.TemporaryDirectory() as tmp:
+        key_file = Path(tmp) / "key.txt"
+        subprocess.run(["age-keygen", "-o", str(key_file)], check=True, capture_output=True)
+        recipient = subprocess.run(
+            ["age-keygen", "-y", str(key_file)], check=True, capture_output=True, text=True
+        ).stdout.strip()
+        return key_file.read_bytes(), recipient
+
+
+VALID_PAYLOAD, RECIPIENT = _generate_identity()
+OTHER_PAYLOAD, OTHER_RECIPIENT = _generate_identity()
 
 
 class InstallUserIdentityTests(unittest.TestCase):
@@ -27,35 +37,34 @@ class InstallUserIdentityTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.home = Path(self.directory.name) / "home"
         self.home.mkdir()
-        self.keygen = Path(self.directory.name) / "age-keygen"
-        self.keygen.write_text(
-            f"#!{sys.executable}\n"
-            "import pathlib, sys\n"
-            "data = pathlib.Path(sys.argv[2]).read_bytes()\n"
-            f"recipients = {{b'VALID-ID\\n': {RECIPIENT!r}, "
-            f"b'OTHER-ID\\n': {OTHER_RECIPIENT!r}}}\n"
-            "if data not in recipients: raise SystemExit(1)\n"
-            "print(recipients[data])\n"
-        )
-        self.keygen.chmod(0o755)
         self.target = self.home / ".config/nix-config/age/key.txt"
 
     def tearDown(self):
         self.directory.cleanup()
 
     def run_installer(self, payload, recipient=RECIPIENT):
-        env = dict(os.environ, HOME=str(self.home), INSTALL_USER_AGE_KEYGEN=str(self.keygen))
+        env = dict(os.environ, HOME=str(self.home))
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--recipient", recipient],
+            [str(SCRIPT), "--recipient", recipient],
             input=payload,
             env=env,
             capture_output=True,
         )
 
+    def test_packaged_script_has_store_shebang_and_substituted_age_keygen(self):
+        source = SCRIPT.read_text()
+        first_line = source.splitlines()[0]
+        self.assertTrue(
+            first_line.startswith("#!/nix/store/") or first_line.startswith("#! /nix/store/"),
+            first_line,
+        )
+        self.assertNotIn("@", source)
+        self.assertNotIn("INSTALL_USER_AGE_KEYGEN", source)
+
     def test_installs_valid_identity_privately(self):
-        result = self.run_installer(b"VALID-ID\n")
+        result = self.run_installer(VALID_PAYLOAD)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.target.read_bytes(), b"VALID-ID\n")
+        self.assertEqual(self.target.read_bytes(), VALID_PAYLOAD)
         self.assertEqual(stat.S_IMODE(self.target.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(self.target.parent.stat().st_mode), 0o700)
         self.assertEqual(self.target.stat().st_uid, os.getuid())
@@ -63,7 +72,7 @@ class InstallUserIdentityTests(unittest.TestCase):
     def test_refuses_recipient_mismatch_and_keeps_existing(self):
         self.target.parent.mkdir(parents=True, mode=0o700)
         self.target.write_bytes(b"OLD\n")
-        result = self.run_installer(b"OTHER-ID\n")
+        result = self.run_installer(OTHER_PAYLOAD)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"recipient mismatch", result.stderr)
         self.assertEqual(self.target.read_bytes(), b"OLD\n")
@@ -82,7 +91,7 @@ class InstallUserIdentityTests(unittest.TestCase):
         elsewhere = Path(self.directory.name) / "elsewhere"
         elsewhere.write_bytes(b"UNTOUCHED\n")
         self.target.symlink_to(elsewhere)
-        result = self.run_installer(b"VALID-ID\n")
+        result = self.run_installer(VALID_PAYLOAD)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(elsewhere.read_bytes(), b"UNTOUCHED\n")
         self.assertTrue(self.target.is_symlink())
@@ -92,7 +101,7 @@ class InstallUserIdentityTests(unittest.TestCase):
         real.mkdir(mode=0o700)
         (self.home / ".config/nix-config").mkdir(parents=True)
         (self.home / ".config/nix-config/age").symlink_to(real)
-        result = self.run_installer(b"VALID-ID\n")
+        result = self.run_installer(VALID_PAYLOAD)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(list(real.iterdir()), [])
 
@@ -115,17 +124,19 @@ class InstallUserIdentityTests(unittest.TestCase):
 
     def test_refuses_invalid_recipient_argument(self):
         self.assert_refused_before_staging(
-            self.run_installer(b"VALID-ID\n", recipient="not-a-recipient"), b"expected recipient is invalid"
+            self.run_installer(VALID_PAYLOAD, recipient="not-a-recipient"), b"expected recipient is invalid"
         )
 
     def test_mismatch_leaves_no_staged_file(self):
-        self.run_installer(b"OTHER-ID\n")
+        self.run_installer(OTHER_PAYLOAD)
         self.assertEqual([p.name for p in self.target.parent.iterdir()], [])
 
     def test_never_prints_the_identity(self):
-        result = self.run_installer(b"OTHER-ID\n")
-        self.assertNotIn(b"OTHER-ID", result.stdout + result.stderr)
-
+        secret_line = next(
+            line for line in OTHER_PAYLOAD.splitlines() if line.startswith(b"AGE-SECRET-KEY-")
+        )
+        result = self.run_installer(OTHER_PAYLOAD)
+        self.assertNotIn(secret_line, result.stdout + result.stderr)
 
 if __name__ == "__main__":
     unittest.main()

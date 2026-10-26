@@ -14,14 +14,11 @@ downgrade ever reaches the pin file.
 import argparse
 import base64
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/openai/codex/releases/latest"
-DEFAULT_FETCH = "curl -sfL"
 
 # Every system a host in this flake can be, and the tarballs installed on it.
 # The Linux musl builds are statically linked, so they run on NixOS and other
@@ -51,16 +48,9 @@ class Failure(Exception):
 
 
 def fetch(url):
-    """Run the overridable fetch command against one URL and return the raw body.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command = shlex.split(os.environ.get("CODEX_RELEASE_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("CODEX_RELEASE_FETCH is empty")
+    """Fetch one URL with curl and return the raw body."""
     proc = subprocess.run(
-        command + [url],
+        ["curl", "-sfL", url],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

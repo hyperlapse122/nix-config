@@ -23,7 +23,7 @@
     files, checking destination/declaration, real file effects, repeat apply,
     dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Antigravity, Claude, Codex, and one OMP instance, the
+    enabled Claude, Codex, and one OMP instance, the
     disabled Grok, Pi and OpenCode instances, the Claude instance's launch arguments emptied,
     which retires the --add-dir an earlier generation wrote, no environment
     entry upserted, and the Codex instance's launch arguments emptied, which
@@ -45,22 +45,6 @@
     the merged file must hold the instance disabled, the opencode preference
     gone, the other provider's preference preserved, and omp's hiddenModels
     carrying "default".
-  - home.activation.t3codeAntigravity exists exactly when either trait is on
-    and runs after installPackages. Its script is executed the same way with
-    the packaged installer swapped for a stub: on a live run the stub must
-    run with --base-dir ~/.t3, --runtime in the antigravity-acp package this
-    system pins, and --pin the pin record of packages/t3code-release.json for
-    this system; a failing stub must fail the script; and a dry run must not
-    run it. The paths are compared as strings, so the runtime, about 1.3 GB
-    unpacked, is never built here.
-  - home.activation.t3codeAntigravityLinks exists exactly when either trait
-    is on and runs after installPackages and after home.activation.agentPlugins,
-    which must exist on every host, so a plugin sync's new or retired skills are linked in the
-    same activation. Its script is executed with the
-    packaged linker swapped for a stub: on a live run the stub must run with
-    --base-dir ~/.t3, --gemini-config ~/.gemini/config, and --instance
-    antigravity, the instance whose runtime is preinstalled; a failing
-    stub must fail the script; and a dry run must not run it.
   The same holds on each non-NixOS fixture host of the builder's
   architecture, production and bootstrap, and on each bootstrap fixture
   re-assembled with only the CLI trait forced on, since the CLI is the T3
@@ -83,16 +67,6 @@
   On NixOS and macOS the module also declares both settings merges, checked
   the same way as on the assembled configurations, since no macOS
   configuration is evaluated here.
-
-  packages/t3code-release.json and packages/antigravity-acp-release.json may
-  pin the same runtime release, and then the runtime path cannot tell which
-  file the module reads. So the module's source must also read the runtime
-  pins from packages/t3code-release.json's antigravity entry and never name
-  packages/antigravity-acp-release.json, as
-  tests/antigravity-acp-path-profiles.nix checks for the PATH package. The
-  source text is read rather than a rewritten copy imported, because
-  `nix flake check --no-build` evaluates read-only and never writes a
-  builtins.toFile copy to the store.
 
   Every failure is collected in one build and names the configuration.
 */
@@ -462,9 +436,9 @@ let
     setPaths = [ ];
     own = { };
   };
-  # Without string context, so neither the runtime nor the scripts the
-  # activation names are built: the check compares the paths, and the paths
-  # are the store hashes of what the module would install.
+  # Without string context, so the scripts the activation names are not built:
+  # the check compares the paths, and the paths are the store hashes of what
+  # the module would install.
   noContext = builtins.unsafeDiscardStringContext;
 
   merges = [
@@ -483,7 +457,7 @@ let
   # Every lookup has an `or` fallback, so a removed declaration reaches the
   # builder as an empty argument instead of failing evaluation.
   # pluginsDeclared is false for the module evaluated on its own, which has no
-  # agentPlugins entry to exist; the link entry must still name it.
+  # agentPlugins entry to exist.
   assertSettingsWith =
     pluginsDeclared: name: user: expected:
     lib.concatMapStrings (
@@ -663,8 +637,6 @@ let
 
   moduleOn = moduleWith ../home/h82/t3code.nix;
 
-  moduleSource = builtins.readFile ../home/h82/t3code.nix;
-
   assertModule =
     let
       linux = moduleOn "linux";
@@ -754,29 +726,6 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           ;;
       esac
     done
-  }
-
-  # Stands in for the packaged merger: records one argument per line and exits
-  # with STUB_STATUS.
-  cat > merger-stub <<'EOF'
-  #!${pkgs.runtimeShell}
-  printf '%s\n' "$@" > "$STUB_ARGS"
-  exit "''${STUB_STATUS:-0}"
-  EOF
-  chmod +x merger-stub
-
-  # Runs the activation script in `script`, with the merger swapped for the
-  # stub, under Home Manager's shell options. $1 defines `run`: "$@" on a live
-  # run, nothing on a dry run. $2 is the stub's exit status.
-  exercise() {
-    rm -f args
-    { printf 'run() { %s; }\n' "$1"; cat swapped; } > exercise.sh
-    STUB_ARGS=$PWD/args STUB_STATUS=$2 bash -eu -o pipefail exercise.sh
-  }
-
-  # Prints the argument that follows $1 in the stub's recorded arguments.
-  argAfter() {
-    awk -v flag="$1" 'previous == flag { print; exit } { previous = $0 }' args
   }
 
   # Trait/order checks stay here; the shared file-effect harness owns settings

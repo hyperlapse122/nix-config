@@ -1,23 +1,26 @@
 /*
   Check interface:
 
-    import ./tests/nixos-rebuild-helper.nix { inherit pkgs self; }
+    import ./tests/nr.nix { inherit pkgs self; }
 
   Asserts the declarative wiring of the nixos-rebuild helper on every
-  configuration `tests/lib/configurations.nix` yields: the zsh aliases, the
-  packaged helper itself, the generation-diff invocation baked into it, and the
-  host-variant marker each configuration exposes.
+  configuration `tests/lib/configurations.nix` yields and drives the packaged
+  `nr` binary through `tests/nr.sh`:
 
-  Verifies, per configuration:
   - programs.zsh.shellAliases maps nrs, nrb, nrt and nrd onto the four helper
     subcommands.
-  - The packaged nr helper is in the user package list.
-  - The built helper carries the substituted nvd store path and invokes it,
-    so the generation diff cannot be dropped silently.
+  - The packaged nr helper is in the user package list, ships an executable
+    bin/nr with substituted nvd and git store paths, and retains no
+    unsubstituted @[A-Z_]+@ placeholders.
   - environment.etc."nixos-host-variant" is enabled and reads bootstrap on a
     configuration whose `my.bootstrap` is set and production otherwise. The
     expected word comes from the helper's `bootstrap` field, never from the
     marker's own text.
+  - `tests/nr.sh` passes against the packaged `nr` binary across flake-ref
+    resolution, `--host` / hostname default, non-repo / missing-`flake.nix`
+    errors, untracked-file warnings, `NR_VARIANT_FILE` bootstrap refusal,
+    `/run/current-system` vs `/nix/var/nix/profiles/system` diff targets,
+    flag validation, and stubbed `nvd` post-rebuild diff behavior.
 
   The marker is checked through its enable flag and its resolved target rather
   than its attribute name, and the helper is checked through the built script
@@ -26,14 +29,14 @@
 
   The helper's guard runs first, so an empty configuration list, or one with no
   bootstrap output, fails the build instead of passing it. The builder collects
-  every failure before it exits, so one red build names every affected
-  configuration.
+  every configuration failure before running the CLI suite and exiting.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  packagedNr = (import ../packages/nix-tools.nix { inherit pkgs; }).nr;
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -82,9 +85,6 @@ let
           if ! grep -q ${esc "${pkgs.git}/bin/git"} "$nr"; then
             ${fail "${entry.name}: the built nr helper does not carry the substituted git store path"}
           fi
-          if ! grep -q '"$NVD" diff' "$nr"; then
-            ${fail "${entry.name}: the built nr helper never invokes nvd diff, so it reports no generation change"}
-          fi
           # Any surviving placeholder, not just @NVD@: a check that names one
           # token passes while another substitution is silently dropped.
           if grep -qE '@[A-Z_]+@' "$nr"; then
@@ -113,22 +113,32 @@ let
         fi
       '';
 in
-pkgs.runCommand "nixos-rebuild-helper-tests" { nativeBuildInputs = [ pkgs.gnugrep ]; } ''
-  set -x
-  ${configurations.guard}
-  failed=0
+pkgs.runCommand "nr-tests"
+  {
+    nativeBuildInputs = [
+      pkgs.git
+      pkgs.gnugrep
+    ];
+  }
+  ''
+    set -x
+    export HOME=$TMPDIR
+    ${configurations.guard}
+    failed=0
 
-  ${lib.concatMapStringsSep "\n" (
-    entry:
-    lib.concatStringsSep "\n" [
-      (assertAliases entry)
-      (assertHelper entry)
-      (assertMarker entry)
-    ]
-  ) configurations.entries}
+    ${lib.concatMapStringsSep "\n" (
+      entry:
+      lib.concatStringsSep "\n" [
+        (assertAliases entry)
+        (assertHelper entry)
+        (assertMarker entry)
+      ]
+    ) configurations.entries}
 
-  if [ "$failed" != 0 ]; then
-    exit 1
-  fi
-  touch $out
-''
+    if [ "$failed" != 0 ]; then
+      exit 1
+    fi
+
+    bash ${./nr.sh} "${packagedNr}/bin/nr"
+    touch $out
+  ''

@@ -12,15 +12,24 @@ downloads nothing when the pin is already current.
 import argparse
 import base64
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
 DEFAULT_SOURCE_URL = "https://community.svc.ui.com/"
-DEFAULT_FETCH = "curl -s --max-time 60 -X POST -H 'content-type: application/json' --data-binary @-"
-DEFAULT_PREFETCH = "nix store prefetch-file --json --hash-type sha256"
+FETCH_COMMAND = [
+    "curl",
+    "-s",
+    "--max-time",
+    "60",
+    "-X",
+    "POST",
+    "-H",
+    "content-type: application/json",
+    "--data-binary",
+    "@-",
+]
+PREFETCH_COMMAND = ["nix", "store", "prefetch-file", "--json", "--hash-type", "sha256"]
 # Bounds a stalled download; the .deb is about 30 MB.
 COMMAND_TIMEOUT = 900
 QUERY = 'query { releases(tags: ["wifiman"]) { items { title version } } }'
@@ -34,15 +43,8 @@ class Failure(Exception):
     """A refusal that should stop the caller with a readable message."""
 
 
-def run_command(env_name, default, url, stdin_text=None):
-    """Run an overridable command with the URL appended and return its stdout.
-
-    The commands are overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command = shlex.split(os.environ.get(env_name, default))
-    if not command:
-        raise Failure(f"{env_name} is empty")
+def run_command(command, url, stdin_text=None):
+    """Run a command with the URL appended and return its stdout."""
     try:
         proc = subprocess.run(
             command + [url],
@@ -61,7 +63,7 @@ def run_command(env_name, default, url, stdin_text=None):
 
 def fetch(source_url):
     body = json.dumps({"query": QUERY})
-    return run_command("WIFIMAN_DESKTOP_RELEASE_FETCH", DEFAULT_FETCH, source_url, body)
+    return run_command(FETCH_COMMAND, source_url, body)
 
 
 def version_tuple(version):
@@ -114,7 +116,7 @@ def parse_hash(output):
 def resolve_pin(version):
     """Download the .deb for a version through the prefetch command and pin it."""
     url = DEB_URL.format(version=version)
-    sri = parse_hash(run_command("WIFIMAN_DESKTOP_RELEASE_PREFETCH", DEFAULT_PREFETCH, url))
+    sri = parse_hash(run_command(PREFETCH_COMMAND, url))
     sha256_hex = base64.b64decode(sri.removeprefix("sha256-")).hex()
     return {"version": version, "sha256": sha256_hex, "hash": sri}
 

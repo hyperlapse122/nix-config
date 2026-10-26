@@ -11,14 +11,11 @@ incomplete release nor a downgrade ever reaches the pin file.
 
 import argparse
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
 DEFAULT_BASE_URL = "https://downloads.claude.ai/claude-code-releases"
-DEFAULT_FETCH = "curl -s"
 
 # nixpkgs' claude-code derivation looks up the manifest by Node-style
 # platform-arch key: "linux-x64" for x86_64-linux (confirmed against a cached
@@ -33,17 +30,9 @@ class Failure(Exception):
 
 
 def fetch(url):
-    """Run the overridable fetch command against one URL and return the raw body.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command_str = os.environ.get("CLAUDE_CODE_RELEASE_FETCH", DEFAULT_FETCH)
-    command = shlex.split(command_str)
-    if not command:
-        raise Failure("CLAUDE_CODE_RELEASE_FETCH is empty")
+    """Fetch one URL with curl and return the raw body."""
     proc = subprocess.run(
-        command + [url],
+        ["curl", "-s", url],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

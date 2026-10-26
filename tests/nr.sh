@@ -21,12 +21,11 @@ expect_failure() {
 }
 
 git_bin=$(command -v git) || fail 'git is required'
-# The production script reaches git and nvd through substituted store paths;
-# the unbuilt source still carries the @...@ placeholders, so render a copy.
+# Accept either the packaged nr binary (with store paths substituted) or the
+# raw scripts/nr source (with @...@ placeholders).
 rendered=$scratch/nr
 sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|/nonexistent/nvd|" "$script" >"$rendered"
 chmod +x "$rendered"
-
 export NR_DRY_RUN=1
 
 make_repo() {
@@ -173,7 +172,7 @@ chmod +x "$stub_dir/nvd"
 
 # Re-render with the stub nvd so the substituted path is the recording one.
 rendered_run=$scratch/nr-run
-sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|$stub_dir/nvd|" "$script" >"$rendered_run"
+sed -e "s|@GIT@|$git_bin|" -e "s|^NVD=.*|NVD=\"$stub_dir/nvd\"|" "$script" >"$rendered_run"
 chmod +x "$rendered_run"
 
 mkdir -p "$scratch/genA" "$scratch/genB"
@@ -205,7 +204,7 @@ reset_generations
 NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \
   "$rendered_run" switch --flake-dir "$repo" --host testhost >/dev/null 2>&1
 [[ -f $scratch/nvd.log ]] || fail 'nvd was not called after switch changed the generation'
-grep -q "$scratch/genA $scratch/genB" "$scratch/nvd.log" ||
+grep -qxF "nvd-called diff $scratch/genA $scratch/genB" "$scratch/nvd.log" ||
   fail "switch diffed the wrong pair: $(cat "$scratch/nvd.log")"
 pass 'switch diffs the before and after of /run/current-system, in that order'
 
@@ -223,7 +222,7 @@ printf '#!%s\nln -sfn "%s/genC" "%s/profile"\nexit 0\n' \
 chmod +x "$stub_dir/rebuild-stub"
 PATH=$stub_dir:$PATH "$rendered_run" boot --flake-dir "$repo" --host testhost >/dev/null 2>&1
 [[ -f $scratch/nvd.log ]] || fail 'nvd was not called after boot changed the system profile'
-grep -q "$scratch/genB $scratch/genC" "$scratch/nvd.log" ||
+grep -qxF "nvd-called diff $scratch/genB $scratch/genC" "$scratch/nvd.log" ||
   fail "boot did not diff the profile's own before and after: $(cat "$scratch/nvd.log")"
 pass 'boot diffs the system profile against itself, not against current-system'
 
@@ -236,7 +235,7 @@ chmod +x "$stub_dir/rebuild-stub"
 printf '#!%s\nexit 3\n' "$(command -v bash)" >"$stub_dir/nvd"
 chmod +x "$stub_dir/nvd"
 rendered_fail=$scratch/nr-nvdfail
-sed -e "s|@GIT@|$git_bin|" -e "s|@NVD@|$stub_dir/nvd|" "$script" >"$rendered_fail"
+sed -e "s|@GIT@|$git_bin|" -e "s|^NVD=.*|NVD=\"$stub_dir/nvd\"|" "$script" >"$rendered_fail"
 chmod +x "$rendered_fail"
 reset_generations
 if ! NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \

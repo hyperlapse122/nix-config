@@ -4,8 +4,7 @@
   and Codex sessions run the flake's own claude and codex with their
   user-level settings, so nothing here adds a copy of either. The T3 Code
   settings that differ from the pinned nightly's defaults are merged into its
-  own settings files on activation, and the Antigravity runtime it requires is
-  installed where T3 Code looks for it.
+  own settings files on activation.
 
   The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
   it fails the assertion below rather than a build.

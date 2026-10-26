@@ -1,7 +1,7 @@
 """Drive claude-code-release against fake /latest and manifest.zst.json fixtures.
 
-The helper's network calls go through an overridable command, so these tests
-feed it two-call fixtures keyed by the requested URL instead of network calls.
+The helper's `curl` command is stubbed on `PATH` so these tests feed it
+two-call fixtures keyed by the exact requested URL instead of network calls.
 """
 
 import json
@@ -30,19 +30,27 @@ SAMPLE_MANIFEST = {
     },
 }
 
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_CURL = """#!{python}
 import os, sys
-url = sys.argv[-1]
-if url.endswith('/latest'):
+if sys.argv[1:2] != ['-s'] or len(sys.argv) != 3:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
+url = sys.argv[2]
+base = os.environ['FAKE_BASE_URL']
+latest = os.environ.get('FAKE_LATEST_BODY', '').strip()
+if url == f'{{base}}/latest':
     status = int(os.environ.get('FAKE_LATEST_STATUS', '0'))
     if status:
         sys.exit(status)
     sys.stdout.write(os.environ.get('FAKE_LATEST_BODY', ''))
-else:
+elif url == f'{{base}}/{{latest}}/manifest.zst.json':
     status = int(os.environ.get('FAKE_MANIFEST_STATUS', '0'))
     if status:
         sys.exit(status)
     sys.stdout.write(os.environ.get('FAKE_MANIFEST_BODY', ''))
+else:
+    sys.stderr.write(f'unexpected curl url: {{url!r}}\\n')
+    sys.exit(98)
 """
 
 
@@ -51,9 +59,11 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        curl = self.bin_dir / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
 
     def run_release(
         self,
@@ -66,7 +76,8 @@ class ClaudeCodeReleaseTestCase(unittest.TestCase):
         if manifest_body is None:
             manifest_body = json.dumps(SAMPLE_MANIFEST)
         env = dict(os.environ)
-        env["CLAUDE_CODE_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["FAKE_BASE_URL"] = "https://downloads.claude.ai/claude-code-releases"
         env["FAKE_LATEST_BODY"] = latest_body
         env["FAKE_LATEST_STATUS"] = str(latest_status)
         env["FAKE_MANIFEST_BODY"] = manifest_body
