@@ -19,10 +19,43 @@
 { pkgs, inputs }:
 let
   lib = pkgs.lib;
+  evalConfig = import "${inputs.nixpkgs}/nixos/lib/eval-config.nix";
+  # disko's makeDiskoTest still branches on config.boot.initrd.systemd.enable
+  # inside its installed-system module after nixpkgs removed scripted initrd
+  # with mkRemovedOptionModule (nix-community/disko#1304, #1305). Supply true
+  # to that module when the option is hidden so disko selects
+  # boot.initrd.secrets without tripping the removed-option throw, while
+  # extraSystemConfig still sees the real assertion.
+  withSystemdInitrd =
+    module:
+    if lib.isFunction module then
+      lib.mirrorFunctionArgs module (
+        args:
+        module (
+          args
+          // {
+            config = args.config // {
+              boot = args.config.boot // {
+                initrd = args.config.boot.initrd // {
+                  systemd = args.config.boot.initrd.systemd // {
+                    enable =
+                      if args.options.boot.initrd.systemd.enable.visible or true then
+                        args.config.boot.initrd.systemd.enable
+                      else
+                        true;
+                  };
+                };
+              };
+            };
+          }
+        )
+      )
+    else
+      module;
   diskoLib = import "${inputs.disko}/lib" {
     inherit lib;
     makeTest = import "${inputs.nixpkgs}/nixos/tests/make-test-python.nix";
-    eval-config = import "${inputs.nixpkgs}/nixos/lib/eval-config.nix";
+    eval-config = args: evalConfig (args // { modules = map withSystemdInitrd args.modules; });
     qemu-common = import "${inputs.nixpkgs}/nixos/lib/qemu-common.nix";
   };
   bootModule = ../modules/nixos/system/boot.nix;
