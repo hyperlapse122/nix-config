@@ -31,6 +31,10 @@ def run(omp, documents, snapshots):
                     if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"}
     managed = providers["openrouter"]
     assert ({row["id"] for row in managed["models"]} | managed["modelOverrides"].keys()) == selected_ids, "managed OpenRouter selection"
+    for metadata in [*managed["models"], *managed["modelOverrides"].values()]:
+        assert "cost" not in metadata, "OpenRouter must use runtime pricing rather than snapshot overrides"
+        assert "maxTokens" not in metadata, "OpenRouter must not retain provider output limits"
+        assert "omitMaxOutputTokens" not in metadata, "explicit caller output caps must remain effective"
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         agent = home / ".omp/agent"
@@ -55,11 +59,9 @@ def run(omp, documents, snapshots):
                 modalities = row.get("input_modalities", (row.get("architecture") or {}).get("input_modalities", []))
                 assert actual["input"] == [m for m in ("text", "image") if m in modalities], row["id"]
                 context = row.get("context_length")
-                if provider == "openrouter":
-                    context = (row.get("top_provider") or {}).get("context_length") or context
                 if isinstance(context, int) and context > 0:
                     assert actual["contextWindow"] == context, row["id"]
-                limit = row.get("max_output_length") if provider == "synthetic" else (row.get("top_provider") or {}).get("max_completion_tokens")
+                limit = row.get("max_output_length") if provider == "synthetic" else None
                 if isinstance(limit, int) and limit > 0:
                     assert actual["maxTokens"] == limit, row["id"]
                 reasoning = row.get("reasoning_parameters" if provider == "synthetic" else "reasoning")
@@ -118,6 +120,8 @@ if __name__ == "__main__":
         ]}))
         (fixture / "openrouter.json").write_text(json.dumps({"data": [
             {"id": "infinite:foreign", "name": "Foreign Infinite"},
+            {"id": "openrouter/free", "name": "Free", "context_length": 200000},
+            {"id": "openrouter/free-beta", "name": "Free Beta", "context_length": 200000},
         ]}))
         rendered_path = fixture / "models.yml"
         rendered_run = subprocess.run([
@@ -132,12 +136,19 @@ if __name__ == "__main__":
         loaded = subprocess.run([omp, "models", "--json"], cwd=fixture,
                                 env=environment(fixture), capture_output=True, text=True, timeout=60)
         assert loaded.returncode == 0, loaded.stderr
-        names = {row["selector"]: row["name"] for row in json.loads(loaded.stdout)["models"]}
+        models = {row["selector"]: row for row in json.loads(loaded.stdout)["models"]}
+        names = {selector: row["name"] for selector, row in models.items()}
     assert names["synthetic/infinite:small:vision"] == "Shared Flash (infinite)", names
     assert names["synthetic/infinite:large:text"] == "Already Tagged (infinite)", names
     assert names["synthetic/hf:org/Model"] == "Shared Flash", names
     assert names["synthetic/syn:small:text"] == "syn:small:text", names
     assert names["openrouter/infinite:foreign"] == "Foreign Infinite", names
+    unknown = models["openrouter/infinite:foreign"]
+    assert unknown["pricingStatus"] == "unknown", "missing price must not declare a new route free"
+    for selector in ("openrouter/openrouter/free", "openrouter/openrouter/free-beta"):
+        free = models[selector]
+        assert free["cost"]["input"] == free["cost"]["output"] == 0, selector
+        assert free["contextWindow"] == 200000, selector
     for helper, env, expected in (
         ("omp-synthetic-key", {}, "sk-fake-file"),
         ("omp-synthetic-key", {"SYNTHETIC_API_KEY": "sk-fake-override"}, "sk-fake-override"),

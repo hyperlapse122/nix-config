@@ -8,11 +8,10 @@ model config renders, in the catalog's own shape:
 
 - `id`, `name`, `context_length`
 - `architecture.input_modalities` and `architecture.output_modalities`
-- `top_provider.context_length` and `top_provider.max_completion_tokens`,
-  each kept as null when the catalog gives null
-- `pricing.prompt`, `pricing.completion`, and `pricing.input_cache_read` and
-  `pricing.input_cache_write` when present, each a numeric string
 - `reasoning` as given, when present
+
+Volatile `pricing` and `top_provider` metadata is ignored, including when
+normalizing retained rows from an older snapshot.
 
 A row whose output lacks `text` is skipped, because OMP cannot serve it as a
 chat model. A malformed row is skipped with a warning naming it on stderr,
@@ -28,7 +27,6 @@ header on the fetch command's stdin, never in its argv, and never printed.
 import argparse
 import json
 import os
-import re
 import sys
 
 # The shared module sits beside this script, also when a test loads it by
@@ -48,10 +46,6 @@ from catalog_snapshot import (  # noqa: E402
 DEFAULT_URL = "https://openrouter.ai/api/v1/models/user"
 KEY_VARIABLE = "OPENROUTER_API_KEY"
 NAME = "openrouter-catalog-snapshot"
-
-PRICE_FIELDS = ("prompt", "completion", "input_cache_read", "input_cache_write")
-REQUIRED_PRICES = ("prompt", "completion")
-PRICE_PATTERN = re.compile(r"-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 
 
 def fetch(url):
@@ -89,28 +83,11 @@ def snapshot_row(row):
         raise bad("name")
     if not is_int(row.get("context_length")):
         raise bad("context_length")
-    top = row.get("top_provider")
-    if not isinstance(top, dict):
-        raise bad("top_provider")
-    for field in ("context_length", "max_completion_tokens"):
-        if top.get(field) is not None and not is_int(top[field]):
-            raise bad(f"top_provider.{field}")
-    pricing = row.get("pricing")
-    if not isinstance(pricing, dict):
-        raise bad("pricing")
-    for field in PRICE_FIELDS:
-        present = field in pricing
-        if (field in REQUIRED_PRICES and not present) or (
-            present and not (isinstance(pricing[field], str) and PRICE_PATTERN.fullmatch(pricing[field]))
-        ):
-            raise bad(f"pricing.{field}")
     kept = {
         "id": model_id,
         "name": row["name"],
         "architecture": {field: architecture[field] for field in ("input_modalities", "output_modalities")},
         "context_length": row["context_length"],
-        "top_provider": {field: top.get(field) for field in ("context_length", "max_completion_tokens")},
-        "pricing": {field: pricing[field] for field in PRICE_FIELDS if field in pricing},
     }
     if "reasoning" in row:
         reasoning = row["reasoning"]

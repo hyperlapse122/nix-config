@@ -27,8 +27,6 @@ def positive(value):
 
 def entry(row, provider):
     synthetic = provider == "synthetic"
-    pricing = row.get("pricing") or {}
-    top = row.get("top_provider") or {}
     modalities = row.get("input_modalities") if synthetic else (row.get("architecture") or {}).get("input_modalities")
     name = row["display_name" if synthetic else "name"]
     if synthetic and row["id"].startswith("infinite:") and not name.endswith(" (infinite)"):
@@ -36,17 +34,18 @@ def entry(row, provider):
     result = {
         "name": name,
         "input": [m for m in ("text", "image") if m in (modalities or [])],
-        "cost": {key: per_million(pricing.get(source)) for key, source in {
-            "input": "prompt", "output": "completion",
-            "cacheRead": "input_cache_reads" if synthetic else "input_cache_read",
-            "cacheWrite": "input_cache_writes" if synthetic else "input_cache_write",
-        }.items()},
     }
+    # OpenRouter prices and provider limits belong to OMP's runtime metadata.
+    # Omitting them preserves bundled estimates and unknown/free distinctions.
+    if synthetic:
+        pricing = row.get("pricing") or {}
+        result["cost"] = {key: per_million(pricing.get(source)) for key, source in {
+            "input": "prompt", "output": "completion",
+            "cacheRead": "input_cache_reads", "cacheWrite": "input_cache_writes",
+        }.items()}
     context = row.get("context_length")
-    if not synthetic and positive(top.get("context_length")):
-        context = top["context_length"]
     for key, value in (("contextWindow", context),
-                       ("maxTokens", row.get("max_output_length") if synthetic else top.get("max_completion_tokens"))):
+                       ("maxTokens", row.get("max_output_length") if synthetic else None)):
         if positive(value):
             result[key] = value
     reasoning_key = "reasoning_parameters" if synthetic else "reasoning"

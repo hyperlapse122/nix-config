@@ -82,27 +82,49 @@ class SnapshotTest(unittest.TestCase):
                     "output_modalities": upstream["architecture"]["output_modalities"],
                 },
                 "context_length": upstream["context_length"],
-                "top_provider": {
-                    "context_length": upstream["top_provider"]["context_length"],
-                    "max_completion_tokens": upstream["top_provider"]["max_completion_tokens"],
-                },
-                "pricing": {
-                    field: upstream["pricing"][field]
-                    for field in ("prompt", "completion", "input_cache_read", "input_cache_write")
-                    if field in upstream["pricing"]
-                },
             }
             if "reasoning" in upstream:
                 expected["reasoning"] = upstream["reasoning"]
             self.assertEqual(entry, expected)
         auto = row_of({"data": written}, AUTO)
-        self.assertIsNone(auto["top_provider"]["max_completion_tokens"])
         self.assertNotIn("reasoning", auto)
-        self.assertEqual(auto["pricing"], {"prompt": "-1", "completion": "-1"})
         self.assertEqual(
             row_of({"data": written}, GPT5)["reasoning"]["supported_efforts"],
             ["high", "medium", "low", "minimal"],
         )
+
+    def test_volatile_metadata_neither_changes_nor_invalidates_the_snapshot(self):
+        self.assertEqual(self.run_snapshot(fixture()).returncode, 0)
+        first = self.out.read_text()
+        for replacement in (None, {}, "invalid", {"prompt": "999", "context_length": 1}):
+            catalog = fixture()
+            for row in catalog["data"]:
+                row["pricing"] = replacement
+                row["top_provider"] = replacement
+            with self.subTest(replacement=replacement):
+                proc = self.run_snapshot(catalog)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(self.out.read_text(), first)
+        catalog = fixture()
+        for row in catalog["data"]:
+            row.pop("pricing", None)
+            row.pop("top_provider", None)
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.out.read_text(), first)
+
+    def test_retained_legacy_rows_lose_volatile_metadata(self):
+        self.out.write_text(json.dumps(fixture()))
+        catalog = fixture()
+        row_of(catalog, GPT5)["context_length"] = "400k"
+        proc = self.run_snapshot(catalog)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(GPT5, proc.stderr)
+        self.assertEqual(row_of({"data": self.written()}, GPT5)["context_length"],
+                         row_of(fixture(), GPT5)["context_length"])
+        for row in self.written():
+            self.assertNotIn("pricing", row)
+            self.assertNotIn("top_provider", row)
 
     def test_a_row_whose_output_lacks_text_is_skipped(self):
         catalog = fixture()
