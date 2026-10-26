@@ -1,12 +1,13 @@
 /*
   Check interface:
 
-    import ./tests/git-trim.nix { inherit pkgs self; }
+    import ./tests/git-trim.nix { inherit pkgs self fixtures; }
 
   Asserts that `git trim` only deletes local branches, and never rewrites a
-  checkout's HEAD, for user `h82` on every configuration
-  `tests/lib/configurations.nix` yields, bootstrap outputs included. The
-  bootstrap outputs import the same Home Manager profile and git-trim is meant
+  checkout's HEAD, for user `h82` on every Home Manager user
+  `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, bootstrap
+  outputs included). The bootstrap outputs import the same Home Manager profile
+  and git-trim is meant
   to reach them too, so they are checked rather than assumed identical: a
   change that gates the profile on `my.bootstrap` fails here.
 
@@ -17,7 +18,8 @@
   matching config text. Per configuration:
 
   - home.path carries bin/git-trim.
-  - the rendered git/config does not turn off git-trim's deletion prompt.
+  - the materialized home-files/.config/git/config does not turn off git-trim's
+    deletion prompt.
   - with that config installed at $XDG_CONFIG_HOME/git/config and git trim run
     from a linked worktree whose branch is merged, a merged tracking branch is
     deleted locally but survives on the bare origin, an unmerged tracking branch
@@ -39,11 +41,15 @@
   fixture step aborts the build under errexit instead. The helper's guard runs
   first, so an empty configuration list fails the build instead of passing it.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures ? [ ],
+}:
 let
   inherit (pkgs) lib;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -51,14 +57,18 @@ let
     entry:
     let
       homePath = entry.user.home.path or "";
-      gitConfig = entry.user.xdg.configFile."git/config".source or "";
+      gitConfig =
+        if (entry.user.home-files or null) != null then
+          "${entry.user.home-files}/.config/git/config"
+        else
+          "";
     in
     ''
       checkHost ${esc entry.name} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -132,7 +142,7 @@ pkgs.runCommand "git-trim-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     origin_has main || fail "'main' was deleted on origin"
   )
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

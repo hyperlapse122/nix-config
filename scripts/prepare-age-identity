@@ -5,9 +5,7 @@
 # it is destroyed.
 set -euo pipefail
 
-# Overridable so tests never touch a card or the real runtime directory.
-GPG_BIN=${PREPARE_AGE_GPG:-gpg}
-AGE_KEYGEN_BIN=${PREPARE_AGE_KEYGEN:-age-keygen}
+# Overridable so tests never touch the real runtime directory.
 RUNTIME_ROOT=${PREPARE_AGE_RUNTIME_DIR:-/run/user/$(id -u)}
 
 die() {
@@ -77,14 +75,14 @@ trap cleanup EXIT
 identity=$scratch/age.key
 # Keep age-keygen's own stderr: it reports the public recipient there on
 # success and the real reason on failure. Only stdout is silenced.
-"$AGE_KEYGEN_BIN" -o "$identity" >/dev/null ||
+age-keygen -o "$identity" >/dev/null ||
   die 'age-keygen failed'
-recipient=$("$AGE_KEYGEN_BIN" -y "$identity") ||
+recipient=$(age-keygen -y "$identity") ||
   die 'could not derive the age recipient'
 
 mkdir -p -- "$host_dir"
 
-"$GPG_BIN" --armor --encrypt --recipient "$gpg_recipient" \
+gpg --armor --encrypt --recipient "$gpg_recipient" \
   --output "$ciphertext" "$identity" ||
   die 'GPG encryption failed; nothing was kept'
 
@@ -95,9 +93,9 @@ mkdir -p -- "$host_dir"
 # a locked or absent card and a corrupt ciphertext fail here the same way, and
 # only GPG can tell the operator which.
 roundtrip=$scratch/roundtrip.key
-"$GPG_BIN" --batch --no-tty --decrypt --output "$roundtrip" "$ciphertext" ||
+gpg --batch --no-tty --decrypt --output "$roundtrip" "$ciphertext" ||
   die 'could not decrypt the identity back (see the GPG error above); nothing was kept'
-roundtrip_recipient=$("$AGE_KEYGEN_BIN" -y "$roundtrip") ||
+roundtrip_recipient=$(age-keygen -y "$roundtrip") ||
   die 'could not derive a recipient from the decrypted identity; nothing was kept'
 [[ $roundtrip_recipient == "$recipient" ]] ||
   die 'the decrypted identity does not match the generated one; nothing was kept'

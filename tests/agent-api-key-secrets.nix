@@ -2,11 +2,10 @@
 {
   pkgs,
   self,
-  fixtures ? [ ],
 }:
 let
   inherit (pkgs) lib;
-  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self; };
   esc = value: lib.escapeShellArg (toString value);
   # The API keys a production configuration decrypts, each with the option
   # that gates it.
@@ -22,6 +21,12 @@ let
       match = "exa_api";
       file = "exa_api_key";
       option = "my.cliAuth.enableExaApiKey";
+    }
+    {
+      label = "OpenRouter";
+      match = "openrouter";
+      file = "openrouter_api_key";
+      option = "my.cliAuth.enableOpenRouterApiKey";
     }
   ];
 

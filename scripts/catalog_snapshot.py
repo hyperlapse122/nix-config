@@ -9,10 +9,9 @@ stdin.
 import json
 import math
 import os
-import shlex
 import subprocess
 
-DEFAULT_FETCH = "curl -sSfL --max-time 60"
+DEFAULT_FETCH = ["curl", "-sSfL", "--max-time", "60"]
 MIN_RETENTION = 0.8
 
 
@@ -81,13 +80,6 @@ def write_if_changed(path, text):
     write(path, text)
 
 
-def command_from(variable, default):
-    command = shlex.split(os.environ.get(variable, default))
-    if not command:
-        raise Failure(f"{variable} is empty")
-    return command
-
-
 def child_env(key_variable):
     """The environment for subprocesses, without the API key."""
     env = dict(os.environ)
@@ -95,10 +87,10 @@ def child_env(key_variable):
     return env
 
 
-def run_fetch(command, url, key, key_variable):
-    """Run the fetch command once; a non-empty key goes only on its stdin, never in its argv."""
+def run_fetch(url, key, key_variable):
+    """Run curl once; a non-empty key goes only on its stdin, never in its argv."""
     return subprocess.run(
-        command + (["-H", "@-"] if key else []) + [url],
+        DEFAULT_FETCH + (["-H", "@-"] if key else []) + [url],
         input=f"Authorization: Bearer {key}\n" if key else "",
         capture_output=True,
         text=True,

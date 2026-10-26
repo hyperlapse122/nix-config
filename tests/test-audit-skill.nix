@@ -8,8 +8,6 @@
   generalized and attributed:
 
     Claude Code               ~/.claude/skills/test-audit
-    Antigravity CLI, and T3 Code's Antigravity instances
-                              ~/.gemini/antigravity-cli/skills/test-audit
     OMP                       ~/.omp/agent/skills/test-audit
     Codex                     ~/.codex/skills/test-audit
 

@@ -24,7 +24,11 @@
 let
   inherit (pkgs) lib;
 
-  shardsOf = name: lib.attrNames (lib.filterAttrs (_: names: lib.elem name names) members);
+  shardsOf =
+    name:
+    lib.concatLists (
+      lib.mapAttrsToList (shard: names: map (_: shard) (lib.filter (entry: entry == name) names)) members
+    );
   assigned = lib.unique (lib.concatLists (lib.attrValues members));
 
   missing = lib.filter (name: shardsOf name == [ ]) checkNames;

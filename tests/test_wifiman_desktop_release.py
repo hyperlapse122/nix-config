@@ -1,8 +1,7 @@
 """Drive wifiman-desktop-release against GraphQL and prefetch fixtures.
 
-The helper's network call and its download both go through overridable
-commands, so these tests feed it a GraphQL response and a fake prefetch
-instead of network calls.
+The helper's `curl` and `nix` commands are stubbed on `PATH` so these tests
+feed it a GraphQL response and a fake prefetch without network calls.
 """
 
 import json
@@ -40,8 +39,12 @@ SAMPLE = response(
     ("WiFiman Android 2.13.0", "2.13.0"),
 )
 
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_CURL = """#!{python}
 import os, sys
+expected_prefix = ['-s', '--max-time', '60', '-X', 'POST', '-H', 'content-type: application/json', '--data-binary', '@-']
+if sys.argv[1:-1] != expected_prefix or len(sys.argv) != len(expected_prefix) + 2:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
 status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
 if status:
     sys.exit(status)
@@ -50,8 +53,13 @@ with open(os.environ['FAKE_FETCH_LOG'], 'w') as f:
 sys.stdout.write(os.environ['FAKE_FETCH_BODY'])
 """
 
-FAKE_PREFETCH = """#!/usr/bin/env python3
-import os, sys
+FAKE_NIX = """#!{python}
+import os, sys, time
+expected_prefix = ['store', 'prefetch-file', '--json', '--hash-type', 'sha256']
+if sys.argv[1:-1] != expected_prefix or len(sys.argv) != len(expected_prefix) + 2:
+    sys.stderr.write(f'unexpected nix argv: {{sys.argv[1:]!r}}\\n')
+    sys.exit(99)
+time.sleep(float(os.environ.get('FAKE_PREFETCH_SLEEP', '0')))
 with open(os.environ['FAKE_PREFETCH_LOG'], 'a') as f:
     f.write(sys.argv[-1] + '\\n')
 status = int(os.environ.get('FAKE_PREFETCH_STATUS', '0'))
@@ -68,10 +76,12 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.prefetch = root / "fake-prefetch"
-        self.prefetch.write_text(FAKE_PREFETCH)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        for name, body in [("curl", FAKE_CURL), ("nix", FAKE_NIX)]:
+            path = self.bin_dir / name
+            path.write_text(body.format(python=sys.executable))
+            path.chmod(0o755)
         self.fetch_log = root / "fetch.log"
         self.prefetch_log = root / "prefetch.log"
         self.output = root / "wifiman-desktop-version.json"
@@ -86,8 +96,7 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         prefetch_fail_url="",
     ):
         env = dict(os.environ)
-        env["WIFIMAN_DESKTOP_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
-        env["WIFIMAN_DESKTOP_RELEASE_PREFETCH"] = f"{sys.executable} {self.prefetch}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
         env["FAKE_FETCH_BODY"] = body
         env["FAKE_FETCH_STATUS"] = str(fetch_status)
         env["FAKE_FETCH_LOG"] = str(self.fetch_log)
@@ -218,22 +227,23 @@ class WifimanDesktopReleaseTestCase(unittest.TestCase):
         self.write_pin("1.2.8")
         before = self.output.read_bytes()
         env = dict(os.environ)
-        hang = Path(self.tmp.name) / "hang"
-        hang.write_text("import time\ntime.sleep(30)\n")
-        script = SCRIPT.read_text().replace("COMMAND_TIMEOUT = 900", "COMMAND_TIMEOUT = 1")
-        patched = Path(self.tmp.name) / "wifiman-desktop-release"
-        patched.write_text(script)
-        env["WIFIMAN_DESKTOP_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
-        env["WIFIMAN_DESKTOP_RELEASE_PREFETCH"] = f"{sys.executable} {hang}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
         env["FAKE_FETCH_BODY"] = SAMPLE
         env["FAKE_FETCH_LOG"] = str(self.fetch_log)
+        env["FAKE_PREFETCH_LOG"] = str(self.prefetch_log)
+        env["FAKE_PREFETCH_SLEEP"] = "30"
+        launcher = (
+            "from importlib.machinery import SourceFileLoader; import sys\n"
+            f"mod = SourceFileLoader('wifiman_desktop_release', {str(SCRIPT)!r}).load_module()\n"
+            "mod.COMMAND_TIMEOUT = 0.2; sys.exit(mod.main())\n"
+        )
         result = subprocess.run(
-            [sys.executable, str(patched), "-o", str(self.output)],
+            [sys.executable, "-c", launcher, "-o", str(self.output)],
             capture_output=True,
             text=True,
             env=env,
         )
-        self.assert_failure(result, "timed out after 1s")
+        self.assert_failure(result, "timed out after 0.2s")
         self.assertEqual(self.output.read_bytes(), before)
 
     def assert_failure(self, result, message):

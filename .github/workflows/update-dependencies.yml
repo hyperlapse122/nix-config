@@ -57,14 +57,14 @@ jobs:
               *) echo "refusing an unexpected resolved tag: $resolved" >&2; exit 1 ;;
             esac
             sed -i "s#compound-engineering-plugin/$current#compound-engineering-plugin/$resolved#" flake.nix
-            sed -i "s#tag = \"$current\";#tag = \"$resolved\";#" home/h82/agents/agent-plugins.nix
+            sed -i "s#tag = \"$current\";#tag = \"$resolved\";#" home/h82/agents/agent-plugin-pins.nix
             nix flake lock --update-input compound-engineering-plugin
             rev=$(jq -r '.nodes["compound-engineering-plugin"].locked.rev' flake.lock)
             case "$rev" in
               [0-9a-f][0-9a-f]*) ;;
               *) echo "flake.lock recorded no usable revision" >&2; exit 1 ;;
             esac
-            sed -i "s#expectedRev = \"[0-9a-f]*\";#expectedRev = \"$rev\";#" home/h82/agents/agent-plugins.nix
+            sed -i "s#expectedRev = \"[0-9a-f]*\";#expectedRev = \"$rev\";#" home/h82/agents/agent-plugin-pins.nix
           fi
 
           # 3. Update Claude Desktop
@@ -246,9 +246,9 @@ jobs:
             git commit -m "chore(packages): bump android sdk pin" -m "Pinned: $PINNED"
           fi
 
-          if [ -n "$(git status --porcelain home/h82/agents/agent-plugins.nix)" ]; then
-            NEW_TAG=$(sed -n 's/.*tag = "\(.*\)";/\1/p' home/h82/agents/agent-plugins.nix)
-            git add flake.nix flake.lock home/h82/agents/agent-plugins.nix
+          if [ -n "$(git status --porcelain home/h82/agents/agent-plugin-pins.nix)" ]; then
+            NEW_TAG=$(sed -n 's/.*tag = "\(.*\)";/\1/p' home/h82/agents/agent-plugin-pins.nix)
+            git add flake.nix flake.lock home/h82/agents/agent-plugin-pins.nix
             git commit -m "chore(agents): bump compound-engineering to $NEW_TAG"
           fi
 

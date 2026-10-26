@@ -66,6 +66,17 @@ keys are decrypted only when their `my.cliAuth` flag is set. sops-nix checks
 every decrypted key against this file at build time, so a flag set without its
 key fails the build.
 
+For container pulls through `docker-credential-sops`, `github_token` must carry `read:packages` (or `write:packages`) and `gitlab_token` must carry `read_registry` (or `write_registry`). To add or rotate an encrypted token (such as `tokscale_token`, `docker_token`, `synthetic_api_key`, or `openrouter_api_key`) without passing plaintext in command arguments, save it to a mode `0600` file outside the checkout and pipe a JSON string into `sops set --value-stdin` from the repository root:
+
+```sh
+nix develop
+export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
+python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \
+  | sops set --value-stdin secrets/tokens.yaml '["<key>"]'
+rm <token-file>
+unset SOPS_AGE_KEY_CMD
+```
+
 `exa_api_key` backs the web search and fetch tools of the Pi extension
 (`packages/pi-extension/`). Every host kind publishes it beside
 `synthetic_api_key`: a NixOS host at `/run/secrets/cli-auth/exa_api_key`, and a
@@ -131,7 +142,7 @@ keys exposed through historical ciphertext; revoke public SSH keys on their
 destinations when a host is compromised.
 
 For NixOS desktops, `secrets/hosts/<host>/ssh.pub` holds the matching public
-Ed25519 identity. The `desktop-ssh-sources` check reads ciphertext recipients,
+Ed25519 identity. The `desktop-ssh` check reads ciphertext recipients,
 checks the encrypted field and creation rule, and rejects missing, invalid,
 or duplicate public metadata without decrypting real keys. SOPS keeps the
 decrypted recovery source root-only. The fixed `desktop-ssh-provision.service`
@@ -142,7 +153,7 @@ passphrase lives in `kdewallet`, folder `nix-config SSH`, under the public
 fingerprint; it never enters Nix expressions or command arguments. Builds and
 ordinary configuration applies do not need an unlocked wallet. See
 [desktop source creation](../docs/adding-a-host.md#create-the-desktop-ssh-key-source)
-and [desktop provisioning](../docs/provisioning.md#ssh-key-on-a-nixos-desktop).
+and [desktop SSH recovery](../docs/recovery.md#restore-or-rotate-a-desktop-ssh-key).
 
 For non-NixOS hosts and macOS hosts, the `linux-host-secrets` check reads the recipients from
 the encrypted file itself and fails when it lists any other. Production
@@ -206,7 +217,7 @@ recovers and keeps its identity the same way, and there FileVault is the disk
 encryption that protects it.
 
 When a host is lost, compromised, or retired, follow
-[compromise or decommission of a non-NixOS host](../docs/provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
+[compromise or decommission of a host](../docs/recovery.md#compromise-or-decommission-of-a-host).
 Removing its recipient without rotating every token in `secrets/tokens.yaml`
 revokes nothing, because git history keeps the old ciphertext.  A retired NixOS
 host also appears in `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and

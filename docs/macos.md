@@ -24,7 +24,7 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **Nix.** nix-darwin owns `/etc/nix/nix.conf` and keeps `auto-optimise-store` off, because store optimisation corrupts the store on macOS (NixOS/nix#7273).
 - **Host marker.** `/etc/nix-config-host` records the host name and whether the bootstrap or production output is applied. `nr` reads the host from it, so the name macOS shows for the machine does not matter.
 - **Homebrew.** nix-homebrew installs Homebrew on the first apply, or migrates one already at `/opt/homebrew` in place. The casks come from `modules/shared/darwin-apps.nix`: Ghostty, 1Password, Google Chrome, Claude Desktop, ChatGPT, and the other GUI apps, plus Parallels Desktop, which has no NixOS counterpart, and the Tailscale app, which NixOS hosts run as a system service instead. Cleanup is `"none"`, so an app you installed by hand stays installed. Each apply installs missing casks and upgrades outdated ones. Installing Parallels Desktop runs a privileged setup step, so the apply that installs it may ask for your administrator password. Its license is not managed here: enter your key, such as an education key, in Parallels Desktop after that apply. Tailscale installs from a package, so its first apply may also ask for the password. Nothing registers the Mac on the tailnet: open Tailscale, allow its system extension in System Settings → Privacy & Security when macOS asks, and log in in the app. Launch at login, exit nodes, and accepting subnet routes are settings in the app, not in this repository.
-- **Retired casks.** Homebrew cleanup is `"none"`, so dropping a cask from `modules/shared/darwin-apps.nix` leaves it installed. `modules/darwin/retired-casks.nix` is a root step after the KakaoTalk step that uninstalls each retired cask when it is installed, today `grok-bot`. It runs `brew uninstall --cask --force` as the primary user, because Homebrew refuses to run as root, with brew's prefix on a `PATH` that `sudo --preserve-env=PATH` keeps, the way nix-darwin calls `brew bundle`. It never passes `--zap`, so a cask's `~/Library` data stays. Only a `brew list` failure with no error output, or with `Error: Cask '<token>' is not installed.`, counts as the cask being absent; any other failure prints brew's error and the command to run. It prints one line per outcome and never fails the apply. Grok Bot's app data and `~/.grok` stay in place; [Grok leftovers](provisioning.md#grok-leftovers) lists the paths and how to remove them.
+- **Retired casks.** Homebrew cleanup is `"none"`, so dropping a cask from `modules/shared/darwin-apps.nix` leaves it installed. `modules/darwin/retired-casks.nix` is a root step after the KakaoTalk step that uninstalls each retired cask when it is installed, today `grok-bot`. It runs `brew uninstall --cask --force` as the primary user, because Homebrew refuses to run as root, with brew's prefix on a `PATH` that `sudo --preserve-env=PATH` keeps, the way nix-darwin calls `brew bundle`. It never passes `--zap`, so a cask's `~/Library` data stays. Only a `brew list` failure with no error output, or with `Error: Cask '<token>' is not installed.`, counts as the cask being absent; any other failure prints brew's error and the command to run. It prints one line per outcome and never fails the apply. Grok Bot's app data in `~/Library` and `~/.grok` stay in place; delete them manually and revoke the xAI grant if desired.
 - **Xcode.** Xcode is one of the two Mac App Store apps the configuration manages. `modules/darwin/xcode.nix` installs it with `mas` after the casks, or upgrades it when the App Store has a newer version, so the App Store decides the version. When `xcode-select` points at the Command Line Tools or nowhere, the step points it at Xcode. The step also accepts the license and runs first-launch setup when either is pending. It needs the App Store signed in; see step 6.
 - **KakaoTalk.** The other Mac App Store app. `modules/darwin/app-store.nix` installs it with `mas` after Xcode, or upgrades it when the App Store has a newer version. A copy already installed from the App Store is kept and upgraded in place. Signing in to KakaoTalk itself is done in the app. Like Xcode, it needs the App Store signed in.
 - **Android SDK.** A Mac gets the same pinned Android SDK as a Linux x86_64 host, from `packages/android-sdk.nix`, built for Apple silicon with `arm64-v8a` system images. It sits at `~/Library/Android/sdk`, a read-only link into the Nix store. `ANDROID_HOME` and `ANDROID_SDK_ROOT` point there. An SDK Android Studio already installed at that path must be moved aside before the first apply; see the prerequisites above.
@@ -35,7 +35,7 @@ The flake builds two outputs for each macOS host, `darwinConfigurations.<host>` 
 - **System defaults.** `modules/darwin/defaults.nix` is where Dock, Finder, trackpad, and keyboard defaults go. It sets none yet.
 - **User environment.** zsh, Git, the development tools, Claude Code and the other agents, configured as on a non-NixOS Linux host.
 
-ChatGPT is available from Applications on production and bootstrap outputs. Open it and sign in manually. No ChatGPT login agent is declared: the inspected macOS build has no verified silent-start mechanism. See [startup evidence](verification.md#chatgpt-startup-evidence).
+ChatGPT is available from Applications on production and bootstrap outputs. Open it and sign in manually. No ChatGPT login agent is declared: inspected Linux and macOS Electron bundles gate `isBackgroundLaunch` to Windows and call `showInactive`, so neither platform has a verified windowless launch mode.
 
 ## First setup on the Mac
 
@@ -117,7 +117,7 @@ Run these steps on the Mac, in order, from a local login session, not over SSH.
     ./scripts/recover-age-identity --user --host "$host"
     ```
 
-    It installs `~/.config/nix-config/age/key.txt`. [Provisioning](provisioning.md#recover-once-on-a-non-nixos-host) describes what it checks.
+    It verifies the derived public recipient before atomically installing `~/.config/nix-config/age/key.txt` (mode `0600` in a `0700` directory; see `../secrets/README.md`).
 
 11. Apply the production output, in the same terminal. `nr` refuses to move a bootstrap generation to production unless you name the host:
 
@@ -181,7 +181,7 @@ Production activation publishes:
 
 ### YubiKey PIN
 
-Three YubiKeys carry the same signing key, each under its own PIN. The PIN prompt is the native `pinentry_mac` dialog, which offers a "Save in Keychain" checkbox that starts unticked. Ticking it saves that card's PIN in the login Keychain, and later signing with that card needs no dialog. A rejected PIN deletes that card's saved item. [YubiKey PIN on macOS](provisioning.md#yubikey-pin-on-macos) describes the details and how to remove a saved PIN by hand.
+Three YubiKeys carry the same signing key, each under its own PIN. The PIN prompt is the native `pinentry_mac` dialog (`scripts/pinentry-card-darwin`), which keys items by `n/gnupg-card-pin-<serial>` and offers a "Save in Keychain" checkbox that starts unticked (`UseKeychain = false`). Ticking it saves that card's PIN in the login Keychain (`service = "GnuPG"`, `account = "gnupg-card-pin-<serial>"`), and a rejected PIN deletes that card's item automatically. Remove a saved PIN manually with `security delete-generic-password -s GnuPG -a gnupg-card-pin-<serial>`.
 
 ### SSH key
 
@@ -200,7 +200,7 @@ A Mac runs containers in one Podman machine, `podman-machine-default`: a rootful
 - **Memory.** 8 GiB is a cap, not a reservation. The VM holds host memory only while the guest uses it, and libkrun hands pages the guest frees back to macOS. macOS reclaims them lazily, so Activity Monitor can keep showing the old size until memory gets tight. Changing the cap or the CPUs in `home/h82/dev/containers.nix` reaches the existing machine on the next apply: the apply stops the machine, changes it, and the launch agent starts it again.
 - **minikube.** On a production output, a second launch agent waits until the machine answers, then starts the `minikube` cluster on the Podman driver with containerd, 4 GiB, and 2 CPUs. A failed start is retried every minute; its log is `~/Library/Logs/minikube.log`. A bootstrap output starts no cluster. A cluster that stops mid-session, for example after the machine restarts, comes back at the next login or with `minikube start`.
 - **docker.** `docker` is a link to `podman`, as on NixOS, and `DOCKER_HOST` names the machine's API socket under the per-user temporary directory, for shells and for apps launched from Finder or the Dock. Testcontainers works with no other setting.
-- **Registry credentials.** `~/.config/containers/auth.json` maps `ghcr.io`, `registry.gitlab.com`, and `registry.jpi.app` to `docker-credential-sops`, so `podman pull` and `docker pull` fetch private images with no login. `docker.io` pulls stay anonymous. A Docker API client that pulls a private image without sending credentials itself makes the VM look for the helper, which only the Mac has, so that pull fails. [Container runtime and registry authentication](provisioning.md#container-runtime-and-registry-authentication) describes the credential helper.
+- **Registry credentials.** `~/.config/containers/auth.json` maps `ghcr.io`, `registry.gitlab.com`, and `registry.jpi.app` to `docker-credential-sops`, so `podman pull` and `docker pull` fetch private images with no login (`secrets/README.md` lists the required `read:packages` and `read_registry` token scopes). `docker.io` pulls stay anonymous. A Docker API client that pulls a private image without sending credentials itself makes the VM look for the helper, which only the Mac has, so that pull fails.
 - **Other machines.** The configuration manages only `podman-machine-default`, and every apply deletes any other Podman machine. Create containers, not machines.
 
 ### Moving off OrbStack
@@ -215,8 +215,8 @@ brew uninstall --zap orbstack
 
 ## App notes
 
-- VSCodium's user directory is `~/Library/Application Support/VSCodium/User`. Its keybindings file is a read-only store link; add a keybinding to `home/h82/dev/vscodium.nix` instead. See [VSCodium](provisioning.md#vscodium).
-- The T3 Code desktop app is the flake's pinned nightly, `T3 Code (Nightly).app`. A launch agent sets `T3CODE_DISABLE_AUTO_UPDATE=1` at login, so the app does not update itself off the pin. See [T3 Code](provisioning.md#t3-code).
+- VSCodium's user directory is `~/Library/Application Support/VSCodium/User`. Its keybindings file is a read-only store link; add a keybinding to `home/h82/dev/vscodium.nix` instead.
+- The T3 Code desktop app is the flake's pinned nightly, `T3 Code (Nightly).app`. A launch agent sets `T3CODE_DISABLE_AUTO_UPDATE=1` at login, so the app does not update itself off the pin.
 - An app added to the NixOS user environment needs a macOS decision in `modules/shared/darwin-apps.nix`: a cask, a Nix package, or a reason to leave it out. The `darwin-config` check fails without one.
 - T3 Code finds the Android SDK at `~/Library/Android/sdk` even when started from the Dock or Finder, where `ANDROID_HOME` is not set. The `emulator` in that tree sets `ANDROID_HOME` and `ANDROID_SDK_ROOT` itself before it starts the store emulator, so an AVD boots from T3 Code's Device panel.
 
@@ -279,8 +279,8 @@ AVDs live in `~/.android/avd` and name their system image by its SDK path. When 
 
 ## Verification
 
-The repository checks for macOS evaluate the fixture host on Linux and build it on CI's `macos-15` runner; none of them activates a Mac. An activation that exits 0 is not proof that every step applied, so confirm the state each step names. After the first setup, work through the [macOS hardware checklist](verification.md#macos-hosts) and record the results there.
+The repository checks for macOS evaluate the fixture host on Linux and build it on CI's `macos-15` runner; none of them activates a Mac. An activation that exits 0 is not proof that every step applied, so confirm the state each step names on the Mac after first setup and report hardware results separately from repository checks.
 
 ## Losing or retiring the Mac
 
-The age identity and SSH key are plaintext on the Mac's disk, so treat everything it could decrypt as exposed. Revoke its SSH key, remove its recipient, and rotate the tokens as [compromise or decommission](provisioning.md#compromise-or-decommission-of-a-non-nixos-host) describes.
+The age identity and SSH key are plaintext on the Mac's disk, so treat everything it could decrypt as exposed. Revoke its SSH key, remove its recipient, and rotate the tokens as [compromise or decommission of a host](recovery.md#compromise-or-decommission-of-a-host) describes.

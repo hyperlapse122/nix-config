@@ -36,9 +36,7 @@ zsh, Git, Ghostty, Claude Code, Claude Desktop, ChatGPT, Codex, Pi (with `pi-acp
 ## Installation and operation
 
 - [Fresh installation](docs/install.md): initialize the internal NVMe disk, bootstrap, and enroll Secure Boot and TPM2 keys.
-- [Authentication preparation and recovery](docs/provisioning.md): prepare encrypted repository files and recover secrets with a YubiKey for the first time.
 - [Updates and recovery](docs/recovery.md): retry failures, roll back, and recover TPM, card, and signing-key access.
-- [Verification](docs/verification.md): automated checks and hardware checks.
 - [macOS hosts](docs/macos.md): set up a Mac with nix-darwin, recover its secrets, and apply routine updates.
 - [Adding a host](docs/adding-a-host.md): create a host directory, its bootstrap age material, and its `.sops.yaml` recipient, for a NixOS, a non-NixOS, or a macOS host.
 - [Secret file conventions](secrets/README.md)

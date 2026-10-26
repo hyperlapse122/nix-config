@@ -5,9 +5,10 @@ import os
 from pathlib import Path
 import re
 import shlex
+import stat
 import subprocess
 import sys
-
+import tempfile
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import yaml
@@ -53,6 +54,50 @@ def sources(root):
     return errors
 
 
+def verify_ssh_activation(entry, config_path, require):
+    require("linkGeneration" in entry.get("sshAfter", []),
+            "sshConfig activation does not run after linkGeneration")
+    activation = entry.get("sshActivation", "")
+    script = 'set -euo pipefail\nrun() { "$@"; }\n' + activation
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        env = dict(os.environ, HOME=str(home))
+        ssh_dir = home / ".ssh"
+        ssh_config = ssh_dir / "config"
+        unmanaged = ssh_dir / "config.unmanaged"
+
+        res = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        require(res.returncode == 0, f"sshConfig activation failed on fresh HOME: {res.stderr.strip()}")
+        require(ssh_dir.is_dir() and stat.S_IMODE(ssh_dir.stat().st_mode) == 0o700,
+                "activation did not create ~/.ssh with mode 0700")
+        require(ssh_config.is_file() and not ssh_config.is_symlink()
+                and stat.S_IMODE(ssh_config.stat().st_mode) == 0o600
+                and ssh_config.read_bytes() == config_path.read_bytes(),
+                "activation did not install a 0600 regular ~/.ssh/config matching configFile")
+        require(not unmanaged.exists(), "activation created ~/.ssh/config.unmanaged on fresh HOME")
+
+        user_bytes = b"Host custom\n  User alice\n"
+        ssh_config.write_bytes(user_bytes)
+        res = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        require(res.returncode == 0, f"sshConfig activation failed on unmanaged config: {res.stderr.strip()}")
+        require(unmanaged.is_file() and unmanaged.read_bytes() == user_bytes,
+                "activation did not back up unmanaged ~/.ssh/config to ~/.ssh/config.unmanaged")
+        require(ssh_config.is_file() and not ssh_config.is_symlink()
+                and stat.S_IMODE(ssh_config.stat().st_mode) == 0o600
+                and ssh_config.read_bytes() == config_path.read_bytes(),
+                "activation did not replace unmanaged ~/.ssh/config with managed config")
+
+        res = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        require(res.returncode == 0, f"sshConfig activation failed on managed re-run: {res.stderr.strip()}")
+        require(unmanaged.read_bytes() == user_bytes
+                and sorted(p.name for p in ssh_dir.iterdir()) == ["config", "config.unmanaged"],
+                "re-running activation on managed ~/.ssh/config clobbered or duplicated ~/.ssh/config.unmanaged")
+        unmanaged.unlink()
+        res = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        require(res.returncode == 0 and not unmanaged.exists()
+                and ssh_config.read_bytes() == config_path.read_bytes(),
+                "re-running activation on managed ~/.ssh/config created ~/.ssh/config.unmanaged")
+
 def configuration(entry, root):
     errors = []
     def require(condition, message):
@@ -65,8 +110,10 @@ def configuration(entry, root):
     # where ssh rejects it, so activation installs a user-owned copy instead.
     linked = files / ".ssh/config" if files else Path("/absent-home-files")
     require(not linked.exists() and not linked.is_symlink(), "~/.ssh/config is linked into the store")
-    require(f'install -m 600 {config_path} "$HOME/.ssh/config"' in entry["sshActivation"],
-            "activation does not install a user-owned ~/.ssh/config")
+    if config_path.is_file():
+        verify_ssh_activation(entry, config_path, require)
+    else:
+        require(False, "cannot verify sshConfig activation without config_path")
     text = config_path.read_text() if config_path.is_file() else ""
     if entry["kind"] == "nixos":
         fallback_config = files / ".config/1Password/ssh/agent.toml" if files else Path("/absent-fallback-config")

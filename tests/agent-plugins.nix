@@ -29,8 +29,8 @@
     Codex sessions run on, even when the apply inherits a CODEX_HOME.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
-  which Nix writes, and the registry in home/h82/agents/agent-plugins.nix, which a
-  person writes. A tag is mutable and a relock re-resolves the ref, so the tag
+  which Nix writes, and the pin file in home/h82/agents/agent-plugin-pins.nix,
+  which a person writes. A tag is mutable and a relock re-resolves the ref, so the tag
   alone is not a pin -- if upstream moves it, the lock's revision changes and
   this assertion goes red instead of the change arriving as a lock diff.
   Seeding both from the lock would compare a value with itself.
@@ -60,12 +60,16 @@ let
   executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
 
   pluginName = "compound-engineering";
+  pins = import ../home/h82/agents/agent-plugin-pins.nix;
+  pin = pins.${pluginName} or { };
+  tagPrefix = pin.tagPrefix or "";
+  segment = lib.removePrefix tagPrefix (pin.tag or "");
 
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
   lockNode = lock.nodes.compound-engineering-plugin or { };
   lockedRev = lockNode.locked.rev or "";
   originalRef = lockNode.original.ref or "";
-
+  lockSegment = lib.removePrefix tagPrefix originalRef;
   agentsToml = builtins.readFile ../agents.toml;
 
   pinnedSource = toString (self.inputs.compound-engineering-plugin or "");
@@ -77,8 +81,6 @@ let
     let
       hostName = entry.name;
       userConfig = entry.user;
-
-      registry = userConfig.my.agentPlugins.${pluginName} or null;
 
       # Compared against below so each harness's --cli flag can never silently
       # drift onto a different build than the one installed for the user.
@@ -110,7 +112,12 @@ let
 
       # Home Manager resolves a file's destination from `target`, which only
       # defaults to the attribute name, so this compares resolved targets.
-      destination = if registry == null then "" else (registry.destination or "");
+      homeDir = userConfig.home.homeDirectory or "";
+      destination =
+        if homeDir == "" || segment == "" then
+          ""
+        else
+          "${homeDir}/.local/share/agent-plugins/${pluginName}/${segment}";
       destinationTargeted = lib.any (file: destination != "" && (file.target or "") == destination) (
         lib.attrValues (userConfig.home.file or { })
       );
@@ -130,37 +137,6 @@ let
         || lib.hasPrefix "${agyInstallDir}/" target
         || (target != "" && lib.hasPrefix "${target}/" agyInstallDir)
       ) (lib.attrValues (userConfig.home.file or { }));
-
-      registryAbsent = lib.optionalString (registry == null) ''
-        echo 'missing my.agentPlugins.${pluginName} on ${hostName}' >&2
-        failed=1
-      '';
-
-      registryPresent = lib.optionalString (registry != null) ''
-        # The lock is written by Nix; the expected revision is written by hand.
-        expectedRev=${esc (registry.expectedRev or "")}
-        if [ "$expectedRev" != ${esc lockedRev} ]; then
-          echo "the pinned plugin revision drifted on ${hostName}: registry expects '$expectedRev', flake.lock resolved '${lockedRev}'" >&2
-          failed=1
-        fi
-
-        # The segment must come from the tag the lock records, not from the
-        # registry's own tag, or the comparison reads one source twice.
-        segment=${esc (registry.segment or "")}
-        lockSegment=${esc (lib.removePrefix (registry.tagPrefix or "") originalRef)}
-        if [ "$segment" != "$lockSegment" ]; then
-          echo "the materialized version segment '$segment' does not match the locked tag's '$lockSegment' on ${hostName}" >&2
-          failed=1
-        fi
-
-        case ${esc destination} in
-          *"/$segment") ;;
-          *)
-            echo "the materialized destination must end in the version segment on ${hostName}, got: ${destination}" >&2
-            failed=1
-            ;;
-        esac
-      '';
 
       activationAbsent = lib.optionalString (activation == null) ''
         echo 'missing home.activation.agentPlugins on ${hostName}' >&2
@@ -197,9 +173,9 @@ let
           failed=1
         fi
 
-        # Each harness's invocation is read separately: with a Claude, a Codex
-        # and an Antigravity row for the same plugin, a block chosen by plugin name
-        # alone would check whichever came first and let the other drift.
+        # Each harness's invocation is read separately: with a Claude and a
+        # Codex row for the same plugin, a block chosen by plugin name alone
+        # would check whichever came first and let the other drift.
         ${lib.concatMapStrings (harness: ''
           block=$(blockForHarness ${esc script} ${esc pluginName} ${esc harness.name})
           if [ -z "$block" ]; then
@@ -218,9 +194,7 @@ let
           fi
 
           segmentArg=$(argValue "$block" segment)
-          if [ "$segmentArg" != ${
-            esc (lib.removePrefix (if registry == null then "" else (registry.tagPrefix or "")) originalRef)
-          } ]; then
+          if [ "$segmentArg" != ${esc lockSegment} ]; then
             echo "the ${harness.name} helper must be handed the locked tag's version segment on ${hostName}, got: '$segmentArg'" >&2
             failed=1
           fi
@@ -267,24 +241,20 @@ let
       '';
     in
     ''
-      ${registryAbsent}${registryPresent}
       ${activationAbsent}${activationPresent}${symlinkPresent}${agyLinkPresent}
       ${executeActivation {
         mode = "plugins";
         inherit script;
-        home = userConfig.home.homeDirectory or "";
+        home = homeDir;
         contract = map (harness: {
           harness = harness.name;
           cli = harness.expectedCli;
           source = pinnedSource;
-          base = "${userConfig.home.homeDirectory or ""}/.local/share/agent-plugins/${pluginName}";
-          segment = lib.removePrefix (
-            if registry == null then "" else (registry.tagPrefix or "")
-          ) originalRef;
+          base = "${homeDir}/.local/share/agent-plugins/${pluginName}";
+          segment = lockSegment;
           plugin = pluginName;
           marketplace = "compound-engineering-plugin";
         }) harnessChecks;
-
       }}
     '';
 in
@@ -329,6 +299,20 @@ pkgs.runCommand "agent-plugins-tests"
       failed=1
     fi
 
+
+    # The lock is written by Nix; the expected revision is written by hand.
+    expectedRev=${esc (pin.expectedRev or "")}
+    if [ "$expectedRev" != ${esc lockedRev} ]; then
+      echo "the pinned plugin revision drifted: pin expects '$expectedRev', flake.lock resolved '${lockedRev}'" >&2
+      failed=1
+    fi
+
+    # The segment must come from the tag the lock records, not from the
+    # pin's own tag, or the comparison reads one source twice.
+    if [ ${esc segment} != ${esc lockSegment} ]; then
+      echo "the materialized version segment '${segment}' does not match the locked tag's '${lockSegment}'" >&2
+      failed=1
+    fi
     # This work installs the plugin for the user; the project-scope dotagents
     # declaration is a separate layer and stays exactly as it was.
     if ! grep -qF 'EveryInc/compound-engineering-plugin' <<< ${esc agentsToml}; then

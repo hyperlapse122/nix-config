@@ -26,10 +26,6 @@
   - Ghostty's config lists the NixOS font families in order;
   - `nr` on PATH is nr-darwin;
   - installed OMP credential helpers read the user's secret state directory;
-  - agy_acp_server.par on PATH is a wrapper that execs the Antigravity runtime
-    packages/antigravity-acp-release.json pins, sets no SSL_CERT_FILE, and
-    defines and invokes seed_acp_token so the sign-in seeding is present;
-    localharness_external beside it resolves into the same runtime;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
   - sccache is on PATH, and the Cargo settings merge updates
@@ -337,8 +333,6 @@ let
       if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} "$gen/home-path/bin/omp-openrouter-key"; then
         bad "OMP's installed OpenRouter key helper does not read ${state}/openrouter_api_key"
       fi
-
-      # Compound Engineering's Antigravity route takes the helper from the
 
       if [ -z ${lib.escapeShellArg serveHtml} ]; then
         bad "packages/agent-tools.nix exports no serveHtml"

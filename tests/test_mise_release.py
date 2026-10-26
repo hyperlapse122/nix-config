@@ -1,7 +1,7 @@
 """Drive mise-release against fake SHASUMS256.txt fixtures.
 
-The helper's network call goes through an overridable command, so these tests
-feed it a fixture body instead of a network call.
+The helper's `curl` command is stubbed on `PATH` so these tests feed it a
+fixture body instead of a network call.
 """
 
 import base64
@@ -48,8 +48,14 @@ def sri(hex_digest):
     return "sha256-" + base64.b64encode(bytes.fromhex(hex_digest)).decode("ascii")
 
 
-FAKE_FETCH = """#!/usr/bin/env python3
+DEFAULT_URL = "https://github.com/jdx/mise/releases/latest/download/SHASUMS256.txt"
+
+FAKE_CURL = """#!{python}
 import os, sys
+expected = ['-sfL', '--max-time', '60', os.environ['FAKE_EXPECTED_URL']]
+if sys.argv[1:] != expected:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}} != {{expected!r}}\\n')
+    sys.exit(99)
 status = int(os.environ.get('FAKE_STATUS', '0'))
 if status:
     sys.exit(status)
@@ -62,18 +68,19 @@ class MiseReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        curl = self.bin_dir / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
         self.output = root / "mise-release.json"
 
-    def run_release(self, body=None, extra_args=None, status=0, fetch=None):
+    def run_release(self, body=None, extra_args=None, status=0):
         if body is None:
             body = shasums("2026.9.15")
         env = dict(os.environ)
-        env["MISE_RELEASE_FETCH"] = (
-            f"{sys.executable} {self.fetch}" if fetch is None else fetch
-        )
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["FAKE_EXPECTED_URL"] = DEFAULT_URL
         env["FAKE_BODY"] = body
         env["FAKE_STATUS"] = str(status)
         args = [sys.executable, str(SCRIPT)]
@@ -221,11 +228,6 @@ class MiseReleaseTestCase(unittest.TestCase):
         self.assertEqual(systems["aarch64-linux"]["hash"], sri(ARM64_MUSL_HEX))
         self.assertEqual(systems["aarch64-darwin"]["hash"], sri(MACOS_ARM64_HEX))
         self.assertFalse(self.output.exists())
-
-    def test_empty_fetch_command_fails(self):
-        result = self.run_release(fetch="")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn("MISE_RELEASE_FETCH is empty", result.stderr)
 
 
 if __name__ == "__main__":

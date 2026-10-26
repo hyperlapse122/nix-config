@@ -14,6 +14,7 @@ let
     syntheticKeyFile = "${keyDirectory}/synthetic_api_key";
     openrouterKeyFile = "${keyDirectory}/openrouter_api_key";
   };
+  roles = import ./omp-roles.nix;
   documents = config.my.omp.documents;
   declared = pkgs.writeText "omp-common-documents.json" (
     builtins.toJSON (lib.mapAttrs (_: path: toString path) documents)
@@ -50,12 +51,13 @@ in
             enabledModels = catalogs.patterns;
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";
-            modelRoles.default = "openai-codex/gpt-6-astra";
-            defaultThinkingLevel = "low";
-            modelRoles.web = "web/synthetic";
+            inherit (roles)
+              defaultThinkingLevel
+              github
+              modelRoles
+              task
+              ;
             skills.customDirectories = config.my.omp.skillDirectories;
-            contextFiles.extra = [ "OMP.md" ];
-            task.structured = true;
             symbolPreset = "nerd";
             composer.shape = "band";
             theme = {
@@ -89,7 +91,7 @@ in
       omp
       (import ../../../packages/acpx.nix { inherit pkgs; })
     ];
-    home.file.".omp/agent/OMP.md".source = ./instructions/omp.md;
+    home.file.".omp/agent/agents/architect.md".source = ./omp-architect.md;
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;
     # the system hook covers NixOS even when its home generation is unchanged.

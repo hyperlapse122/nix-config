@@ -48,10 +48,10 @@ env -i HOME=$HOME PATH="$P" ANDROID_HOME=$S ANDROID_SDK_ROOT=$S \
 
 The fix, as it stands in the tree:
 
-- The helper takes a required `--java-home` and exports it with the SDK variables before it runs avdmanager (`scripts/mobile-devices:139`).
-- Activation passes the JDK `programs.java` installs: `--java-home ${lib.escapeShellArg config.programs.java.package.home}` (`home/h82/dev/mobile-devices.nix:83`).
+- The helper takes a required `--java-home` and exports it with the SDK variables before it runs avdmanager (`scripts/mobile-devices:188`).
+- Activation passes the JDK `programs.java` installs: `--java-home ${lib.escapeShellArg config.programs.java.package.home}` (`home/h82/dev/mobile-devices.nix:80`).
 - `pkgs.gawk` is in the helper's `runtimeInputs` for the version check (`packages/mobile-devices.nix:6`).
-- The listing failure message now ends with avdmanager's stdout, because its start script writes `die` messages to stdout and the helper captures stdout (`scripts/mobile-devices:142`).
+- The listing failure message now ends with avdmanager's stdout, because its start script writes `die` messages to stdout and the helper captures stdout (`scripts/mobile-devices:191`).
 
 ## Why This Works
 

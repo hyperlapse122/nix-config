@@ -109,4 +109,4 @@ The import behaviour is deliberate on GnuPG's part: a card stub records that the
 
 ## Out of scope
 
-That a given card actually signs and decrypts after provisioning is hardware verification, on the checklist in `docs/verification.md`. Neither failure above is reachable by a repository check, because both require a real reader and a real card.
+That a given card actually signs and decrypts after provisioning is a hardware check rather than a repository check (see `CONCEPTS.md` and `AGENTS.md`). Neither failure above is reachable by a repository check, because both require a real reader and a real card.

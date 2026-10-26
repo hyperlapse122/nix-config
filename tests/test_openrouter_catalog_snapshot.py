@@ -1,8 +1,8 @@
 """Drive openrouter-catalog-snapshot against a trimmed 2026-10-23 sample.
 
 The fixture is a handful of whole rows from OpenRouter's public /models
-endpoint. The fetch goes through an overridable command, so these tests
-record what a stub fetch received instead of making network calls.
+endpoint. These tests record what a stub `curl` on `PATH` received instead of
+making network calls.
 """
 
 import copy
@@ -65,7 +65,7 @@ class SnapshotTest(unittest.TestCase):
     def written(self):
         return json.loads(self.out.read_text())["data"]
 
-    def test_every_text_row_keeps_only_the_fields_pi_renders(self):
+    def test_every_text_row_keeps_only_the_fields_omp_renders(self):
         catalog = fixture()
         proc = self.run_snapshot(catalog)
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -171,7 +171,6 @@ class FetchTest(unittest.TestCase):
         catalog = self.root / "served.json"
         catalog.write_text(json.dumps(fixture()))
         self.env = dict(os.environ)
-        self.env.pop("OPENROUTER_CATALOG_FETCH", None)
         self.env.pop("OPENROUTER_API_KEY", None)
         self.env.update({
             "PATH": f"{self.stubs}:{self.env.get('PATH', '')}",
@@ -200,12 +199,12 @@ class FetchTest(unittest.TestCase):
         self.assertEqual(len(json.loads(self.out.read_text())["data"]), len(fixture()["data"]))
 
     def test_a_missing_key_exits_non_zero_without_fetching(self):
-        fetch = self.stubs / "fetch"
-        fetch.write_text(FAKE_FETCH.format(python=sys.executable))
-        fetch.chmod(0o755)
+        curl = self.stubs / "curl"
+        curl.write_text(FAKE_FETCH.format(python=sys.executable))
+        curl.chmod(0o755)
         for key in (None, ""):
             with self.subTest(key=key):
-                env = {"OPENROUTER_CATALOG_FETCH": str(fetch)}
+                env = {}
                 if key is not None:
                     env["OPENROUTER_API_KEY"] = key
                 proc = self.run_fetch(**env)

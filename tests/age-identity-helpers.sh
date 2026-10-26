@@ -41,16 +41,9 @@ printf '%s\n' "$fake_recipient" >"$host_dir/recipient.txt"
 # recover-age-identity
 # ---------------------------------------------------------------------------
 
-export RECOVER_AGE_DRY_RUN=1
-export RECOVER_AGE_INSTALLER=/fake/restore-age-identity
-
-out=$("$recover_bin" --host testhost)
-[[ $out == gpg* ]] || fail "the pipeline does not start with gpg: $out"
-[[ $out == *"--decrypt -- $host_dir/age-key.asc"* ]] ||
-  fail "the resolved ciphertext path is wrong: $out"
-[[ $out == *"| sudo -- /fake/restore-age-identity --recipient $fake_recipient"* ]] ||
-  fail "sudo is not on the right-hand side with the resolved recipient: $out"
-pass 'the emitted pipeline runs gpg as the user and crosses sudo once, on the right'
+pipe_stubs=$scratch/pipe-stubs
+mkdir -p "$pipe_stubs"
+bash_bin_pipe=$(command -v bash) || fail 'bash is required'
 
 expect_failure "$recover_bin" --host nosuchhost
 [[ $err == *testhost* ]] || fail "the failure does not list available hosts: $err"
@@ -59,29 +52,18 @@ pass 'an unknown host exits non-zero, lists the available hosts and names --host
 
 # In the rescue path the hostname is the installer image's, not a configuration
 # name, so detection finds nothing and --host becomes mandatory.
-expect_failure "$recover_bin"
-if [[ $err == *"no bootstrap material"* ]]; then
-  [[ $err == *--host* ]] || fail "the rescue-path failure does not name --host: $err"
-  pass 'an undetectable hostname fails and names --host'
-else
-  pass 'the running hostname happens to have material; rescue path covered by the unknown-host case'
-fi
+printf '#!%s\nprintf "nixos-installer\\n"\n' "$bash_bin_pipe" >"$pipe_stubs/uname"
+chmod +x "$pipe_stubs/uname"
+expect_failure env PATH=$pipe_stubs:$PATH "$recover_bin"
+[[ $err == *"no bootstrap material"* ]] || fail "the rescue-path failure did not report missing material: $err"
+[[ $err == *--host* ]] || fail "the rescue-path failure does not name --host: $err"
+pass 'an undetectable hostname fails and names --host'
 
-# --- the real pipeline, not the dry-run receipt ----------------------------
-# Everything above asserts printed text. These run the actual
-# gpg | sudo installer composition with both sides stubbed, so a divergence
-# between what is printed and what executes cannot hide here.
-
-unset RECOVER_AGE_DRY_RUN
-
-pipe_stubs=$scratch/pipe-stubs
-mkdir -p "$pipe_stubs"
-bash_bin_pipe=$(command -v bash) || fail 'bash is required'
-
-# sudo that runs what it is given, so the installer stub really executes.
+# --- the real pipeline -----------------------------------------------------
 cat >"$pipe_stubs/sudo" <<STUB
 #!$bash_bin_pipe
 [[ \${1:-} == -v ]] && exit 0
+printf '%s\n' "\$*" >>"$scratch/sudo.log"
 [[ \${1:-} == -- ]] && shift
 exec "\$@"
 STUB
@@ -95,35 +77,49 @@ printf 'recipient=%s\n' "\$2" >"$scratch/installed.log"
 cat >>"$scratch/installed.log"
 STUB
 chmod +x "$pipe_stubs/installer"
+ln -sf "$pipe_stubs/installer" "$pipe_stubs/install-user-age-identity"
 
-printf '#!%s\nprintf "DECRYPTED-IDENTITY\\n"\n' "$bash_bin_pipe" >"$pipe_stubs/gpg-ok"
+cat >"$pipe_stubs/gpg-ok" <<STUB
+#!$bash_bin_pipe
+printf 'gpg_args=%s\n' "\$*" >"$scratch/gpg.log"
+printf "DECRYPTED-IDENTITY\n"
+STUB
 chmod +x "$pipe_stubs/gpg-ok"
 printf '#!%s\nexit 2\n' "$bash_bin_pipe" >"$pipe_stubs/gpg-fail"
 chmod +x "$pipe_stubs/gpg-fail"
 
 export RECOVER_AGE_INSTALLER=$pipe_stubs/installer
 
-rm -f "$scratch/installed.log"
-RECOVER_AGE_GPG=$pipe_stubs/gpg-ok PATH=$pipe_stubs:$PATH \
-  "$recover_bin" --host testhost >/dev/null 2>&1 ||
+rm -f "$scratch/installed.log" "$scratch/sudo.log" "$scratch/gpg.log"
+ln -sf "$pipe_stubs/gpg-ok" "$pipe_stubs/gpg"
+PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost >/dev/null 2>&1 ||
   fail 'the happy-path pipeline did not succeed'
+[[ -f $scratch/gpg.log ]] || fail 'gpg was not invoked'
+grep -qF -- "--decrypt -- $host_dir/age-key.asc" "$scratch/gpg.log" ||
+  fail "the resolved ciphertext path is wrong: $(cat "$scratch/gpg.log")"
+[[ -f $scratch/sudo.log ]] || fail 'sudo was not invoked on the right-hand side'
+[[ $(wc -l <"$scratch/sudo.log") -eq 1 ]] ||
+  fail "sudo was invoked more than once for the pipeline: $(cat "$scratch/sudo.log")"
+[[ $(<"$scratch/sudo.log") == "-- $pipe_stubs/installer --recipient $fake_recipient" ]] ||
+  fail "sudo argv did not match expected right-hand installer call: $(cat "$scratch/sudo.log")"
 [[ -f $scratch/installed.log ]] || fail 'the installer never received the decrypted identity'
 grep -q "recipient=$fake_recipient" "$scratch/installed.log" ||
   fail "the installer did not receive the recorded recipient: $(cat "$scratch/installed.log")"
 grep -q 'DECRYPTED-IDENTITY' "$scratch/installed.log" ||
   fail 'the identity did not reach the installer on stdin'
-pass 'the executed pipeline sends the identity on stdin and the recipient in argv'
+pass 'the executed pipeline runs gpg as the user, crosses sudo once on the right, and sends the identity on stdin and the recipient in argv'
 
 # pipefail is the reason a GPG failure is not masked by the installer's status.
 rm -f "$scratch/installed.log"
-if RECOVER_AGE_GPG=$pipe_stubs/gpg-fail PATH=$pipe_stubs:$PATH \
-  "$recover_bin" --host testhost >/dev/null 2>&1; then
+ln -sf "$pipe_stubs/gpg-fail" "$pipe_stubs/gpg"
+if PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost >/dev/null 2>&1; then
   fail 'a GPG failure was masked by the installer exiting zero'
 fi
 pass 'a GPG failure on the left of the pipe fails the whole run'
 
 # A missing installer must be named rather than producing a broken pipe.
-expect_failure env RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_INSTALLER=$scratch/absent-installer \
+ln -sf "$pipe_stubs/gpg-ok" "$pipe_stubs/gpg"
+expect_failure env RECOVER_AGE_INSTALLER=$scratch/absent-installer \
   PATH=$pipe_stubs:$PATH "$recover_bin" --host testhost
 [[ $err == *absent-installer* ]] || fail "a missing installer was not named: $err"
 pass 'a missing installer exits non-zero naming the path'
@@ -136,26 +132,22 @@ expect_failure "$recover_bin" --user
 [[ $err == *--host* ]] || fail "--user without --host does not name --host: $err"
 pass '--user without --host exits non-zero and names --host'
 
-out=$(RECOVER_AGE_DRY_RUN=1 RECOVER_AGE_USER_INSTALLER=/fake/install-user-age-identity \
-  "$recover_bin" --user --host testhost)
-[[ $out == *"| /fake/install-user-age-identity --recipient $fake_recipient" ]] ||
-  fail "user mode does not pipe to the user installer with the recorded recipient: $out"
-[[ $out != *sudo* ]] || fail "user mode crosses sudo: $out"
-pass 'user mode pipes gpg to the user installer and never to sudo'
-
-rm -f "$scratch/installed.log"
-RECOVER_AGE_GPG=$pipe_stubs/gpg-ok RECOVER_AGE_USER_INSTALLER=$pipe_stubs/installer \
-  PATH=$pipe_stubs:$PATH "$recover_bin" --user --host testhost >/dev/null 2>&1 ||
+rm -f "$scratch/installed.log" "$scratch/sudo.log"
+ln -sf "$pipe_stubs/gpg-ok" "$pipe_stubs/gpg"
+PATH=$pipe_stubs:$PATH "$recover_bin" --user --host testhost >/dev/null 2>&1 ||
   fail 'the user-mode pipeline did not succeed'
+[[ ! -e $scratch/sudo.log ]] || fail "user mode invoked sudo: $(cat "$scratch/sudo.log")"
+grep -q "recipient=$fake_recipient" "$scratch/installed.log" ||
+  fail "the user installer did not receive the recorded recipient: $(cat "$scratch/installed.log")"
 grep -q 'DECRYPTED-IDENTITY' "$scratch/installed.log" ||
   fail 'the identity did not reach the user installer on stdin'
-pass 'the executed user-mode pipeline sends the identity to the user installer'
+pass 'the executed user-mode pipeline sends the identity to the user installer and never crosses sudo'
 
 # ---------------------------------------------------------------------------
 # prepare-age-identity
 # ---------------------------------------------------------------------------
 
-unset RECOVER_AGE_DRY_RUN RECOVER_AGE_INSTALLER
+unset RECOVER_AGE_INSTALLER
 
 runtime=$scratch/runtime
 mkdir -p "$runtime"
@@ -233,11 +225,9 @@ fi
 STUB
 chmod +x "$stub_dir/gpg-corrupt"
 
-export PREPARE_AGE_KEYGEN=$stub_dir/age-keygen
-
 # Happy path
-export PREPARE_AGE_GPG=$stub_dir/gpg-good
-"$prepare_bin" --host newhost --recipient DEADBEEF >/dev/null
+ln -sf "$stub_dir/gpg-good" "$stub_dir/gpg"
+PATH=$stub_dir:$PATH "$prepare_bin" --host newhost --recipient DEADBEEF >/dev/null
 new_dir=$fake_repo/secrets/bootstrap/newhost
 [[ -f $new_dir/age-key.asc ]] || fail 'the ciphertext was not written'
 [[ -f $new_dir/recipient.txt ]] || fail 'the recipient was not recorded'
@@ -253,14 +243,14 @@ fi
 pass 'no plaintext identity material reaches the repository'
 
 # Refuses to overwrite
-if "$prepare_bin" --host newhost --recipient DEADBEEF >/dev/null 2>&1; then
+if PATH=$stub_dir:$PATH "$prepare_bin" --host newhost --recipient DEADBEEF >/dev/null 2>&1; then
   fail 'an existing host directory should not be overwritten'
 fi
 pass 'an existing host directory is refused rather than overwritten'
 
 # Round-trip verification
-export PREPARE_AGE_GPG=$stub_dir/gpg-corrupt
-if "$prepare_bin" --host badhost --recipient DEADBEEF >/dev/null 2>&1; then
+ln -sf "$stub_dir/gpg-corrupt" "$stub_dir/gpg"
+if PATH=$stub_dir:$PATH "$prepare_bin" --host badhost --recipient DEADBEEF >/dev/null 2>&1; then
   fail 'a ciphertext that decrypts to a different identity should fail'
 fi
 bad_dir=$fake_repo/secrets/bootstrap/badhost
@@ -289,8 +279,8 @@ exit 4
 STUB
 chmod +x "$stub_dir/gpg-halfwrite"
 
-export PREPARE_AGE_GPG=$stub_dir/gpg-halfwrite
-if "$prepare_bin" --host halfhost --recipient DEADBEEF >/dev/null 2>&1; then
+ln -sf "$stub_dir/gpg-halfwrite" "$stub_dir/gpg"
+if PATH=$stub_dir:$PATH "$prepare_bin" --host halfhost --recipient DEADBEEF >/dev/null 2>&1; then
   fail 'an encryption failure should not succeed'
 fi
 [[ ! -e $fake_repo/secrets/bootstrap/halfhost ]] ||
@@ -321,13 +311,15 @@ fi
 STUB
 chmod +x "$stub_dir/gpg-hang"
 
-export PREPARE_AGE_GPG=$stub_dir/gpg-hang
-"$prepare_bin" --host hanghost --recipient DEADBEEF >/dev/null 2>&1 &
+ln -sf "$stub_dir/gpg-hang" "$stub_dir/gpg"
+PATH=$stub_dir:$PATH "$prepare_bin" --host hanghost --recipient DEADBEEF >/dev/null 2>&1 &
 prepare_pid=$!
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   [[ -f $fake_repo/secrets/bootstrap/hanghost/age-key.asc ]] && break
-  sleep 0.2
+  sleep 0.1
 done
+[[ -f $fake_repo/secrets/bootstrap/hanghost/age-key.asc ]] ||
+  fail 'gpg-hang never wrote age-key.asc before SIGTERM'
 kill -TERM "$prepare_pid" 2>/dev/null || true
 wait "$prepare_pid" 2>/dev/null || true
 [[ ! -e $fake_repo/secrets/bootstrap/hanghost ]] ||
@@ -356,14 +348,15 @@ for bin in "$recover_bin" "$prepare_bin"; do
   expect_failure env PATH=$stub_dir:$PATH "$bin" --host testhost
   [[ $err == *root* ]] || fail "$name refusal does not mention root: $err"
 done
+rm -f "$stub_dir/id"
 pass 'both helpers refuse to run as root, naming the boundary'
 
 # ---------------------------------------------------------------------------
 # no key material in output
 # ---------------------------------------------------------------------------
 
-export PREPARE_AGE_GPG=$stub_dir/gpg-good
-combined=$("$prepare_bin" --host quiethost --recipient DEADBEEF 2>&1)
+ln -sf "$stub_dir/gpg-good" "$stub_dir/gpg"
+combined=$(PATH=$stub_dir:$PATH "$prepare_bin" --host quiethost --recipient DEADBEEF 2>&1)
 [[ $combined != *FAKE-IDENTITY* ]] || fail 'the helper printed identity material'
 pass 'the helper prints the public recipient but never identity material'
 

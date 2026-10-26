@@ -62,7 +62,11 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   # versionCheckHook runs only the CLI; run the host too, on every system the
   # package builds for, so a broken host fails the build rather than Code Mode.
   postInstallCheck = ''
-    $out/libexec/codex/codex-code-mode-host --help > /dev/null
+    target=$(sed -nE 's/^exec (-a "\$0" )?"([^"]+)".*/\2/p' "$out/bin/codex")
+    if [ -z "$target" ] || ! "$(dirname "$target")/codex-code-mode-host" --help > /dev/null; then
+      echo "codex: missing or broken codex-code-mode-host beside '$target'" >&2
+      exit 1
+    fi
   '';
 
   meta = {

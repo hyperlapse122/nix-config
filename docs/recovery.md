@@ -8,7 +8,7 @@ sudo nixos-rebuild switch --flake .#<host>
 
 Replace `<host>` with the machine's directory name under `hosts/`, here and in the commands below. This command does not format disks or enroll TPM or UEFI keys. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
 
-Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check`, the VM tests (`nix build --no-link .#vmChecks.all`), and the builds of every `nixosConfigurations`, `homeConfigurations`, and `systemConfigs` output ([verification](verification.md#repository-checks)) before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
+Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check`, the VM tests (`nix build --no-link .#vmChecks.all`), and the builds of every `nixosConfigurations`, `homeConfigurations`, and `systemConfigs` output (see `../AGENTS.md`) before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
 
 ## Failed authentication applies
 
@@ -17,7 +17,7 @@ systemctl status sops-install-secrets.service --no-pager
 sudo journalctl -u sops-install-secrets.service -b --no-pager
 ```
 
-Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [initial recovery](provisioning.md) with `./scripts/recover-age-identity` and run the same rebuild command. From the installation media or inside `nixos-enter` the hostname is the image's, not a configuration name, so the helper cannot detect the host and `--host <host>` is required there. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
+Check logs for secrets before sharing them. If the local identity is missing or corrupt, repeat [secret recovery](../secrets/README.md) with `./scripts/recover-age-identity` and run the same rebuild command. From the installation media or inside `nixos-enter` the hostname is the image's, not a configuration name, so the helper cannot detect the host and `--host <host>` is required there. The same command also restores manually deleted CLI configuration files. The next successful apply overwrites local changes to managed gh/glab files.
 
 A failed NixOS switch does not transactionally roll back all system changes. If token publication updated only some files, fix the problem and run the same command again. Do not ignore the error or treat provisioning as complete.
 
@@ -158,7 +158,7 @@ Losing the offline backup is the different failure. The cards still in hand are 
 
 ## Restore or rotate a desktop SSH key
 
-On a production NixOS desktop, loss of the encrypted working key or its KWallet entry is recoverable from `secrets/hosts/<host>/ssh.yaml`. Keep its matching `ssh.pub` unchanged. After reinstalling, recover the age identity using [provisioning](provisioning.md#recover-once-on-the-installed-nixos), apply production, and log in locally through SDDM. Unlock `kdewallet`, then run as the configured user:
+On a production NixOS desktop, loss of the encrypted working key or its KWallet entry is recoverable from `secrets/hosts/<host>/ssh.yaml`. Keep its matching `ssh.pub` unchanged. After reinstalling, recover the age identity with `./scripts/recover-age-identity` (see `../secrets/README.md`), apply production, and log in locally through SDDM (`kdewallet` unlocks automatically when its password matches the login password). Unlock `kdewallet` if needed, then run as the configured user (`~/.ssh` mode `0700`, `~/.ssh/id_ed25519_nix_config` mode `0600`, primary socket `/run/user/<uid>/desktop-ssh/agent.sock`):
 
 ```sh
 systemctl --no-ask-password start desktop-ssh-provision.service
@@ -185,9 +185,36 @@ unset DESKTOP_SSH_OUTPUT
 
 Review and stage both changes, run the checks, and apply production on the target. Provision the replacement through the fixed service above and verify access with 1Password stopped before revoking the old key on every destination. The new fingerprint selects a separate wallet entry; remove the old entry only after migration succeeds.
 
-For a lost, compromised, or retired desktop, revoke its public SSH key remotely even if the working copy was passphrase-protected. Root holding the host's age identity can decrypt the recovery source, and a compromised user session may read an unlocked wallet or use a loaded key. Per-host recipients prevent ordinary hosts from decrypting each other's sources, but the existing recovery cards can recover all host age identities. Git history retains old ciphertext: removing a recipient or deleting a source does not revoke an already exposed key. Rotate every potentially exposed shared token and follow the age-identity replacement process below. Retiring the host also removes its host directory, bootstrap material, SSH source/public metadata, and corresponding SOPS rules. Then re-key every shared file that listed it with `sops updatekeys -y` followed by `sops rotate -i`, before writing any new value, in the order the [decommission procedure](provisioning.md#compromise-or-decommission-of-a-non-nixos-host) gives. Its second step names the files by host kind: a retired NixOS host also appears in `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and `secrets/printers.yaml`, and the Wi-Fi PSKs, the Tailscale key, and any printer credential are rotated at their providers. `updatekeys` alone keeps the old data key, which the retired identity can read from any earlier ciphertext.
+For a lost, compromised, or retired desktop, revoke its public SSH key remotely even if the working copy was passphrase-protected. Root holding the host's age identity can decrypt the recovery source, and a compromised user session may read an unlocked wallet or use a loaded key. Per-host recipients prevent ordinary hosts from decrypting each other's sources, but the existing recovery cards can recover all host age identities. Git history retains old ciphertext: removing a recipient or deleting a source does not revoke an already exposed key. Follow [compromise or decommission of a host](#compromise-or-decommission-of-a-host) below to re-key every shared file (`sops updatekeys -y` followed by `sops rotate -i`) before writing rotated tokens.
 
-Git signing remains on the existing OpenPGP/YubiKey identity throughout restoration and rotation. Non-NixOS hosts retain their existing [SSH provisioning](provisioning.md#ssh-key-on-a-non-nixos-host) and [decommission procedure](provisioning.md#compromise-or-decommission-of-a-non-nixos-host).
+Git signing remains on the existing OpenPGP/YubiKey identity throughout restoration and rotation. Non-NixOS hosts retain their [host SSH setup](adding-a-host.md#first-setup-on-the-machine) and the decommission procedure below.
+
+## Compromise or decommission of a host
+
+Follow these steps in order when a non-NixOS host, a macOS host, or a NixOS host is lost, compromised, or retired. Treat everything that host could decrypt as exposed.
+
+1. Revoke its SSH public key on GitHub and remove it from every server's `authorized_keys`.
+2. Remove the host's recipient from the `.sops.yaml` rule of every shared file that lists it (`secrets/tokens.yaml` for non-NixOS and macOS hosts; `secrets/tokens.yaml`, `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and `secrets/printers.yaml` for NixOS hosts). From the repository root with a YubiKey connected, re-encrypt each affected file to the remaining recipients and rotate its data key before writing any new secret:
+
+   ```sh
+   nix develop
+   export SOPS_AGE_KEY_CMD="sh -c 'for f in secrets/bootstrap/*/age-key.asc; do gpg --batch --no-tty --decrypt -- \"\$f\"; done'"
+   sops updatekeys -y secrets/tokens.yaml
+   sops rotate -i secrets/tokens.yaml
+   ```
+
+   For a NixOS host, repeat `sops updatekeys -y` and `sops rotate -i` on `secrets/wifi.yaml`, `secrets/tailscale.yaml`, and `secrets/printers.yaml` before clearing `SOPS_AGE_KEY_CMD`.
+3. Rotate every exposed token at its provider (plus Wi-Fi PSKs, Tailscale key, and printer credentials for a NixOS host), save each new value to a mode `0600` file outside the checkout, pipe it in as JSON, and delete the temporary file:
+
+   ```sh
+   python3 -c 'import json, sys; sys.stdout.write(json.dumps(sys.stdin.read().strip()))' < <token-file> \
+     | sops set --value-stdin secrets/tokens.yaml '["<key>"]'
+   rm <token-file>
+   unset SOPS_AGE_KEY_CMD
+   ```
+
+   Keep steps 2 and 3 in this exact order: `sops set` encrypts to the recipients recorded in the file rather than `.sops.yaml`, and `sops updatekeys` alone retains the old data key from Git history until `sops rotate -i` replaces it.
+4. Delete `secrets/hosts/<host>/`, `secrets/bootstrap/<host>/`, `hosts/<host>/`, and the `secrets/hosts/<host>/ssh.yaml` rule in `.sops.yaml`.
 
 ## Replace tokens or the age identity
 

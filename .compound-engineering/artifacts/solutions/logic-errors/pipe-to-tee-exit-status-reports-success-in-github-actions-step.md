@@ -57,7 +57,7 @@ The fix (issue #140) is merged.
 - The step reported `status=success` and printed "All verification checks passed." whatever `nix fmt -- --ci` or `nix flake check` returned, so the push step could commit to `main` and push.
 - The "Verification failed (fmt: …, check: …)" branch and its step-summary tail of `check.log` could not run, because `FMT_EXIT` and `CHECK_EXIT` were always `tee`'s `0`.
 - Nothing looked wrong in the logs: the failing command's output was printed in full by `tee`, the step itself was green, and the next step ran as it should for a passing gate.
-- Reproduced: running `tests/update-dependencies-verify-status.sh` against the base commit's workflow fails on the first case:
+- Reproduced: running the original `tests/update-dependencies-verify-status.sh` check (now consolidated into `tests/update-dependencies-reconcile.sh`) against the base commit's workflow fails on the first case:
 
   ```text
   update-dependencies-verify-status: FAIL: a failing nix fmt reported 'status=success', so the push step would land the update on main
@@ -65,7 +65,7 @@ The fix (issue #140) is merged.
 
 ## What Didn't Work
 
-- **A stub `nix` with `#!/usr/bin/env bash`.** The first sandboxed run of the new flake check failed every case, including the all-success one. The Nix build sandbox has no `/usr/bin/env`, so each call to the stub exited 127. The step script read that as a failing command, so each run reported `status=failure`. That also made the first round of mutation testing worthless: every mutant "failed" the check for the wrong reason, so the round could not show that any assertion did its job. The stub now uses the shebang of the bash running the test, which exists inside the sandbox (`tests/update-dependencies-verify-status.sh:58-60`):
+- **A stub `nix` with `#!/usr/bin/env bash`.** The first sandboxed run of the new flake check failed every case, including the all-success one. The Nix build sandbox has no `/usr/bin/env`, so each call to the stub exited 127. The step script read that as a failing command, so each run reported `status=failure`. That also made the first round of mutation testing worthless: every mutant "failed" the check for the wrong reason, so the round could not show that any assertion did its job. The stub instead uses the shebang of the bash running the test, `#!$BASH`, which exists inside the sandbox (`tests/update-dependencies-reconcile.sh`, consolidated from the original `tests/update-dependencies-verify-status.sh`):
 
   ```bash
     # The running bash, not /usr/bin/env: the Nix build sandbox has no env.
@@ -100,16 +100,16 @@ Read each command's own exit status from `PIPESTATUS[0]` on the line straight af
             echo "status=success" >> "$GITHUB_OUTPUT"
 ```
 
-The failure summary then tails `check.log` only when `CHECK_EXIT` is non-zero and `vm-check.log` only when `VM_EXIT` is non-zero (that step's failure summary). `/vm-check.log` joins `/fmt.log` and `/check.log` in `.gitignore:15-17`, so the push step's catch-all commit does not pick it up. The `update-dependencies-push-order` fixture now writes a `vm-check.log` into its clone and asserts that none of the three logs gets committed (`tests/update-dependencies-push-order.sh:101-112`).
+The failure summary then tails `check.log` only when `CHECK_EXIT` is non-zero and `vm-check.log` only when `VM_EXIT` is non-zero (that step's failure summary). `/vm-check.log` joins `/fmt.log` and `/check.log` in `.gitignore:15-17`, so the push step's catch-all commit does not pick it up. `tests/update-dependencies-reconcile.sh` writes `fmt.log`, `check.log`, and `vm-check.log` into its sandbox clone and asserts that none of the three logs gets committed.
 
-A new regression check, `tests/update-dependencies-verify-status.sh`, runs the step's real script instead of grepping it for patterns:
+`tests/update-dependencies-reconcile.sh` (consolidating the former `tests/update-dependencies-verify-status.sh` and `tests/update-dependencies-push-order.sh` scripts) runs the step's real script instead of grepping it for patterns:
 
-- It pulls out the literal `run: |` block of the "Verify updates" step with the same awk extraction that `tests/update-dependencies-push-order.sh` uses (`tests/update-dependencies-verify-status.sh:33-46`).
-- It runs the block the way GitHub runs a step with no `shell:`, `bash -e -c "$step_script"`, with a stub `nix` first on `PATH` and `GITHUB_OUTPUT` / `GITHUB_STEP_SUMMARY` pointing at scratch files (`:70-74`).
-- The stub fails `fmt`, `flake`, and `build` in turn, and each run must write `status=failure`. A fourth run where nothing fails must write `status=success` (`:78-87`).
-- It asserts that the failing VM build's output is in `vm-check.log` and not in `check.log` (`:89-94`).
+- It extracts the `run:` block of the "Verify updates" step structurally from `.github/workflows/update-dependencies.yml` with `yq` and `jq`.
+- It runs the block the way GitHub runs a step with no `shell:`, `bash -e -c "$verify_script"`, with a stub `nix` first on `PATH` and `GITHUB_OUTPUT` / `GITHUB_STEP_SUMMARY` pointing at scratch files.
+- The stub fails `fmt`, `flake`, and `build` in turn, and each run must write `status=failure`. A fourth run where nothing fails must write `status=success`.
+- It asserts that the failing VM build's output is in `vm-check.log` and not in `check.log`.
 
-The check is registered in `flake.nix` as `update-dependencies-verify-status`, so `nix flake check` runs it.
+The check is registered in `flake.nix` as `update-dependencies-reconcile`, so `nix flake check` runs it.
 
 ## Why This Works
 

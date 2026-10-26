@@ -82,11 +82,32 @@ pkgs.testers.nixosTest {
             expected["startup"]["quiet"] = True
         else:
             expected["enabledModels"] = json.loads(${pkgs.lib.escapeShellArg expectedPatterns})
-            expected["modelRoles"] = {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}
-            expected["defaultThinkingLevel"] = "low"
+            expected["github"] = {"enabled": True}
+            expected["modelRoles"] = {
+                "default": "google-antigravity/gemini-4-argon",
+                "smol": "google-antigravity/gemini-3.5-flash-lite:low",
+                "slow": "google-antigravity/gemini-4-argon:high",
+                "plan": "google-antigravity/gemini-4-argon:high",
+                "task": "google-antigravity/gemini-3.8-flash:low",
+                "commit": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                "web": "web/synthetic",
+            }
+            expected["defaultThinkingLevel"] = "high"
             expected["skills"] = {"customDirectories": []}
-            expected["contextFiles"] = {"extra": ["OMP.md"]}
-            expected["task"] = {"structured": True}
+            expected["task"] = {
+                "structured": True,
+                "enableEffort": True,
+                "maxEffort": "high",
+                "agentModelOverrides": {
+                    "sonic": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                    "scout": "google-antigravity/gemini-3.5-flash-lite:low",
+                    "seance": "google-antigravity/gemini-3.5-flash-lite:low",
+                    "task": "google-antigravity/gemini-3.8-flash:low",
+                    "reviewer": "google-antigravity/gemini-3.8-flash:medium",
+                    "security-reviewer": "google-antigravity/gemini-3.8-flash:medium",
+                    "architect": "google-antigravity/gemini-4-argon:high",
+                },
+            }
             expected["symbolPreset"] = "nerd"
             expected["composer"] = {"shape": "band"}
             expected["theme"] = {"dark": "titanium", "light": "light"}

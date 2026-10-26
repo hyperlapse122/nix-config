@@ -4,8 +4,7 @@
   and Codex sessions run the flake's own claude and codex with their
   user-level settings, so nothing here adds a copy of either. The T3 Code
   settings that differ from the pinned nightly's defaults are merged into its
-  own settings files on activation, and the Antigravity runtime it requires is
-  installed where T3 Code looks for it.
+  own settings files on activation.
 
   The desktop app runs on NixOS and macOS. A non-NixOS Linux host that enables
   it fails the assertion below rather than a build.
@@ -28,11 +27,17 @@ let
 
   omp = import ../../packages/omp.nix { inherit pkgs; };
   catalogs = import ./agents/omp-model-catalogs.nix;
+  ompRoles = import ./agents/omp-roles.nix;
   ompScope = pkgs.writeText "omp-t3-OMP.json" (
     builtins.toJSON {
       enabledModels = ompPatterns;
-      modelRoles.default = "openai-codex/gpt-6-astra";
-      defaultThinkingLevel = "low";
+      inherit (ompRoles)
+        defaultThinkingLevel
+        github
+        modelRoles
+        task
+        ;
+      skills.customDirectories = (config.my.omp or { }).skillDirectories or [ ];
     }
   );
   ompPatterns = catalogs.patterns;
@@ -55,11 +60,11 @@ let
         "--models"
         (lib.concatStringsSep "," ompPatterns)
         # --models otherwise falls back to the first available API model
-        # when the configured Codex default has no authentication.
+        # when the configured Antigravity default has no authentication.
         "--model"
-        "openai-codex/gpt-6-astra"
+        "google-antigravity/gemini-4-argon"
         "--thinking"
-        "low"
+        "high"
       ];
       customModels = apiSelectors;
     };

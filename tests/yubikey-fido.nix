@@ -29,6 +29,8 @@
     rule, or a systemd change that drops either one, would otherwise stay
     invisible until someone met a permission error on real hardware.
   - the pcscd socket unit is rendered into the built system.
+  - the default development shell carries yubikey-manager with an executable
+    bin/ykman for checkouts whose host does not install it globally.
 
   The helper's guard runs first, so an empty configuration list fails the build
   instead of passing it. The builder collects every failure instead of exiting
@@ -47,6 +49,7 @@ let
     ;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  etcFile = import ./lib/etc-file.nix { inherit (pkgs) lib; };
 
   # Every message and path below is text spliced into a shell script. Escape it
   # rather than trusting the values to be quote-free: an apostrophe in one label
@@ -112,7 +115,7 @@ let
       hostName = entry.name;
       userConfig = entry.user;
       userPath = userConfig.home.path or null;
-      udevRules = entry.config.environment.etc."udev/rules.d".source or null;
+      udevRules = etcFile entry.config "udev/rules.d";
     in
     concatStringsSep "\n" (
       [
@@ -164,6 +167,9 @@ let
         }
       ) udevRuleNames
     );
+
+  shellPackages = self.devShells.${pkgs.stdenv.hostPlatform.system}.default.nativeBuildInputs;
+  devShellYkman = lists.findFirst (p: (p.pname or "") == "yubikey-manager") null shellPackages;
 in
 pkgs.runCommand "yubikey-fido-tests" { } ''
   set -x
@@ -171,6 +177,16 @@ pkgs.runCommand "yubikey-fido-tests" { } ''
   failed=0
 
   ${concatStringsSep "\n" (map hostAssertions configurations.entries)}
+  ${optionalString (devShellYkman == null) ''
+    echo 'devShells.default: missing yubikey-manager in nativeBuildInputs' >&2
+    failed=1
+  ''}
+  ${optionalString (devShellYkman != null) ''
+    if [ ! -x ${escapeShellArg "${devShellYkman}/bin/ykman"} ]; then
+      echo 'devShells.default: yubikey-manager ships no bin/ykman executable' >&2
+      failed=1
+    fi
+  ''}
 
   if [ "$failed" != 0 ]; then
     exit 1

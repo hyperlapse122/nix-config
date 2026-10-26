@@ -120,4 +120,4 @@ Two further habits came out of the same pass. Put `set -x` at the top of a build
 
 ## Out of scope for this check
 
-Whether generated configuration reaches the real device or service stays a hardware check (see `docs/verification.md`). For keyd, that was whether it grabbed the internal keyboard and whether the emitted keysym reached the input method. A build-time check on generated configuration cannot reach either.
+Whether generated configuration reaches the real device or service stays a hardware check (see `CONCEPTS.md` and `AGENTS.md`). For keyd, that was whether it grabbed the internal keyboard and whether the emitted keysym reached the input method. A build-time check on generated configuration cannot reach either.

@@ -1,5 +1,5 @@
 /*
-  Read each Home Manager generation's four delivered instruction files.
+  Read each Home Manager generation's three delivered instruction files.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
   Linux callers supply self/fixtures; native Darwin callers supply explicit
@@ -24,6 +24,7 @@ let
   ];
   retiredPaths = [
     ".pi/agent/AGENTS.md"
+    ".omp/agent/OMP.md"
     ".t3/instructions/claude-code/CLAUDE.md"
     ".gemini/GEMINI.md"
     ".gemini/config/AGENTS.md"
@@ -68,7 +69,13 @@ let
         key = entry.user.my.user.gpgKey;
         paths = map (target: {
           path = "${entry.user.home-files}/${target}";
-          codex = target == ".codex/AGENTS.md";
+          delivery =
+            if target == ".codex/AGENTS.md" then
+              "codex"
+            else if target == ".omp/agent/AGENTS.md" then
+              "omp"
+            else
+              "common";
         }) deliveryPaths;
         git = "${entry.user.home-files}/.config/git/config";
       }) presentEntries

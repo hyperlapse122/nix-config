@@ -72,7 +72,17 @@ def main(synthetic, openrouter, bundled, synthetic_helper, openrouter_helper, ou
     for provider in ("synthetic", "openrouter"):
         if not any(name == provider for name, _ in known):
             raise ValueError(f"OMP listed no bundled {provider} models")
-    providers = {}
+    providers = {
+        # Upstream Gemini API rejects minimal on gemini-3.8-flash; overriding its
+        # ladder keeps P3 ("lo" -> low) and P4 ("med" -> medium) aligned.
+        "google-antigravity": {
+            "modelOverrides": {
+                "gemini-3.8-flash": {
+                    "thinking": {"mode": "effort", "efforts": ["low", "medium", "high"]},
+                }
+            }
+        }
+    }
     for name, path, helper, url in (
         ("synthetic", synthetic, synthetic_helper, "https://api.synthetic.new/openai/v1"),
         ("openrouter", openrouter, openrouter_helper, "https://openrouter.ai/api/v1"),

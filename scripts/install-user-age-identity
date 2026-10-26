@@ -18,7 +18,7 @@ import tempfile
 
 
 MAX_IDENTITY_BYTES = 8192
-AGE_KEYGEN = os.environ.get("INSTALL_USER_AGE_KEYGEN", "@AGE_KEYGEN@")
+AGE_KEYGEN = "@AGE_KEYGEN@"
 RECIPIENT_RE = re.compile(r"^age1[0-9a-z]+$")
 
 

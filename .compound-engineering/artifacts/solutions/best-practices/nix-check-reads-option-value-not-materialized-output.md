@@ -102,4 +102,4 @@ Round 3 is the control: the value mutations were already caught by the original 
 
 ## Out of scope
 
-Whether Claude Code actually honored the managed settings tier at runtime was not a build-time question; `docs/verification.md` carried the one-time post-activation check for it, and now checks that the retired file is gone.
+Whether Claude Code actually honored the managed settings tier at runtime — or whether an installed host cleared the retired `/etc/claude-code/managed-settings.json` file on switch — is a post-activation check on the live machine, not a build-time question (see `CONCEPTS.md` and `AGENTS.md`).

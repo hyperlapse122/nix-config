@@ -25,7 +25,8 @@ def expected_name(provider, row):
 
 def run(omp, documents, snapshots):
     providers = json.loads(Path(documents["models.yml"]).read_text())["providers"]
-    assert set(providers) == {"synthetic", "openrouter"}, "only API providers belong in models.yml"
+    assert set(providers) == {"synthetic", "openrouter", "google-antigravity"}, "unexpected providers in models.yml"
+    assert set(providers["google-antigravity"]) == {"modelOverrides"}, "google-antigravity must carry modelOverrides only"
     selected_ids = {row["id"] for row in json.loads(Path(snapshots["openrouter"]).read_text())["data"]
                     if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"}
     managed = providers["openrouter"]

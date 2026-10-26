@@ -13,9 +13,7 @@ file.
 import argparse
 import base64
 import json
-import os
 import re
-import shlex
 import subprocess
 import sys
 
@@ -23,7 +21,6 @@ import sys
 # one request yields both the version (from the filenames) and the checksum
 # without the GitHub REST API's unauthenticated rate limit.
 DEFAULT_SOURCE_URL = "https://github.com/jdx/mise/releases/latest/download/SHASUMS256.txt"
-DEFAULT_FETCH = "curl -sfL"
 
 # The Nix system each pinned asset serves. The musl builds are statically
 # linked, so they run on NixOS without patching.
@@ -42,16 +39,9 @@ class Failure(Exception):
 
 
 def fetch(url):
-    """Run the overridable fetch command against one URL and return the raw body.
-
-    The command is overridable so offline tests and sandboxed Nix checks can
-    provide fixtures instead of network calls.
-    """
-    command = shlex.split(os.environ.get("MISE_RELEASE_FETCH", DEFAULT_FETCH))
-    if not command:
-        raise Failure("MISE_RELEASE_FETCH is empty")
+    """Fetch one URL with curl and return the raw body."""
     proc = subprocess.run(
-        command + [url],
+        ["curl", "-sfL", "--max-time", "60", url],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

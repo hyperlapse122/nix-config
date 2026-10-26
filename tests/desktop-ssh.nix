@@ -14,6 +14,7 @@ let
     files = toString (entry.user.home-files or "");
     sshConfig = toString (entry.user.my.ssh.configFile or "");
     sshActivation = entry.user.home.activation.sshConfig.data or "";
+    sshAfter = entry.user.home.activation.sshConfig.after or [ ];
     path = toString (entry.user.home.path or "");
     home = entry.user.home.homeDirectory or "";
     user = entry.user.home.username or "";

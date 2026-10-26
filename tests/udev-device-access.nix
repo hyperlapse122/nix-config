@@ -7,7 +7,9 @@
   rules for the NuPhy Gem80 keyboard, the STM32 ROM DFU bootloader, and the
   Sennheiser BTD 600/700 dongles, and Apple iOS devices in DFU and recovery
   mode, the rules that hide the DualSense controller touchpad from libinput,
-  and the `/dev/kvm` mode that rootless Podman containers depend on. Every
+  the rule that disables USB power wakeup on Logitech Unifying (`c52b`) and
+  Bolt (`c548`) receivers, and the `/dev/kvm` mode that rootless Podman
+  containers depend on. Every
   assertion reads the materialised rules directory
   (`environment.etc."udev/rules.d"`), never the option lists it is derived
   from. `services.udev.extraRules` lands in 99-local.rules while
@@ -32,9 +34,10 @@
   - every configuration carries the Apple DFU and recovery-mode `uaccess` rule
     line verbatim, in a file that sorts before the first file carrying the
     uaccess builtin.
-  - every configuration carries both DualSense touchpad rule lines
-    verbatim. libinput reads LIBINPUT_IGNORE_DEVICE from the udev database, so
-    no file order constrains them.
+  - every configuration carries both DualSense touchpad rule lines and the
+    Logitech receiver wakeup-disable rule line verbatim. libinput reads
+    LIBINPUT_IGNORE_DEVICE from the udev database and the Logitech rule writes
+    sysfs directly, so no file order constrains them.
   - every configuration carries a file with the uaccess builtin and a file with the USB
     default. They supply the two anchors above and are the positive controls
     that stop an empty directory passing.
@@ -64,9 +67,10 @@
   least one production configuration must enable the trait, or the helper fails
   the check, so the positive branch never covers zero configurations.
 
-  The rules directory is resolved with an `or null` fallback, so a
-  configuration that declares none fails inside the builder rather than during
-  evaluation. The builder collects every failure instead of exiting at the
+  The rules directory is resolved through `tests/lib/etc-file.nix`, so a
+  configuration that declares none, or disables or retargets it, fails inside
+  the builder rather than during evaluation or passing on `.source`. The
+  builder collects every failure instead of exiting at the
   first, so one red build names every broken assertion across every
   configuration.
 */
@@ -76,6 +80,7 @@ let
   inherit (lib) boolToString escapeShellArg escapeShellArgs;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  etcFile = import ./lib/etc-file.nix { inherit lib; };
   nuphy = configurations.withTrait "my.nuphyGem80.enable" (config: config.my.nuphyGem80.enable);
   podman = configurations.withTrait "my.podman.enable" (config: config.my.podman.enable);
 
@@ -101,6 +106,8 @@ let
     ''ACTION=="add|change", ATTRS{name}=="Sony Interactive Entertainment DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
     ''ACTION=="add|change", ATTRS{name}=="DualSense Wireless Controller Touchpad", ENV{LIBINPUT_IGNORE_DEVICE}="1"''
   ];
+
+  logitechRule = ''ACTION=="add", SUBSYSTEM=="usb", DRIVERS=="usb", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c52b|c548", ATTR{power/wakeup}="disabled"'';
 
   kvmRule = ''KERNEL=="kvm", MODE="0666", GROUP="kvm", OPTIONS+="static_node=kvm"'';
   kvmTmpfilesLine = "z /dev/kvm 0666 - kvm -";
@@ -183,7 +190,7 @@ let
         check_rule_order "$host" "$dir" "$usb_default_file" "$line" after
       done
       check_rule_order "$host" "$dir" "$builtin_file" ${esc appleRecoveryRule} before
-      for line in ${escapeShellArgs dualsenseRules}; do
+      for line in ${escapeShellArgs (dualsenseRules ++ [ logitechRule ])}; do
         if [ -z "$(files_with_line "$dir" "$line")" ]; then
           fail "$host: no udev rules file carries: $line"
         fi
@@ -247,12 +254,13 @@ let
   '';
 
   # The expectation comes from the trait, never from the udev options the
-  # module under test sets. The rules directory stays behind an `or null`
-  # fallback so a configuration without one fails inside the builder.
+  # module under test sets. The rules directory is resolved through etcFile
+  # so a configuration without one, or with a disabled/retargeted entry, fails
+  # inside the builder.
   entryAssertion =
     nuphyBelongs: entry:
     let
-      rules = entry.config.environment.etc."udev/rules.d".source or null;
+      rules = etcFile entry.config "udev/rules.d";
     in
     if rules == null then
       ''
@@ -268,7 +276,7 @@ let
   kvmAssertion =
     kvmBelongs: entry:
     let
-      rules = entry.config.environment.etc."udev/rules.d".source or null;
+      rules = etcFile entry.config "udev/rules.d";
       tmpfiles = "${entry.config.system.build.etc}/etc/tmpfiles.d";
     in
     lib.optionalString (rules != null) ''

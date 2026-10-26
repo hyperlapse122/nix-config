@@ -2,121 +2,133 @@
 #
 # Check interface:
 #
-#   bash tests/update-dependencies-reconcile.sh <update-dependencies-workflow>
+#   bash tests/update-dependencies-reconcile.sh <update-dependencies-workflow> <gitignore>
 #
-# Covers the updater's failure path, its schedule, and the T3 Code bump:
+# Covers .github/workflows/update-dependencies.yml end-to-end:
 #
-# - The "Open reconciliation PR on failure" step's literal script runs
-#   against a sandboxed git remote and a stub `gh` that rejects any
-#   `--label`, the way the real repository does: it has no `dependencies`
-#   or `automated` label, and the workflow cannot create one. With no open
-#   PR, the step must push the fix branch, open the PR, and exit 0. With a
-#   PR already open, the fix branch may carry fix commits that a reset would
-#   discard: the step must leave the branch alone and refresh the PR body
-#   with the new logs. When the open-PR query itself fails, the step must
-#   fail without touching the branch or any PR.
-# - The PR body asks a person to push a fix and merge by hand; it never
-#   calls the updater hourly, promises an automatic merge, or names Claude.
-# - The PR step runs only for a changed update that failed verification.
-# - No step may run `gh pr merge`: main requires no check, and the PR gets
-#   CI only because it is opened with GH_TOKEN_FOR_UPDATES (a PR opened with
-#   the GITHUB_TOKEN fallback triggers none), so auto-merge could land an
-#   unverified fix on main.
-# - The cron must fire twice an hour and never at minute 0.
-# - The "Push verified updates directly to main" step must commit a T3 Code
-#   pin change on its own, as `chore(packages): bump t3code to <version>`.
-# - The update step must run t3code-release, and a failing t3code-release
-#   must warn and keep the pin rather than abort the other updates.
-# - The update step runs omp-release, and a failing omp-release warns, keeps
-#   the pin, and lets the other updates through. It runs npm-release for
-#   acpx with its pin and lock file; a failure restores both files and warns
-#   while allowing the remaining updates to continue.
-# - The push step commits each changed pin on its own: the OMP pin as
-#   `chore(packages): bump omp to <version>`, and acpx as
-#   `chore(packages): bump <package> to <version>` with its pin and lock file
-#   together, and nothing else.
+# - Parses the workflow structurally with `yq` + `jq`:
+#   - cron fires twice an hour, 30 minutes apart, and never at minute 0;
+#   - no step runs `gh pr merge` and neither catalog key appears;
+#   - step `if:` conditions on `Verify updates`, `Push verified updates directly
+#     to main`, and `Open reconciliation PR on failure` match their exact gates.
+# - Runs `Update flake inputs, agent plugins, and packages` against an
+#   argument-checking `nix` stub:
+#   - `nix flake update`, `compound-engineering-plugin` resolution and locking
+#     across `flake.nix`, `home/h82/agents/agent-plugin-pins.nix`, and
+#     `flake.lock` (including refusal of an unusable locked rev), and every
+#     release runner (`claude-desktop-release`, `claude-code-release`,
+#     `android-sdk-release`, `mise-release`, `chatgpt-release`,
+#     `t3code-release`, `wifiman-desktop-release`, `omp-release`, `npm-release`
+#     for `acpx`, `codex-release`);
+#   - soft-failing updaters (`chatgpt-release`, `t3code-release`,
+#     `wifiman-desktop-release`, `omp-release`, `npm-release` for `acpx`,
+#     `codex-release`) emit `::warning`, restore their pin (and lock file for
+#     `acpx`), and let the remaining updates continue.
+# - Runs `Verify updates` under `bash -e` (without `pipefail`):
+#   - `nix fmt`, `nix flake check`, and `.#vmChecks.all` failing in turn each
+#     report `status=failure`; all succeeding reports `status=success`;
+#   - VM build output lands in `vm-check.log`, never `check.log`.
+# - Runs `Push verified updates directly to main` against a sandboxed git
+#   remote initialized with the repository's real `.gitignore`:
+#   - per-pin bump commits (`compound-engineering`, `t3code`, `omp`, `acpx`,
+#     etc.) each land with their exact commit message and only their own files;
+#   - unchanged `origin/main` commits before `git rebase` and never sweeps
+#     `fmt.log`, `check.log`, or `vm-check.log` into `git add -A`;
+#   - diverged `origin/main` rebases cleanly and pushes both commits.
+# - Runs `Open reconciliation PR on failure` against a stub `gh` that rejects
+#   `--label`:
+#   - with no open PR, pushes `update-dependencies-fix` and opens the PR;
+#   - with an open PR, preserves the branch and refreshes the PR body;
+#   - when the open-PR query fails, exits non-zero without touching the branch
+#     or any PR.
 
 set -euo pipefail
 
 workflow=${1:-}
-if [[ $# -ne 1 || -z $workflow || ! -f $workflow ]]; then
-  printf 'usage: %s WORKFLOW_FILE\n' "${0##*/}" >&2
+gitignore=${2:-}
+if [[ $# -ne 2 || -z $workflow || ! -f $workflow || -z $gitignore || ! -f $gitignore ]]; then
+  printf 'usage: %s WORKFLOW_FILE GITIGNORE_FILE\n' "${0##*/}" >&2
   exit 2
 fi
 
 fail() { printf 'update-dependencies-reconcile: FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'update-dependencies-reconcile: ok - %s\n' "$*"; }
 
+for tool in git jq yq; do
+  command -v "$tool" >/dev/null || fail "$tool is required"
+done
+git_bin=$(command -v git)
+
 fix_branch=update-dependencies-fix
 
-# step_run <name>: the dedented `run: |` block of the named step.
-step_run() {
-  awk -v step="- name: $1" '
-    found == 0 && index($0, step) > 0 { found = 1; next }
-    found == 1 && capturing == 0 && $0 ~ /^[[:space:]]*run: \|[[:space:]]*$/ { capturing = 1; next }
-    capturing == 1 {
-      if ($0 ~ /^[[:space:]]*$/) { print ""; next }
-      line = $0
-      sub(/^[[:space:]]*/, "", line)
-      lead = length($0) - length(line)
-      if (indent < 0) { indent = lead }
-      if (lead < indent) { exit }
-      print substr($0, indent + 1)
-      next
-    }
-  ' indent=-1 "$workflow"
+wf_json=$(yq -o=json '.' "$workflow")
+[[ $(jq '.jobs | length' <<<"$wf_json") == 1 ]] || fail "expected one job in $workflow"
+job=$(jq '.jobs["update-dependencies"] // empty' <<<"$wf_json")
+[[ -n $job ]] || fail "missing update-dependencies job in $workflow"
+
+step_by_name() {
+  jq -e --arg n "$1" '.steps[] | select(.name == $n)' <<<"$job"
 }
 
-# step_block <name>: every line of the named step, up to the next step. A
-# step starts at a `- ` line at the step list's indent; some steps have no
-# name, so the end is found by indent rather than by `- name:`.
-step_block() {
-  awk -v step="- name: $1" '
-    found == 0 && index($0, step) > 0 {
-      found = 1
-      line = $0
-      sub(/^[[:space:]]*/, "", line)
-      indent = length($0) - length(line)
-      print
-      next
-    }
-    found == 1 {
-      line = $0
-      sub(/^[[:space:]]*/, "", line)
-      lead = length($0) - length(line)
-      if (line != "" && lead <= indent) { exit }
-      print
-    }
-  ' "$workflow"
+step_run() {
+  step_by_name "$1" | jq -r '.run // empty'
 }
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/update-dependencies-reconcile.XXXXXX")
 trap 'rm -rf -- "$scratch"' EXIT
 
-git_bin=$(command -v git) || fail 'git is required'
-
-# setup_clone <name>: a bare origin with main and a clone of it.
+# setup_clone <name>: a bare origin with main and a clone of it seeded with
+# the repository's real .gitignore and baseline pin files.
 setup_clone() {
   local name=$1
   local origin=$scratch/$name-origin.git
   local clone=$scratch/$name-clone
   "$git_bin" init -q --bare "$origin"
-  # A sandboxed HOME has no init.defaultBranch; pin HEAD to main.
+  "$git_bin" -C "$origin" config init.defaultBranch main
   "$git_bin" --git-dir "$origin" symbolic-ref HEAD refs/heads/main
   "$git_bin" clone -q "$origin" "$clone"
   "$git_bin" -C "$clone" config user.email t@example.invalid
   "$git_bin" -C "$clone" config user.name Test
   "$git_bin" -C "$clone" checkout -qb main
-  mkdir -p "$clone/packages"
+  cp "$gitignore" "$clone/.gitignore"
+  cat >"$clone/flake.nix" <<'EOF'
+{
+  inputs.compound-engineering-plugin.url = "github:EveryInc/compound-engineering-plugin/compound-engineering-v2.67.0";
+}
+EOF
+  cat >"$clone/flake.lock" <<'EOF'
+{
+  "nodes": {
+    "compound-engineering-plugin": {
+      "locked": {
+        "rev": "1111111111111111111111111111111111111111"
+      }
+    }
+  }
+}
+EOF
+  mkdir -p "$clone/home/h82/agents" "$clone/packages/acpx"
+  cat >"$clone/home/h82/agents/agent-plugin-pins.nix" <<'EOF'
+{
+  compound-engineering = {
+    tag = "compound-engineering-v2.67.0";
+    expectedRev = "1111111111111111111111111111111111111111";
+  };
+}
+EOF
+  printf '{"version": "1.0.0"}\n' >"$clone/packages/claude-desktop-version.json"
+  printf '{"version": "1.0.0"}\n' >"$clone/packages/claude-code-manifest.json"
+  printf '{"latest": {"cmdline-tools": "19.0"}}\n' >"$clone/packages/android-sdk-repo.json"
+  printf '{"version": "2026.10.0"}\n' >"$clone/packages/mise-release.json"
+  printf '{"version": "1.0.0"}\n' >"$clone/packages/chatgpt-version.json"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
+  printf '{"version": "1.0.0"}\n' >"$clone/packages/wifiman-desktop-version.json"
   printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
-  mkdir -p "$clone/packages/acpx"
   printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
+  printf '{"version": "0.50.0"}\n' >"$clone/packages/codex-release.json"
   printf 'base\n' >"$clone/tracked.txt"
-  "$git_bin" -C "$clone" add tracked.txt packages/t3code-release.json \
-    packages/omp-release.json \
-    packages/acpx-release.json packages/acpx/package-lock.json
+  "$git_bin" -C "$clone" add -A
   "$git_bin" -C "$clone" commit -qm init
   "$git_bin" -C "$clone" push -q origin main
   printf '%s %s\n' "$origin" "$clone"
@@ -124,22 +136,13 @@ setup_clone() {
 
 # --- reconciliation PR step -------------------------------------------------
 
-pr_block=$(step_block 'Open reconciliation PR on failure')
-[[ -n $pr_block ]] || fail "could not find the reconciliation PR step in $workflow"
-grep -Eq "^[[:space:]]*BRANCH:[[:space:]]*${fix_branch}[[:space:]]*$" <<<"$pr_block" ||
+pr_step=$(step_by_name 'Open reconciliation PR on failure') ||
+  fail "could not find the reconciliation PR step in $workflow"
+[[ $(jq -r '.env.BRANCH // empty' <<<"$pr_step") == "$fix_branch" ]] ||
   fail "the reconciliation PR step does not set BRANCH to $fix_branch"
-pr_script=$(step_run 'Open reconciliation PR on failure')
+pr_script=$(jq -r '.run // empty' <<<"$pr_step")
 [[ -n $pr_script ]] || fail "could not find the reconciliation PR step's run block in $workflow"
 
-# run_pr_step <name> <mode> <want-status>: runs the step with a stub `gh`
-# whose open-PR query (`pr list --state open`) finds no PR (mode none) or
-# one PR (open), or whose `pr list` and `pr view` fail the way an API or
-# auth error does (error). Under open and error, the remote fix branch
-# already carries a fix commit, the way it does once a person has pushed to
-# the reconciliation PR. The step must exit 0 when <want-status>
-# is 0 and non-zero otherwise. The stub logs each call to gh.log, copies
-# --body-file to body.md, and fails on any --label, as `gh` does when the
-# label does not exist. Prints the origin.
 run_pr_step() {
   local name=$1 mode=$2 want=$3 origin clone status=0
   read -r origin clone <<<"$(setup_clone "$name")"
@@ -213,8 +216,6 @@ grep -q '^pr create' "$scratch/create-gh.log" ||
   fail "with no open PR, the step did not run gh pr create: $(cat "$scratch/create-gh.log")"
 pass "with no open PR and no labels, the step pushes $fix_branch, opens the PR, and exits 0"
 
-# check_body <name>: the PR body a run wrote asks a person to push a fix and
-# never calls the updater hourly, promises an automatic merge, or names Claude.
 check_body() {
   local body
   body=$(cat "$scratch/$1-body.md")
@@ -250,27 +251,33 @@ if grep -Eq '^pr (create|edit)' "$scratch/error-gh.log"; then
 fi
 pass "with the open-PR query failing, the step exits non-zero and leaves $fix_branch and the PR alone"
 
-# The whole expression, not its terms: the test runs the step's script
-# directly, so an extra conjunct that GitHub evaluates false (`false && ...`)
-# would skip the step in CI while every substring check still passed.
-cond=$(sed -n 's/^[[:space:]]*if:[[:space:]]*//p' <<<"$pr_block")
+cond=$(jq -r '.if // empty' <<<"$pr_step")
 want_cond="steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'failure'"
 [[ $cond == "$want_cond" ]] ||
   fail "the reconciliation PR step's if: is '$cond', not '$want_cond'"
 pass 'the reconciliation PR step gates on exactly a changed, failing update'
 
-# --- auto-merge -------------------------------------------------------------
+# --- auto-merge & catalog keys ----------------------------------------------
 
-if grep -Eq 'gh[[:space:]]+pr[[:space:]]+merge' "$workflow"; then
+all_step_runs=$(jq -r '.steps[].run // empty' <<<"$job")
+if grep -Eq 'gh[[:space:]]+pr[[:space:]]+merge' <<<"$all_step_runs"; then
   fail 'a step runs gh pr merge, which would merge an unverified fix into main'
 fi
 pass 'no step runs gh pr merge'
 
+for key in SYNTHETIC_API_KEY OPENROUTER_API_KEY; do
+  if grep -q "$key" "$workflow"; then
+    fail "$key appears in $workflow; model-catalogs.yml owns the catalog snapshots"
+  fi
+done
+pass 'neither catalog key appears in this workflow'
+
 # --- schedule ---------------------------------------------------------------
 
-crons=$(sed -n "s/^[[:space:]]*-[[:space:]]*cron:[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "$workflow")
+[[ $(jq '.on.schedule | length' <<<"$wf_json") == 1 ]] ||
+  fail "expected one cron schedule in $workflow"
+crons=$(jq -r '.on.schedule[0].cron // empty' <<<"$wf_json")
 [[ -n $crons ]] || fail "could not find a cron schedule in $workflow"
-[[ $(wc -l <<<"$crons") -eq 1 ]] || fail "expected one cron schedule, found: $crons"
 read -r minutes hours dom month dow extra <<<"$crons"
 [[ -z $extra && $hours == '*' && $dom == '*' && $month == '*' && $dow == '*' ]] ||
   fail "the cron does not run every hour of every day: $crons"
@@ -289,191 +296,280 @@ minute_gap=$(( (second_minute - first_minute + 60) % 60 ))
 ((minute_gap == 30)) || fail "the cron minutes are not 30 minutes apart: $crons"
 pass "the cron fires every 30 minutes, never on the hour ($crons)"
 
-# --- T3 Code bump commit ----------------------------------------------------
-
-push_script=$(step_run 'Push verified updates directly to main')
-[[ -n $push_script ]] || fail "could not find the push step's run block in $workflow"
-command -v jq >/dev/null || fail 'jq is required'
-
-read -r origin clone <<<"$(setup_clone t3code)"
-new_version=0.0.46-nightly.20261004.2644
-printf '{"version": "%s"}\n' "$new_version" >"$clone/packages/t3code-release.json"
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/t3code-step.log" 2>&1 ||
-  fail "the push step failed on a T3 Code pin change: $(tail -n 5 "$scratch/t3code-step.log")"
-subject=$("$git_bin" --git-dir "$origin" log -1 --format=%s main)
-[[ $subject == "chore(packages): bump t3code to $new_version" ]] ||
-  fail "a T3 Code pin change was not committed as its own bump: $subject"
-files=$("$git_bin" --git-dir "$origin" show --format= --name-only main)
-[[ $files == packages/t3code-release.json ]] ||
-  fail "the t3code bump commit carries more than the pin: $files"
-pass 'a T3 Code pin change lands as its own chore(packages): bump t3code commit'
-
-# --- T3 Code update ---------------------------------------------------------
+# --- Update step (full script execution) ------------------------------------
 
 update_script=$(step_run 'Update flake inputs, agent plugins, and packages')
 [[ -n $update_script ]] || fail "could not find the update step's run block in $workflow"
-grep -Eq '^[^#]*nix run \.#t3code-release -- --output packages/t3code-release\.json' <<<"$update_script" ||
-  fail 'the update step no longer runs t3code-release against packages/t3code-release.json'
-pass 'the update step runs t3code-release against packages/t3code-release.json'
 
-# The T3 Code part of the update step: from its numbered comment to the next
-# blank line. A nightly can be published before its assets and digests are,
-# so t3code-release failing must leave the pin alone and let the step go on
-# to the other updates instead of aborting it under `set -e`.
-t3_script=$(awk '/^# [0-9]+\. Update T3 Code/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $t3_script ]] || fail "could not find the T3 Code part of the update step in $workflow"
-
-# run_t3_step <name> <fails>: runs the T3 Code part with `set -euo pipefail`
-# and a stub `nix` that fails when <fails> is 1 and otherwise writes a new
-# pin, then a marker line that must still run.
-run_t3_step() {
-  local name=$1 fails=$2 origin clone
+# run_update_step <name> [env-assignments...]: runs the full update step script
+# against an argument-checking `nix` stub.
+run_update_step() {
+  local name=$1 origin clone status=0
+  shift
   read -r origin clone <<<"$(setup_clone "$name")"
   mkdir -p "$scratch/$name-bin"
   cat >"$scratch/$name-bin/nix" <<EOF
 #!$BASH
-if [[ $fails == 1 ]]; then
-  printf '{"version": "partial' >packages/t3code-release.json
-  echo 'release 0.0.47-nightly has no digest for linux-x64' >&2
-  exit 1
-fi
-printf '{"version": "0.0.47-nightly.20261005.2700"}\n' >packages/t3code-release.json
+set -euo pipefail
+printf '%s\n' "\$*" >>"$scratch/$name-nix.log"
+case "\$*" in
+  "flake update")
+    exit 0
+    ;;
+  "run .#agent-plugin-release -- --source EveryInc/compound-engineering-plugin --tag-prefix compound-engineering-")
+    printf '%s\n' "\${RESOLVED_TAG:-compound-engineering-v2.68.0}"
+    ;;
+  "flake lock --update-input compound-engineering-plugin")
+    jq --arg rev "\${LOCKED_REV:-2222222222222222222222222222222222222222}" \
+      '.nodes["compound-engineering-plugin"].locked.rev = \$rev' flake.lock >flake.lock.tmp
+    mv flake.lock.tmp flake.lock
+    ;;
+  "run .#claude-desktop-release -- --output packages/claude-desktop-version.json")
+    printf '{"version": "1.1.0"}\n' >packages/claude-desktop-version.json
+    ;;
+  "run .#claude-code-release -- --output packages/claude-code-manifest.json")
+    printf '{"version": "2.1.0"}\n' >packages/claude-code-manifest.json
+    ;;
+  "run .#android-sdk-release -- --output packages/android-sdk-repo.json")
+    printf '{"latest": {"cmdline-tools": "20.0", "platform-tools": "36.0.0"}}\n' >packages/android-sdk-repo.json
+    ;;
+  "run .#mise-release -- --output packages/mise-release.json")
+    printf '{"version": "2026.10.5"}\n' >packages/mise-release.json
+    ;;
+  "run .#chatgpt-release -- --output packages/chatgpt-version.json")
+    if [[ " \${FAIL_SOFT:-} " == *" chatgpt "* ]]; then
+      printf '{"version": "partial' >packages/chatgpt-version.json
+      echo "chatgpt-release: feed failure" >&2
+      exit 1
+    fi
+    printf '{"version": "1.2.0"}\n' >packages/chatgpt-version.json
+    ;;
+  "run .#t3code-release -- --output packages/t3code-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" t3code "* ]]; then
+      printf '{"version": "partial' >packages/t3code-release.json
+      echo "release 0.0.47-nightly has no digest for linux-x64" >&2
+      exit 1
+    fi
+    printf '{"version": "0.0.47-nightly.20261005.2700"}\n' >packages/t3code-release.json
+    ;;
+  "run .#wifiman-desktop-release -- --output packages/wifiman-desktop-version.json")
+    if [[ " \${FAIL_SOFT:-} " == *" wifiman "* ]]; then
+      printf '{"version": "partial' >packages/wifiman-desktop-version.json
+      echo "wifiman-desktop-release: API failure" >&2
+      exit 1
+    fi
+    printf '{"version": "1.1.0"}\n' >packages/wifiman-desktop-version.json
+    ;;
+  "run .#omp-release -- --output packages/omp-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" omp "* ]]; then
+      printf '{"version": "partial' >packages/omp-release.json
+      echo "omp-release: release v1.5.0 has no omp-linux-arm64" >&2
+      exit 1
+    fi
+    printf '{"version": "1.5.0", "platforms": {}}\n' >packages/omp-release.json
+    ;;
+  "run .#npm-release -- --package acpx --output packages/acpx-release.json --lock packages/acpx/package-lock.json")
+    echo "acpx" >>"$clone/npm-calls.log"
+    if [[ " \${FAIL_SOFT:-} " == *" acpx "* ]]; then
+      printf '{"version": "partial' >packages/acpx-release.json
+      printf 'partial' >packages/acpx/package-lock.json
+      echo "npm-release: npm could not write a lock file" >&2
+      exit 1
+    fi
+    printf '{"version": "9.9.9"}\n' >packages/acpx-release.json
+    printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >packages/acpx/package-lock.json
+    ;;
+  "run .#codex-release -- --output packages/codex-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" codex "* ]]; then
+      printf '{"version": "partial' >packages/codex-release.json
+      echo "codex-release: missing darwin asset" >&2
+      exit 1
+    fi
+    printf '{"version": "0.51.0"}\n' >packages/codex-release.json
+    ;;
+  *)
+    echo "unexpected nix invocation: \$*" >&2
+    exit 99
+    ;;
+esac
 EOF
   chmod +x "$scratch/$name-bin/nix"
+  : >"$scratch/$name-output"
   (
     cd "$clone"
-    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
-$t3_script
-echo after-t3code"
-  ) >"$scratch/$name-step.log" 2>&1 ||
-    fail "the T3 Code update aborted the update step ($name): $(tail -n 5 "$scratch/$name-step.log")"
-  grep -qx after-t3code "$scratch/$name-step.log" ||
-    fail "the update step stopped after the T3 Code update ($name)"
-  printf '%s\n' "$clone"
+    env "$@" PATH="$scratch/$name-bin:$PATH" GITHUB_OUTPUT="$scratch/$name-output" \
+      bash -e -c "$update_script"
+  ) >"$scratch/$name-step.log" 2>&1 || status=$?
+  printf '%s %s\n' "$status" "$clone"
 }
 
-clone=$(run_t3_step t3-fails 1)
-grep -q '^::warning' "$scratch/t3-fails-step.log" ||
-  fail "a failing t3code-release emitted no ::warning:: annotation: $(cat "$scratch/t3-fails-step.log")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/t3code-release.json) ]] ||
-  fail 'a failing t3code-release left packages/t3code-release.json changed'
-pass 'a failing t3code-release warns, keeps the pin, and lets the update step go on'
-
-clone=$(run_t3_step t3-succeeds 0)
+read -r status clone <<<"$(run_update_step update-all)"
+((status == 0)) || fail "full update step failed: $(cat "$scratch/update-all-step.log")"
+grep -qx 'changed=true' "$scratch/update-all-output" ||
+  fail "update step did not record changed=true: $(cat "$scratch/update-all-output")"
+if grep -q '^::warning' "$scratch/update-all-step.log"; then
+  fail "succeeding update step emitted a warning: $(cat "$scratch/update-all-step.log")"
+fi
+grep -q 'compound-engineering-plugin/compound-engineering-v2.68.0' "$clone/flake.nix" ||
+  fail "update step did not update compound-engineering tag in flake.nix"
+grep -q 'tag = "compound-engineering-v2.68.0";' "$clone/home/h82/agents/agent-plugin-pins.nix" ||
+  fail "update step did not update tag in home/h82/agents/agent-plugin-pins.nix"
+grep -q 'expectedRev = "2222222222222222222222222222222222222222";' "$clone/home/h82/agents/agent-plugin-pins.nix" ||
+  fail "update step did not update expectedRev in home/h82/agents/agent-plugin-pins.nix"
 grep -q '0.0.47-nightly.20261005.2700' "$clone/packages/t3code-release.json" ||
-  fail 'a succeeding t3code-release did not update the pin'
-if grep -q '^::warning' "$scratch/t3-succeeds-step.log"; then
-  fail 'a succeeding t3code-release still emitted a warning'
+  fail "update step did not update packages/t3code-release.json"
+grep -q '"1.5.0"' "$clone/packages/omp-release.json" ||
+  fail "update step did not update packages/omp-release.json"
+grep -q '"9.9.9"' "$clone/packages/acpx-release.json" &&
+  grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
+  fail "update step did not update acpx pin and lock file"
+[[ $(paste -sd ' ' "$clone/npm-calls.log") == "acpx" ]] ||
+  fail "npm-release did not run for acpx alone"
+pass 'the update step runs flake update, compound-engineering-plugin pin/lock update, and all release updaters'
+
+read -r status clone <<<"$(run_update_step update-soft-fail "FAIL_SOFT=chatgpt t3code wifiman omp acpx codex")"
+((status == 0)) || fail "soft-failing updaters aborted the update step: $(cat "$scratch/update-soft-fail-step.log")"
+for title in "ChatGPT update skipped" "T3 Code update skipped" "WiFiman Desktop update skipped" "OMP update skipped" "acpx update skipped" "Codex update skipped"; do
+  grep -q "^::warning title=$title::" "$scratch/update-soft-fail-step.log" ||
+    fail "missing warning for '$title': $(cat "$scratch/update-soft-fail-step.log")"
+done
+[[ -z $("$git_bin" -C "$clone" status --porcelain \
+  packages/chatgpt-version.json \
+  packages/t3code-release.json \
+  packages/wifiman-desktop-version.json \
+  packages/omp-release.json \
+  packages/acpx-release.json \
+  packages/acpx/package-lock.json \
+  packages/codex-release.json) ]] ||
+  fail "soft-failing updaters left partial changes in their pin or lock files"
+pass 'soft-failing updaters (chatgpt, t3code, wifiman, omp, acpx, codex) warn, restore their files, and let the step continue'
+
+read -r status _ <<<"$(run_update_step update-bad-rev "LOCKED_REV=null")"
+((status != 0)) || fail "update step accepted a non-hex locked revision for compound-engineering-plugin"
+grep -q 'flake.lock recorded no usable revision' "$scratch/update-bad-rev-step.log" ||
+  fail "update step did not report unusable flake.lock revision: $(cat "$scratch/update-bad-rev-step.log")"
+pass 'the update step rejects an unusable locked revision for compound-engineering-plugin'
+
+# --- Verify updates step (consolidated from update-dependencies-verify-status) -
+
+verify_step=$(step_by_name 'Verify updates') ||
+  fail "could not find the Verify updates step in $workflow"
+[[ $(jq -r '.if // empty' <<<"$verify_step") == "steps.update.outputs.changed == 'true'" ]] ||
+  fail "the Verify updates step's if: does not gate on steps.update.outputs.changed == 'true'"
+verify_script=$(jq -r '.run // empty' <<<"$verify_step")
+[[ -n $verify_script ]] || fail "could not find the Verify updates step's run block in $workflow"
+
+run_verify_step() {
+  local failing=$1 dir=$scratch/verify-$1
+  mkdir -p "$dir/bin"
+  cat >"$dir/bin/nix" <<EOF
+#!$BASH
+echo "stub nix \$*"
+if [[ \$1 == "$failing" ]]; then
+  echo "stub nix \$1 failed"
+  exit 1
 fi
-pass 'a succeeding t3code-release updates the pin without a warning'
-
-# --- OMP, its ACP packages, and the catalog keys -----------------------------
-
-# run_part <name> <script> <stub>: runs <script> in a fresh clone with
-# `set -euo pipefail` and a `nix` on PATH whose body is <stub>, then a marker
-# line that must still run.
-run_part() {
-  local name=$1 script=$2 stub=$3 origin clone
-  read -r origin clone <<<"$(setup_clone "$name")"
-  mkdir -p "$scratch/$name-bin"
-  printf '#!%s\n%s\n' "$BASH" "$stub" >"$scratch/$name-bin/nix"
-  chmod +x "$scratch/$name-bin/nix"
+exit 0
+EOF
+  chmod +x "$dir/bin/nix"
+  : >"$dir/output"
   (
-    cd "$clone"
-    PATH=$scratch/$name-bin:$PATH bash -e -c "set -euo pipefail
-$script
-echo after-part"
-  ) >"$scratch/$name-step.log" 2>&1 ||
-    fail "the $name part aborted its step: $(tail -n 5 "$scratch/$name-step.log")"
-  grep -qx after-part "$scratch/$name-step.log" ||
-    fail "the step stopped after the $name part"
-  printf '%s\n' "$clone"
+    cd "$dir"
+    PATH=$dir/bin:$PATH GITHUB_OUTPUT=$dir/output GITHUB_STEP_SUMMARY=$dir/summary \
+      bash -e -c "$verify_script" >/dev/null 2>&1
+  ) || fail "the Verify updates step itself exited non-zero with $failing failing"
+  grep -E '^status=' "$dir/output" || true
 }
 
-grep -Eq '^[^#]*nix run \.#omp-release -- --output packages/omp-release\.json' <<<"$update_script" ||
-  fail 'the update step no longer runs omp-release against packages/omp-release.json'
-omp_script=$(awk '/^# [0-9]+\. Update OMP\./ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $omp_script ]] || fail "could not find the OMP part of the update step in $workflow"
-omp_stub='if [[ ${FAIL:-0} == 1 ]]; then
-  printf "{\"version\": \"partial" >packages/omp-release.json
-  echo "omp-release: release v1.5.0 has no omp-linux-arm64" >&2
-  exit 1
-fi
-printf "{\"version\": \"1.5.0\", \"platforms\": {}}\n" >packages/omp-release.json'
-
-clone=$(FAIL=1 run_part omp-fails "$omp_script" "$omp_stub")
-grep -q '^::warning' "$scratch/omp-fails-step.log" ||
-  fail "a failing omp-release emitted no ::warning:: annotation: $(cat "$scratch/omp-fails-step.log")"
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/omp-release.json) ]] ||
-  fail 'a failing omp-release left packages/omp-release.json changed'
-clone=$(run_part omp-succeeds "$omp_script" "$omp_stub")
-grep -q '"1.5.0"' "$clone/packages/omp-release.json" || fail 'a succeeding omp-release did not update the pin'
-if grep -q '^::warning' "$scratch/omp-succeeds-step.log"; then fail 'a succeeding omp-release still emitted a warning'; fi
-pass 'omp-release runs against packages/omp-release.json; a failure warns and keeps the pin, a success updates it'
-
-npm_script=$(awk '/^# [0-9]+\. Update the shared ACP client/ { on = 1 } on && /^$/ { exit } on' <<<"$update_script")
-[[ -n $npm_script ]] || fail "could not find the shared ACP client part of the update step in $workflow"
-# The stub records each package it was asked for, checks the paths it was
-# given, and fails for the packages FAIL names after leaving both files
-# half-written.
-npm_stub='package= output= lock=
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --package) package=$2; shift ;;
-    --output) output=$2; shift ;;
-    --lock) lock=$2; shift ;;
-  esac
-  shift
+for failing in fmt flake build; do
+  vstatus=$(run_verify_step "$failing")
+  [[ $vstatus == "status=failure" ]] ||
+    fail "a failing nix $failing reported '$vstatus', so the push step would land the update on main"
+  pass "a failing nix $failing reports status=failure"
 done
-echo "$package" >>npm-calls.log
-[[ $output == "packages/$package-release.json" && $lock == "packages/$package/package-lock.json" ]] || {
-  echo "npm-release got --output $output --lock $lock for $package" >&2
-  exit 9
-}
-if [[ " ${FAIL:-} " == *" $package "* ]]; then
-  printf "{\"version\": \"partial" >"$output"
-  printf "partial" >"$lock"
-  echo "npm-release: npm could not write a lock file" >&2
-  exit 1
+
+vstatus=$(run_verify_step none)
+[[ $vstatus == "status=success" ]] || fail "all commands succeeding reported '$vstatus'"
+pass 'all verification commands succeeding reports status=success'
+
+grep -q 'stub nix build failed' "$scratch/verify-build/vm-check.log" 2>/dev/null ||
+  fail 'the VM build log is not in vm-check.log'
+if grep -q 'stub nix build' "$scratch/verify-build/check.log"; then
+  fail 'the VM build log was written into check.log, burying the nix flake check tail'
 fi
-printf "{\"version\": \"9.9.9\"}\n" >"$output"
-printf "{\"lockfileVersion\": 3, \"new\": true}\n" >"$lock"'
+pass 'the VM build log goes to vm-check.log, not check.log'
 
-clone=$(FAIL=acpx run_part npm-fails "$npm_script" "$npm_stub")
-[[ $(paste -sd ' ' "$clone/npm-calls.log") == "acpx" ]] || fail 'npm-release did not run for acpx alone'
-grep -q '^::warning title=acpx update skipped' "$scratch/npm-fails-step.log" || fail 'a failing acpx update emitted no warning'
-[[ -z $("$git_bin" -C "$clone" status --porcelain packages/acpx-release.json packages/acpx/package-lock.json) ]] ||
-  fail 'a failing acpx update left its pin or lock file changed'
-clone=$(run_part npm-succeeds "$npm_script" "$npm_stub")
-grep -q '"9.9.9"' "$clone/packages/acpx-release.json" && grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
-  fail 'a successful acpx update did not replace its pin and lock file'
-pass 'npm-release updates acpx; failure restores its pin and lock file and lets the step continue'
+# --- Push verified updates step (per-pin commits & push-order scenarios) ----
 
-for key in SYNTHETIC_API_KEY OPENROUTER_API_KEY; do
-  if grep -q "$key" "$workflow"; then
-    fail "$key appears in $workflow; model-catalogs.yml owns the catalog snapshots"
-  fi
-done
-pass 'neither catalog key appears in this workflow'
+push_step=$(step_by_name 'Push verified updates directly to main') ||
+  fail "could not find the push step in $workflow"
+want_push_cond="steps.update.outputs.changed == 'true' && steps.verify.outputs.status == 'success'"
+[[ $(jq -r '.if // empty' <<<"$push_step") == "$want_push_cond" ]] ||
+  fail "the push step's if: does not match '$want_push_cond'"
+push_script=$(jq -r '.run // empty' <<<"$push_step")
+[[ -n $push_script ]] || fail "could not find the push step's run block in $workflow"
 
-# Every pin this section adds changed at once: the push step must make one
-# commit per pin, each holding only its own files.
-read -r origin clone <<<"$(setup_clone omp-push)"
+read -r origin clone <<<"$(setup_clone pin-bumps)"
 base_sha=$("$git_bin" -C "$clone" rev-parse HEAD)
+new_t3_version=0.0.46-nightly.20261004.2644
+printf '{"version": "%s"}\n' "$new_t3_version" >"$clone/packages/t3code-release.json"
 printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
 printf '{"version": "0.21.0"}\n' >"$clone/packages/acpx-release.json"
 printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >"$clone/packages/acpx/package-lock.json"
-(cd "$clone" && bash -e -c "$push_script") >"$scratch/omp-push-step.log" 2>&1 ||
-  fail "the push step failed on the OMP pins: $(tail -n 5 "$scratch/omp-push-step.log")"
+sed -i 's/compound-engineering-v2.67.0/compound-engineering-v2.68.0/' \
+  "$clone/flake.nix" "$clone/home/h82/agents/agent-plugin-pins.nix"
+sed -i 's/1111111111111111111111111111111111111111/2222222222222222222222222222222222222222/' \
+  "$clone/flake.lock" "$clone/home/h82/agents/agent-plugin-pins.nix"
+(cd "$clone" && bash -e -c "$push_script") >"$scratch/pin-bumps-step.log" 2>&1 ||
+  fail "the push step failed on the per-pin updates: $(tail -n 5 "$scratch/pin-bumps-step.log")"
 commits=$("$git_bin" --git-dir "$origin" log --reverse --format='%H %s' "$base_sha..main")
-[[ $(wc -l <<<"$commits") == 2 ]] || fail "the OMP pins should land as two commits, found: $commits"
+[[ $(wc -l <<<"$commits") == 4 ]] || fail "expected 4 per-pin commits, found: $commits"
 for expected in \
   'chore(packages): bump omp to 1.5.0|packages/omp-release.json' \
-  'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json'; do
+  'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json' \
+  "chore(packages): bump t3code to $new_t3_version|packages/t3code-release.json" \
+  'chore(agents): bump compound-engineering to compound-engineering-v2.68.0|flake.lock flake.nix home/h82/agents/agent-plugin-pins.nix'; do
   subject=${expected%%|*} want=${expected#*|}
   sha=$(awk -v s="$subject" '{ sha = $1; sub(/^[^ ]+ /, "") } $0 == s { print sha }' <<<"$commits")
   [[ -n $sha ]] || fail "no commit '$subject' among: $commits"
   files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$sha" | sort | paste -sd ' ')
   [[ $files == "$want" ]] || fail "'$subject' carries $files, want $want"
 done
-pass 'the OMP and acpx changes each land as their own commit with only their files'
+pass 'the t3code, omp, acpx, and compound-engineering changes each land as their own commit with only their files'
+
+# --- origin/main unchanged: dirty-tree commit-before-rebase & .gitignore logs
+read -r origin clone <<<"$(setup_clone same)"
+printf 'changed\n' >>"$clone/tracked.txt"
+printf 'nix fmt output\n' >"$clone/fmt.log"
+printf 'nix flake check output\n' >"$clone/check.log"
+printf 'nix build vmChecks output\n' >"$clone/vm-check.log"
+(cd "$clone" && bash -c "$push_script") >"$scratch/same-step.log" 2>&1 ||
+  fail 'the push step failed against an unchanged origin/main (dirty-tree rebase regression)'
+pushed=$("$git_bin" --git-dir "$origin" log -1 --format=%s main)
+[[ $pushed == "chore(deps): update dependencies" ]] ||
+  fail "origin/main does not carry the pushed commit: $pushed"
+tracked=$("$git_bin" --git-dir "$origin" ls-tree -r --name-only main)
+[[ $tracked != *"fmt.log"* && $tracked != *"check.log"* && $tracked != *"vm-check.log"* ]] ||
+  fail "verification logs were committed to main: $tracked"
+pass "succeeds against unchanged origin/main and never commits the verify step's fmt.log/check.log/vm-check.log"
+
+# --- origin/main advanced with an unrelated commit: must rebase and push both
+read -r origin clone <<<"$(setup_clone diverged)"
+other=$scratch/diverged-other
+"$git_bin" clone -q "$origin" "$other"
+"$git_bin" -C "$other" config user.email o@example.invalid
+"$git_bin" -C "$other" config user.name Other
+printf 'concurrent\n' >"$other/other.txt"
+"$git_bin" -C "$other" add other.txt
+"$git_bin" -C "$other" commit -qm 'concurrent commit'
+"$git_bin" -C "$other" push -q origin main
+
+printf 'changed\n' >>"$clone/tracked.txt"
+(cd "$clone" && bash -c "$push_script") >"$scratch/diverged-step.log" 2>&1 ||
+  fail 'the push step failed to rebase onto a diverged origin/main'
+log=$("$git_bin" --git-dir "$origin" log --format=%s main)
+[[ $log == *"chore(deps): update dependencies"* ]] ||
+  fail "origin/main is missing the rebased commit: $log"
+[[ $log == *"concurrent commit"* ]] ||
+  fail "origin/main lost the concurrent commit it should have rebased onto: $log"
+pass 'rebases onto a diverged origin/main and pushes both commits'

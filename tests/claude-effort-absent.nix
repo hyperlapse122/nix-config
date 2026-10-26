@@ -91,7 +91,8 @@ let
       return 0
     }
     {
-      if (codex && ($0 == "| P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |" || $0 == "- Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.")) next
+      if (delivery == "codex" && ($0 == "| P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |" || $0 == "- Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.")) next
+      if (delivery == "omp" && ($0 == "| P7 | CE-required independent Claude or Codex review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |" || $0 == "- Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.")) next
       count = split($0, sentences, /\. /)
       for (i = 1; i <= count; i++) {
         original = sentences[i]
@@ -190,7 +191,12 @@ let
           failed=1
         else
           instructionProblems "$file" ${
-            if target == ".codex/AGENTS.md" then "1" else "0"
+            if target == ".codex/AGENTS.md" then
+              "codex"
+            else if target == ".omp/agent/AGENTS.md" then
+              "omp"
+            else
+              "common"
           } > "$scratch/problems" || {
             sed ${esc "s|^|the instructions at ~/${target} on ${label}: |"} "$scratch/problems" >&2
             failed=1
@@ -238,16 +244,26 @@ let
               echo "self-test: the instruction copies of the first user are missing" >&2
               selfTestFailed=1
             else
-              expectPass 'the real Claude Code copy' instructionProblems "$claudeCopy"
-              expectPass 'the real OMP copy' instructionProblems "$ompCopy"
+              expectPass 'the real Claude Code copy' instructionProblems "$claudeCopy" common
+              expectPass 'the real OMP CE peer exception' instructionProblems "$ompCopy" omp
+              expectFail 'the OMP exception leaked into common delivery' \
+                'a sentence gives a Claude model an effort' instructionProblems "$ompCopy" common
+              expectFail 'the OMP exception leaked into Codex delivery' \
+                'a sentence gives a Claude model an effort' instructionProblems "$ompCopy" codex
+              ompMutant=$(mktemp)
+              { cat "$ompCopy"; printf '%s\n' '- Give every Claude task high effort.'; } > "$ompMutant"
+              expectFail 'blanket effort appended to the OMP exception' \
+                'a sentence gives a Claude model an effort' instructionProblems "$ompMutant" omp
               codexCopy=${baseFiles}/.codex/AGENTS.md
-              expectPass 'the real Codex CE peer exception' instructionProblems "$codexCopy" 1
+              expectPass 'the real Codex CE peer exception' instructionProblems "$codexCopy" codex
               expectFail 'the Codex exception leaked into common delivery' \
-                'a sentence gives a Claude model an effort' instructionProblems "$codexCopy" 0
+                'a sentence gives a Claude model an effort' instructionProblems "$codexCopy" common
+              expectFail 'the Codex exception leaked into OMP delivery' \
+                'a sentence gives a Claude model an effort' instructionProblems "$codexCopy" omp
               codexMutant=$(mktemp)
               { cat "$codexCopy"; printf '%s\n' '- Give every Claude task high effort.'; } > "$codexMutant"
               expectFail 'blanket effort appended to the Codex exception' \
-                'a sentence gives a Claude model an effort' instructionProblems "$codexMutant" 1
+                'a sentence gives a Claude model an effort' instructionProblems "$codexMutant" codex
               appended() { # name, expected message, line; expected message empty means it must pass
                 local name=$1 expect=$2 mutated
                 mutated=$(mktemp)
@@ -423,7 +439,7 @@ pkgs.runCommand "claude-effort-absent-tests"
     # Prints the sentences of an instruction copy that give a Claude model an
     # effort; the status is 1 when there are any.
     instructionProblems() {
-      awk -v codex="''${2:-0}" -f ${sentenceProgram} "$1"
+      awk -v delivery="''${2:-common}" -f ${sentenceProgram} "$1"
     }
 
     # The declared-settings file an activation script hands the merger.
@@ -554,11 +570,11 @@ pkgs.runCommand "claude-effort-absent-tests"
         }
         END { exit !(count == 1 && anchored == 1) }
       ' "$1"; then
-        echo 'the provisioning guide must state the default-effort release-notes step exactly once as an affirmative sentence' >&2
+        echo 'the repository guidelines must state the default-effort release-notes step exactly once as an affirmative sentence' >&2
         return 1
       fi
     }
-    checkReleaseNotes ${../docs/provisioning.md} || failed=1
+    checkReleaseNotes ${../AGENTS.md} || failed=1
     for mutation in removed negated duplicated moved; do
       sentence=${esc releaseNotesSentence} mutation="$mutation" awk '
         {
@@ -572,10 +588,10 @@ pkgs.runCommand "claude-effort-absent-tests"
           print
         }
         END { if (ENVIRON["mutation"] == "moved") print "\n" ENVIRON["sentence"] }
-      ' ${../docs/provisioning.md} > "$scratch/guide-$mutation-release-notes"
-      if applied "the default-effort release-notes step $mutation" ${../docs/provisioning.md} "$scratch/guide-$mutation-release-notes"; then
+      ' ${../AGENTS.md} > "$scratch/guide-$mutation-release-notes"
+      if applied "the default-effort release-notes step $mutation" ${../AGENTS.md} "$scratch/guide-$mutation-release-notes"; then
         expectFail "the default-effort release-notes step $mutation" \
-          'the provisioning guide must state the default-effort release-notes step exactly once as an affirmative sentence' \
+          'the repository guidelines must state the default-effort release-notes step exactly once as an affirmative sentence' \
           checkReleaseNotes "$scratch/guide-$mutation-release-notes"
       fi
     done

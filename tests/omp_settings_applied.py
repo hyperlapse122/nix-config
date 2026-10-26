@@ -315,13 +315,35 @@ class Activation(unittest.TestCase):
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
                 self.assertIs(value["tui"]["mouse"], False)
                 self.assertEqual(value["enabledModels"], expected_patterns)
-                for key, expected in (("modelRoles", {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}),
-                                      ("defaultThinkingLevel", "low"),
+                expected_roles = {
+                    "default": "google-antigravity/gemini-4-argon",
+                    "smol": "google-antigravity/gemini-3.5-flash-lite:low",
+                    "slow": "google-antigravity/gemini-4-argon:high",
+                    "plan": "google-antigravity/gemini-4-argon:high",
+                    "task": "google-antigravity/gemini-3.8-flash:low",
+                    "commit": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                    "web": "web/synthetic",
+                }
+                expected_overrides = {
+                    "sonic": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                    "scout": "google-antigravity/gemini-3.5-flash-lite:low",
+                    "seance": "google-antigravity/gemini-3.5-flash-lite:low",
+                    "task": "google-antigravity/gemini-3.8-flash:low",
+                    "reviewer": "google-antigravity/gemini-3.8-flash:medium",
+                    "security-reviewer": "google-antigravity/gemini-3.8-flash:medium",
+                    "architect": "google-antigravity/gemini-4-argon:high",
+                }
+                for key, expected in (("modelRoles", expected_roles),
+                                      ("task.agentModelOverrides", expected_overrides),
+                                      ("defaultThinkingLevel", "high"),
+                                      ("github.enabled", "true"),
+                                      ("task.enableEffort", "true"),
+                                      ("task.maxEffort", "high"),
                                       ("tui.mouse", "false"),
                                       ("enabledModels", expected_patterns)):
                     result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
                                             capture_output=True, text=True, timeout=20)
-                    actual = json.loads(result.stdout) if key in ("modelRoles", "enabledModels") else result.stdout.strip()
+                    actual = json.loads(result.stdout) if key in ("modelRoles", "task.agentModelOverrides", "enabledModels") else result.stdout.strip()
                     self.assertEqual((result.returncode, actual), (0, expected), result.stderr)
                 self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():

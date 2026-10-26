@@ -1,7 +1,7 @@
 """Drive claude-desktop-release against Debian Packages fixtures.
 
-The helper's network call goes through an overridable command, so these tests
-feed it Packages text fixtures instead of network calls.
+The helper's `curl` command is stubbed on `PATH` so these tests feed it
+Packages text fixtures instead of network calls.
 """
 
 import json
@@ -39,8 +39,14 @@ Filename: pool/main/c/claude-desktop/claude-desktop_2.2553.1_amd64.deb
 SHA256: 6700fdd84e77a6b8c93912c2f69eb5d1e40fa99bcd9d37f438f809ef2a6fe6f8
 """
 
-FAKE_FETCH = """#!/usr/bin/env python3
+DEFAULT_URL = "https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages"
+
+FAKE_CURL = """#!{python}
 import os, sys
+expected = ['-sfL', '--max-time', '60', os.environ['FAKE_EXPECTED_URL']]
+if sys.argv[1:] != expected:
+    sys.stderr.write(f'unexpected curl argv: {{sys.argv[1:]!r}} != {{expected!r}}\\n')
+    sys.exit(99)
 status = int(os.environ.get('FAKE_FETCH_STATUS', '0'))
 if status:
     sys.exit(status)
@@ -53,13 +59,16 @@ class ClaudeDesktopReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.fetch = root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
-        self.fetch.chmod(0o755)
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        curl = self.bin_dir / "curl"
+        curl.write_text(FAKE_CURL.format(python=sys.executable))
+        curl.chmod(0o755)
 
     def run_release(self, body, extra_args=None, status=0):
         env = dict(os.environ)
-        env["CLAUDE_DESKTOP_RELEASE_FETCH"] = f"{sys.executable} {self.fetch}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["FAKE_EXPECTED_URL"] = DEFAULT_URL
         env["FAKE_FETCH_BODY"] = body
         env["FAKE_FETCH_STATUS"] = str(status)
         args = [sys.executable, str(SCRIPT)]

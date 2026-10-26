@@ -40,8 +40,8 @@
     here.
 
   The pin assertion compares two genuinely separate sources: `flake.lock`,
-  which Nix writes, and the registry in home/h82/agents/korean-skills.nix, which
-  a person writes. A tag is mutable and a relock re-resolves the ref, so the
+  which Nix writes, and the pin file in home/h82/agents/korean-skills-pin.nix,
+  which a person writes. A tag is mutable and a relock re-resolves the ref, so the
   tag alone is not a pin -- if upstream moves it, the lock's revision changes
   and this assertion goes red instead of the change arriving as a lock diff.
   The registry's tag must equal the ref the lock recorded, and its skill list
@@ -94,6 +94,8 @@ let
     ".agents/skills"
     ".gemini/config/skills"
   ];
+
+  registry = import ../home/h82/agents/korean-skills-pin.nix;
 
   lock = builtins.fromJSON (builtins.readFile ../flake.lock);
   lockNode = lock.nodes.korean-skills or { };
@@ -206,7 +208,6 @@ let
     let
       label = entry.name;
       userConfig = entry.user;
-      registry = userConfig.my.koreanSkills or null;
       homeFiles = userConfig.home-files or null;
     in
     lib.concatMapStrings (
@@ -240,26 +241,6 @@ let
         failed=1
       ''
     )
-    + lib.optionalString (registry == null) ''
-      echo ${esc "missing my.koreanSkills on ${label}"} >&2
-      failed=1
-    ''
-    + lib.optionalString (registry != null) ''
-      if [ ${esc (registry.expectedRev or "")} != ${esc lockedRev} ]; then
-        echo ${esc "the pinned korean-skills revision drifted on ${label}: registry expects '${registry.expectedRev or ""}', flake.lock resolved '${lockedRev}'"} >&2
-        failed=1
-      fi
-      if [ ${esc (registry.tag or "")} != ${esc originalRef} ]; then
-        echo ${esc "the registry's tag '${registry.tag or ""}' does not match the tag '${originalRef}' flake.lock recorded on ${label}"} >&2
-        failed=1
-      fi
-      if [ ${
-        esc (lib.concatStringsSep " " (sorted (registry.skills or [ ])))
-      } != ${esc (lib.concatStringsSep " " (sorted skillNames))} ]; then
-        echo ${esc "the registry's skills on ${label} must be exactly ${lib.concatStringsSep ", " (sorted skillNames)}"} >&2
-        failed=1
-      fi
-    ''
     + lib.optionalString (homeFiles == null) ''
       echo ${esc "no materialized home-files on ${label}"} >&2
       failed=1
@@ -288,6 +269,21 @@ pkgs.runCommand "korean-skills-tests" { } ''
 
   if [ -z ${esc originalRef} ]; then
     echo 'flake.lock records no tag for the korean-skills input; the pin must name a release tag, not a branch' >&2
+    failed=1
+  fi
+
+  if [ ${esc (registry.expectedRev or "")} != ${esc lockedRev} ]; then
+    echo ${esc "the pinned korean-skills revision drifted: pin expects '${registry.expectedRev or ""}', flake.lock resolved '${lockedRev}'"} >&2
+    failed=1
+  fi
+  if [ ${esc (registry.tag or "")} != ${esc originalRef} ]; then
+    echo ${esc "the pin's tag '${registry.tag or ""}' does not match the tag '${originalRef}' flake.lock recorded"} >&2
+    failed=1
+  fi
+  if [ ${
+    esc (lib.concatStringsSep " " (sorted (registry.skills or [ ])))
+  } != ${esc (lib.concatStringsSep " " (sorted skillNames))} ]; then
+    echo ${esc "the pin's skills must be exactly ${lib.concatStringsSep ", " (sorted skillNames)}"} >&2
     failed=1
   fi
 

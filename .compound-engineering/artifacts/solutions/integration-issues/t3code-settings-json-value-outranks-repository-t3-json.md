@@ -37,16 +37,23 @@ retire_when: "T3 Code changes its project-file-backed tier order so t3.json outr
 
 The module declares `defaultThreadEnvMode = "worktree"` again, on purpose. New Worktree is the chosen machine-wide default, and the cost of that choice is the precedence below: the value outranks every repository's `t3.json`, and only a per-project override in the app beats it. `retiredKeys` in `home/h82/t3code.nix` is an empty list, and `tests/t3code-traits.nix` expects the key in `set` and `remove = [ ]`.
 
-For issue #224 the key was retired instead, and that remains the way to hand a project-file-backed key back to `t3.json`. Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,gemini}.nix` use:
+For issue #224 the key was retired instead, and that remains the way to hand a project-file-backed key back to `t3.json`. Stop declaring the key and retire the stored value through the agent-settings `remove` list, the same `retiredKeys` convention `home/h82/agents/{claude,codex}.nix` use:
 
 ```nix
 # home/h82/t3code.nix
 retiredKeys = [ "defaultThreadEnvMode" ];
-# render passes it through as the declaration's remove field
-declared = render "t3code-declared-settings.json" settings modelSelections retiredKeys;
+# declaration passes remove through as the JSON declaration's remove field
+declared = pkgs.writeText "t3code-declared-settings.json" (
+  builtins.toJSON (declaration {
+    values = settings;
+    owned = modelSelections;
+    remove = retiredKeys;
+    # ...
+  })
+);
 ```
 
-`render` adds `inherit remove;` to the JSON, so activation deletes the key from `settings.json`. Removing a key that is already absent is a no-op. While the key was retired, `tests/t3code-traits.nix` expected `remove = [ "defaultThreadEnvMode" ]`, and putting the key back in `settings`, emptying `retiredKeys`, or dropping `inherit remove` each failed the check. With the key declared again, dropping it from `settings` or putting it back in `retiredKeys` each fails the check.
+`declaration` adds `inherit remove;` to the JSON, so activation deletes the key from `settings.json`. Removing a key that is already absent is a no-op. While the key was retired, `tests/t3code-traits.nix` expected `remove = [ "defaultThreadEnvMode" ]`, and putting the key back in `settings`, emptying `retiredKeys`, or dropping `inherit remove` each failed the check. With the key declared again, dropping it from `settings` or putting it back in `retiredKeys` each fails the check.
 
 The removal runs only when activation runs, which needs a new Home Manager generation; see [activation does not re-run when the generation is unchanged](../best-practices/home-manager-activation-does-not-run-on-every-rebuild.md).
 
@@ -76,4 +83,3 @@ Scripts follow a different rule. Stored `projectSettingsOverrides[*].defaultProj
 
 - [Claude Code ignores global-config keys declared in settings.json](claude-code-global-config-keys-ignored-in-settings-json.md): the same agent-settings merger and `retiredKeys` pattern, for a key written to a file the app never reads.
 - [Checks that read an option value instead of the materialized output](../best-practices/nix-check-reads-option-value-not-materialized-output.md): why a check on the rendered declaration cannot show what the app resolves.
-- [T3 Code accepts a preinstalled Antigravity runtime only in its managed layout](t3code-antigravity-runtime-preinstall-managed-layout.md): other T3 Code state this flake manages under `~/.t3`.

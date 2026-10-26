@@ -1,8 +1,7 @@
 """Drive synthetic-models-watch against the 2026-10-21 catalog snapshot.
 
-The helper's network call and its Nix evaluation go through overridable
-commands, so these tests feed it fixture catalogs and record what the stub
-fetch command received instead of making network calls.
+These tests feed the helper fixture catalogs and record what `curl` and `nix`
+stubs on `PATH` received instead of making network calls.
 
 The models in use are the real home/h82/agents/synthetic-models.nix, never
 a copy: the flake check passes its evaluated JSON in
@@ -66,12 +65,12 @@ QWEN = "hf:Qwen/Qwen3.8-27B"
 # Records its argv and stdin, then answers from a queue of outcomes: an
 # integer exits with that status the way `curl -f` does, anything else is
 # written to stdout as the response body.
-FAKE_FETCH = """#!/usr/bin/env python3
+FAKE_FETCH = """#!{python}
 import json, os, sys
 log = os.environ['FAKE_LOG']
 calls = json.load(open(log)) if os.path.exists(log) else []
-calls.append({'argv': sys.argv[1:], 'stdin': sys.stdin.read(),
-              'env_has_key': 'SYNTHETIC_API_KEY' in os.environ})
+calls.append({{'argv': sys.argv[1:], 'stdin': sys.stdin.read(),
+              'env_has_key': 'SYNTHETIC_API_KEY' in os.environ}})
 json.dump(calls, open(log, 'w'))
 outcomes = json.loads(os.environ['FAKE_OUTCOMES'])
 outcome = outcomes[min(len(calls), len(outcomes)) - 1]
@@ -137,8 +136,10 @@ class WatchTestCase(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.result = self.root / "result.json"
         self.body = self.root / "issue.md"
-        self.fetch = self.root / "fake-fetch"
-        self.fetch.write_text(FAKE_FETCH)
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
+        self.fetch = self.bin_dir / "curl"
+        self.fetch.write_text(FAKE_FETCH.format(python=sys.executable))
         self.fetch.chmod(0o755)
         self.log = self.root / "fetch-log.json"
 
@@ -162,9 +163,9 @@ class WatchTestCase(unittest.TestCase):
         return subprocess.run(args, capture_output=True, text=True, env=full_env)
 
     def run_fetch(self, outcomes, key=None):
-        """Run the helper through the stub fetch command."""
+        """Run the helper through the stub curl command on PATH."""
         env = {
-            "SYNTHETIC_MODELS_FETCH": f"{sys.executable} {self.fetch}",
+            "PATH": f"{self.bin_dir}:{os.environ.get('PATH', '')}",
             "FAKE_LOG": str(self.log),
             "FAKE_OUTCOMES": json.dumps(outcomes),
         }
@@ -575,9 +576,6 @@ class TitleTest(unittest.TestCase):
         self.assertNotIn("uses", title)
         self.assertIn("`hf:org/M-1` removed; no candidate in its lineage", title)
 
-    def test_the_source_evaluation_has_a_default_time_limit(self):
-        self.assertEqual(self.watch.DEFAULT_EVAL_TIMEOUT, 300)
-
     def test_a_title_still_too_long_falls_back_to_a_count(self):
         findings = [self.removed(n, []) for n in range(12)]
         title = self.watch.title(findings)
@@ -659,18 +657,14 @@ class FetchTest(WatchTestCase):
         self.assertIn("attempt 2: status 22 (curl: (22) The requested URL returned error: 429)", proc.stderr)
 
     def test_the_default_fetch_is_curl_with_a_time_limit(self):
-        stubs = self.root / "bin"
-        stubs.mkdir()
-        curl = stubs / "curl"
-        curl.write_text(FAKE_CURL.format(python=sys.executable))
-        curl.chmod(0o755)
+        self.fetch.write_text(FAKE_CURL.format(python=sys.executable))
+        self.fetch.chmod(0o755)
         catalog = self.root / "served.json"
         catalog.write_text(json.dumps(snapshot()))
         log = self.root / "curl-log.json"
         env = dict(os.environ)
-        env.pop("SYNTHETIC_MODELS_FETCH", None)
         env.update({
-            "PATH": f"{stubs}:{env.get('PATH', '')}",
+            "PATH": f"{self.bin_dir}:{env.get('PATH', '')}",
             "SYNTHETIC_API_KEY": KEY,
             "FAKE_CURL_LOG": str(log),
             "FAKE_CATALOG": str(catalog),
@@ -688,17 +682,14 @@ class FetchTest(WatchTestCase):
 
 class SourceTest(WatchTestCase):
     def run_with_nix(self, stub_text, extra=()):
-        stubs = self.root / "bin"
-        stubs.mkdir()
-        nix = stubs / "nix"
+        nix = self.bin_dir / "nix"
         nix.write_text(stub_text.format(python=sys.executable))
         nix.chmod(0o755)
         catalog = self.root / "catalog.json"
         catalog.write_text(json.dumps(without(snapshot(), GLM_FLASH)))
         env = dict(os.environ)
-        env.pop("SYNTHETIC_MODELS_EVAL", None)
         env.update({
-            "PATH": f"{stubs}:{env.get('PATH', '')}",
+            "PATH": f"{self.bin_dir}:{env.get('PATH', '')}",
             "FAKE_NIX_LOG": str(self.root / "nix-log.json"),
             "FAKE_EVAL_SOURCE": str(SOURCE),
         })
@@ -857,7 +848,7 @@ class CatalogSnapshotTest(WatchTestCase):
                 self.assertIn(GLM, proc.stderr)
                 self.assertEqual(self.out.read_text(), self.SENTINEL)
 
-    def test_pricing_that_pi_cannot_parse_exits_non_zero_and_leaves_the_file(self):
+    def test_pricing_that_omp_cannot_parse_exits_non_zero_and_leaves_the_file(self):
         cases = {
             "no input_cache_writes": lambda p: p.pop("input_cache_writes"),
             "a numeric prompt": lambda p: p.update(prompt=0.0000006),
@@ -881,7 +872,7 @@ class CatalogSnapshotTest(WatchTestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(self.out.read_text(), self.SENTINEL)
 
-    def test_pricing_keeps_only_the_four_prices_and_accepts_every_shape_pi_parses(self):
+    def test_pricing_keeps_only_the_four_prices_and_accepts_every_shape_omp_parses(self):
         catalog = snapshot()
         pricing = next(m for m in catalog["data"] if m["id"] == GLM)["pricing"]
         pricing.update(prompt="0", completion="$1.5e-6", input_cache_reads="$0.00000003", extra="$9")

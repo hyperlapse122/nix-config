@@ -44,6 +44,7 @@ let
         ".pi/agent/AGENTS.md"
         ".pi/agent/extensions/nix-config"
         ".pi/agent/skills/test-audit"
+        ".omp/agent/OMP.md"
       ]
   );
   # Real immutable package paths exercise migration without an ownership ledger.

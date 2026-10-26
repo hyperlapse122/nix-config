@@ -39,8 +39,8 @@
     the default route names, which is what a full-tunnel VPN beside
     tailscale0 produces.
 
-  It cannot see what the app or resolved do at runtime; docs/verification.md
-  carries the hardware checks for that. Every failure is collected in one build.
+  It cannot see what the app or resolved do at runtime; confirm that on
+  hardware. Every failure is collected in one build.
 */
 { pkgs, self }:
 let

@@ -34,11 +34,9 @@ require 'json'
 require 'nokogiri'
 require 'open3'
 require 'optparse'
-require 'shellwords'
 require 'uri'
 
 DEFAULT_URL = 'https://dl.google.com/android/repository/repository2-3.xml'
-DEFAULT_FETCH = 'curl -sfL'
 
 TRACKED = %w[cmdline-tools emulator platform-tools].freeze
 DECLARED = %w[build-tools cmake ndk platforms].freeze
@@ -406,15 +404,9 @@ end
 
 # --- End of vendored update.rb.
 
-# Runs the overridable fetch command against one URL and returns the body.
-#
-# The command is overridable so offline tests and sandboxed Nix checks can
-# serve fixtures instead of calling the network.
+# Fetches one URL with curl and returns the body.
 def fetch url
-  command = Shellwords.split(ENV.fetch('ANDROID_SDK_RELEASE_FETCH', DEFAULT_FETCH))
-  raise Failure, 'ANDROID_SDK_RELEASE_FETCH is empty' if command.empty?
-
-  body, status = Open3.capture2(*command, url, stdin_data: '', binmode: true)
+  body, status = Open3.capture2('curl', '-sfL', '--max-time', '60', url, stdin_data: '', binmode: true)
   raise Failure, "fetching #{url} failed with status #{status.exitstatus}" unless status.success?
 
   body

@@ -1,4 +1,4 @@
-"""Check delivered prompt bytes and a small set of independent policy boundaries."""
+"""Check delivered prompt bytes and independent policy boundaries across variants."""
 
 import json
 import re
@@ -10,8 +10,12 @@ CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
 CODEX_OPEN = "{{ if .codex }}"
-CODEX_CLOSE = "{{ end -}}"
+OMP_OPEN = "{{ if .omp }}"
+BLOCK_CLOSE = "{{ end -}}"
 CODEX_HEADING = "Codex role orchestration"
+OMP_TOOLS_HEADING = "OMP tools and Compound Engineering"
+OMP_ROLE_HEADING = "OMP role orchestration"
+
 PROFILES = {
     "P1": ("gpt-6-luna", "low", "Fast"),
     "P2": ("gpt-6-luna", "low", "Fast"),
@@ -19,6 +23,15 @@ PROFILES = {
     "P4": ("gpt-6.1-sol", "medium", "Standard"),
     "P5": ("gpt-6.1-sol", "low", "Standard"),
     "P6": ("gpt-6.1-sol", "medium", "Standard"),
+    "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
+}
+OMP_PROFILES = {
+    "P1": ("google-antigravity/gemini-3.5-flash-lite", "minimal", "Standard"),
+    "P2": ("google-antigravity/gemini-3.5-flash-lite", "low", "Standard"),
+    "P3": ("google-antigravity/gemini-3.8-flash", "low", "Standard"),
+    "P4": ("google-antigravity/gemini-3.8-flash", "medium", "Standard"),
+    "P5": ("google-antigravity/gemini-4-argon", "high", "Standard"),
+    "P6": ("google-antigravity/gemini-4-argon", "high", "Standard"),
     "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
 }
 CODEX_SENTENCES = [
@@ -61,8 +74,6 @@ CODEX_SENTENCES = [
     "Establish required enforced read-only/tool restrictions before peer egress.",
     "If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback.",
 ]
-# Independently approved normative section. Intentional policy changes must update
-# this contract; delivery expectations still come from the independent renderer.
 CODEX_CONTRACT = """- This section applies only to the active Codex harness, including Codex-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions and artifact contracts. Use bounded briefs and shared evidence; retain required review and verification stages.
 - Prefer ChatGPT-authenticated Codex for ordinary work. Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.
 
@@ -129,6 +140,108 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 - Retain every `taskId` and a stable `clientRequestId` for retries of one dispatch. Every new review round uses a fresh delegated task and request ID with the original brief plus prior findings/responses, not a message to its backing thread. A wait timeout leaves live work running; questions, approvals, nested children and transient retries are incomplete states. Consume notifications and bounded status reads when needed; respect existing concurrency and recovery limits.
 - Before launch, map the invoked skill's pre-launch failure, started failure, no-review, retry/replacement and local-lens fallback outcomes to the observed T3 states. Keep explicit recipients fixed where required; disclose any permitted replacement before sending. Preserve surviving findings and identify uncovered lenses after partial failure. On abandonment/deadline, cancel owned live work, retain terminal failure classification and perform the skill's scratch cleanup. Parent tools do not authorize answering a child's reserved approval.
 - Establish required enforced read-only/tool restrictions before peer egress. Instructions asking a shared-checkout child not to write do not enforce read-only access. If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback. Track artifact validity, requested-configuration compliance and verified independence separately; no new runner, schema framework, cache edits or paid fallback is authorized."""
+
+OMP_TOOLS_SENTENCES = [
+    "Use native `web_search` for search and `read` with an HTTP URL for fetching.",
+    "Search uses the managed Synthetic credential command; never read or print keys.",
+    "Collect terminal results through `agent://<id>` and inspect `history://<id>` when needed.",
+    "Use `read` with `issue://<N>` and `pr://<N>` (including list query parameters and `pr://<N>/diff`, `/diff/<i>`, `/diff/all`) for viewing or listing issues, pull requests, and PR diffs.",
+    "Use `github` (`xd://github`) for repository summaries (`repo_view`), repository file reads (`file_read`), searches (`search_issues`, `search_prs`, `search_code`, `search_commits`, `search_repos`), Actions run watching (`run_watch`), PR creation (`pr_create`), PR checkout (`pr_checkout`), and pushing `pr_checkout`-managed branches (`pr_push`).",
+    "Retain `gh` CLI and `git push` as the fallback where OMP's GitHub surfaces lack the required operation, flag, freshness, or safety constraint, including `gh issue create/edit/close/comment`, `gh pr comment/review/edit/merge/ready`, `gh api graphql`, `gh --attach`, explicit cross-checkout `--repo HOST/OWNER/REPO` and `--hostname HOST` qualification, repository `<kind>/short-kebab-slug` branch naming, and uncached head-SHA verification with `git push --force-with-lease=<branch>:<sha>`.",
+    "Preserve existing GitLab rules (`glab` and `mr://` diffs).",
+    "When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.",
+    "GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`.",
+    "The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access.",
+    "Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction.",
+]
+
+OMP_ROLE_SENTENCES = [
+    "This section applies only to the active OMP harness, including OMP-led T3 sessions.",
+    "Restrict ordinary orchestration (`P1`-`P6`) to the selected `google-antigravity` Gemini models; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.",
+    "Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.",
+    "Fill unspecified fields from that profile, never implicitly from the parent.",
+    "Use P3 for unlisted or newly introduced delegated responsibilities.",
+    "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
+    "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied.",
+    'Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.',
+    "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
+    "This exception assigns no blanket Claude effort and changes no Claude settings or session environment.",
+]
+
+OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an HTTP URL for fetching. Search uses the managed Synthetic credential command; never read or print keys.
+- Use `read history://` for the agent roster and `read history://current/full` for the current transcript. Runtime model and effort evidence comes from the protocol state or captured provider requests; configuration and model prose do not establish the effective runtime selection.
+- Outside T3, native `task` runs CLI children. Read its advertised schema before dispatch: batch calls require `context` and `tasks`, with `agent` per task when selecting a non-default agent. Structured results are enabled; pass the owning workflow's `outputSchema` and collect the child's terminal `yield` rather than accepting a prose summary. Collect terminal results through `agent://<id>` and inspect `history://<id>` when needed. A started job, partial yield, cancellation, or failure is not a completed child; preserve full result artifacts and required schema fields.
+- Inside T3, use the injected app-owned MCP delegation, status, and cancellation tools according to their live descriptions; do not replace app delegation with new top-level conversations.
+
+## GitHub tools
+
+- Use `read` with `issue://<N>` and `pr://<N>` (including list query parameters and `pr://<N>/diff`, `/diff/<i>`, `/diff/all`) for viewing or listing issues, pull requests, and PR diffs.
+- Use `github` (`xd://github`) for repository summaries (`repo_view`), repository file reads (`file_read`), searches (`search_issues`, `search_prs`, `search_code`, `search_commits`, `search_repos`), Actions run watching (`run_watch`), PR creation (`pr_create`), PR checkout (`pr_checkout`), and pushing `pr_checkout`-managed branches (`pr_push`).
+- Retain `gh` CLI and `git push` as the fallback where OMP's GitHub surfaces lack the required operation, flag, freshness, or safety constraint, including `gh issue create/edit/close/comment`, `gh pr comment/review/edit/merge/ready`, `gh api graphql`, `gh --attach`, explicit cross-checkout `--repo HOST/OWNER/REPO` and `--hostname HOST` qualification, repository `<kind>/short-kebab-slug` branch naming, and uncached head-SHA verification with `git push --force-with-lease=<branch>:<sha>`.
+- Preserve existing GitLab rules (`glab` and `mr://` diffs).
+
+## Cross-model review identity and permissions
+
+- Compound Engineering skills live in the complete pinned tree under `~/.omp/agent/plugins/compound-engineering`; read referenced assets relative to that tree and retain each skill's recipient permission, tool restrictions, identity checks, result schema, and lifecycle rules.
+- When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.
+- GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`. Automatic unknown-host review remains skipped; never invent an OMP peer token, export the opt-in as a session default, substitute a recognized family for GLM, or turn a missing, failed, or cancelled result into a successful empty review.
+- Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
+
+OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions, and artifact contracts.
+- Restrict ordinary orchestration (`P1`-`P6`) to the selected `google-antigravity` Gemini models; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.
+
+## Profiles and responsibility resolution
+
+| Profile | Responsibility | Model | Effort | Service |
+| --- | --- | --- | --- | --- |
+| P1 | Exact lookup, fixed-field extraction, commit messages, status | `google-antigravity/gemini-3.5-flash-lite` | `minimal` | Standard |
+| P2 | Grounding scouts, bounded classification, evidence summaries | `google-antigravity/gemini-3.5-flash-lite` | `low` | Standard |
+| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `google-antigravity/gemini-3.8-flash` | `low` | Standard |
+| P4 | Complex logic, substantive review, security, concurrency, data integrity | `google-antigravity/gemini-3.8-flash` | `medium` | Standard |
+| P5 | Root orchestration, delegation, progress | `google-antigravity/gemini-4-argon` | `high` | Standard |
+| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `google-antigravity/gemini-4-argon` | `high` | Standard |
+| P7 | CE-required independent Claude or Codex review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
+
+- Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.
+- Resolve current user overrides for their stated task, recipient, fields, and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent.
+- Use P3 for unlisted or newly introduced delegated responsibilities. Root-owned work stays Argon P5/P6; delegated authoring assignments do not move that work out of the root.
+- Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Formatting errors, transient network failures, busy slots, and missing credentials do not justify deeper reasoning.
+
+## CE coverage
+
+| Workflow / identity | Profile and boundary |
+| --- | --- |
+| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | P1; unclear connector semantics P3 |
+| `ce-sweep` media analyzer | P3 for frame/transcript interpretation |
+| `ce-sweep` decisions/reconciliation; `lfg` coordination | P5; conflicting evidence or difficult scope P6 |
+| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | P2; brainstorm claim verifier P3 |
+| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | P2 gathering, P3 applicability/reconciliation |
+| `ce-plan` spec-flow analyzer and data-integrity guardian | P4 |
+| `ce-plan` architecture strategist/complex plan author | P6; ordinary delegated plan author P3 |
+| `ce-work` implementation/design-sync; PR comment resolver | P3; complex diagnosis P4, architecture P6 |
+| `ce-debug` investigation/root cause; `ce-optimize` attribution | P4; exact gathering P1/P2 does not transfer diagnosis |
+| `ce-explain` work-recap/behavior-trace scouts | P2; complex causal tracing P4 |
+| `ce-ideate` evidence researchers/issue intelligence | P2 retrieval, P3 interpretation |
+| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | P3/P6/P7 according to the skill's frame and diversity contract |
+| `ce-pov` verdict/synthesis; independent peer | P6; P7 peer |
+| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, adversarial fallback, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | P4 even on small changes |
+| `ce-code-review` learnings researcher; merge/validator/report leaves | P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings |
+| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security, local adversarial lenses | P4; independent peer P7 |
+| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | P4 regardless of output length |
+| `ce-compound` Related Docs Finder | P2 bounded matching; overlap interpretation P3 |
+| `ce-compound` session historian, synthesis, grounding validation | P3; root retains classification/drafting ownership |
+| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | P4; research-only framework/best-practices gathering P2 |
+| `ce-compound-refresh` investigators/replacement authors | P3; complex behavior verification P4; root retains deletion/metadata decisions |
+| Browser/device/prototype execution, ordinary writing, handoff, general workers | P3 with required modalities/tools; status only P1 |
+| Commit/publication/babysitting coordination | P5; deterministic commands need no extra model call; diagnosis P4 |
+
+## Dispatch and compatibility
+
+- Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied. Do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or external providers.
+- Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a P7 Gemini-led review back to `google-antigravity`.
+- Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment."""
+
 ROLE_PROFILES = {
     "source-persona fetch": "P1; unclear connector semantics P3",
     "media analyzer": "P3 for frame/transcript interpretation",
@@ -154,12 +267,20 @@ ROLE_PROFILES = {
     "Browser/device/prototype": "P3 with required modalities/tools; status only P1",
     "Commit/publication/babysitting": "P5; deterministic commands need no extra model call; diagnosis P4",
 }
+
 HEADINGS = [
-    "GPG and encryption", "File I/O", "Git", "Pull and merge requests", "Markdown",
-    "Korean text", "Tests", "Review findings",
+    "GPG and encryption",
+    "File I/O",
+    "Git",
+    "Pull and merge requests",
+    "Markdown",
+    "Korean text",
+    "Tests",
+    "Review findings",
+    "Browser and device verification",
+    "Cross-model reviews",
 ]
-# These are consequential limits, not an inventory of all approved wording.
-# Delivery equality below covers prose preservation through the renderer.
+
 POLICIES = {
     "GPG and encryption": [
         "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing.",
@@ -207,30 +328,59 @@ POLICIES = {
         "A fix that would reverse a decision the user made, a brainstorm Scope Boundary or `session-settled` entry included, is asked in every run with a person present, autonomous runs included, and listed as `awaits your decision` in a run with no person present.",
         "When the user asked only for a review, report the assessed findings and ask once whether to apply all substantiated fixes.",
     ],
+    "Browser and device verification": [
+        "When running in T3 Code and its browser or device tools are available, prefer `preview_*` tools for browser navigation, inspection, interaction, screenshots, and recordings: start with `preview_status`, then call `preview_open` if no automation-capable preview is attached.",
+        "Respect tab ownership and prefer snapshot-provided locators: read user-driven tabs without taking them over, or open an agent-owned tab (`reuseExistingTab` `false`) for interaction.",
+        "Prefer `device_list`, then `device_open`, for mobile verification, follow the returned exact `agent-device` launcher and session configuration, prefer interactive snapshot refs, and use `device_screenshot` for visual inspection while keeping `xcrun simctl` and `adb` available for builds, logs, port forwarding, and unsupported capabilities.",
+        "Fall back to other browser or device tools only when T3 tools are absent, explicitly unavailable, repeatedly fail as described by active T3 instructions, or the user requests another tool; never switch merely because the preview is initially closed or the first call needs corrected arguments.",
+    ],
+    "Cross-model reviews": [
+        "When running in T3 Code, conduct cross-model reviews through T3 Code delegated child tasks (`delegate_task`) rather than separate top-level conversations or direct CLI peer workers, selecting the requested provider and model from live capabilities and preserving requested model options.",
+        "Run T3 Code cross-model reviews against the current workspace without worktree isolation, and never create a worktree through T3 Code or Git solely for a review; outside T3 Code this rule does not require T3 Code, and implementation tasks may still use worktrees.",
+        "Keep reviewers read-only — enforce read-only tool restrictions where `delegate_task` exposes them, and where T3 Code provides only prompt-level read-only delegation over the shared workspace (unless a harness section requires enforced restrictions), instruct the reviewer to inspect without editing and disclose in Coverage that read-only access was prompt-instructed rather than technically enforced — supply the review brief, relevant diff, and context including uncommitted workspace changes when those are the review target, and report unavailable capabilities rather than silently substituting another model or execution path.",
+    ],
 }
-REMOVED = re.compile(
-    r"\bT3\b|\bPi\b|\.t3/|\bsubagents?\b|\bdelegat(?:e|ed|es|ing|ion)\b|"
-    r"delegate_task|cross-model|model[- ](?:routing|selection|family)|CROSS_MODEL_|"
-    r"claudeAgent|claude-(?:opus|sonnet|haiku)-|gpt-[0-9]|"
+
+REMOVED_COMMON = re.compile(
+    r"\bPi\b|\bOpenCode\b|\.t3/|"
+    r"model[- ](?:routing|selection|family)|CROSS_MODEL_|"
+    r"claudeAgent|claude-(?:opus|sonnet|haiku)-|gpt-[0-9]|gemini-[0-9]|"
     r"\b(?:opus|sonnet|haiku|fable)\b|"
     r"\bacpx\b|Pi over ACP|pi-readonly|thought_level|"
     r"t3_thread_|task_status|task_cancel|clientRequestId|runtimeMode",
     re.IGNORECASE,
 )
+REMOVED_NON_T3_SECTIONS = re.compile(
+    r"\bT3\b|\bsubagents?\b|\bdelegat(?:e|ed|es|ing|ion)\b|delegate_task|cross-model",
+    re.IGNORECASE,
+)
+T3_SCOPED_COMMON_HEADINGS = {"Browser and device verification", "Cross-model reviews"}
 
 
-def render(template, key, codex=False):
-    if template.count(CODEX_OPEN) != 1 or template.count(CODEX_CLOSE) != 1:
+def render(template, key, delivery="common"):
+    if delivery not in ("common", "codex", "omp"):
+        raise ValueError(f"unknown delivery: {delivery}")
+    if template.count(CODEX_OPEN) != 1 or template.count(OMP_OPEN) != 1 or template.count(BLOCK_CLOSE) != 2:
         raise ValueError("missing or repeated delivery conditional")
-    common, conditional = template.split(CODEX_OPEN)
-    extra, trailing = conditional.split(CODEX_CLOSE)
+    common, after_codex_open = template.split(CODEX_OPEN, 1)
+    if BLOCK_CLOSE not in after_codex_open:
+        raise ValueError("unclosed codex conditional")
+    codex_extra, after_codex_close = after_codex_open.split(BLOCK_CLOSE, 1)
+    if not after_codex_close.startswith("\n" + OMP_OPEN):
+        raise ValueError("omp conditional must immediately follow codex conditional")
+    _, after_omp_open = after_codex_close.split(OMP_OPEN, 1)
+    omp_extra, trailing = after_omp_open.split(BLOCK_CLOSE, 1)
     if trailing != "\n":
         raise ValueError("delivery conditional must end the template")
-    template = common + (extra if codex else "")
-    actions = re.findall(r"{{.*?}}", template, flags=re.DOTALL)
+    selected = common
+    if delivery == "codex":
+        selected += codex_extra
+    elif delivery == "omp":
+        selected += omp_extra
+    actions = re.findall(r"{{.*?}}", selected, flags=re.DOTALL)
     if not actions or any(action != ACTION for action in actions):
         raise ValueError("unknown or missing template action")
-    result = template.replace(ACTION, key)
+    result = selected.replace(ACTION, key)
     if "{{" in result or "}}" in result:
         raise ValueError("incomplete template action")
     return result
@@ -248,10 +398,18 @@ def sentence_once(text, sentence):
     )
 
 
-def content_problems(text, key, codex=False):
+def expected_headings(delivery):
+    if delivery == "codex":
+        return HEADINGS + [CODEX_HEADING]
+    if delivery == "omp":
+        return HEADINGS + [OMP_TOOLS_HEADING, OMP_ROLE_HEADING]
+    return list(HEADINGS)
+
+
+def content_problems(text, key, delivery="common"):
     problems = []
     matches = list(re.finditer(r"^# (.+)$", text, re.MULTILINE))
-    if [m[1] for m in matches] != HEADINGS + ([CODEX_HEADING] if codex else []) or not text.startswith("# "):
+    if [m[1] for m in matches] != expected_headings(delivery) or not text.startswith("# "):
         problems.append("unexpected instruction sections")
     sections = {
         match[1]: text[match.end(): matches[i + 1].start() if i + 1 < len(matches) else len(text)]
@@ -269,10 +427,23 @@ def content_problems(text, key, codex=False):
         problems.append("literal card key in fake-key instructions")
     # Store paths are opaque identifiers, not prose or policy.
     prose = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", text)
-    common = prose.split("# " + CODEX_HEADING)[0] if codex else prose
-    if REMOVED.search(common):
+    if delivery == "codex":
+        common = prose.split("# " + CODEX_HEADING, 1)[0]
+    elif delivery == "omp":
+        common = prose.split("# " + OMP_TOOLS_HEADING, 1)[0]
+    else:
+        common = prose
+    if REMOVED_COMMON.search(common):
         problems.append("removed orchestration instructions")
-    if codex:
+    for heading in HEADINGS:
+        sec = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", sections.get(heading, ""))
+        if heading in T3_SCOPED_COMMON_HEADINGS:
+            for approved in POLICIES[heading]:
+                sec = sec.replace("- " + approved, "", 1)
+        if REMOVED_NON_T3_SECTIONS.search(sec):
+            problems.append("removed orchestration instructions")
+            break
+    if delivery == "codex":
         body = sections.get(CODEX_HEADING, "")
         for sentence in CODEX_SENTENCES:
             if not sentence_once(body, sentence):
@@ -288,6 +459,26 @@ def content_problems(text, key, codex=False):
                 problems.append(f"missing Codex responsibility mapping: {role}")
         if body.strip() != CODEX_CONTRACT:
             problems.append("unapproved Codex normative section")
+    elif delivery == "omp":
+        tools_body = sections.get(OMP_TOOLS_HEADING, "")
+        for sentence in OMP_TOOLS_SENTENCES:
+            if not sentence_once(tools_body, sentence):
+                problems.append(f"missing, repeated or negated OMP tools policy: {sentence}")
+        role_body = sections.get(OMP_ROLE_HEADING, "")
+        for sentence in OMP_ROLE_SENTENCES:
+            if not sentence_once(role_body, sentence):
+                problems.append(f"missing, repeated or negated OMP role policy: {sentence}")
+        for profile, values in OMP_PROFILES.items():
+            rows = re.findall(rf"^\| {profile} \| (.+)$", role_body, re.MULTILINE)
+            fields = [field.strip().strip("`") for field in rows[0].split("|")[1:-1]] if len(rows) == 1 else []
+            if fields != list(values):
+                problems.append(f"incorrect OMP profile {profile}")
+        for role, profile in ROLE_PROFILES.items():
+            rows = [line for line in role_body.splitlines() if line.startswith("| ") and role in line]
+            if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
+                problems.append(f"missing OMP responsibility mapping: {role}")
+        if tools_body.strip() != OMP_TOOLS_CONTRACT or role_body.strip() != OMP_ROLE_CONTRACT:
+            problems.append("unapproved OMP normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -298,12 +489,12 @@ def content_problems(text, key, codex=False):
     return problems
 
 
-def delivery_problems(path, expected, key, codex=False):
+def delivery_problems(path, expected, key, delivery="common"):
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError:
         return ["missing delivered instructions"]
-    problems = content_problems(text, key, codex)
+    problems = content_problems(text, key, delivery)
     if text != expected:
         problems.append("delivered instructions differ from independent rendering")
     return problems
@@ -311,72 +502,78 @@ def delivery_problems(path, expected, key, codex=False):
 
 def self_test(template):
     """Negative controls run the same boundaries as real deliveries."""
-    expected = render(template, FAKE_KEY)
-    errors = content_problems(expected, FAKE_KEY)
+    expected = render(template, FAKE_KEY, "common")
+    errors = content_problems(expected, FAKE_KEY, "common")
     if errors:
-        raise AssertionError(f"unmodified rendering fails: {errors}")
+        raise AssertionError(f"unmodified common rendering fails: {errors}")
     for heading, sentences in POLICIES.items():
         for sentence in sentences:
             for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
                 mutated = expected.replace(sentence, replacement, 1)
                 assert mutated != expected
-                assert any(f"policy in {heading}: {sentence}" in problem for problem in content_problems(mutated, FAKE_KEY)), sentence
-    for suffix in ("\n# Pi over ACP\n", "\n- Delegate work to a subagent.\n", "\n- Use T3 Code.\n"):
-        assert "removed orchestration instructions" in content_problems(expected + suffix, FAKE_KEY)
-    delegated = expected.replace("# Tests\n", "# Tests\n\n- Use `delegate_task` for implementation.\n", 1)
-    assert "removed orchestration instructions" in content_problems(delegated, FAKE_KEY)
+                assert any(f"policy in {heading}: {sentence}" in problem for problem in content_problems(mutated, FAKE_KEY, "common")), sentence
+    for snippet in ("\n# Pi over ACP\n",):
+        assert "removed orchestration instructions" in content_problems(expected + snippet, FAKE_KEY, "common")
+    for injected in (
+        "- Delegate work to a subagent.\n",
+        "- Use T3 Code.\n",
+        "- Use `delegate_task` for implementation.\n",
+    ):
+        for mutated in (expected.replace("# Tests\n", "# Tests\n\n" + injected, 1), expected + "\n" + injected):
+            assert "removed orchestration instructions" in content_problems(mutated, FAKE_KEY, "common"), injected
     for alias in ("opus", "sonnet", "haiku", "fable"):
         for role in ("reviewers", "workers"):
             text = expected + f"\n- Run {role} on `{alias}`.\n"
-            assert "removed orchestration instructions" in content_problems(text, FAKE_KEY)
-    assert "incorrect host recipient" in content_problems(expected.replace(FAKE_KEY, CARD_KEY), FAKE_KEY)
-    assert "unrendered placeholder" in content_problems(expected + "\n@missing@\n", FAKE_KEY)
-    assert "unescaped Markdown tilde" in content_problems(expected + "\nabout ~5 minutes\n", FAKE_KEY)
-    # Harmless prose edits are allowed: this is not a complete sentence snapshot.
-    assert not content_problems(expected.replace("PIN is usually cached", "PIN is generally cached"), FAKE_KEY)
+            assert "removed orchestration instructions" in content_problems(text, FAKE_KEY, "common")
+    assert "incorrect host recipient" in content_problems(expected.replace(FAKE_KEY, CARD_KEY), FAKE_KEY, "common")
+    assert "unrendered placeholder" in content_problems(expected + "\n@missing@\n", FAKE_KEY, "common")
+    assert "unescaped Markdown tilde" in content_problems(expected + "\nabout ~5 minutes\n", FAKE_KEY, "common")
+    assert not content_problems(expected.replace("PIN is usually cached", "PIN is generally cached"), FAKE_KEY, "common")
     for bad in (template + "{{ .unknown }}", template + "{{"):
         try:
-            render(bad, FAKE_KEY)
+            render(bad, FAKE_KEY, "common")
         except ValueError:
             pass
         else:
             raise AssertionError("invalid action was accepted")
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "AGENTS.md"
-        assert delivery_problems(path, expected, FAKE_KEY) == ["missing delivered instructions"]
+        assert delivery_problems(path, expected, FAKE_KEY, "common") == ["missing delivered instructions"]
         path.write_text(expected)
-        assert not delivery_problems(path, expected, FAKE_KEY)
+        assert not delivery_problems(path, expected, FAKE_KEY, "common")
         path.write_text(expected + "\nAn unintended appendix.\n")
-        assert "delivered instructions differ from independent rendering" in delivery_problems(path, expected, FAKE_KEY)
-        path.write_text(render(template, CARD_KEY))
-        assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY)
-    codex = render(template, FAKE_KEY, True)
-    errors = content_problems(codex, FAKE_KEY, True)
+        assert "delivered instructions differ from independent rendering" in delivery_problems(path, expected, FAKE_KEY, "common")
+        path.write_text(render(template, CARD_KEY, "common"))
+        assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY, "common")
+
+    codex = render(template, FAKE_KEY, "codex")
+    errors = content_problems(codex, FAKE_KEY, "codex")
     assert not errors, errors
     for sentence in CODEX_SENTENCES:
         for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
             mutated = codex.replace(sentence, replacement, 1)
             assert mutated != codex
-            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, True)), sentence
+            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, "codex")), sentence
     for profile, (model, effort, service) in PROFILES.items():
         row = next(line for line in codex.splitlines() if line.startswith(f"| {profile} |"))
         mutant = row.replace(f"`{model}`", "`gpt-6-astra`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
         assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
         mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
         assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
         mutant = row.replace(f"| {service} |", "| Ultrafast |")
         assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
     for role in ROLE_PROFILES:
         row = next(line for line in codex.splitlines() if line.startswith("| ") and role in line)
-        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, ""), FAKE_KEY, True)
+        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, ""), FAKE_KEY, "codex")
         for assignment in ("inherit root", "P40 regardless of output length", "P3; P4 is prohibited"):
             wrong = row.rsplit(" | ", 1)[0] + f" | {assignment} |"
-            assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, True)
-    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, True)
-    assert "removed orchestration instructions" in content_problems(codex, FAKE_KEY)
+            assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, "codex")
+    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, "codex")
+    assert "unexpected instruction sections" in content_problems(codex, FAKE_KEY, "common")
+    assert "unexpected instruction sections" in content_problems(codex, FAKE_KEY, "omp")
     for contrary in (
         "Use Fast when allowance is unknown.",
         "Always run reviewers at max effort.",
@@ -386,25 +583,41 @@ def self_test(template):
         "Treat returned provider labels as verified serving-family evidence.",
     ):
         for separator in (" ", "\n- "):
-            mutated_template = template.replace(CODEX_CLOSE, separator + contrary + "\n" + CODEX_CLOSE)
-            mutated = render(mutated_template, FAKE_KEY, True)
-            assert "unapproved Codex normative section" in content_problems(mutated, FAKE_KEY, True), contrary
-            with tempfile.TemporaryDirectory() as directory:
-                path = Path(directory) / "AGENTS.md"
-                path.write_text(mutated)
-                assert "unapproved Codex normative section" in delivery_problems(path, mutated, FAKE_KEY, True), contrary
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "AGENTS.md"
-        path.write_text(expected)
-        assert "unexpected instruction sections" in delivery_problems(path, codex, FAKE_KEY, True)
-        path.write_text(codex)
-        assert not delivery_problems(path, codex, FAKE_KEY, True)
-        assert "removed orchestration instructions" in delivery_problems(path, expected, FAKE_KEY)
+            mutated_template = template.replace(BLOCK_CLOSE + "\n" + OMP_OPEN, separator + contrary + "\n" + BLOCK_CLOSE + "\n" + OMP_OPEN, 1)
+            mutated = render(mutated_template, FAKE_KEY, "codex")
+            assert "unapproved Codex normative section" in content_problems(mutated, FAKE_KEY, "codex"), contrary
+
+    omp = render(template, FAKE_KEY, "omp")
+    errors = content_problems(omp, FAKE_KEY, "omp")
+    assert not errors, errors
+    for sentence in OMP_TOOLS_SENTENCES + OMP_ROLE_SENTENCES:
+        for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
+            mutated = omp.replace(sentence, replacement, 1)
+            assert mutated != omp
+            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, "omp")), sentence
+    for profile, (model, effort, service) in OMP_PROFILES.items():
+        row = next(line for line in omp.splitlines() if line.startswith(f"| {profile} |"))
+        mutant = row.replace(f"`{model}`", "`synthetic/hf:zai-org/GLM-5.3`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
+        assert mutant != row
+        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
+        mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
+        assert mutant != row
+        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
+        mutant = row.replace(f"| {service} |", "| Ultrafast |")
+        assert mutant != row
+        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
+        if profile in ("P3", "P4", "P5", "P6"):
+            min_mutant = row.replace(f"`{effort}`", "`minimal`")
+            assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, min_mutant), FAKE_KEY, "omp")
+    assert "unapproved OMP normative section" in content_problems(omp + "\n- Route P3 tasks to `synthetic` automatically.\n", FAKE_KEY, "omp")
+    for role in ROLE_PROFILES:
+        row = next(line for line in omp.splitlines() if line.startswith("| ") and role in line)
+        assert f"missing OMP responsibility mapping: {role}" in content_problems(omp.replace(row, ""), FAKE_KEY, "omp")
+    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, "omp")
+    assert "unexpected instruction sections" in content_problems(omp, FAKE_KEY, "common")
+    assert "unexpected instruction sections" in content_problems(omp, FAKE_KEY, "codex")
 
 
-# Reuse the installed policy contracts for the repository's own instructions.
-# The glossary has different prose, so only its scope and exception boundaries
-# are pinned here, rather than its entire explanation.
 REPOSITORY_SENTENCES = {
     "AGENTS.md": POLICIES["Review findings"],
     "CONCEPTS.md": [
@@ -430,6 +643,7 @@ def repository_doc_problems(text, kind):
     return [
         f"{kind}: missing, repeated or negated review policy: {sentence}"
         for sentence in REPOSITORY_SENTENCES[kind]
+        for _ in (0,)
         if not sentence_once(body, sentence)
     ]
 
@@ -452,7 +666,6 @@ def check_repository_docs(agents, concepts):
 def main():
     template = Path(sys.argv[1]).read_bytes().decode("utf-8")
     self_test(template)
-    # Omitting a manifest runs only the local content and boundary controls.
     if len(sys.argv) == 2:
         return
     entries = json.loads(Path(sys.argv[2]).read_text())
@@ -463,13 +676,13 @@ def main():
     expected_renderings = {}
     for entry in entries:
         key = entry["key"]
-        for delivery in entry["paths"]:
-            path, codex = delivery["path"], delivery["codex"]
-            variant = (key, codex)
+        for item in entry["paths"]:
+            path, delivery = item["path"], item["delivery"]
+            variant = (key, delivery)
             if variant not in expected_renderings:
-                expected_renderings[variant] = render(template, key, codex)
+                expected_renderings[variant] = render(template, key, delivery)
             expected = expected_renderings[variant]
-            for problem in delivery_problems(Path(path), expected, key, codex):
+            for problem in delivery_problems(Path(path), expected, key, delivery):
                 print(f"{entry['name']} {path}: {problem}", file=sys.stderr)
                 failed = True
         git = Path(entry["git"])

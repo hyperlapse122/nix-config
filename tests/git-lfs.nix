@@ -1,17 +1,19 @@
 /*
   Check interface:
 
-    import ./tests/git-lfs.nix { inherit pkgs self; }
+    import ./tests/git-lfs.nix { inherit pkgs self fixtures; }
 
-  Asserts that Git LFS works for user `h82` on every configuration
-  `tests/lib/configurations.nix` yields, bootstrap outputs included, without a
+  Asserts that Git LFS works for user `h82` on every Home Manager user
+  `tests/lib/configurations.nix` yields (NixOS and non-NixOS hosts, bootstrap
+  outputs included), without a
   mutable ~/.gitconfig or a manual `git lfs install`. The profile enables
   Home Manager's programs.git.lfs, which installs git-lfs and renders the
   filter.lfs driver into git/config. Per configuration:
 
   - home.path carries bin/git-lfs.
-  - with the rendered git/config installed at $XDG_CONFIG_HOME/git/config and
-    no ~/.gitconfig, committing a file that .gitattributes routes through
+  - with the materialized home-files/.config/git/config installed at
+    $XDG_CONFIG_HOME/git/config and no ~/.gitconfig, committing a file that
+    .gitattributes routes through
     filter=lfs stores an LFS pointer carrying the content's sha256, not the
     content itself.
   - deleting that file and checking it out again restores the content, not the
@@ -37,11 +39,15 @@
   fixture step aborts the build under errexit instead. The helper's guard runs
   first, so an empty configuration list fails the build instead of passing it.
 */
-{ pkgs, self }:
+{
+  pkgs,
+  self,
+  fixtures ? [ ],
+}:
 let
   inherit (pkgs) lib;
 
-  configurations = import ./lib/configurations.nix { inherit pkgs self; };
+  configurations = import ./lib/configurations.nix { inherit pkgs self fixtures; };
 
   esc = value: lib.escapeShellArg (toString value);
 
@@ -49,14 +55,18 @@ let
     entry:
     let
       homePath = entry.user.home.path or "";
-      gitConfig = entry.user.xdg.configFile."git/config".source or "";
+      gitConfig =
+        if (entry.user.home-files or null) != null then
+          "${entry.user.home-files}/.config/git/config"
+        else
+          "";
     in
     ''
       checkHost ${esc entry.name} ${esc homePath} ${esc gitConfig}
     '';
 in
 pkgs.runCommand "git-lfs-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
-  ${configurations.guard}
+  ${configurations.userGuard}
   failures=$PWD/failures
   : > "$failures"
 
@@ -101,7 +111,7 @@ pkgs.runCommand "git-lfs-tests" { nativeBuildInputs = [ pkgs.git ]; } ''
     cmp -s data.bin "$work/content" || fail "checkout did not restore data.bin content"
   )
 
-  ${lib.concatMapStringsSep "\n" assertEntry configurations.entries}
+  ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}
 
   if [ -s "$failures" ]; then
     cat "$failures" >&2

@@ -16,8 +16,7 @@
     #
     # The Gem80 rule matches the vendor and product IDs on the parent chain, so it
     # tags every hidraw node of the keyboard, not only the VIA interface.
-    # `docs/verification.md` has the hardware check that decides whether to pin it
-    # to one interface.
+    # Hardware testing decides whether to pin it to one interface.
     services.udev.packages = [
       (pkgs.writeTextDir "etc/udev/rules.d/60-nuphy-gem80.rules" ''
         # NuPhy Gem80 hidraw access for the VIA/WebHID configurator.

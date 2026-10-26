@@ -138,4 +138,4 @@ SKIPPED
 
 ## Out of scope
 
-Whether the boot menu's entries on the running machine actually correspond to surviving generations is not a build-time question. Nothing in this repository rewrites `/boot` outside a rebuild, so that correspondence rests on the retention floor holding; `docs/verification.md` carries the hardware checks.
+Whether the boot menu's entries on the running machine actually correspond to surviving generations is not a build-time question. Nothing in this repository rewrites `/boot` outside a rebuild, so that correspondence rests on the retention floor holding; confirming boot-menu correspondence on the machine stays a hardware check (see `CONCEPTS.md` and `AGENTS.md`).

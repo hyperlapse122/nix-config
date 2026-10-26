@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/nr-darwin, the apply helper on a macOS host. Every run uses
-# NR_ROOT to point /etc at a fixture tree. Most runs set NR_DRY_RUN to print
-# the resolved commands; the apply-order tests instead put logging stubs of
-# nix, nix-env, and sudo first on PATH, so nothing is built, activated, or run
-# as root.
+# NR_ROOT to point /etc at a fixture tree and puts logging stubs of nix,
+# nix-env, and sudo first on PATH, so nothing is built, activated, or run as
+# root.
 set -euo pipefail
 
 script=${1:-}
@@ -21,9 +20,6 @@ pass() { printf 'nr-darwin: ok - %s\n' "$*"; }
 git_bin=$(command -v git) || fail 'git is required'
 # The stubs run in a build sandbox, which has no /usr/bin/env.
 bash_bin=$(command -v bash)
-rendered=$scratch/nr
-sed -e "s|@GIT@|$git_bin|" "$script" >"$rendered"
-chmod +x "$rendered"
 
 export HOME=$scratch/home
 identity=$HOME/.config/nix-config/age/key.txt
@@ -68,27 +64,27 @@ EOF
 chmod +x "$stubs/nix" "$stubs/nix-env" "$stubs/sudo" "$system_out/activate"
 export PATH=$stubs:$PATH
 
-run() { NR_DRY_RUN=1 "$rendered" "$@" --flake-dir "$repo"; }
-apply() { : >"$log"; "$rendered" "$@" --flake-dir "$repo"; }
+run() { : >"$log"; "$script" "$@" --flake-dir "$repo"; }
+apply() { : >"$log"; "$script" "$@" --flake-dir "$repo"; }
 
 printf 'host=fixturehost\nvariant=production\n' >"$marker"
 
 # --- host resolution ---------------------------------------------------------
 
-out=$(run build 2>&1) || fail "build with a marker failed: $out"
-[[ $out == "nix build --no-link --print-out-paths $repo#darwinConfigurations.fixturehost.system" ]] ||
-  fail "build did not resolve the darwin system of the marker's host: $out"
+run build >/dev/null 2>&1 || fail "build with a marker failed: $(cat "$log")"
+[[ $(<"$log") == "nix build --no-link --print-out-paths $repo#darwinConfigurations.fixturehost.system" ]] ||
+  fail "build did not resolve the darwin system of the marker's host: $(cat "$log")"
 pass 'build takes the host from /etc/nix-config-host and builds darwinConfigurations.<host>.system'
 
-out=$(run build --host other --bootstrap 2>&1) || fail "build --host --bootstrap failed: $out"
-[[ $out == *"#darwinConfigurations.other-bootstrap.system" ]] ||
-  fail "--host and --bootstrap did not select the bootstrap output: $out"
+run build --host other --bootstrap >/dev/null 2>&1 || fail "build --host --bootstrap failed: $(cat "$log")"
+[[ $(<"$log") == *"#darwinConfigurations.other-bootstrap.system" ]] ||
+  fail "--host and --bootstrap did not select the bootstrap output: $(cat "$log")"
 pass '--host overrides the marker and --bootstrap selects the bootstrap output'
 
 mv "$marker" "$scratch/marker"
 if out=$(run build 2>&1); then fail "build without a marker or --host succeeded: $out"; fi
 [[ $out == *--host* ]] || fail "the missing host is not explained: $out"
-[[ $out != *"nix build"* ]] || fail "nr built something before naming the host: $out"
+[[ ! -s $log ]] || fail "nr built something before naming the host: $(cat "$log")"
 pass 'without a marker, nr requires --host before building anything'
 mv "$scratch/marker" "$marker"
 
@@ -116,27 +112,27 @@ expect_refusal() {
   shift 2
   if out=$(run switch "$@" 2>&1); then fail "$label: switch succeeded: $out"; fi
   [[ $out == *"$needle"* ]] || fail "$label: the refusal does not name $needle: $out"
-  [[ $out != *"nix build"* && $out != *nix-env* && $out != *activate* ]] ||
-    fail "$label: nr went on to build or activate: $out"
+  [[ ! -s $log ]] ||
+    fail "$label: nr went on to build or activate: $(cat "$log")"
 }
 
 expect_refusal 'production without an identity' "$identity"
 expect_refusal 'production without an identity, recovery hint' 'recover-age-identity --user --host fixturehost'
 pass 'production without an identity stops nr before it builds and names the file'
 
-out=$(run switch --bootstrap 2>&1) || fail "bootstrap without an identity was refused: $out"
+run switch --bootstrap >/dev/null 2>&1 || fail "bootstrap without an identity was refused: $(cat "$log")"
 pass 'bootstrap does not require an identity'
 
 touch "$identity"
 
 printf 'host=fixturehost\nvariant=bootstrap\n' >"$marker"
 expect_refusal 'production switch from a bootstrap marker' '--host fixturehost'
-out=$(run switch --host fixturehost 2>&1) || fail "--host did not allow the move to production: $out"
-[[ $out == *"#darwinConfigurations.fixturehost.system"* ]] || fail "--host did not target production: $out"
-out=$(run switch --bootstrap 2>&1) || fail "--bootstrap from a bootstrap marker was refused: $out"
-[[ $out == *"#darwinConfigurations.fixturehost-bootstrap.system"* ]] ||
-  fail "--bootstrap did not target the bootstrap output: $out"
-out=$(run build 2>&1) || fail "build from a bootstrap marker was refused: $out"
+run switch --host fixturehost >/dev/null 2>&1 || fail "--host did not allow the move to production: $(cat "$log")"
+[[ $(head -n1 "$log") == *"#darwinConfigurations.fixturehost.system" ]] || fail "--host did not target production: $(cat "$log")"
+run switch --bootstrap >/dev/null 2>&1 || fail "--bootstrap from a bootstrap marker was refused: $(cat "$log")"
+[[ $(head -n1 "$log") == *"#darwinConfigurations.fixturehost-bootstrap.system" ]] ||
+  fail "--bootstrap did not target the bootstrap output: $(cat "$log")"
+run build >/dev/null 2>&1 || fail "build from a bootstrap marker was refused: $(cat "$log")"
 pass 'a bootstrap marker refuses a production switch unless --host or --bootstrap asks for it'
 printf 'host=fixturehost\nvariant=production\n' >"$marker"
 
@@ -144,13 +140,6 @@ printf 'host=fixturehost\nvariant=production\n' >"$marker"
 
 profile=/nix/var/nix/profiles/system
 nix_env=$stubs/nix-env
-
-out=$(run switch 2>&1) || fail "dry-run switch failed: $out"
-expected="nix build --no-link --print-out-paths $repo#darwinConfigurations.fixturehost.system
-sudo -- $nix_env -p $profile --set <system>
-sudo -- <system>/activate"
-[[ $out == "$expected" ]] || fail "dry-run switch printed the wrong plan: $out"
-pass 'dry-run switch prints build, register, activate in that order'
 
 apply switch >/dev/null 2>&1 || fail "switch with stubs failed: $(cat "$log")"
 expected="nix build --no-link --print-out-paths $repo#darwinConfigurations.fixturehost.system
@@ -172,10 +161,5 @@ apply build >/dev/null 2>&1 || fail "build with stubs failed: $(cat "$log")"
 [[ $(<"$log") == "nix build --no-link --print-out-paths $repo#darwinConfigurations.fixturehost.system" ]] ||
   fail "build did more than build: $(cat "$log")"
 pass 'build builds the system and activates nothing'
-
-out=$(NR_SYSTEM_OUT=/nix/store/fake-system run switch 2>&1) || fail "switch with a prebuilt path failed: $out"
-[[ $out != *"nix build"* && $out == *"/nix/store/fake-system/activate"* ]] ||
-  fail "a prebuilt path did not replace the build: $out"
-pass 'a prebuilt store path skips the build'
 
 printf 'nr-darwin: all tests passed\n'
