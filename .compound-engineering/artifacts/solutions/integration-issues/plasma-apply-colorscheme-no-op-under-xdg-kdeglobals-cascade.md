@@ -133,7 +133,7 @@ The activation runs only when the Home Manager generation changes, not on every 
   - joining nested group levels into one group name
 
   Repeat this after changing the activation or the fixture.
-- **Keep hardware verification separate.** The check cannot observe whether a running Plasma session repaints. That belongs in `docs/verification.md`.
+- **Keep hardware verification separate.** The check cannot observe whether a running Plasma session repaints; confirm that on hardware and report it separately from repository checks (see `CONCEPTS.md` and `AGENTS.md`).
 
 ## Related
 
