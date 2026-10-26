@@ -13,6 +13,15 @@ def environment(home):
             "SYNTHETIC_API_KEY": "sk-fake-synthetic",
             "OPENROUTER_API_KEY": "sk-fake-openrouter"}
 
+def expected_name(provider, row):
+    if provider == "synthetic":
+        name = row["display_name"]
+        if row["id"].startswith("infinite:") and not name.endswith(" (infinite)"):
+            return name + " (infinite)"
+        return name
+    return row["name"].removeprefix("OpenRouter: ")
+
+
 
 def run(omp, documents, snapshots):
     providers = json.loads(Path(documents["models.yml"]).read_text())["providers"]
@@ -41,6 +50,7 @@ def run(omp, documents, snapshots):
             assert not missing, f"snapshot selectors missing: {sorted(missing)}"
             for row in rows:
                 actual = listed[f"{provider}/{row['id']}"]
+                assert actual["name"] == expected_name(provider, row), (row["id"], actual["name"])
                 modalities = row.get("input_modalities", (row.get("architecture") or {}).get("input_modalities", []))
                 assert actual["input"] == [m for m in ("text", "image") if m in modalities], row["id"]
                 context = row.get("context_length")
@@ -63,7 +73,7 @@ def run(omp, documents, snapshots):
 
 
 if __name__ == "__main__":
-    omp, manifest, synthetic, openrouter, helpers, catalog_module = sys.argv[1:]
+    omp, manifest, synthetic, openrouter, helpers, catalog_module, declarations_script = sys.argv[1:]
     with tempfile.TemporaryDirectory() as temporary:
         fixture = Path(temporary)
         (fixture / "catalog.nix").write_bytes(Path(catalog_module).read_bytes())
@@ -81,6 +91,43 @@ if __name__ == "__main__":
     assert selected["synthetic"]["data"] == [{"id": "unchanged-synthetic"}]
     assert [row["id"] for row in selected["openrouter"]["data"]] == [
         "openrouter/future-model", "openrouter/bodybuilder-new"], "raw-ID regex and exact exclusion"
+    with tempfile.TemporaryDirectory() as temporary:
+        fixture = Path(temporary)
+        bundled = subprocess.run([omp, "models", "--json"], cwd=fixture,
+                                 env={**environment(fixture), "HTTP_PROXY": "http://127.0.0.1:1",
+                                      "HTTPS_PROXY": "http://127.0.0.1:1", "ALL_PROXY": "http://127.0.0.1:1",
+                                      "NO_PROXY": ""},
+                                 capture_output=True, text=True, timeout=60)
+        assert bundled.returncode == 0, bundled.stderr
+        (fixture / "bundled.json").write_text(bundled.stdout)
+        (fixture / "synthetic.json").write_text(json.dumps({"data": [
+            {"id": "infinite:small:vision", "display_name": "Shared Flash"},
+            {"id": "infinite:large:text", "display_name": "Already Tagged (infinite)"},
+            {"id": "hf:org/Model", "display_name": "Shared Flash"},
+            {"id": "syn:small:text", "display_name": "syn:small:text"},
+        ]}))
+        (fixture / "openrouter.json").write_text(json.dumps({"data": [
+            {"id": "infinite:foreign", "name": "Foreign Infinite"},
+        ]}))
+        rendered_path = fixture / "models.yml"
+        rendered_run = subprocess.run([
+            sys.executable, "-I", declarations_script,
+            str(fixture / "synthetic.json"), str(fixture / "openrouter.json"),
+            str(fixture / "bundled.json"), "/bin/false", "/bin/false", str(rendered_path),
+        ], capture_output=True, text=True, timeout=60)
+        assert rendered_run.returncode == 0, rendered_run.stderr
+        agent = fixture / ".omp/agent"
+        agent.mkdir(parents=True, exist_ok=True)
+        (agent / "models.yml").write_bytes(rendered_path.read_bytes())
+        loaded = subprocess.run([omp, "models", "--json"], cwd=fixture,
+                                env=environment(fixture), capture_output=True, text=True, timeout=60)
+        assert loaded.returncode == 0, loaded.stderr
+        names = {row["selector"]: row["name"] for row in json.loads(loaded.stdout)["models"]}
+    assert names["synthetic/infinite:small:vision"] == "Shared Flash (infinite)", names
+    assert names["synthetic/infinite:large:text"] == "Already Tagged (infinite)", names
+    assert names["synthetic/hf:org/Model"] == "Shared Flash", names
+    assert names["synthetic/syn:small:text"] == "syn:small:text", names
+    assert names["openrouter/infinite:foreign"] == "Foreign Infinite", names
     for helper, env, expected in (
         ("omp-synthetic-key", {}, "sk-fake-file"),
         ("omp-synthetic-key", {"SYNTHETIC_API_KEY": "sk-fake-override"}, "sk-fake-override"),

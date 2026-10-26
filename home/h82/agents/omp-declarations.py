@@ -30,8 +30,11 @@ def entry(row, provider):
     pricing = row.get("pricing") or {}
     top = row.get("top_provider") or {}
     modalities = row.get("input_modalities") if synthetic else (row.get("architecture") or {}).get("input_modalities")
+    name = row["display_name" if synthetic else "name"]
+    if synthetic and row["id"].startswith("infinite:") and not name.endswith(" (infinite)"):
+        name += " (infinite)"
     result = {
-        "name": row["display_name" if synthetic else "name"],
+        "name": name,
         "input": [m for m in ("text", "image") if m in (modalities or [])],
         "cost": {key: per_million(pricing.get(source)) for key, source in {
             "input": "prompt", "output": "completion",

@@ -285,7 +285,8 @@ def exchange(config, home, work):
         server.server_close()
 
 
-def catalog(config, home, work, expected):
+def catalog(config, home, work, expected_names):
+    expected = set(expected_names)
     client = Acp(config, home, work, {})
     try:
         client.initialize()
@@ -293,6 +294,11 @@ def catalog(config, home, work, expected):
         assert expected == values(state, "model"), ("Unified scope changed selected selectors",
                                                    len(values(state, "model")), sorted(values(state, "model"))[:8],
                                                    sorted(expected - values(state, "model"))[:8])
+        actual_names = {row["value"]: row["name"] for row in option(state, "model")["options"]}
+        assert actual_names == expected_names, {
+            k: (actual_names.get(k), expected_names.get(k))
+            for k in sorted(expected) if actual_names.get(k) != expected_names.get(k)
+        }
         session = state["sessionId"]
         # T3's custom selectors must all be selectable by the real ACP runtime.
         for selector in sorted(expected):
@@ -343,10 +349,19 @@ if __name__ == "__main__":
     deliveries, synthetic, openrouter = sys.argv[1:]
     entries = json.loads(Path(deliveries).read_text())
     assert entries, "no T3-enabled host tested"
-    expected = {f"{provider}/{row['id']}" for provider, path in (("synthetic", synthetic), ("openrouter", openrouter))
-                for row in json.loads(Path(path).read_text())["data"]
-                if provider == "synthetic" or (row["id"].startswith("openrouter/")
-                                               and row["id"] != "openrouter/bodybuilder")}
+    expected_names = {
+        f"{provider}/{row['id']}": (
+            row["display_name"] + " (infinite)"
+            if provider == "synthetic" and row["id"].startswith("infinite:")
+            and not row["display_name"].endswith(" (infinite)")
+            else (row["display_name"] if provider == "synthetic" else row["name"].removeprefix("OpenRouter: "))
+        )
+        for provider, path in (("synthetic", synthetic), ("openrouter", openrouter))
+        for row in json.loads(Path(path).read_text())["data"]
+        if provider == "synthetic" or (row["id"].startswith("openrouter/")
+                                       and row["id"] != "openrouter/bodybuilder")
+    }
+    expected = set(expected_names)
     for entry in entries:
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary)
@@ -362,7 +377,7 @@ if __name__ == "__main__":
             assert overlay["defaultThinkingLevel"] == "low"
             work = prepare(entry, home)
             common = (home / ".omp/agent/config.yml").read_bytes()
-            catalog(api, home, work, expected)
+            catalog(api, home, work, expected_names)
             exchange(api, home, work)
             print("ACP prompt/native tool/MCP result/cancel/persistent resume passed")
             assert (home / ".omp/agent/config.yml").read_bytes() == common, "ACP scope changed common CLI settings"
