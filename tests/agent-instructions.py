@@ -35,6 +35,10 @@ OMP_PROFILES = {
     "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
 }
 CODEX_SENTENCES = [
+    "When a skill requires interactive setup and a person can reply in this conversation, use a usable question tool or ask the next required question in ordinary chat with the same choices, order, and consent gates.",
+    "Tool absence or mode restrictions alone do not make that conversation non-interactive; this overrides a skill's tool-based non-interactive inference.",
+    "After each required chat question, yield and wait for the user's actual answer before dependent work; never invent configuration, source selection, or approval, and never treat elapsed time or a preselected option as an answer.",
+    "Honor explicitly non-interactive or headless invocations and unattended scheduled or piped runs; do not substitute chat for required secret entry or protected authentication and permission mechanisms.",
     "This section applies only to the active Codex harness, including Codex-led T3 sessions.",
     "Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.",
     "Fill unspecified fields from that profile, never implicitly from the parent.",
@@ -76,6 +80,10 @@ CODEX_SENTENCES = [
 ]
 CODEX_CONTRACT = """- This section applies only to the active Codex harness, including Codex-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions and artifact contracts. Use bounded briefs and shared evidence; retain required review and verification stages.
 - Prefer ChatGPT-authenticated Codex for ordinary work. Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.
+- When a skill requires interactive setup and a person can reply in this conversation, use a usable question tool or ask the next required question in ordinary chat with the same choices, order, and consent gates.
+- Tool absence or mode restrictions alone do not make that conversation non-interactive; this overrides a skill's tool-based non-interactive inference.
+- After each required chat question, yield and wait for the user's actual answer before dependent work; never invent configuration, source selection, or approval, and never treat elapsed time or a preselected option as an answer.
+- Honor explicitly non-interactive or headless invocations and unattended scheduled or piped runs; do not substitute chat for required secret entry or protected authentication and permission mechanisms.
 
 ## Profiles and responsibility resolution
 
