@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-24T06:28:11Z"
+    cursor: "2026-10-26T03:23:17Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -349,7 +349,7 @@ items:
     updatedAt: "2026-10-22T17:08:43Z"
   "gh-issues:hyperlapse122/nix-config#309":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Delegate some roles to Codex when its usage allows; follow-up waiting on #308 and a usage measurement."
     author_class: "teammate"
@@ -359,7 +359,8 @@ items:
     id: "hyperlapse122/nix-config#309"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/309"
-    updatedAt: "2026-10-22T16:43:29Z"
+    source_gone_reason: "closed manually at source by owner (2026-10-26) after completing #308/#314 live checklist; no separate code-fix PR"
+    updatedAt: "2026-10-26T02:10:12Z"
   "gh-issues:hyperlapse122/nix-config#310":
     source: "gh-issues"
     status: "closed"
@@ -484,16 +485,21 @@ items:
     updatedAt: "2026-10-23T02:56:10Z"
   "gh-issues:hyperlapse122/nix-config#327":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Prefer harness-native file I/O in shared agent instructions while preserving secret handling."
+    fix_ref: "#339"
+    verified_merge_sha: "09e9f5aaf56f3bb549c69bc8499de9c208737e4d"
+    verified_at: "2026-10-26T03:41:47Z"
     author_class: "teammate"
+    claimed_fix_ref: "#339"
+    closeout_decision: "PR #339 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#327"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/327"
-    updatedAt: "2026-10-23T07:46:12Z"
+    updatedAt: "2026-10-24T10:25:15Z"
   "gh-issues:hyperlapse122/nix-config#328":
     source: "gh-issues"
     status: "in_plan"
@@ -505,7 +511,7 @@ items:
     id: "hyperlapse122/nix-config#328"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/328"
-    updatedAt: "2026-10-23T07:50:15Z"
+    updatedAt: "2026-10-24T09:09:36Z"
   "gh-issues:hyperlapse122/nix-config#329":
     source: "gh-issues"
     status: "in_plan"
@@ -517,10 +523,10 @@ items:
     id: "hyperlapse122/nix-config#329"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/329"
-    updatedAt: "2026-10-23T07:51:08Z"
+    updatedAt: "2026-10-24T09:09:39Z"
   "gh-issues:hyperlapse122/nix-config#330":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Use OpenRouter free through Pi for T3 Code text generation while preserving the default conversation model; verify availability and rate limits."
     author_class: "teammate"
@@ -529,7 +535,8 @@ items:
     id: "hyperlapse122/nix-config#330"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/330"
-    updatedAt: "2026-10-23T08:02:33Z"
+    source_gone_reason: "superseded by #362; retired from sweep plan by user decision (2026-10-26)"
+    updatedAt: "2026-10-24T09:09:41Z"
   "gh-issues:hyperlapse122/nix-config#332":
     source: "gh-issues"
     status: "source_gone"
@@ -542,17 +549,147 @@ items:
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/332"
     source_gone_reason: "closed as not planned at source at user request (2026-10-24)"
-    updatedAt: "2026-10-24T06:28:11Z"
+    updatedAt: "2026-10-24T09:14:27Z"
+  "gh-issues:hyperlapse122/nix-config#337":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "fix: define macos publishing verification gates. Define local pre-push vs CI merge-readiness verification gates for macOS contributors and inert documentation/sweep-state changes in AGENTS.md and docs/verification.md."
+    fix_ref: "#338"
+    verified_merge_sha: "18d95c8a9a0c6be6d6b63face878fb0a384da5b7"
+    verified_at: "2026-10-26T03:41:50Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#338"
+    closeout_decision: "PR #338 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#337"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/337"
+    updatedAt: "2026-10-24T10:05:27Z"
+  "gh-issues:hyperlapse122/nix-config#340":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Prefer T3 Code browser and device tools in shared agent instructions. Update home/h82/agents/instructions/instructions.md.tmpl to conditionally prefer T3 Code preview_* and device_* tools when running in T3 Code with CLI fallbacks."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#340"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/340"
+    updatedAt: "2026-10-24T10:50:47Z"
+  "gh-issues:hyperlapse122/nix-config#341":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "feat(agents): route T3 cross-model reviews without worktrees. Update home/h82/agents/instructions/instructions.md.tmpl so cross-model reviews in T3 Code run via T3 Code delegated tasks against the current workspace without creating a worktree."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#341"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/341"
+    updatedAt: "2026-10-24T13:15:52Z"
+  "gh-issues:hyperlapse122/nix-config#351":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Verify unified OMP model display in T3. Live-verify the T3 model picker after applying the unified OMP configuration from PR #352."
+    fix_ref: "#352"
+    verified_merge_sha: "9030d3ee722c11e52119bcfa3ab16fcf1a42f694"
+    verified_at: "2026-10-26T03:41:52Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#352"
+    closeout_decision: "PR #352 unified OMP display merged to main; owner live-verified and closed as completed"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#351"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/351"
+    updatedAt: "2026-10-26T02:09:34Z"
+  "gh-issues:hyperlapse122/nix-config#353":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "feat(nixos): configure net.core.wmem_default and net.core.wmem_max sysctls for all hosts. Set net.core.wmem_default and net.core.wmem_max to 4194304 in modules/nixos/system/base.nix and assert them in tests/kernel-sysctl.nix."
+    fix_ref: "#360"
+    verified_merge_sha: "d45d70f736d71116b3568c8dd7d6220aea8542bc"
+    verified_at: "2026-10-26T03:41:55Z"
+    author_class: "teammate"
+    claimed_fix_ref: "#360"
+    closeout_decision: "PR #360 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
+    id: "hyperlapse122/nix-config#353"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/353"
+    updatedAt: "2026-10-26T03:23:17Z"
+  "gh-issues:hyperlapse122/nix-config#357":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "feat(agents): default OMP to google-antigravity/gemini-4-argon (high). Set OMP's default model and thinking level to google-antigravity/gemini-4-argon (high) in standalone OMP and T3 Code's unified OMP instance, and include google-antigravity/* in T3's OMP scope."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#357"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/357"
+    updatedAt: "2026-10-26T01:59:53Z"
+  "gh-issues:hyperlapse122/nix-config#358":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "feat(agents): render OMP-only GitHub tool instructions from template. Enable OMP's built-in github tool, consolidate OMP.md into an OMP-only section in instructions.md.tmpl, and instruct OMP to prefer native GitHub tools over gh CLI where supported."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#358"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/358"
+    updatedAt: "2026-10-26T01:59:54Z"
+  "gh-issues:hyperlapse122/nix-config#359":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "feat(agents): add OMP role orchestration with google-antigravity models. Add # OMP role orchestration (P1-P7) to instructions.md.tmpl and configure OMP modelRoles and task.agentModelOverrides to use google-antigravity Gemini models for P1-P6 while keeping external CE peers for P7."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#359"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/359"
+    updatedAt: "2026-10-26T02:05:30Z"
+  "gh-issues:hyperlapse122/nix-config#362":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "feat(t3code): use OMP google-antigravity Flash Lite for text generation. Route T3 Code's textGenerationModelSelection in home/h82/t3code.nix to a google-antigravity Gemini Flash Lite model on the omp instance, superseding #330."
+    author_class: "teammate"
+    claimed_fix_ref: null
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#362"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/362"
+    updatedAt: "2026-10-26T03:05:22Z"
 last_run:
-  timestamp: "2026-10-24T09:10:23Z"
+  timestamp: "2026-10-26T04:10:40Z"
   outcome: "completed"
-  writer: "sweep-codex-0849ceaf-20261024"
+  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 5
-      closed: 0
-      in_plan: 7
-      ingested: 5
+      acknowledged: 9
+      closed: 4
+      in_plan: 9
+      ingested: 9
       manual_stuck: 0
       media_analyzed: 0
+      source_gone: 2
