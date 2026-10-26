@@ -238,13 +238,13 @@ def exchange(config, home, work):
         client.initialize()
         state = client.call("session/new", cwd=str(work), mcpServers=mcp)
         session = state["sessionId"]
-        assert option(state, "model")["currentValue"] == "openai-codex/gpt-6-astra", state
-        assert option(state, "thinking")["currentValue"] == "low", option(state, "thinking")
+        assert option(state, "model")["currentValue"] == "google-antigravity/gemini-4-argon", state
+        assert option(state, "thinking")["currentValue"] == "high", option(state, "thinking")
         reply = client.receive(client.send("session/prompt", {"sessionId": session,
                                "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
-        assert not server.requests, "Codex startup fell back to a paid API provider"
-        assert "No API key found for openai-codex." in reply.get("error", {}).get("data", {}).get("details", ""), reply
-        print("Unified ACP startup stays on Codex low without auth and sends no API request")
+        assert not server.requests, "Antigravity startup fell back to a paid API provider"
+        assert "No API key found for google-antigravity." in reply.get("error", {}).get("data", {}).get("details", ""), reply
+        print("Unified ACP startup stays on Gemini 4 Argon high without auth and sends no API request")
         state = client.call("session/set_config_option", sessionId=session, configId="model",
                             value="synthetic/hf:zai-org/GLM-5.3")
         state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="max")
@@ -374,8 +374,8 @@ def standalone_cli_scope(entry, api, api_expected_names):
         try:
             client.initialize()
             state = client.call("session/new", cwd=str(work), mcpServers=[])
-            assert option(state, "model")["currentValue"] == "openai-codex/gpt-6-astra", state
-            assert option(state, "thinking")["currentValue"] == "low", option(state, "thinking")
+            assert option(state, "model")["currentValue"] == "google-antigravity/gemini-4-argon", state
+            assert option(state, "thinking")["currentValue"] == "high", option(state, "thinking")
             expected_standalone = set(api_expected_names) | set(antigravity_names) | set(codex_names)
             assert values(state, "model") == expected_standalone, (
                 sorted(values(state, "model") - expected_standalone)[:8],
@@ -463,10 +463,15 @@ if __name__ == "__main__":
             } | {s for s in expected if s.startswith("openrouter/")}
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
+            assert args[args.index("--model") + 1] == "google-antigravity/gemini-4-argon"
+            assert args[args.index("--thinking") + 1] == "high"
             overlay = json.loads(Path(args[args.index("--config") + 1]).read_text())
             assert set(overlay["enabledModels"]) == patterns, "overlay scope differs from unified selection"
-            assert overlay["modelRoles"]["default"] == "openai-codex/gpt-6-astra"
-            assert overlay["defaultThinkingLevel"] == "low"
+            assert overlay["modelRoles"]["default"] == "google-antigravity/gemini-4-argon"
+            assert overlay["modelRoles"]["web"] == "web/synthetic"
+            assert overlay["defaultThinkingLevel"] == "high"
+            assert overlay["task"]["enableEffort"] is True and overlay["task"]["maxEffort"] == "high"
+            assert overlay["task"]["agentModelOverrides"]["architect"] == "google-antigravity/gemini-4-argon:high"
             work = prepare(entry, home)
             common = (home / ".omp/agent/config.yml").read_bytes()
             assert set(json.loads(common.decode())["enabledModels"]) == patterns, "common CLI config.yml missing curated enabledModels"

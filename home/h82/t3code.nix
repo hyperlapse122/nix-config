@@ -28,11 +28,11 @@ let
 
   omp = import ../../packages/omp.nix { inherit pkgs; };
   catalogs = import ./agents/omp-model-catalogs.nix;
+  ompRoles = import ./agents/omp-roles.nix;
   ompScope = pkgs.writeText "omp-t3-OMP.json" (
     builtins.toJSON {
       enabledModels = ompPatterns;
-      modelRoles.default = "openai-codex/gpt-6-astra";
-      defaultThinkingLevel = "low";
+      inherit (ompRoles) defaultThinkingLevel modelRoles task;
     }
   );
   ompPatterns = catalogs.patterns;
@@ -55,11 +55,11 @@ let
         "--models"
         (lib.concatStringsSep "," ompPatterns)
         # --models otherwise falls back to the first available API model
-        # when the configured Codex default has no authentication.
+        # when the configured Antigravity default has no authentication.
         "--model"
-        "openai-codex/gpt-6-astra"
+        "google-antigravity/gemini-4-argon"
         "--thinking"
-        "low"
+        "high"
       ];
       customModels = apiSelectors;
     };

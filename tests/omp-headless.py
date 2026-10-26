@@ -232,6 +232,7 @@ try:
             agent = home / ".omp/agent"
             shutil.copytree(Path(entry["files"]) / ".omp/agent", agent, symlinks=True)
             assert not (agent / "OMP.md").exists(), "retired OMP.md was materialized"
+            assert (agent / "agents/architect.md").is_file(), "P6 architect agent was not materialized"
             for directory, _, _ in os.walk(agent):
                 Path(directory).chmod(0o755)
             # A complete tree preserves scripts and relative references, not just SKILL.md.
@@ -255,8 +256,13 @@ try:
             config["skills"]["customDirectories"] = [p.replace(entry["home"], str(home), 1) for p in directories] + [str(skill_root)]
             # Synchronous dispatch makes the terminal artifact observable before process exit.
             config["async"] = {"enabled": False}
-            # Native children inherit the explicit API fixture's model role.
-            config["modelRoles"]["default"] = "synthetic/hf:zai-org/GLM-5.3"
+            assert config["github"]["enabled"] is True
+            assert config["modelRoles"]["default"] == "google-antigravity/gemini-4-argon"
+            assert config["task"]["enableEffort"] is True and config["task"]["maxEffort"] == "high"
+            assert config["task"]["agentModelOverrides"]["architect"] == "google-antigravity/gemini-4-argon:high"
+            # Native children inherit the explicit API fixture's model role in offline tests.
+            config["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3", "web": "web/synthetic"}
+            config["task"]["agentModelOverrides"] = {}
             config["defaultThinkingLevel"] = "max"
             (agent / "config.yml").write_text(json.dumps(config))
             models = json.loads(Path(entry["documents"]["models.yml"]).read_text())
