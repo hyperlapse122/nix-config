@@ -681,16 +681,16 @@ items:
     source_gone_reason: "closed as not planned at source (wontfix): T3 Code acpRegistry hardcodes supportsTextGeneration=false and silently falls back to codex/gpt-6-luna"
     updatedAt: "2026-10-26T04:39:21Z"
 last_run:
-  timestamp: "2026-10-26T04:39:23Z"
+  timestamp: "2026-10-26T04:44:11Z"
   outcome: "completed"
-  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26-wontfix"
+  writer: "sweep-omp-MS-7D91-f9b82ae-2026-10-26-resweep"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 9
-      closed: 4
+      acknowledged: 0
+      closed: 0
       in_plan: 8
-      ingested: 9
+      ingested: 0
       manual_stuck: 0
       media_analyzed: 0
-      source_gone: 3
+      source_gone: 0
