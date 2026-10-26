@@ -2,7 +2,7 @@
 title: "An unset init.defaultBranch leaves a bare repo's HEAD dangling for a second clone"
 date: 2026-09-23
 category: best-practices
-module: "NixOS flake checks (update-dependencies-push-order git sandbox)"
+module: "NixOS flake checks (update-dependencies-reconcile git sandbox)"
 problem_type: best_practice
 component: testing_framework
 severity: medium
@@ -28,7 +28,7 @@ tags:
 
 ## Context
 
-`tests/update-dependencies-push-order.sh`, registered as the `update-dependencies-push-order` check in `flake.nix`, exercises a fixed CI workflow step against a real, sandboxed git remote. Its diverged-origin scenario needs a second, independent clone of the same from-scratch bare origin, to simulate a concurrent contributor pushing before the main scenario's clone does.
+`tests/update-dependencies-reconcile.sh`, registered as the `update-dependencies-reconcile` check in `flake.nix` (consolidating the former standalone `tests/update-dependencies-push-order.sh` / `update-dependencies-push-order` check), exercises CI workflow steps against a real, sandboxed git remote. Its diverged-origin scenario needs a second, independent clone of the same from-scratch bare origin, to simulate a concurrent contributor pushing before the main scenario's clone does.
 
 That second clone failed even though the origin already held a real, pushed `main` branch:
 
@@ -53,7 +53,7 @@ Immediately after `git init --bare` on a from-scratch origin that will be cloned
 "$git_bin" clone -q "$origin" "$clone"
 ```
 
-This is the fix now in place in `setup_clone()` (`tests/update-dependencies-push-order.sh`), which already carries the inline comment explaining it at the point of use: "A sandboxed HOME carries no init.defaultBranch, so a bare init's HEAD symref defaults to refs/heads/master. Pin it to main before anything clones this repo, or a second clone after the first push follows a HEAD that points at a branch nothing ever populated."
+This is the fix in `setup_clone()` (`tests/update-dependencies-reconcile.sh`, carried over from the former `tests/update-dependencies-push-order.sh`), which pins `HEAD` to `refs/heads/main` before anything clones the bare sandbox origin so a second clone after the first push never follows an unborn `refs/heads/master`.
 
 ## Why This Matters
 
