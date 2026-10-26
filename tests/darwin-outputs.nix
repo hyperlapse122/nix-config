@@ -100,7 +100,7 @@ let
         result = run()
         assert result.returncode == 0, result.stderr
         actual = tomllib.loads(target.read_text())
-        assert actual == {"model": "gpt-6-astra", "model_reasoning_effort": "low", "service_tier": "default",
+        assert actual == {"model": "gpt-6.1-sol", "model_reasoning_effort": "low", "service_tier": "default",
             "agents": {"default_subagent_model": "gpt-6.1-sol", "default_subagent_reasoning_effort": "low", "max_threads": 3},
             "check_for_update_on_startup": False, "custom": "keep",
             "features": {"in_app_updates": False, "daemon_auto_start": False, "memories": False, "custom": True}}, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"

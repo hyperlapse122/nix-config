@@ -414,7 +414,7 @@ let
     own = {
       defaultModelSelection = {
         instanceId = "codex";
-        model = "gpt-6-astra";
+        model = "gpt-6.1-sol";
         options = [
           {
             id = "reasoningEffort";
