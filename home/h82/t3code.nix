@@ -35,13 +35,7 @@ let
       defaultThinkingLevel = "low";
     }
   );
-  # OMP uses path globs: model IDs themselves contain slashes.
-  ompPatterns = [
-    "synthetic/**"
-    "google-antigravity/**"
-  ]
-  ++ openrouterSelectors
-  ++ [ "openai-codex/*" ];
+  ompPatterns = catalogs.patterns;
   openrouterSelectors = map (row: "openrouter/${row.id}") catalogs.openrouter.data;
   apiSelectors = lib.unique (
     map (row: "synthetic/${row.id}") catalogs.synthetic.data ++ openrouterSelectors
@@ -175,6 +169,21 @@ let
     }
   ];
 
+  # T3 Code synthesizes a built-in `default` entry for ACP Registry instances
+  # before discovery completes; prefixEntries hides it without overwriting
+  # other OMP models the user hid in the app.
+  hiddenModels = [
+    {
+      path = [
+        "providerModelPreferences"
+        "omp"
+        "hiddenModels"
+      ];
+      prefix = "default";
+      value = "default";
+    }
+  ];
+
   # providers is the retired per-kind block T3 Code moves into
   # providerInstances on load, but only into an instance that does not exist
   # yet. The instances declared above would make it skip theirs and drop the
@@ -229,6 +238,7 @@ let
       owned ? { },
       remove ? [ ],
       removePaths ? [ ],
+      prefixEntries ? [ ],
       migrateInstances ? null,
       ownEntries ? [ ],
     }:
@@ -239,9 +249,9 @@ let
       own = owned;
     }
     // lib.optionalAttrs (removePaths != [ ]) { inherit removePaths; }
+    // lib.optionalAttrs (prefixEntries != [ ]) { inherit prefixEntries; }
     // lib.optionalAttrs (ownEntries != [ ]) { inherit ownEntries; }
     // lib.optionalAttrs (migrateInstances != null) { inherit migrateInstances; };
-
   merges = {
     t3codeSettings = {
       file = "settings.json";
@@ -252,6 +262,7 @@ let
           owned = modelSelections;
           remove = retiredKeys;
           removePaths = retiredPaths;
+          prefixEntries = hiddenModels;
           migrateInstances = instanceMigration;
           # Arrays are whole values. The existing ownership ledger replaces
           # only these config keys and preserves app-owned environment/auth.

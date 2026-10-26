@@ -20,6 +20,7 @@ RECONCILER, OMP = sys.argv[1:3]
 del sys.argv[1:3]
 ACTIVATIONS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else []
 HELPERS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {}
+OPENROUTER = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {"data": []}
 
 
 class Restoration(unittest.TestCase):
@@ -292,7 +293,19 @@ class Activation(unittest.TestCase):
                                             env=env, capture_output=True, text=True, timeout=20)
                     self.assertEqual(result.returncode == 0, success, result.stderr)
 
-                target.write_text("autolearn: {enabled: true}\ndisabledProviders: []\ntui: {mouse: true}\n")
+                expected_patterns = [
+                    "synthetic/**",
+                    "google-antigravity/gemini-*",
+                    "google-antigravity/claude-*",
+                    "google-antigravity/gpt-*",
+                    *(f"openrouter/{row['id']}" for row in OPENROUTER["data"]
+                      if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"),
+                    "openai-codex/*",
+                ]
+                target.write_text(
+                    "autolearn: {enabled: true}\ndisabledProviders: []\n"
+                    "tui: {mouse: true}\nenabledModels: ['google-antigravity/**']\n"
+                )
                 self.assertIn("old-generated", discovered_skills())
                 activate()
                 value = yaml.safe_load(target.read_text())
@@ -301,12 +314,14 @@ class Activation(unittest.TestCase):
                 self.assertIs(value["startup"]["checkUpdate"], False)
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
                 self.assertIs(value["tui"]["mouse"], False)
+                self.assertEqual(value["enabledModels"], expected_patterns)
                 for key, expected in (("modelRoles", {"default": "openai-codex/gpt-6-astra", "web": "web/synthetic"}),
                                       ("defaultThinkingLevel", "low"),
-                                      ("tui.mouse", "false")):
+                                      ("tui.mouse", "false"),
+                                      ("enabledModels", expected_patterns)):
                     result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
                                             capture_output=True, text=True, timeout=20)
-                    actual = json.loads(result.stdout) if key == "modelRoles" else result.stdout.strip()
+                    actual = json.loads(result.stdout) if key in ("modelRoles", "enabledModels") else result.stdout.strip()
                     self.assertEqual((result.returncode, actual), (0, expected), result.stderr)
                 self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():

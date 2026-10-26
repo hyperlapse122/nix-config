@@ -285,15 +285,52 @@ def exchange(config, home, work):
         server.server_close()
 
 
+OFFLINE_ENV = {"HTTP_PROXY": "http://127.0.0.1:1", "HTTPS_PROXY": "http://127.0.0.1:1",
+               "ALL_PROXY": "http://127.0.0.1:1", "NO_PROXY": ""}
+
+
+def import_fake_oauth(command_path, home, providers):
+    env = {"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV}
+    payload = {
+        "version": 1,
+        "credentials": [
+            {
+                "provider": provider,
+                "credential": {
+                    "type": "oauth",
+                    "access": f"fake-{provider}-access",
+                    "refresh": f"fake-{provider}-refresh",
+                    "expires": 4102444800000,
+                },
+            }
+            for provider in providers
+        ],
+    }
+    result = subprocess.run([command_path, "auth", "import", "-"], input=json.dumps(payload),
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+
+
+def raw_bundled_models(command_path, home):
+    env = {"HOME": str(home), "PATH": os.environ["PATH"],
+           "SYNTHETIC_API_KEY": "sk-fake-synthetic", "OPENROUTER_API_KEY": "sk-fake-openrouter",
+           **OFFLINE_ENV}
+    result = subprocess.run([command_path, "models", "--json"], cwd=home, env=env,
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)["models"]
+
+
 def catalog(config, home, work, expected_names):
     expected = set(expected_names)
-    client = Acp(config, home, work, {})
+    client = Acp(config, home, work, OFFLINE_ENV)
     try:
         client.initialize()
         state = client.call("session/new", cwd=str(work), mcpServers=[])
         assert expected == values(state, "model"), ("Unified scope changed selected selectors",
                                                    len(values(state, "model")), sorted(values(state, "model"))[:8],
-                                                   sorted(expected - values(state, "model"))[:8])
+                                                   sorted(expected - values(state, "model"))[:8],
+                                                   sorted(values(state, "model") - expected)[:8])
         actual_names = {row["value"]: row["name"] for row in option(state, "model")["options"]}
         assert actual_names == expected_names, {
             k: (actual_names.get(k), expected_names.get(k))
@@ -308,10 +345,53 @@ def catalog(config, home, work, expected_names):
         assert values(state, "thinking") == {"off", "auto", "low", "high", "max"}, option(state, "thinking")
         state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="max")
         assert option(state, "thinking")["currentValue"] == "max"
-        print(f"ACP advertised and selected all {len(expected)} API snapshot selectors; active thinking refreshed")
+        print(f"ACP advertised and selected all {len(expected)} curated selectors; active thinking refreshed")
     finally:
         client.close()
 
+
+def standalone_cli_scope(entry, api, api_expected_names):
+    with tempfile.TemporaryDirectory() as temporary:
+        home = Path(temporary)
+        work = prepare(entry, home)
+        import_fake_oauth(api["commandPath"], home, ("google-antigravity", "openai-codex"))
+        raw = raw_bundled_models(api["commandPath"], home)
+        raw_selectors = {row["selector"] for row in raw}
+        assert {"google-antigravity/tab_flash_lite_preview",
+                "google-antigravity/tab_jump_flash_lite_preview"} <= raw_selectors, "raw catalog missing tab_* controls"
+        assert any(s.startswith("openrouter/") and not s.startswith("openrouter/openrouter/")
+                   for s in raw_selectors), "raw catalog missing uncurated OpenRouter vendor controls"
+        antigravity_names = {
+            row["selector"]: row["name"] for row in raw
+            if row["provider"] == "google-antigravity" and row["id"].startswith(("gemini-", "claude-", "gpt-"))
+        }
+        codex_names = {row["selector"]: row["name"] for row in raw if row["provider"] == "openai-codex"}
+        assert "google-antigravity/gpt-oss-120b" in antigravity_names and len(antigravity_names) >= 9, antigravity_names
+        assert "openai-codex/gpt-6-astra" in codex_names, codex_names
+        # Standalone OMP without T3's --config/--models/--model must enforce ~/.omp/agent/config.yml.
+        standalone = {"commandPath": api["commandPath"], "commandArgs": ["--mode", "acp"]}
+        client = Acp(standalone, home, work, OFFLINE_ENV)
+        try:
+            client.initialize()
+            state = client.call("session/new", cwd=str(work), mcpServers=[])
+            assert option(state, "model")["currentValue"] == "openai-codex/gpt-6-astra", state
+            assert option(state, "thinking")["currentValue"] == "low", option(state, "thinking")
+            expected_standalone = set(api_expected_names) | set(antigravity_names) | set(codex_names)
+            assert values(state, "model") == expected_standalone, (
+                sorted(values(state, "model") - expected_standalone)[:8],
+                sorted(expected_standalone - values(state, "model"))[:8],
+            )
+        finally:
+            client.close()
+    # Also verify T3's ACP command isolates T3 sessions when ~/.omp/agent/config.yml drifts wider.
+    with tempfile.TemporaryDirectory() as temporary:
+        home = Path(temporary)
+        work = prepare(entry, home)
+        drifted = json.loads((home / ".omp/agent/config.yml").read_text())
+        drifted["enabledModels"] = ["synthetic/**", "google-antigravity/**", "openrouter/**", "openai-codex/*"]
+        (home / ".omp/agent/config.yml").write_text(json.dumps(drifted))
+        import_fake_oauth(api["commandPath"], home, ("google-antigravity",))
+        catalog(api, home, work, {**api_expected_names, **antigravity_names})
 
 def applied(entry, home):
     target = home / ".t3/userdata/settings.json"
@@ -321,6 +401,8 @@ def applied(entry, home):
                                            "config": {"authMethodId": "agent", "customModels": ["stale-selector"]}},
                                    "omp-codex": {"driver": "acpRegistry", "enabled": True,
                                                  "config": {"authMethodId": "agent"}}},
+            "providerModelPreferences": {"omp": {"hiddenModels": ["synthetic/hf:moonshotai/Kimi-K3"],
+                                                 "modelOrder": ["openai-codex/gpt-6-astra"]}},
             "projectSettingsOverrides": {"example": {"keep": True}}}
     target.write_text(json.dumps(seed))
     script = entry["activation"].replace(entry["home"], str(home))
@@ -330,6 +412,10 @@ def applied(entry, home):
     assert result.returncode == 0, result.stderr
     settings = json.loads(target.read_text())
     assert settings["projectSettingsOverrides"] == seed["projectSettingsOverrides"]
+    assert settings["providerModelPreferences"] == {
+        "omp": {"hiddenModels": ["synthetic/hf:moonshotai/Kimi-K3", "default"],
+                "modelOrder": ["openai-codex/gpt-6-astra"]}
+    }, settings.get("providerModelPreferences")
     instances = settings["providerInstances"]
     assert instances["pi"]["enabled"] is False, "T3 still enables retired Pi"
     assert instances["pi"]["config"] == seed["providerInstances"]["pi"]["config"]
@@ -368,7 +454,13 @@ if __name__ == "__main__":
             instances = applied(entry, home)
             api = instances["omp"]["config"]
             assert set(api["customModels"]) == expected and len(api["customModels"]) == len(expected), "T3 API selectors capped or changed"
-            patterns = {"synthetic/**", "google-antigravity/**", "openai-codex/*"} | {s for s in expected if s.startswith("openrouter/")}
+            patterns = {
+                "synthetic/**",
+                "google-antigravity/gemini-*",
+                "google-antigravity/claude-*",
+                "google-antigravity/gpt-*",
+                "openai-codex/*",
+            } | {s for s in expected if s.startswith("openrouter/")}
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
             overlay = json.loads(Path(args[args.index("--config") + 1]).read_text())
@@ -377,7 +469,9 @@ if __name__ == "__main__":
             assert overlay["defaultThinkingLevel"] == "low"
             work = prepare(entry, home)
             common = (home / ".omp/agent/config.yml").read_bytes()
+            assert set(json.loads(common.decode())["enabledModels"]) == patterns, "common CLI config.yml missing curated enabledModels"
             catalog(api, home, work, expected_names)
             exchange(api, home, work)
-            print("ACP prompt/native tool/MCP result/cancel/persistent resume passed")
+            standalone_cli_scope(entry, api, expected_names)
+            print("ACP prompt/native tool/MCP result/cancel/persistent resume and standalone CLI scope passed")
             assert (home / ".omp/agent/config.yml").read_bytes() == common, "ACP scope changed common CLI settings"
