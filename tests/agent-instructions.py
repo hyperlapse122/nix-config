@@ -17,8 +17,8 @@ PROFILES = {
     "P2": ("gpt-6-luna", "low", "Fast"),
     "P3": ("gpt-6.1-sol", "low", "Standard"),
     "P4": ("gpt-6.1-sol", "medium", "Standard"),
-    "P5": ("gpt-6-astra", "low", "Standard"),
-    "P6": ("gpt-6-astra", "medium", "Standard"),
+    "P5": ("gpt-6.1-sol", "medium", "Standard"),
+    "P6": ("gpt-6.1-sol", "high", "Standard"),
     "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
 }
 CODEX_SENTENCES = [
@@ -26,6 +26,7 @@ CODEX_SENTENCES = [
     "Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.",
     "Fill unspecified fields from that profile, never implicitly from the parent.",
     "Use P3 for unlisted or newly introduced delegated responsibilities.",
+    "Root-owned work stays Sol P5/P6; delegated authoring assignments do not move that work out of the root.",
     "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
     "Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.",
     "GPT `max` and `ultra` require an explicit user request for the affected work.",
@@ -73,12 +74,12 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 | P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `low` | Fast |
 | P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `low` | Standard |
 | P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `medium` | Standard |
-| P5 | Root orchestration, delegation, progress | `gpt-6-astra` | `low` | Standard |
-| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6-astra` | `medium` | Standard |
+| P5 | Root orchestration, delegation, progress | `gpt-6.1-sol` | `medium` | Standard |
+| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6.1-sol` | `high` | Standard |
 | P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
 
 - Resolve current user overrides for their stated task, recipient, fields and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent. A root-only selection does not change child profiles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence. Managed startup defaults are reasserted by apply, not a promise to preserve edits to owned baseline fields.
-- Use P3 for unlisted or newly introduced delegated responsibilities. Mixed work takes its substantive responsibility's profile; split only where the owning skill already permits it. Root-owned work stays Astra P5/P6; delegated authoring assignments do not move that work out of the root.
+- Use P3 for unlisted or newly introduced delegated responsibilities. Mixed work takes its substantive responsibility's profile; split only where the owning skill already permits it. Root-owned work stays Sol P5/P6; delegated authoring assignments do not move that work out of the root.
 - Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Interpretation discovered by P1/P2 returns evidence for a new P3 dispatch; difficult implementation/validation uses P4, unresolved architectural tradeoffs P6. Do not walk an escalation ladder on every retry. Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.
 - GPT `max` and `ultra` require an explicit user request for the affected work. Role titles, large context and importance do not authorize an increase, including to `xhigh`. This GPT limit does not rewrite P7's prescribed external effort.
 - Standard is the default except for P1/P2 Luna tasks, which have standing user authorization for Fast (`priority`) when the route and account support it, even when allowance is unknown. This authorization does not extend to root, Sol or external peers. Other automatic Fast selections require advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage. For those other roles, unknown allowance retains Standard unless the user requests acceleration. Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.
@@ -357,8 +358,11 @@ def self_test(template):
             mutated = codex.replace(sentence, replacement, 1)
             assert mutated != codex
             assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, True)), sentence
-    for profile, (_, effort, service) in PROFILES.items():
+    for profile, (model, effort, service) in PROFILES.items():
         row = next(line for line in codex.splitlines() if line.startswith(f"| {profile} |"))
+        mutant = row.replace(f"`{model}`", "`gpt-6-astra`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
+        assert mutant != row
+        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
         mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
         assert mutant != row
         assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, True)
