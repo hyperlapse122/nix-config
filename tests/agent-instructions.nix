@@ -24,6 +24,7 @@ let
   ];
   retiredPaths = [
     ".pi/agent/AGENTS.md"
+    ".omp/agent/OMP.md"
     ".t3/instructions/claude-code/CLAUDE.md"
     ".gemini/GEMINI.md"
     ".gemini/config/AGENTS.md"
@@ -68,7 +69,13 @@ let
         key = entry.user.my.user.gpgKey;
         paths = map (target: {
           path = "${entry.user.home-files}/${target}";
-          codex = target == ".codex/AGENTS.md";
+          delivery =
+            if target == ".codex/AGENTS.md" then
+              "codex"
+            else if target == ".omp/agent/AGENTS.md" then
+              "omp"
+            else
+              "common";
         }) deliveryPaths;
         git = "${entry.user.home-files}/.config/git/config";
       }) presentEntries

@@ -129,6 +129,7 @@ class Provider(http.server.BaseHTTPRequestHandler):
             assert "OMP_REPO_INSTRUCTION" in system, "repository instruction absent from provider context"
             assert "GPG and encryption" in system, "shared personal instructions absent"
             assert "OMP tools and Compound Engineering" in system, "native tool guide absent"
+            assert "OMP role orchestration" in system, "OMP role orchestration policy absent"
             assert "test-audit" in system and "ce-code-review" in system, "contributed/CE skills absent"
             results = [m for m in body["messages"] if m["role"] == "tool"]
             if results:
@@ -230,6 +231,7 @@ try:
             home = Path(temporary)
             agent = home / ".omp/agent"
             shutil.copytree(Path(entry["files"]) / ".omp/agent", agent, symlinks=True)
+            assert not (agent / "OMP.md").exists(), "retired OMP.md was materialized"
             for directory, _, _ in os.walk(agent):
                 Path(directory).chmod(0o755)
             # A complete tree preserves scripts and relative references, not just SKILL.md.

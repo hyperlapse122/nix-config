@@ -54,7 +54,6 @@ in
             defaultThinkingLevel = "low";
             modelRoles.web = "web/synthetic";
             skills.customDirectories = config.my.omp.skillDirectories;
-            contextFiles.extra = [ "OMP.md" ];
             task.structured = true;
             symbolPreset = "nerd";
             composer.shape = "band";
@@ -89,7 +88,6 @@ in
       omp
       (import ../../../packages/acpx.nix { inherit pkgs; })
     ];
-    home.file.".omp/agent/OMP.md".source = ./instructions/omp.md;
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;
     # the system hook covers NixOS even when its home generation is unchanged.

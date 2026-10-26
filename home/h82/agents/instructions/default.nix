@@ -12,7 +12,13 @@ let
     delivery:
     let
       context = pkgs.writeText "agent-instructions-${delivery}.json" (
-        builtins.toJSON ((hostFacts.of config.my) // { codex = delivery == "codex"; })
+        builtins.toJSON (
+          (hostFacts.of config.my)
+          // {
+            codex = delivery == "codex";
+            omp = delivery == "omp";
+          }
+        )
       );
     in
     pkgs.runCommand "agent-instructions-${delivery}.md" { nativeBuildInputs = [ renderer ]; } ''
@@ -25,7 +31,7 @@ in
   home.file = {
     agent-instructions-omp = {
       target = ".omp/agent/AGENTS.md";
-      source = instructions;
+      source = render "omp";
     };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
