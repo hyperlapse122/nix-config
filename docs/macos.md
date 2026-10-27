@@ -181,6 +181,8 @@ Production activation publishes:
 
 ### YubiKey PIN
 
+Git uses `gpg-git` to read the card with `gpg --batch --card-status` before selecting its signing key. This refresh addresses the reported case where a card read restores a missing signing key after idle. It waits at most ten seconds, discards card metadata, and leaves the signing input untouched. If the refresh fails, GPG still runs and reports its own result. The adapter never retries a signature or a PIN, and verification passes directly to GPG. The cause of the intermittent card-discovery failure remains unconfirmed; this is a preventive recovery step.
+
 Three YubiKeys carry the same signing key, each under its own PIN. The PIN prompt is the native `pinentry_mac` dialog (`scripts/pinentry-card-darwin`), which keys items by `n/gnupg-card-pin-<serial>` and offers a "Save in Keychain" checkbox that starts unticked (`UseKeychain = false`). Ticking it saves that card's PIN in the login Keychain (`service = "GnuPG"`, `account = "gnupg-card-pin-<serial>"`), and a rejected PIN deletes that card's item automatically. Remove a saved PIN manually with `security delete-generic-password -s GnuPG -a gnupg-card-pin-<serial>`.
 
 ### SSH key

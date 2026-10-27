@@ -21,7 +21,6 @@ tr_bin=$(command -v tr)
 sleep_bin=$(command -v sleep)
 rm_bin=$(command -v rm)
 "$python3_bin" -c 'import py_compile, sys; py_compile.compile(sys.argv[1], cfile=sys.argv[2], doraise=True)' "$wrapper" "$scratch/wrapper.pyc" || fail 'production wrapper does not compile'
-grep -qF 'KEYRING_LOOKUP_TIMEOUT = 5' "$wrapper" || fail 'production keyring timeout is not 5 seconds'
 grep -qF 'IS_LINUX = True' "$wrapper" || fail 'production wrapper is not Linux-only'
 grep -qF 'KEYRING_BACKEND = "secret-tool"' "$wrapper" || fail 'production wrapper does not use Secret Service'
 pass 'production wrapper syntax and safety constants are present'
@@ -158,6 +157,7 @@ case "\$mode" in
   fail-nonzero) printf 'PRIVATE-SUBPROCESS-OUTPUT'; printf 'PRIVATE-SUBPROCESS-ERROR' >&2; exit 1 ;;
   empty) printf ''; exit 0 ;;
   sleep) "$sleep_bin" 3; exit 0 ;;
+  cold) "$sleep_bin" 6 ;;
 esac
 if [[ "\$op" == clear ]]; then
   printf '%s\n' "\$serial" >>"$clear_log"
@@ -213,19 +213,21 @@ card_desc() {
 }
 
 # Behaviour fixtures: retarget the absolute delegate path(s) to the scratch
-# shims above, and shrink the 5-second keyring bound to 1 second (pinned at
-# its real value by the render half above).
+# shims above, and shrink the lookup and removal bounds to one second.
+# The cold-lookup scenario below keeps the production deadline.
 sed \
   -e "s#^DELEGATE_PATH = .*#DELEGATE_PATH = \"$scratch/bin/fake-gnome-delegate\"#" \
   -e "s#^LINUX_FALLBACK_PATH = .*#LINUX_FALLBACK_PATH = \"$scratch/bin/fake-fallback-delegate\"#" \
   -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/secret-tool\"#" \
-  -e 's/KEYRING_LOOKUP_TIMEOUT = 5/KEYRING_LOOKUP_TIMEOUT = 1/' \
+  -e 's/KEYRING_LOOKUP_TIMEOUT = 30/KEYRING_LOOKUP_TIMEOUT = 1/' \
+  -e 's/KEYRING_CLEAR_TIMEOUT = 5/KEYRING_CLEAR_TIMEOUT = 1/' \
   "$rendered_gnome" >"$scratch/functional-gnome.py"
 sed \
   -e "s#^DELEGATE_PATH = .*#DELEGATE_PATH = \"$scratch/bin/fake-gnome-delegate\"#" \
   -e "s#^LINUX_FALLBACK_PATH = .*#LINUX_FALLBACK_PATH = \"$scratch/bin/fake-fallback-delegate\"#" \
   -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/secret-tool\"#" \
-  -e 's/KEYRING_LOOKUP_TIMEOUT = 5/KEYRING_LOOKUP_TIMEOUT = 1/' \
+  -e 's/KEYRING_LOOKUP_TIMEOUT = 30/KEYRING_LOOKUP_TIMEOUT = 1/' \
+  -e 's/KEYRING_CLEAR_TIMEOUT = 5/KEYRING_CLEAR_TIMEOUT = 1/' \
   "$rendered_gnome" >"$scratch/functional-fallback.py"
 
 pipe_into() { cat >"$1"; }
@@ -357,6 +359,22 @@ yubikey5_desc() {
   # card-prompt shape (KTD3).
   printf 'Please unlock the card%%0A%%0A\x1eNumber:\x1f 14 963 605%%0AHolder: Jo Doe'
 }
+
+# Keep the production timeout for a cold Secret Service lookup. A valid PIN
+# arriving after the old five-second deadline must not open a dialog.
+sed \
+  -e "s#^DELEGATE_PATH = .*#DELEGATE_PATH = \"$scratch/bin/fake-gnome-delegate\"#" \
+  -e "s#^LINUX_FALLBACK_PATH = .*#LINUX_FALLBACK_PATH = \"$scratch/bin/fake-fallback-delegate\"#" \
+  -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/secret-tool\"#" \
+  -e 's/KEYRING_CLEAR_TIMEOUT = 5/KEYRING_CLEAR_TIMEOUT = 1/' \
+  "$rendered_gnome" >"$scratch/functional-cold.py"
+out="$scratch/out-cold" err="$scratch/err-cold"
+input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$stored_serial")")
+run_wrapper "$scratch/functional-cold.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE=cold
+assert_contains "$out" "D $stored_pin_encoded" 'cold keyring lookup'
+assert_not_contains "$gnome_log" 'GETPIN' 'cold keyring lookup'
+assert_lookup_diagnostic success
+pass 'a cold keyring lookup supplies the stored PIN without opening a dialog'
 
 answered_labels=(yubikey5 older-firmware non-yubikey invalid-utf8-holder no-holder alignment)
 answered_descs=(
@@ -753,7 +771,8 @@ getpin_count=$(grep -c '^GETPIN' "$gnome_log")
 pass '25: a repeated GETPIN under one rejection clears once and auto-submits nothing'
 
 # 26. A clear that fails or outruns the (1-second, rewritten) bound never
-#     blocks the delegated prompt.
+#     blocks the delegated prompt. Keep lookup at 30 seconds so accidentally
+#     using its deadline for removal fails this case.
 for mode in clear-fail clear-sleep; do
   reset_keyring
   out="$scratch/out26-$mode" err="$scratch/err26-$mode"
@@ -761,7 +780,7 @@ for mode in clear-fail clear-sleep; do
   input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nfc" 'Remaining attempts: 2')")
   start=$(date +%s)
   rc=0
-  run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode" || rc=$?
+  run_wrapper "$scratch/functional-cold.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode" || rc=$?
   elapsed=$(( $(date +%s) - start ))
   [[ $rc -ne 124 ]] || fail "26 $mode: the wrapper hung past the 10-second test timeout"
   (( elapsed < 5 )) || fail "26 $mode: took ${elapsed}s, so the clear was not bounded"

@@ -37,6 +37,7 @@ let
           --replace-fail '@PINENTRY_CURSES@' '${pinentryMac}' \
           --replace-fail '@SECRET_TOOL@' '/usr/bin/security' \
           --replace-fail 'IS_LINUX = True' 'IS_LINUX = False' \
+          --replace-fail 'KEYRING_LOOKUP_TIMEOUT = 30' 'KEYRING_LOOKUP_TIMEOUT = 5' \
           --replace-fail 'KEYRING_BACKEND = "secret-tool"' 'KEYRING_BACKEND = "security"'
         install -Dm755 ${../scripts/pinentry-card-darwin} $out/bin/pinentry-card
         ln -s pinentry-card $out/bin/pinentry
@@ -53,6 +54,26 @@ let
       mkDarwinPinentryCard { pinentryMac = pkgs.lib.getExe pkgs.pinentry_mac; }
     else
       linuxPinentryCard;
+
+  gitGpg = pkgs.stdenvNoCC.mkDerivation {
+    pname = "gpg-git";
+    version = "1";
+    dontUnpack = true;
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    nativeInstallCheckInputs = [ pkgs.python3 ];
+    installPhase = ''
+      install -Dm644 ${../scripts/gpg-git} $out/libexec/gpg-git.py
+      makeWrapper ${pkgs.python3}/bin/python3 $out/bin/gpg-git \
+        --add-flags "$out/libexec/gpg-git.py" \
+        --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.gnupg ]}
+    '';
+    doInstallCheck = true;
+    installCheckPhase = ''
+      python3 ${../tests/gpg-git.py} $out/libexec/gpg-git.py
+      $out/bin/gpg-git --version
+    '';
+    meta.mainProgram = "gpg-git";
+  };
 
   restoreAgeIdentity = pkgs.stdenvNoCC.mkDerivation {
     pname = "restore-age-identity";
@@ -87,6 +108,7 @@ in
 {
   inherit
     pinentryCard
+    gitGpg
     mkDarwinPinentryCard
     restoreAgeIdentity
     installUserAgeIdentity

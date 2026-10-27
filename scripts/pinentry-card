@@ -26,7 +26,10 @@ SECRET_TOOL_PATH = "@SECRET_TOOL@"
 IS_LINUX = True
 KEYRING_BACKEND = "secret-tool"
 MAX_DECODE_LEN = 4096
-KEYRING_LOOKUP_TIMEOUT = 5
+# A cold Secret Service may outlive the old five-second lookup deadline.
+# Keep removal of a rejected PIN short so its replacement prompt is reachable.
+KEYRING_LOOKUP_TIMEOUT = 30
+KEYRING_CLEAR_TIMEOUT = 5
 # After stdin closes, a delegate gets EXIT_GRACE seconds to exit on its own:
 # on a loaded machine a healthy one can take that long just to start.  One
 # that has answered every command before a pending dialog is showing that
@@ -160,7 +163,7 @@ def clear_pin(serial):
             argv,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=KEYRING_LOOKUP_TIMEOUT,
+            timeout=KEYRING_CLEAR_TIMEOUT,
         )
     except (subprocess.TimeoutExpired, OSError):
         return
