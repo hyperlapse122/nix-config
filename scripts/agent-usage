@@ -2,6 +2,7 @@
 """Read subscription usage without making model requests or exposing credentials."""
 
 import argparse
+import concurrent.futures
 import copy
 import datetime
 import fcntl
@@ -121,6 +122,11 @@ def claude():
         entry = rates.get(label)
         if entry and entry.get('utilization') is not None:
             windows.append(window(label, entry['utilization'], entry.get('resets_at')))
+    for model in ('Opus', 'Sonnet'):
+        label = 'seven_day_' + model.lower()
+        entry = rates.get(label)
+        if entry and entry.get('utilization') is not None:
+            windows.append(window(label, entry['utilization'], entry.get('resets_at'), model=model))
     scoped = data.get('model_scoped', rates.get('model_scoped', []))
     if isinstance(scoped, dict):
         scoped = [dict(entry, display_name=entry.get('display_name', name))
@@ -128,8 +134,13 @@ def claude():
     for entry in scoped:
         if entry.get('utilization') is None:
             continue
-        windows.append(window(entry['display_name'], entry['utilization'],
-                              entry.get('resets_at'), model=entry['display_name']))
+        scoped_window = window(entry['display_name'], entry['utilization'],
+                               entry.get('resets_at'), model=entry['display_name'])
+        if not any(existing.get('model', '').casefold() == scoped_window['model'].casefold()
+                   and existing['usedPercent'] == scoped_window['usedPercent']
+                   and existing.get('resetsAt') == scoped_window.get('resetsAt')
+                   for existing in windows):
+            windows.append(scoped_window)
     return None, windows
 
 
@@ -144,6 +155,10 @@ def gemini():
             continue
         scopes.append(json.dumps(entry.get('scope', entry.get('metadata', {}).get('email', 'default')), sort_keys=True))
         for limit in entry.get('limits', []):
+            # Antigravity also reports Claude/GPT shared buckets; only the
+            # google counter measures the Gemini models routed here.
+            if not limit.get('id', '').startswith('google-antigravity:google:'):
+                continue
             amount, period = limit['amount'], limit.get('window', {})
             used = amount.get('usedFraction')
             if used is None:
@@ -221,7 +236,9 @@ def synthetic():
     for label, entry in [('subscription', data.get('subscription')),
                          ('search hourly', data.get('search', {}).get('hourly'))]:
         if entry:
-            windows.append(window(label, 100 * entry['requests'] / entry['limit'], entry.get('renewsAt')))
+            resource = {'resource': 'search'} if label == 'search hourly' else {}
+            windows.append(window(label, 100 * entry['requests'] / entry['limit'],
+                                  entry.get('renewsAt'), **resource))
     weekly = data.get('planWeeklyLimit')
     if weekly:
         windows.append(window('weekly rolling', 100 - weekly['percentRemaining'],
@@ -330,7 +347,8 @@ def publish(directory, provider, record):
         with os.fdopen(fd, 'w') as output:
             json.dump(record, output)
         os.replace(temporary, path)
-        # The pointer lets a reader discover the OMP scope without refetching.
+        # The pointer names the account file written last, so the next call
+        # finds it without fetching just to learn which account is active.
         os.symlink(path.name, temporary)
         os.replace(temporary, directory / f'{provider}-current')
     finally:
@@ -376,6 +394,9 @@ def cached(provider, refresh):
 def thresholds(result):
     result = copy.deepcopy(result)
     provider_below, models_below = False, set()
+    # Only inference windows participate in routing and fallback scoring.
+    result['resources'] = [entry for entry in result['windows'] if entry.get('resource')]
+    result['windows'] = [entry for entry in result['windows'] if not entry.get('resource')]
     for entry in result['windows']:
         if result['status'] == 'stale' and entry.get('resetsAt', float('inf')) <= time.time():
             entry['historicalRemainingPercent'] = entry['remainingPercent']
@@ -404,19 +425,24 @@ def main():
     parser.add_argument('--json', action='store_true', help='Print machine-readable usage')
     parser.add_argument('--refresh', action='store_true', help='Bypass cached results')
     args = parser.parse_args()
-    providers = {}
-    for provider in READERS:
+    def report(provider):
         try:
             result = cached(provider, args.refresh)
         except (OSError, ValueError, KeyError, TypeError):
             result = fetch(provider)
-        providers[provider] = thresholds(result)
+        return thresholds(result)
+
+    # Providers have separate cache files and locks, so they are read at once;
+    # a cold run then waits for the slowest provider, not the sum of all five.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(READERS)) as pool:
+        reports = pool.map(report, READERS)
+        providers = dict(zip(READERS, reports))
     if args.json:
         print(json.dumps({'providers': providers}))
     else:
         for provider, result in providers.items():
             print(f"{provider}: {result['status']}")
-            for entry in result['windows']:
+            for entry in result['windows'] + result['resources']:
                 timing = (f"regenerates {entry.get('nextRegenPercent')}% at {display_time(entry['nextRegenAt'])}"
                           if 'nextRegenAt' in entry else f"resets at {display_time(entry.get('resetsAt'))}")
                 remaining = entry['remainingPercent']

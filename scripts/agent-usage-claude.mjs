@@ -16,6 +16,9 @@ try {
   session = query({ prompt, options: {
     abortController: controller,
     pathToClaudeCodeExecutable: 'claude',
+    settingSources: [],
+    mcpServers: {},
+    strictMcpConfig: true,
   } });
   const timer = setTimeout(() => controller.abort(), 15000);
   try {

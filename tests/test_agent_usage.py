@@ -5,6 +5,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -45,6 +46,7 @@ class UsageTest(unittest.TestCase):
                 "model_scoped": [{"display_name": "Fable", "utilization": 90, "resets_at": reset}]},
             "omp": [{"provider": "openai-codex", "limits": [{"amount": {"usedFraction": 1}}]},
                     {"provider": "google-antigravity", "scope": "gemini-account", "limits": [{
+                        "id": "google-antigravity:google:default:gemini-weekly",
                         "label": "Gemini", "scope": "provider", "window": {
                             "id": "weekly", "durationMs": 604800000, "resetsAt": reset * 1000},
                         "amount": {"usedFraction": .2, "remainingFraction": .8}}]}],
@@ -66,6 +68,7 @@ for line in sys.stdin:
  elif r['method']=='initialized': initialized=True
  elif r['method']=='account/rateLimits/read':
   assert initialized and r['params']=={}
+  (root/'codex-reading').touch()
   time.sleep(data.get('delay',0))
   if data.get('fail'): sys.exit(1)
   print(json.dumps({'id':r['id'],'result':data['codex']}),flush=True)
@@ -199,6 +202,97 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
         self.assertEqual(result['gemini']['status'], 'ok')
         self.assertEqual(result['claude']['belowThresholdModels'], ['Fable'])
 
+    def test_claude_legacy_model_windows_and_equivalent_scoped_windows(self):
+        rates = self.data['claude']['rate_limits']
+        del self.data['claude']['model_scoped']
+        for model, used in [('opus', 95), ('sonnet', 99)]:
+            rates['seven_day_' + model] = dict(rates['seven_day'], utilization=used)
+        self.save()
+        legacy = self.invoke()['claude']
+        self.assertFalse(legacy['belowThreshold'])
+        self.assertEqual(legacy['belowThresholdModels'], ['Opus', 'Sonnet'])
+        self.assertEqual(len(legacy['windows']), 4)
+        rates['model_scoped'] = [dict(rates['seven_day_' + model], display_name=model.title())
+                                for model in ('opus', 'sonnet')]
+        self.save()
+        self.assertEqual(self.invoke('--refresh')['claude']['windows'], legacy['windows'])
+
+    def test_gemini_ignores_low_third_party_shared_buckets(self):
+        limits = self.data['omp'][1]['limits']
+        limits[0]['amount'] = {'usedFraction': .1}
+        for counter in ('anthropic', 'openai'):
+            limits.append({'id': f'google-antigravity:{counter}:default:3p-weekly',
+                           'scope': {'provider': 'google-antigravity', 'windowId': 'weekly',
+                                     'sharedGroup': '3p-weekly'},
+                           'amount': {'usedFraction': .95}})
+        self.save()
+        result = self.invoke()['gemini']
+        self.assertFalse(result['belowThreshold'])
+        self.assertEqual(result['belowThresholdModels'], [])
+        self.assertEqual(min(w['remainingPercent'] for w in result['windows']), 90)
+
+    def test_synthetic_search_is_reported_outside_routing_windows(self):
+        self.data['synthetic']['subscription']['requests'] = 5
+        self.data['synthetic']['planWeeklyLimit']['percentRemaining'] = 95
+        self.data['synthetic']['search']['hourly']['requests'] = 9
+        self.save()
+        result = self.invoke()['synthetic']
+        self.assertFalse(result['belowThreshold'])
+        self.assertEqual(result['belowThresholdModels'], [])
+        self.assertEqual(min(w['remainingPercent'] for w in result['windows']), 95)
+        self.assertEqual(result['resources'][0]['resource'], 'search')
+        self.assertEqual(result['resources'][0]['remainingPercent'], 10)
+
+    def test_real_claude_sdk_usage_is_isolated_and_sends_no_prompt(self):
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('real Node and the pinned Claude Agent SDK are required')
+        probe = subprocess.run([node, '-e', "require.resolve('@anthropic-ai/claude-agent-sdk')"],
+                               capture_output=True, env=self.env, timeout=10)
+        if probe.returncode:
+            self.skipTest('pinned Claude Agent SDK is not on NODE_PATH')
+        self.stub('claude', '''
+import json,signal,sys
+(root/'claude-argv').write_text(json.dumps(sys.argv[1:]))
+def closed(*args):
+ (root/'claude-closed').touch()
+ sys.exit(0)
+signal.signal(signal.SIGTERM, closed)
+for line in sys.stdin:
+ message=json.loads(line)
+ with (root/'claude-messages').open('a') as output:
+  output.write(json.dumps(message)+'\\n')
+ if message['type']=='control_request':
+  kind=message['request']['subtype']
+  if kind not in ('initialize','get_usage'): sys.exit(2)
+  response=data['claude'] if kind=='get_usage' else {}
+  print(json.dumps({'type':'control_response','response':{
+   'subtype':'success','request_id':message['request_id'],'response':response}}),flush=True)
+closed()
+''')
+        result = subprocess.run([node, str(SCRIPT.with_name('agent-usage-claude.mjs'))],
+                                env=self.env, cwd=self.root, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), self.data['claude'])
+        argv = json.loads((self.root / 'claude-argv').read_text())
+        def option(name):
+            for index, argument in enumerate(argv):
+                if argument == name:
+                    return argv[index + 1]
+                if argument.startswith(name + '='):
+                    return argument.split('=', 1)[1]
+            return None
+        self.assertEqual(option('--setting-sources'), '')
+        self.assertIn('--strict-mcp-config', argv)
+        if option('--mcp-config') is not None:
+            self.assertEqual(json.loads(option('--mcp-config')), {'mcpServers': {}})
+        messages = [json.loads(line) for line in (self.root / 'claude-messages').read_text().splitlines()]
+        self.assertTrue(messages)
+        self.assertTrue(all(m['type'] == 'control_request' for m in messages))
+        self.assertEqual([m['request']['subtype'] for m in messages], ['initialize', 'get_usage'])
+        self.assertTrue(messages[-1]['request']['skip_behaviors'])
+        self.assertTrue((self.root / 'claude-closed').exists())
+
     def test_fresh_and_concurrent_calls_share_fetch(self):
         self.data['delay'] = .4
         self.save()
@@ -304,9 +398,12 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             deadline = time.monotonic() + 5
-            while not (self.root / 'calls').exists():
+            while not (self.root / 'codex-reading').exists():
                 self.assertLess(time.monotonic(), deadline)
                 time.sleep(.01)
+            cache = self.root / 'cache/agent-usage'
+            self.assertEqual(list(cache.glob('codex-*.json')), [])
+            self.assertFalse((cache / 'codex-current').exists())
             proc.kill()
             proc.wait()
             self.data['delay'] = 0

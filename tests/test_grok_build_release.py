@@ -1,8 +1,9 @@
 """Drive grok-build-release against stable-channel, header, and prefetch fixtures.
 
-The helper's channel read, its HEAD requests, and its downloads all go through
-overridable commands, so these tests feed it fixtures instead of network
-calls. The fake prefetch writes a file per URL and reports it as the store
+The helper's channel read, HEAD requests, and downloads run `curl` and
+`nix`, which these tests stub on `PATH`. Each stub rejects an argv that
+differs from the production command, so a changed flag or subcommand fails
+the run. The fake prefetch writes a file per URL and reports it as the store
 path, so the md5 cross-check reads real bytes.
 """
 
@@ -38,21 +39,27 @@ def sri(data):
     return "sha256-" + base64.b64encode(hashlib.sha256(data).digest()).decode()
 
 
-FAKE_FETCH = """#!/usr/bin/env python3
-import os, sys
-with open(os.environ['FAKE_LOG'], 'a') as f:
-    f.write('fetch ' + sys.argv[-1] + '\\n')
-sys.stdout.write(os.environ['FAKE_STABLE'])
-"""
+FETCH_FLAGS = "-fsSL --max-time 60"
+HEAD_FLAGS = "-fsSI --max-time 60"
+PREFETCH_ARGS = "store prefetch-file --json --hash-type sha256"
 
-# Prints the headers curl -sI prints, with the two x-goog-hash lines GCS
-# sends, or only the crc32c one for a URL in FAKE_NO_MD5, or fails the way
-# curl -f does on a 404.
-FAKE_HEAD = """#!/usr/bin/env python3
+# One curl stub serves the channel read (-fsSL) and the HEAD requests (-fsSI).
+# It rejects any argv but the production one. For HEAD it prints the headers
+# curl -sI prints, with the two x-goog-hash lines GCS sends, or only the
+# crc32c one for a URL in FAKE_NO_MD5, or fails the way curl -f does on a 404.
+FAKE_CURL = """#!{python}
 import base64, hashlib, os, sys
-url = sys.argv[-1]
+args = sys.argv[1:]
+url = args[-1]
+head = args[:-1] == os.environ['FAKE_HEAD_FLAGS'].split()
+if not head and args[:-1] != os.environ['FAKE_FETCH_FLAGS'].split():
+    sys.stderr.write(f'unexpected curl argv: {{args!r}}\\n')
+    sys.exit(99)
 with open(os.environ['FAKE_LOG'], 'a') as f:
-    f.write('head ' + url + '\\n')
+    f.write(('head ' if head else 'fetch ') + url + '\\n')
+if not head:
+    sys.stdout.write(os.environ['FAKE_STABLE'])
+    sys.exit(0)
 if url in os.environ.get('FAKE_MISSING', '').split():
     sys.exit(22)
 data = ('grok binary at ' + url + '\\n').encode()
@@ -62,9 +69,13 @@ sys.stdout.write('HTTP/2 200 \\r\\ncontent-length: %d\\r\\n'
                  'x-goog-hash: crc32c=cP/tdA==\\r\\n%s\\r\\n' % (len(data), md5))
 """
 
-FAKE_PREFETCH = """#!/usr/bin/env python3
+FAKE_NIX = """#!{python}
 import base64, hashlib, json, os, sys
-url = sys.argv[-1]
+args = sys.argv[1:]
+url = args[-1]
+if args[:-1] != os.environ['FAKE_PREFETCH_ARGS'].split():
+    sys.stderr.write(f'unexpected nix argv: {{args!r}}\\n')
+    sys.exit(99)
 with open(os.environ['FAKE_LOG'], 'a') as f:
     f.write('prefetch ' + url + '\\n')
 data = ('grok binary at ' + url + '\\n').encode()
@@ -74,7 +85,7 @@ path = os.path.join(os.environ['FAKE_STORE'], url.rsplit('/', 1)[-1])
 with open(path, 'wb') as f:
     f.write(data)
 digest = 'sha256-' + base64.b64encode(hashlib.sha256(data).digest()).decode()
-result = {'hash': os.environ.get('FAKE_HASH') or digest, 'storePath': path}
+result = {{'hash': os.environ.get('FAKE_HASH') or digest, 'storePath': path}}
 if os.environ.get('FAKE_NO_STORE_PATH'):
     del result['storePath']
 print(json.dumps(result))
@@ -86,11 +97,12 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
-        self.stubs = {}
-        for name, text in [("fetch", FAKE_FETCH), ("head", FAKE_HEAD), ("prefetch", FAKE_PREFETCH)]:
-            path = root / f"fake-{name}"
-            path.write_text(text)
-            self.stubs[name] = path
+        self.bin_dir = root / "bin"
+        self.bin_dir.mkdir()
+        for name, text in [("curl", FAKE_CURL), ("nix", FAKE_NIX)]:
+            stub = self.bin_dir / name
+            stub.write_text(text.format(python=sys.executable))
+            stub.chmod(0o755)
         self.store = root / "store"
         self.store.mkdir()
         self.log = root / "calls.log"
@@ -105,11 +117,13 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         prefetch_hash="",
         no_md5=(),
         no_store_path=False,
+        prefetch_args=PREFETCH_ARGS,
     ):
         env = dict(os.environ)
-        env["GROK_BUILD_RELEASE_FETCH"] = f"{sys.executable} {self.stubs['fetch']}"
-        env["GROK_BUILD_RELEASE_HEAD"] = f"{sys.executable} {self.stubs['head']}"
-        env["GROK_BUILD_RELEASE_PREFETCH"] = f"{sys.executable} {self.stubs['prefetch']}"
+        env["PATH"] = f"{self.bin_dir}:{env.get('PATH', '')}"
+        env["FAKE_FETCH_FLAGS"] = FETCH_FLAGS
+        env["FAKE_HEAD_FLAGS"] = HEAD_FLAGS
+        env["FAKE_PREFETCH_ARGS"] = prefetch_args
         env["FAKE_STABLE"] = stable
         env["FAKE_MISSING"] = " ".join(missing)
         env["FAKE_CORRUPT"] = corrupt
@@ -210,6 +224,15 @@ class GrokBuildReleaseTestCase(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("names no store path", result.stderr)
         self.assertEqual(self.output.read_text(), before)
+
+    def test_a_production_argv_the_stub_rejects_fails_and_keeps_the_pin(self):
+        before = self.write_pin("1.0.61")
+        result = self.run_release(prefetch_args="store prefetch-file --json --hash-type sha512")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("nix for", result.stderr)
+        self.assertIn("failed with status 99", result.stderr)
+        self.assertEqual(self.output.read_text(), before)
+        self.assertEqual(self.calls("prefetch"), [])
 
     def test_a_non_numeric_pin_is_treated_as_older_than_the_stable(self):
         # version_tuple cannot order the pin, so the helper resolves the

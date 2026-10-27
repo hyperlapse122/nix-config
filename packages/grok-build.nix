@@ -53,6 +53,10 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
 
   doInstallCheck = true;
   nativeInstallCheckInputs = [ pkgs.versionCheckHook ];
+  postInstallCheck = ''
+    grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" $out/bin/grok
+    grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" $out/bin/grok
+  '';
   versionCheckProgramArg = "--version";
   versionCheckKeepEnvironment = [ "HOME" ];
 

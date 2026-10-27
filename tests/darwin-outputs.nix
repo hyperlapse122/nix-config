@@ -28,8 +28,8 @@
   - installed OMP credential helpers read the user's secret state directory;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
-  - grok on PATH resolves to the grok-build wrapper, which turns its
-    self-updater off, and the profile has no `agent` executable;
+  - grok on PATH resolves to the grok-build wrapper, and the profile has no
+    `agent` executable;
   - sccache is on PATH, and the Cargo settings merge updates
     ~/.cargo/config.toml with the profile sccache wrapper while preserving
     unowned state;
@@ -328,10 +328,6 @@ let
       grok=$(readlink -f "$gen/home-path/bin/grok" || true)
       if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
         bad "grok on PATH is not the grok-build wrapper"
-      elif ! grep -qxF "export GROK_DISABLE_AUTOUPDATER='1'" "$grok"; then
-        bad "the grok wrapper does not turn its self-updater off"
-      elif ! grep -qxF "export GROK_CLAUDE_AGENTS_ENABLED='false'" "$grok"; then
-        bad "the grok wrapper does not turn its Claude Code file scan off"
       fi
       if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
         bad "the profile puts an agent executable on PATH"

@@ -563,7 +563,19 @@
           grok-build-release =
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
-          agent-usage = pythonScriptCheck "agent-usage" ./scripts/agent-usage ./tests/test_agent_usage.py;
+          # The Claude helper runs against the pinned SDK with real Node, so the
+          # check carries both instead of letting that test skip.
+          agent-usage =
+            (pythonScriptCheckWith {
+              nativeBuildInputs = [ pkgs.nodejs_24 ];
+              modules = [ ./scripts/agent-usage-claude.mjs ];
+              setup = ''
+                export NODE_PATH=${import ./packages/claude-agent-sdk.nix { inherit pkgs; }}/lib/node_modules
+              '';
+            })
+              "agent-usage"
+              ./scripts/agent-usage
+              ./tests/test_agent_usage.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
