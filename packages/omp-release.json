@@ -1,19 +1,19 @@
 {
-  "version": "18.13.0",
-  "build": "20261026-202953-011ab73",
-  "commit": "011ab732fa2d8657203d17f6af80d57809eb24f4",
+  "version": "18.13.1",
+  "build": "20261027-005706-0838d2a",
+  "commit": "0838d2ab4407b74e870de07e1a6780a13c7d542c",
   "platforms": {
     "x86_64-linux": {
-      "url": "https://build.stencil.so/d/omp/20261026-202953-011ab73/omp-linux-x64",
-      "hash": "sha256-eG9fdlIHnZciR+MRK6qoKOyHqufEw+rSDpl7e0yZ2V8="
+      "url": "https://build.stencil.so/d/omp/20261027-005706-0838d2a/omp-linux-x64",
+      "hash": "sha256-7ilhx9oC5RSiR17pWML9hdur9NCQeUm6UCLtspUfhLU="
     },
     "aarch64-linux": {
-      "url": "https://build.stencil.so/d/omp/20261026-202953-011ab73/omp-linux-arm64",
-      "hash": "sha256-QZGG6MUt1cvt07w2R9aIA9b1xRWmGEmVdJM5H44AjvE="
+      "url": "https://build.stencil.so/d/omp/20261027-005706-0838d2a/omp-linux-arm64",
+      "hash": "sha256-gD23JfnlvRd85SdPdxgIFIHzZ4Kfdz2YSgqWEfRxMkQ="
     },
     "aarch64-darwin": {
-      "url": "https://build.stencil.so/d/omp/20261026-202953-011ab73/omp-darwin-arm64",
-      "hash": "sha256-Uk7cPxK5f7sGm8TTlt1dcR0YugPbb2DB8TCdBtuQIOQ="
+      "url": "https://build.stencil.so/d/omp/20261027-005706-0838d2a/omp-darwin-arm64",
+      "hash": "sha256-+cZuhyXPEypt4xsjIZCK4cQ8Zo3hLJHerzaNJcAZR9g="
     }
   }
 }
