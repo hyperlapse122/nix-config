@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-26T08:18:42Z"
+    cursor: "2026-10-27T04:38:05Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -427,7 +427,7 @@ items:
     source: "gh-issues"
     status: "in_plan"
     sensitive: false
-    body: "Run the live checks that a build cannot cover for native subagents and worktree cleanup, on a deployed host and a T3 Code session."
+    body: "Complete deferred live native-subagent and worktree-cleanup checks on deployed hosts; builds do not establish live behavior."
     author_class: "teammate"
     claimed_fix_ref: null
     decision: "postponed until #317 and #319 are done (user, 2026-10-23)"
@@ -436,6 +436,7 @@ items:
     id: "hyperlapse122/nix-config#316"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/316"
+    requirement_id: "R29"
     updatedAt: "2026-10-23T02:05:50Z"
   "gh-issues:hyperlapse122/nix-config#317":
     source: "gh-issues"
@@ -502,28 +503,38 @@ items:
     updatedAt: "2026-10-24T10:25:15Z"
   "gh-issues:hyperlapse122/nix-config#328":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Remove provisioning and verification documents and repair their references, checks, and captured learnings."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:14.682094+00:00"
     author_class: "teammate"
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#328"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/328"
-    updatedAt: "2026-10-24T09:09:36Z"
+    updatedAt: "2026-10-27T03:44:00Z"
   "gh-issues:hyperlapse122/nix-config#329":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Audit repository tests in owner-based batches, preserving independent contracts and verifying repaired proof with mutations."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:15.592427+00:00"
     author_class: "teammate"
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#329"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/329"
-    updatedAt: "2026-10-24T09:09:39Z"
+    updatedAt: "2026-10-27T03:44:02Z"
   "gh-issues:hyperlapse122/nix-config#330":
     source: "gh-issues"
     status: "source_gone"
@@ -569,30 +580,38 @@ items:
     updatedAt: "2026-10-24T10:05:27Z"
   "gh-issues:hyperlapse122/nix-config#340":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Prefer T3 Code browser and device tools in shared agent instructions. Update home/h82/agents/instructions/instructions.md.tmpl to conditionally prefer T3 Code preview_* and device_* tools when running in T3 Code with CLI fallbacks."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:16.592342+00:00"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#340"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/340"
-    updatedAt: "2026-10-24T10:50:47Z"
+    updatedAt: "2026-10-27T03:44:04Z"
   "gh-issues:hyperlapse122/nix-config#341":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "feat(agents): route T3 cross-model reviews without worktrees. Update home/h82/agents/instructions/instructions.md.tmpl so cross-model reviews in T3 Code run via T3 Code delegated tasks against the current workspace without creating a worktree."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:17.852130+00:00"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#341"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/341"
-    updatedAt: "2026-10-24T13:15:52Z"
+    updatedAt: "2026-10-27T03:44:06Z"
   "gh-issues:hyperlapse122/nix-config#351":
     source: "gh-issues"
     status: "closed"
@@ -629,43 +648,55 @@ items:
     updatedAt: "2026-10-26T03:23:17Z"
   "gh-issues:hyperlapse122/nix-config#357":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "feat(agents): default OMP to google-antigravity/gemini-4-argon (high). Set OMP's default model and thinking level to google-antigravity/gemini-4-argon (high) in standalone OMP and T3 Code's unified OMP instance, and include google-antigravity/* in T3's OMP scope."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:18.969960+00:00"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#357"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/357"
-    updatedAt: "2026-10-26T01:59:53Z"
+    updatedAt: "2026-10-27T03:44:08Z"
   "gh-issues:hyperlapse122/nix-config#358":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "feat(agents): render OMP-only GitHub tool instructions from template. Enable OMP's built-in github tool, consolidate OMP.md into an OMP-only section in instructions.md.tmpl, and instruct OMP to prefer native GitHub tools over gh CLI where supported."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:19.921036+00:00"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#358"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/358"
-    updatedAt: "2026-10-26T01:59:54Z"
+    updatedAt: "2026-10-27T03:44:10Z"
   "gh-issues:hyperlapse122/nix-config#359":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "feat(agents): add OMP role orchestration with google-antigravity models. Add # OMP role orchestration (P1-P7) to instructions.md.tmpl and configure OMP modelRoles and task.agentModelOverrides to use google-antigravity Gemini models for P1-P6 while keeping external CE peers for P7."
+    fix_ref: "#371"
+    verified_merge_sha: "a06ed33a3d6032f84c9ebee3bb622ae22177c2da"
+    verified_at: "2026-10-27T09:37:21.052962+00:00"
     author_class: "teammate"
-    claimed_fix_ref: null
+    claimed_fix_ref: "#371"
+    closeout_decision: "PR #371 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#359"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/359"
-    updatedAt: "2026-10-26T02:05:30Z"
+    updatedAt: "2026-10-27T03:44:12Z"
   "gh-issues:hyperlapse122/nix-config#362":
     source: "gh-issues"
     status: "source_gone"
@@ -680,33 +711,56 @@ items:
     origin: "https://github.com/hyperlapse122/nix-config/issues/362"
     source_gone_reason: "closed as not planned at source (wontfix): T3 Code acpRegistry hardcodes supportsTextGeneration=false and silently falls back to codex/gpt-6-luna"
     updatedAt: "2026-10-26T04:39:21Z"
-  "gh-issues:hyperlapse122/nix-config#368":
+  "gh-issues:hyperlapse122/nix-config#363":
     source: "gh-issues"
     status: "in_plan"
     sensitive: false
-    body: "Stop persisting pricing and top_provider in the OpenRouter catalog; preserve free/free-beta behavior and handle missing metadata safely."
+    body: "Disable the OMP ask tool and automatic todo reminders only in T3 Code; retain the todo tool and standalone behavior."
     author_class: "teammate"
     existing_ack: true
     existing_closeout: false
+    id: "hyperlapse122/nix-config#363"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/363"
+    requirement_id: "R45"
+    updatedAt: "2026-10-27T09:36:45Z"
+  "gh-issues:hyperlapse122/nix-config#368":
+    source: "gh-issues"
+    status: "closed"
+    sensitive: false
+    body: "Stop persisting pricing and top_provider in the OpenRouter catalog; preserve free/free-beta behavior and handle missing metadata safely."
+    fix_ref: "#372"
+    verified_merge_sha: "41d3a378a9b1f85babd7e4bc8e297280f9d67090"
+    verified_at: "2026-10-27T09:37:22.476677+00:00"
+    author_class: "teammate"
+    claimed_fix_ref: "#372"
+    closeout_decision: "PR #372 closingIssuesReferences; merged to main"
+    existing_ack: true
+    existing_closeout: true
     id: "hyperlapse122/nix-config#368"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/368"
-    updatedAt: "2026-10-26T07:32:05Z"
+    updatedAt: "2026-10-27T03:44:15Z"
   "gh-issues:hyperlapse122/nix-config#369":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Allow required interactive skill setup through ordinary conversation when dedicated question tools are unavailable, preserving question order and consent."
+    fix_ref: "#372"
+    verified_merge_sha: "41d3a378a9b1f85babd7e4bc8e297280f9d67090"
+    verified_at: "2026-10-27T09:37:23.383397+00:00"
     author_class: "teammate"
+    claimed_fix_ref: "#372"
+    closeout_decision: "PR #372 closingIssuesReferences; merged to main"
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#369"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/369"
-    updatedAt: "2026-10-26T07:56:31Z"
+    updatedAt: "2026-10-27T03:44:17Z"
   "gh-issues:hyperlapse122/nix-config#370":
     source: "gh-issues"
-    status: "in_plan"
+    status: "source_gone"
     sensitive: false
     body: "Investigate bounded recovery from Codex capacity failures in T3 Code and standalone CLI, respecting cancellation and preserving completed tool results."
     author_class: "teammate"
@@ -715,15 +769,112 @@ items:
     id: "hyperlapse122/nix-config#370"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/370"
+    replacement_issue: "hyperlapse122/nix-config#373"
+    source_gone_reason: "Closed as not planned at source; superseded by #373, not a verified recovery fix."
     updatedAt: "2026-10-26T08:18:42Z"
+  "gh-issues:hyperlapse122/nix-config#373":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Track and adopt an upstream Codex capacity-recovery fix, then validate ordinary sessions and subagents separately in T3 and CLI without duplicated operations."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#373"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/373"
+    requirement_id: "R46"
+    updatedAt: "2026-10-27T03:43:34Z"
+  "gh-issues:hyperlapse122/nix-config#376":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Compare Gemini 3.8 Flash against current scout and quick choices on repeated real tasks before deciding role changes."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#376"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/376"
+    requirement_id: "R47"
+    updatedAt: "2026-10-27T03:43:37Z"
+  "gh-issues:hyperlapse122/nix-config#377":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "After Synthetic access expires on 2026-11-18, decide renewal or remove expired routing and assess dependent configuration."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#377"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/377"
+    requirement_id: "R48"
+    updatedAt: "2026-10-27T03:43:39Z"
+  "gh-issues:hyperlapse122/nix-config#378":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Decide whether to retain Grok Build with funded access or remove its provisioning and restore absence guards."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#378"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/378"
+    requirement_id: "R49"
+    updatedAt: "2026-10-27T03:43:42Z"
+  "gh-issues:hyperlapse122/nix-config#379":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Define usage-pace routing across multiple and rolling quota windows, including its relationship to chain order and the existing remaining-allowance floor."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#379"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/379"
+    requirement_id: "R50"
+    updatedAt: "2026-10-27T03:43:44Z"
+  "gh-issues:hyperlapse122/nix-config#380":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Define a concise table format for delegated task reporting, including identity, effort, links, status, and skip reasons."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#380"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/380"
+    requirement_id: "R51"
+    updatedAt: "2026-10-27T03:43:46Z"
+  "gh-issues:hyperlapse122/nix-config#383":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    body: "Diagnose why the first GPG signature after idle times out while a retry succeeds; establish the cause before selecting a fix."
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#383"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/383"
+    requirement_id: "R52"
+    updatedAt: "2026-10-27T09:36:52Z"
 last_run:
-  timestamp: "2026-10-26T10:23:27Z"
+  timestamp: "2026-10-27T09:39:20Z"
   outcome: "completed"
-  writer: "sweep-codex-t3-90dd02f8-20261026"
+  writer: "sweep-codex-t3-99121b7b-20261027"
   counts:
     gh-issues:
       ack_deferred: 0
-      acknowledged: 3
-      closed: 0
-      ingested: 3
+      acknowledged: 2
+      closed: 9
+      ingested: 8
+      manual_stuck: 0
+      open: 9
       recordings_analyzed: 0
+      recovered_acknowledgments: 6
+      superseded: 1
