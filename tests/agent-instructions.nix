@@ -75,7 +75,7 @@ let
             else if target == ".omp/agent/AGENTS.md" then
               "omp"
             else
-              "common";
+              "claude";
         }) deliveryPaths;
         git = "${entry.user.home-files}/.config/git/config";
       }) presentEntries

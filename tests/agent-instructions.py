@@ -9,31 +9,232 @@ from pathlib import Path
 CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
-CODEX_OPEN = "{{ if .codex }}"
-OMP_OPEN = "{{ if .omp }}"
-BLOCK_CLOSE = "{{ end -}}"
+DELIVERIES = ("claude", "codex", "omp")
+ROUTING_HEADING = "Agent roles and routing"
+CLAUDE_HEADING = "Claude Code role orchestration"
 CODEX_HEADING = "Codex role orchestration"
 OMP_TOOLS_HEADING = "OMP tools and Compound Engineering"
 OMP_ROLE_HEADING = "OMP role orchestration"
+HARNESS_HEADINGS = {
+    "claude": [CLAUDE_HEADING],
+    "codex": [CODEX_HEADING],
+    "omp": [OMP_TOOLS_HEADING, OMP_ROLE_HEADING],
+}
 
-PROFILES = {
-    "P1": ("gpt-6-luna", "low", "Fast"),
-    "P2": ("gpt-6-luna", "low", "Fast"),
-    "P3": ("gpt-6.1-sol", "low", "Standard"),
-    "P4": ("gpt-6.1-sol", "medium", "Standard"),
-    "P5": ("gpt-6.1-sol", "low", "Standard"),
-    "P6": ("gpt-6.1-sol", "medium", "Standard"),
-    "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
+ROLES = {
+    "root": "Conversation with the user, delegation, progress",
+    "scout": "Code search, grounding, evidence gathering",
+    "quick": "Mechanical edits, status lookups, commit messages",
+    "writing": "Documentation and prose",
+    "visual": "Frontend and UI",
+    "implement": "Ordinary implementation",
+    "implement-high": "Feature work across several files",
+    "deep": "Hard logic or debugging that evidence can settle",
+    "hard-decision": "A central decision evidence cannot settle",
+    "review": "CE review personas (code, doc, simplify)",
+    "review-gate": "Plan review, final gate, adversarial review",
+    "architect": "Architecture and plan consultation",
+    "peer": "CE-required independent cross-model review",
 }
-OMP_PROFILES = {
-    "P1": ("google-antigravity/gemini-3.5-flash-lite", "minimal", "Standard"),
-    "P2": ("google-antigravity/gemini-3.5-flash-lite", "low", "Standard"),
-    "P3": ("google-antigravity/gemini-3.8-flash", "low", "Standard"),
-    "P4": ("google-antigravity/gemini-3.8-flash", "medium", "Standard"),
-    "P5": ("google-antigravity/gemini-4-argon", "high", "Standard"),
-    "P6": ("google-antigravity/gemini-4-argon", "high", "Standard"),
-    "P7": ("CE-selected external model", "CE-prescribed effort", "Provider default"),
+
+# Chain cells: entries joined by " → "; T3 entries name the provider instance.
+KIMI = "`omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S)"
+GLM = "`omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S)"
+DEEPSEEK = "`omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`"
+T3_ROOTS = {
+    "claude": f"`claudeAgent` `claude-opus-5-5` `medium` → {KIMI} → {GLM}",
+    "codex": "`codex` `gpt-6-astra` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium`",
+    "omp": "`omp` `google-antigravity/gemini-4-argon` `high`",
 }
+T3_CHAINS = {
+    "scout": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
+    "quick": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
+    "writing": "`omp` `google-antigravity/gemini-4-argon` `low` → `claudeAgent` `claude-opus-5-5` `low`",
+    "visual": f"`omp` `google-antigravity/gemini-4-argon` `low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
+    "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high`",
+    "implement-high": f"`claudeAgent` `claude-opus-5-5` `medium` → {GLM} → {KIMI} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high`",
+    "deep": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh`",
+    "hard-decision": "`codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-fable-5-1` `max`",
+    "review": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high`",
+    "review-gate": "`codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-opus-5-5` `max`",
+    "architect": f"`claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI} → `codex` `gpt-6.1-sol` `xhigh`",
+    "peer": "The external model and effort the owning CE skill selects",
+}
+SOL = "`gpt-6.1-sol`"
+ARGON = "`google-antigravity/gemini-4-argon`"
+FLASH = "`google-antigravity/gemini-3.8-flash`"
+LITE = "`google-antigravity/gemini-3.5-flash-lite`"
+HARNESS_CHAINS = {
+    "claude": {
+        "root": "`opus` `medium`",
+        "scout": "`haiku` `medium`",
+        "quick": "`haiku` `medium`",
+        "writing": "`opus` `low`",
+        "visual": "`fable` `max` → `opus` `max`",
+        "implement": "`sonnet` `medium`",
+        "implement-high": "`opus` `medium`",
+        "deep": "`opus` `xhigh`",
+        "hard-decision": "`fable` `max`",
+        "review": "`opus` `high`",
+        "review-gate": "`opus` `max`",
+        "architect": "`fable` `max`",
+        "peer": "CE selection",
+    },
+    "codex": {
+        "root": f"`gpt-6-astra` `medium` → {SOL} `medium` Fast → {SOL} `medium`",
+        "scout": "`gpt-6-luna` `low` Fast",
+        "quick": "`gpt-6-luna` `low` Fast",
+        "writing": f"{SOL} `low`",
+        "visual": f"{SOL} `low`",
+        "implement": f"{SOL} `low`",
+        "implement-high": f"{SOL} `medium`",
+        "deep": f"{SOL} `medium`",
+        "hard-decision": f"{SOL} `medium`",
+        "review": f"{SOL} `medium`",
+        "review-gate": f"{SOL} `medium`",
+        "architect": f"{SOL} `medium`",
+        "peer": "CE selection",
+    },
+    "omp": {
+        "root": f"{ARGON} `high`",
+        "scout": f"{LITE} `low`",
+        "quick": f"{LITE} `minimal`",
+        "writing": f"{ARGON} `low`",
+        "visual": f"{ARGON} `low`",
+        "implement": f"{FLASH} `low`",
+        "implement-high": f"{FLASH} `medium`",
+        "deep": f"{FLASH} `medium`",
+        "hard-decision": f"{ARGON} `high`",
+        "review": f"{FLASH} `medium`",
+        "review-gate": f"{ARGON} `high`",
+        "architect": f"{ARGON} `high`",
+        "peer": "CE selection",
+    },
+}
+
+
+def table(header, rows):
+    return f"| Role | {header} |\n| --- | --- |\n" + "\n".join(f"| `{role}` | {cell} |" for role, cell in rows.items())
+
+
+def chain_table(chains):
+    return table("Chain", chains)
+
+
+def t3_chains(delivery):
+    return {"root": T3_ROOTS[delivery], **T3_CHAINS}
+
+
+CE_COVERAGE = """| Workflow / identity | Role and boundary |
+| --- | --- |
+| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | `quick`; unclear connector semantics `implement` |
+| `ce-sweep` media analyzer | `implement` for frame/transcript interpretation |
+| `ce-sweep` decisions/reconciliation; `lfg` coordination | `root`; conflicting evidence or difficult scope `hard-decision` |
+| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | `scout`; brainstorm claim verifier `implement` |
+| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | `scout` gathering, `implement` applicability/reconciliation |
+| `ce-plan` spec-flow analyzer and data-integrity guardian | `deep` |
+| `ce-plan` architecture strategist/complex plan author | `architect`; ordinary delegated plan author `implement` |
+| Plan review gate, final readiness gate, `ce-code-review` and `ce-doc-review` adversarial lenses | `review-gate` |
+| `ce-work` implementation/design-sync; PR comment resolver | `implement`; work across several files `implement-high`, frontend and UI `visual`, complex diagnosis `deep`, architecture `architect` |
+| `ce-debug` investigation/root cause; `ce-optimize` attribution | `deep`; exact gathering by `quick` or `scout` does not transfer diagnosis |
+| `ce-explain` work-recap/behavior-trace scouts | `scout`; complex causal tracing `deep` |
+| `ce-ideate` evidence researchers/issue intelligence | `scout` retrieval, `implement` interpretation |
+| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | `implement`, `architect` or `peer` according to the skill's frame and diversity contract |
+| `ce-pov` verdict/synthesis; independent peer | `architect`, conflicting evidence `hard-decision`; peer `peer` |
+| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | `review` even on small changes |
+| `ce-code-review` learnings researcher; merge/validator/report leaves | `scout` retrieval, `implement` applicability; `implement`, `review` and `implement` leaves preserving all findings |
+| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security lenses | `review`; independent peer `peer` |
+| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | `review` regardless of output length |
+| `ce-compound` Related Docs Finder | `scout` bounded matching; overlap interpretation `implement` |
+| `ce-compound` session historian, synthesis, grounding validation | `implement`; root retains classification/drafting ownership |
+| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | `deep`; research-only framework/best-practices gathering `scout` |
+| `ce-compound-refresh` investigators/replacement authors | `implement`; complex behavior verification `deep`; root retains deletion/metadata decisions |
+| Documentation, guides, handoffs and other prose | `writing` |
+| Browser/device/prototype execution, general workers | `implement` with required modalities/tools; frontend and UI `visual`; status only `quick` |
+| Commit/publication/babysitting coordination | `root`; commit messages `quick`; deterministic commands need no extra model call; diagnosis `deep` |"""
+
+ROUTING_SENTENCES = [
+    "A role picks a model and grants no permission to delegate: keep each skill's root ownership, selection triggers, sequencing, prompts, tools, permissions, artifact contracts, and required review and verification stages.",
+    "Fill unspecified fields from the role's table entry, never implicitly from the parent.",
+    "Give unlisted or new delegated work the `implement` role.",
+    "Inside T3 Code, the T3 Code table below decides every delegated role in place of the harness table; outside T3 Code, the harness table decides.",
+    "A `root` chain picks the model when a thread or session starts.",
+    "It never moves a running session to another model.",
+    "Move to the next entry when the provider is disabled, the model is not offered, the usage check skips it, its usage is exhausted, its Synthetic expiry has passed, or its launch is confirmed rejected twice.",
+    "A Grok `402 Payment Required` skips the entry at once.",
+    "Never start a replacement while an earlier attempt may still be live: retry an unconfirmed launch with the same request ID.",
+    "Report each skipped entry with its reason.",
+    "Before delegating, run `agent-usage --json` and read the chain's providers.",
+    "Skip every entry of a provider whose provider-wide below-threshold flag is set, and only the entries of the models a provider lists as below threshold.",
+    "A `stale` or `unknown` status alone skips nothing.",
+    "When every runnable entry was skipped only for the usage threshold, use the one whose lowest applicable `remainingPercent` is highest and say that every entry was below the threshold; never revive an entry skipped for any other reason.",
+    "Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.",
+    "Entries marked (S) are Synthetic and expire after 2026-11-18.",
+    "From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish.",
+    "Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.",
+    "The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.",
+    "GPT `max` and `ultra` run only on the user's explicit request for the affected work.",
+    "OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.",
+    "A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`.",
+    "Never select `ultrafast`.",
+    "Formatting errors, transient network failures, busy slots and missing credentials justify neither a higher effort nor another role.",
+    "Set options by the names `orchestrator_capabilities` lists: `effort` for `claudeAgent`, `reasoningEffort` and `serviceTier` for `codex`, `thinking` for `omp`, and the listed effort option for `grok`.",
+    "A `peer` runs the external model and effort the owning CE skill selects.",
+    "Dispatch independent delegated tasks in parallel: start all of them before waiting on any, and serialize only a task that needs another task's result.",
+    "Give parallel writers disjoint file scopes, and integrate any shared file in the root yourself.",
+    "Inside T3 Code, run cross-model work and reviews through `delegate_task` in place of a skill's own CLI or worktree transport, in the shared checkout without a worktree.",
+    "Children that write files may run in parallel there.",
+    "Tell a read-only child to inspect without editing, and disclose that its read-only access was a prompt instruction, not an enforced restriction.",
+]
+
+
+def routing_contract(delivery):
+    return f"""- Every harness names delegated work with these roles. A role picks a model and grants no permission to delegate: keep each skill's root ownership, selection triggers, sequencing, prompts, tools, permissions, artifact contracts, and required review and verification stages.
+
+{table("Work", ROLES)}
+
+- Apply the user's current overrides for their stated task, recipient, fields and duration first, then the owning skill's constraints, then the role. Fill unspecified fields from the role's table entry, never implicitly from the parent.
+- Give unlisted or new delegated work the `implement` role. Mixed work takes the role of its substantive part; split it only where the owning skill already permits. Root-owned work stays in the active root, and a delegated authoring assignment does not move it out.
+
+## Compound Engineering coverage
+
+{CE_COVERAGE}
+
+## Model chains
+
+- Each role maps to a chain of models, tried left to right. Inside T3 Code, the T3 Code table below decides every delegated role in place of the harness table; outside T3 Code, the harness table decides.
+- A `root` chain picks the model when a thread or session starts. It never moves a running session to another model.
+- Move to the next entry when the provider is disabled, the model is not offered, the usage check skips it, its usage is exhausted, its Synthetic expiry has passed, or its launch is confirmed rejected twice. A Grok `402 Payment Required` skips the entry at once.
+- Never start a replacement while an earlier attempt may still be live: retry an unconfirmed launch with the same request ID. Report each skipped entry with its reason.
+- Before delegating, run `agent-usage --json` and read the chain's providers. Skip every entry of a provider whose provider-wide below-threshold flag is set, and only the entries of the models a provider lists as below threshold. A `stale` or `unknown` status alone skips nothing.
+- When every runnable entry was skipped only for the usage threshold, use the one whose lowest applicable `remainingPercent` is highest and say that every entry was below the threshold; never revive an entry skipped for any other reason.
+- Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.
+- Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.
+- The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.
+- GPT `max` and `ultra` run only on the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
+- A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`. Never select `ultrafast`.
+- Run each entry at its listed effort. Formatting errors, transient network failures, busy slots and missing credentials justify neither a higher effort nor another role.
+- Set options by the names `orchestrator_capabilities` lists: `effort` for `claudeAgent`, `reasoningEffort` and `serviceTier` for `codex`, `thinking` for `omp`, and the listed effort option for `grok`.
+- A `peer` runs the external model and effort the owning CE skill selects.
+
+## Parallel work and T3 Code delegation
+
+- Dispatch independent delegated tasks in parallel: start all of them before waiting on any, and serialize only a task that needs another task's result.
+- Give parallel writers disjoint file scopes, and integrate any shared file in the root yourself.
+- Inside T3 Code, run cross-model work and reviews through `delegate_task` in place of a skill's own CLI or worktree transport, in the shared checkout without a worktree. Children that write files may run in parallel there.
+- Tell a read-only child to inspect without editing, and disclose that its read-only access was a prompt instruction, not an enforced restriction.
+
+## T3 Code table
+
+{chain_table(t3_chains(delivery))}"""
+
+
+CLAUDE_SENTENCES = [
+    "This section applies only to the active Claude Code harness, including Claude Code-led T3 sessions.",
+    "Outside T3 Code, delegate through the `Agent` tool and set its `model` and `effort` from this table; inside T3 Code, the T3 Code table decides.",
+]
+CLAUDE_CONTRACT = "\n".join("- " + sentence for sentence in CLAUDE_SENTENCES) + "\n\n" + chain_table(HARNESS_CHAINS["claude"])
+
 CODEX_SENTENCES = [
     "When a skill requires interactive setup and a person can reply in this conversation, use the dedicated question tool when it is available and usable; otherwise ask the next required question in ordinary chat with the same choices, order, and consent gates.",
     "Tool absence or mode restrictions alone do not make that conversation non-interactive; this overrides a skill's tool-based non-interactive inference.",
@@ -41,103 +242,60 @@ CODEX_SENTENCES = [
     "Honor explicitly non-interactive or headless invocations and unattended scheduled or piped runs; do not substitute chat for required secret entry or protected authentication and permission mechanisms.",
     "This section applies only to the active Codex harness, including Codex-led T3 sessions.",
     "Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.",
-    "Fill unspecified fields from that profile, never implicitly from the parent.",
-    "Use P3 for unlisted or newly introduced delegated responsibilities.",
-    "Root-owned work stays in the active root (profiled as Sol P5/P6) without reconfiguring an active session unless asked; delegated authoring assignments do not move that work out of the root.",
-    "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
-    "Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.",
-    "GPT `max` and `ultra` require an explicit user request for the affected work.",
-    "Standard is the default except for P1/P2 Luna tasks, which have standing user authorization for Fast (`priority`) when the route and account support it, even when allowance is unknown.",
-    "This authorization does not extend to root, Sol or external peers.",
-    "Other automatic Fast selections require advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage.",
-    "For those other roles, unknown allowance retains Standard unless the user requests acceleration.",
-    "Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.",
-    "Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers.",
+    "Outside T3 Code, delegated roles use this table; inside T3 Code, the T3 Code table decides.",
+    "A root-only selection does not change child roles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence.",
+    "Inside T3, use `delegate_task` for every delegated role, never top-level conversations or direct provider CLI workers.",
     "Compare returned provider, model and options with the request before counting configuration as applied.",
-    "Explicitly set `target.model` and provider-specific effort and supported tier in `target.options`.",
+    "Explicitly set `target.model` and the provider's effort and supported tier in `target.options`.",
     "Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch.",
+    "Never silently clamp, substitute a model outside the role's chain, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran.",
+    "Queue/backpressure and launch failures must not create duplicate live work.",
     "For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`.",
     "Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`.",
+    "A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override.",
+    "Disclose permitted recipients before sending.",
     "Before launch, map the invoked skill's pre-launch failure, started failure, no-review, retry/replacement and local-lens fallback outcomes to the observed T3 states.",
     "On abandonment/deadline, cancel owned live work, retain terminal failure classification and perform the skill's scratch cleanup.",
     "Code review retains reviewer, findings, residual risks and testing gaps; document review retains reviewer, findings, residual risks and deferred questions.",
     "POV retains its settled `final: true` answer, reasoning and round contract; a non-final position does not finish the panel.",
     "Requested/returned configuration is not serving attestation: unknown actual values stay `unverified`; peer self-reports or provider labels do not establish distinct serving families.",
     "Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control.",
-    "Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
-    "This exception assigns no blanket Claude effort and changes no Claude settings or session environment.",
     "In Codex-led T3, replace CE CLI launch/status/result/reap mechanics with `delegate_task`, `task_status`, task notifications and `task_cancel`.",
     "Capture scope identity and recheck before fold-in; drift requires a fresh bounded round or explicitly incomplete coverage.",
     "Retain valid attributed findings without an independence promotion when the required evidence is missing.",
+    "Validate the entire terminal artifact against the invoked skill's current required fields, arrays and evidence before aggregation.",
     "Missing arrays, truncated/malformed output, missing artifacts and fluent summaries never become an empty successful review.",
+    "Retain every `taskId` and a stable `clientRequestId` for retries of one dispatch.",
     "Every new review round uses a fresh delegated task and request ID with the original brief plus prior findings/responses, not a message to its backing thread.",
     "A wait timeout leaves live work running; questions, approvals, nested children and transient retries are incomplete states.",
     "Preserve surviving findings and identify uncovered lenses after partial failure.",
     "Parent tools do not authorize answering a child's reserved approval.",
+    "Outside T3, establish required enforced read-only/tool restrictions before peer egress.",
     "Instructions asking a shared-checkout child not to write do not enforce read-only access.",
-    "Establish required enforced read-only/tool restrictions before peer egress.",
     "If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback.",
+    "Inside T3, the shared prompt-instructed read-only rule applies instead.",
 ]
-CODEX_CONTRACT = """- This section applies only to the active Codex harness, including Codex-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions and artifact contracts. Use bounded briefs and shared evidence; retain required review and verification stages.
+CODEX_CONTRACT = """- This section applies only to the active Codex harness, including Codex-led T3 sessions. Use bounded briefs and shared evidence.
 - Prefer ChatGPT-authenticated Codex for ordinary work. Never automatically switch to separately billed API access or purchase credits when allowance is exhausted.
 - When a skill requires interactive setup and a person can reply in this conversation, use the dedicated question tool when it is available and usable; otherwise ask the next required question in ordinary chat with the same choices, order, and consent gates.
 - Tool absence or mode restrictions alone do not make that conversation non-interactive; this overrides a skill's tool-based non-interactive inference.
 - After each required chat question, yield and wait for the user's actual answer before dependent work; never invent configuration, source selection, or approval, and never treat elapsed time or a preselected option as an answer.
 - Honor explicitly non-interactive or headless invocations and unattended scheduled or piped runs; do not substitute chat for required secret entry or protected authentication and permission mechanisms.
 
-## Profiles and responsibility resolution
+## Codex table
 
-| Profile | Responsibility | Model | Effort | Service |
-| --- | --- | --- | --- | --- |
-| P1 | Exact lookup, fixed-field extraction, status | `gpt-6-luna` | `low` | Fast |
-| P2 | Grounding scouts, bounded classification, evidence summaries | `gpt-6-luna` | `low` | Fast |
-| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `gpt-6.1-sol` | `low` | Standard |
-| P4 | Complex logic, substantive review, security, concurrency, data integrity | `gpt-6.1-sol` | `medium` | Standard |
-| P5 | Root orchestration, delegation, progress | `gpt-6.1-sol` | `low` | Standard |
-| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `gpt-6.1-sol` | `medium` | Standard |
-| P7 | CE-required independent Claude or Gemini review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
+- Outside T3 Code, delegated roles use this table; inside T3 Code, the T3 Code table decides.
 
-- Resolve current user overrides for their stated task, recipient, fields and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent. A root-only selection does not change child profiles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence. Managed startup defaults are reasserted by apply, not a promise to preserve edits to owned baseline fields.
-- Use P3 for unlisted or newly introduced delegated responsibilities. Mixed work takes its substantive responsibility's profile; split only where the owning skill already permits it. Root-owned work stays in the active root (profiled as Sol P5/P6) without reconfiguring an active session unless asked; delegated authoring assignments do not move that work out of the root.
-- Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Interpretation discovered by P1/P2 returns evidence for a new P3 dispatch; difficult implementation/validation uses P4, unresolved architectural tradeoffs P6. Do not walk an escalation ladder on every retry. Formatting errors, transient network failures, busy slots and missing credentials do not justify deeper reasoning.
-- GPT `max` and `ultra` require an explicit user request for the affected work. Role titles, large context and importance do not authorize an increase, including to `xhigh`. This GPT limit does not rewrite P7's prescribed external effort.
-- Standard is the default except for P1/P2 Luna tasks, which have standing user authorization for Fast (`priority`) when the route and account support it, even when allowance is unknown. This authorization does not extend to root, Sol or external peers. Other automatic Fast selections require advertised support, a task currently blocking dependent work, known available allowance and a recorded reason for extra usage. For those other roles, unknown allowance retains Standard unless the user requests acceleration. Ultrafast requires an explicit user request and advertised model/account support; never select it automatically.
+""" + chain_table(HARNESS_CHAINS["codex"]) + """
 
-## CE coverage
-
-| Workflow / identity | Profile and boundary |
-| --- | --- |
-| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | P1; unclear connector semantics P3 |
-| `ce-sweep` media analyzer | P3 for frame/transcript interpretation |
-| `ce-sweep` decisions/reconciliation; `lfg` coordination | P5; conflicting evidence or difficult scope P6 |
-| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | P2; brainstorm claim verifier P3 |
-| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | P2 gathering, P3 applicability/reconciliation |
-| `ce-plan` spec-flow analyzer and data-integrity guardian | P4 |
-| `ce-plan` architecture strategist/complex plan author | P6; ordinary delegated plan author P3 |
-| `ce-work` implementation/design-sync; PR comment resolver | P3; complex diagnosis P4, architecture P6 |
-| `ce-debug` investigation/root cause; `ce-optimize` attribution | P4; exact gathering P1/P2 does not transfer diagnosis |
-| `ce-explain` work-recap/behavior-trace scouts | P2; complex causal tracing P4 |
-| `ce-ideate` evidence researchers/issue intelligence | P2 retrieval, P3 interpretation |
-| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | P3/P6/P7 according to the skill's frame and diversity contract |
-| `ce-pov` verdict/synthesis; independent peer | P6; P7 peer |
-| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, adversarial fallback, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | P4 even on small changes |
-| `ce-code-review` learnings researcher; merge/validator/report leaves | P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings |
-| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security, local adversarial lenses | P4; independent peer P7 |
-| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | P4 regardless of output length |
-| `ce-compound` Related Docs Finder | P2 bounded matching; overlap interpretation P3 |
-| `ce-compound` session historian, synthesis, grounding validation | P3; root retains classification/drafting ownership |
-| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | P4; research-only framework/best-practices gathering P2 |
-| `ce-compound-refresh` investigators/replacement authors | P3; complex behavior verification P4; root retains deletion/metadata decisions |
-| Browser/device/prototype execution, ordinary writing, handoff, general workers | P3 with required modalities/tools; status only P1 |
-| Commit/publication/babysitting coordination | P5; deterministic commands need no extra model call; diagnosis P4 |
+- A root-only selection does not change child roles; preserve explicit project/invocation/conversation selections and resume state at their supported precedence. Managed startup defaults are reasserted by apply, not a promise to preserve edits to owned baseline fields.
 
 ## Dispatch and compatibility
 
-- Inside T3, use `delegate_task` for Codex-led children and P7 peers, never top-level conversations or direct provider CLI workers. Discover the exact provider instance, model and option descriptors with `orchestrator_capabilities`; search omitted models before declaring absence. Check child/cross-provider eligibility and required modalities/tools. Explicitly set `target.model` and provider-specific effort and supported tier in `target.options`. For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`. Do not extrapolate these option names or values to external providers. Compare returned provider, model and options with the request before counting configuration as applied.
-- Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch. Bounded discovery/recovery follows the owning skill; unsupported or unverifiable selections are reported as unavailable/degraded, with its compatible fallback. Never silently clamp, substitute a family, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran. Queue/backpressure and launch failures must not create duplicate live work.
-- Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve the root tier and disclose the actual inherited child tier; if a required independent tier cannot be honored, including P1/P2 priority under a Standard root or Standard under an accelerated root, report the limitation rather than changing the root or claiming isolation.
-- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. Do not add Antigravity to an allowlist incidentally; an unauthorized Gemini recipient or unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
-- Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment.
+- Inside T3, use `delegate_task` for every delegated role, never top-level conversations or direct provider CLI workers. Discover the exact provider instance, model and option descriptors with `orchestrator_capabilities`; search omitted models before declaring absence. Check child/cross-provider eligibility and required modalities/tools. Explicitly set `target.model` and the provider's effort and supported tier in `target.options`. For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`. Do not extrapolate these option names or values to other providers. Compare returned provider, model and options with the request before counting configuration as applied.
+- Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch. Bounded discovery/recovery follows the owning skill; unsupported or unverifiable selections are reported as unavailable/degraded, with its compatible fallback. Never silently clamp, substitute a model outside the role's chain, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran. Queue/backpressure and launch failures must not create duplicate live work.
+- Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve the root tier and disclose the actual inherited child tier; if a required independent tier cannot be honored, including a Fast `scout` or `quick` child under a Standard root or Standard under an accelerated root, report the limitation rather than changing the root or claiming isolation.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. Do not add Antigravity to an allowlist incidentally; an unauthorized Gemini recipient or unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
 
 ## CE transport, artifacts and lifecycle
 
@@ -147,7 +305,7 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 - Validate the entire terminal artifact against the invoked skill's current required fields, arrays and evidence before aggregation. Code review retains reviewer, findings, residual risks and testing gaps; document review retains reviewer, findings, residual risks and deferred questions. POV retains its settled `final: true` answer, reasoning and round contract; a non-final position does not finish the panel. Missing arrays, truncated/malformed output, missing artifacts and fluent summaries never become an empty successful review. Preserve peer attribution and authority normalization; a peer result grants no silent-apply authority.
 - Retain every `taskId` and a stable `clientRequestId` for retries of one dispatch. Every new review round uses a fresh delegated task and request ID with the original brief plus prior findings/responses, not a message to its backing thread. A wait timeout leaves live work running; questions, approvals, nested children and transient retries are incomplete states. Consume notifications and bounded status reads when needed; respect existing concurrency and recovery limits.
 - Before launch, map the invoked skill's pre-launch failure, started failure, no-review, retry/replacement and local-lens fallback outcomes to the observed T3 states. Keep explicit recipients fixed where required; disclose any permitted replacement before sending. Preserve surviving findings and identify uncovered lenses after partial failure. On abandonment/deadline, cancel owned live work, retain terminal failure classification and perform the skill's scratch cleanup. Parent tools do not authorize answering a child's reserved approval.
-- Establish required enforced read-only/tool restrictions before peer egress. Instructions asking a shared-checkout child not to write do not enforce read-only access. If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback. Track artifact validity, requested-configuration compliance and verified independence separately; no new runner, schema framework, cache edits or paid fallback is authorized."""
+- Outside T3, establish required enforced read-only/tool restrictions before peer egress. Instructions asking a shared-checkout child not to write do not enforce read-only access. If the selected route cannot preserve a required boundary, report that pass unavailable/degraded and use only the owning skill's compatible fallback. Inside T3, the shared prompt-instructed read-only rule applies instead. Track artifact validity, requested-configuration compliance and verified independence separately; no new runner, schema framework, cache edits or paid fallback is authorized."""
 
 OMP_TOOLS_SENTENCES = [
     "Use native `web_search` for search and `read` with an HTTP URL for fetching.",
@@ -165,15 +323,15 @@ OMP_TOOLS_SENTENCES = [
 
 OMP_ROLE_SENTENCES = [
     "This section applies only to the active OMP harness, including OMP-led T3 sessions.",
-    "Restrict ordinary orchestration (`P1`-`P6`) to the selected `google-antigravity` Gemini models; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.",
+    "Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.",
+    "Inside T3 Code, the T3 Code table decides.",
     "Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.",
-    "Fill unspecified fields from that profile, never implicitly from the parent.",
-    "Use P3 for unlisted or newly introduced delegated responsibilities.",
-    "Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration.",
-    "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied.",
-    'Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.',
-    "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
-    "This exception assigns no blanket Claude effort and changes no Claude settings or session environment.",
+    "Inside T3, use `delegate_task` with the instance, model and options the T3 Code table names, setting `target.model` and `target.options` and comparing the returned selection before counting configuration as applied.",
+    "On `instanceId` `omp` the effort option is `thinking`; do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or other providers.",
+    'Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"lo"` for `implement` and `"med"` for `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`.',
+    "Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`.",
+    "Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending.",
+    "A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`.",
 ]
 
 OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an HTTP URL for fetching. Search uses the managed Synthetic credential command; never read or print keys.
@@ -195,86 +353,20 @@ OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an 
 - GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`. Automatic unknown-host review remains skipped; never invent an OMP peer token, export the opt-in as a session default, substitute a recognized family for GLM, or turn a missing, failed, or cancelled result into a successful empty review.
 - Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
 
-OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions. It supplies profiles, not permission to delegate: preserve each skill's root ownership, selection triggers, sequencing, concurrency, prompts, tools, permissions, and artifact contracts.
-- Restrict ordinary orchestration (`P1`-`P6`) to the selected `google-antigravity` Gemini models; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.
+OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions.
+- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
 
-## Profiles and responsibility resolution
+## OMP table
 
-| Profile | Responsibility | Model | Effort | Service |
-| --- | --- | --- | --- | --- |
-| P1 | Exact lookup, fixed-field extraction, commit messages, status | `google-antigravity/gemini-3.5-flash-lite` | `minimal` | Standard |
-| P2 | Grounding scouts, bounded classification, evidence summaries | `google-antigravity/gemini-3.5-flash-lite` | `low` | Standard |
-| P3 | General implementation, ordinary planning, synthesis, claim verification, learning authoring | `google-antigravity/gemini-3.8-flash` | `low` | Standard |
-| P4 | Complex logic, substantive review, security, concurrency, data integrity | `google-antigravity/gemini-3.8-flash` | `medium` | Standard |
-| P5 | Root orchestration, delegation, progress | `google-antigravity/gemini-4-argon` | `high` | Standard |
-| P6 | Complex planning, architecture alternatives, high-risk decisions, conflicting evidence | `google-antigravity/gemini-4-argon` | `high` | Standard |
-| P7 | CE-required independent Claude or Codex review or diverse candidate | CE-selected external model | CE-prescribed effort | Provider default |
+""" + chain_table(HARNESS_CHAINS["omp"]) + """
 
 - Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.
-- Resolve current user overrides for their stated task, recipient, fields, and duration, applicable skill constraints, then the responsibility profile. Fill unspecified fields from that profile, never implicitly from the parent.
-- Use P3 for unlisted or newly introduced delegated responsibilities. Root-owned work stays Argon P5/P6; delegated authoring assignments do not move that work out of the root.
-- Before an above-profile increase, record the named unresolved question or substantive verification failure, evidence, previous configuration and next supported configuration. Formatting errors, transient network failures, busy slots, and missing credentials do not justify deeper reasoning.
-
-## CE coverage
-
-| Workflow / identity | Profile and boundary |
-| --- | --- |
-| General fetch/status/file/symbol lookup; `ce-sweep` source-persona fetch | P1; unclear connector semantics P3 |
-| `ce-sweep` media analyzer | P3 for frame/transcript interpretation |
-| `ce-sweep` decisions/reconciliation; `lfg` coordination | P5; conflicting evidence or difficult scope P6 |
-| `ce-brainstorm` grounding; `ce-pov` project/precedent scouts | P2; brainstorm claim verifier P3 |
-| `ce-plan` repo/history/learnings/framework-docs/web/best-practices researchers | P2 gathering, P3 applicability/reconciliation |
-| `ce-plan` spec-flow analyzer and data-integrity guardian | P4 |
-| `ce-plan` architecture strategist/complex plan author | P6; ordinary delegated plan author P3 |
-| `ce-work` implementation/design-sync; PR comment resolver | P3; complex diagnosis P4, architecture P6 |
-| `ce-debug` investigation/root cause; `ce-optimize` attribution | P4; exact gathering P1/P2 does not transfer diagnosis |
-| `ce-explain` work-recap/behavior-trace scouts | P2; complex causal tracing P4 |
-| `ce-ideate` evidence researchers/issue intelligence | P2 retrieval, P3 interpretation |
-| `ce-ideate` generation/ceiling; `ce-bakeoff` candidates | P3/P6/P7 according to the skill's frame and diversity contract |
-| `ce-pov` verdict/synthesis; independent peer | P6; P7 peer |
-| `ce-code-review` correctness, standards, testing, maintainability, agent-native, security, performance, API-contract, data-migration, reliability, adversarial fallback, previous-comments, frontend-races, Swift/iOS, deployment-verification personas | P4 even on small changes |
-| `ce-code-review` learnings researcher; merge/validator/report leaves | P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings |
-| `ce-doc-review` whole-doc, coherence, scope, feasibility, product, design, security, local adversarial lenses | P4; independent peer P7 |
-| `ce-simplify-code` reuse, quality, efficiency, comment, test-value reviewers | P4 regardless of output length |
-| `ce-compound` Related Docs Finder | P2 bounded matching; overlap interpretation P3 |
-| `ce-compound` session historian, synthesis, grounding validation | P3; root retains classification/drafting ownership |
-| `ce-compound` security sentinel, performance oracle, data-integrity guardian, pattern-recognition specialist | P4; research-only framework/best-practices gathering P2 |
-| `ce-compound-refresh` investigators/replacement authors | P3; complex behavior verification P4; root retains deletion/metadata decisions |
-| Browser/device/prototype execution, ordinary writing, handoff, general workers | P3 with required modalities/tools; status only P1 |
-| Commit/publication/babysitting coordination | P5; deterministic commands need no extra model call; diagnosis P4 |
 
 ## Dispatch and compatibility
 
-- Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for P7 peers, setting `target.model` and `target.options` with option id `thinking` and comparing the returned selection before counting configuration as applied. Do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or external providers.
-- Outside T3, route subagents through `task` (`sonic` for P1, `scout` and `seance` for P2, `task` for P3 with `effort` `"lo"` or P4 with `effort` `"med"`, `reviewer` and `security-reviewer` for P4, and `architect` for P6), keeping `tasks[].model` reserved for `seance` consults and preserving `modelRoles.web` as `web/synthetic`.
-- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. P7 retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a P7 Gemini-led review back to `google-antigravity`.
-- Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort. This exception assigns no blanket Claude effort and changes no Claude settings or session environment."""
-
-ROLE_PROFILES = {
-    "source-persona fetch": "P1; unclear connector semantics P3",
-    "media analyzer": "P3 for frame/transcript interpretation",
-    "decisions/reconciliation": "P5; conflicting evidence or difficult scope P6",
-    "`ce-brainstorm` grounding": "P2; brainstorm claim verifier P3",
-    "repo/history/learnings/framework-docs/web/best-practices": "P2 gathering, P3 applicability/reconciliation",
-    "spec-flow analyzer": "P4",
-    "architecture strategist/complex plan author": "P6; ordinary delegated plan author P3",
-    "implementation/design-sync": "P3; complex diagnosis P4, architecture P6",
-    "investigation/root cause": "P4; exact gathering P1/P2 does not transfer diagnosis",
-    "work-recap/behavior-trace": "P2; complex causal tracing P4",
-    "evidence researchers/issue intelligence": "P2 retrieval, P3 interpretation",
-    "generation/ceiling": "P3/P6/P7 according to the skill's frame and diversity contract",
-    "verdict/synthesis": "P6; P7 peer",
-    "correctness, standards": "P4 even on small changes",
-    "merge/validator/report": "P2 retrieval/P3 applicability; P3/P4/P3 leaves preserving all findings",
-    "whole-doc, coherence": "P4; independent peer P7",
-    "reuse, quality": "P4 regardless of output length",
-    "Related Docs Finder": "P2 bounded matching; overlap interpretation P3",
-    "session historian": "P3; root retains classification/drafting ownership",
-    "security sentinel": "P4; research-only framework/best-practices gathering P2",
-    "investigators/replacement authors": "P3; complex behavior verification P4; root retains deletion/metadata decisions",
-    "Browser/device/prototype": "P3 with required modalities/tools; status only P1",
-    "Commit/publication/babysitting": "P5; deterministic commands need no extra model call; diagnosis P4",
-}
+- Inside T3, use `delegate_task` with the instance, model and options the T3 Code table names, setting `target.model` and `target.options` and comparing the returned selection before counting configuration as applied. On `instanceId` `omp` the effort option is `thinking`; do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or other providers.
+- Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"lo"` for `implement` and `"med"` for `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`. Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`."""
 
 HEADINGS = [
     "GPG and encryption",
@@ -365,30 +457,44 @@ REMOVED_NON_T3_SECTIONS = re.compile(
 T3_SCOPED_COMMON_HEADINGS = {"Browser and device verification", "Cross-model reviews"}
 
 
-def render(template, key, delivery="common"):
-    if delivery not in ("common", "codex", "omp"):
+TEMPLATE_ACTION = re.compile(r"{{(- )?(.*?)( -)?}}", re.DOTALL)
+FLAGS = {f"if .{delivery}": delivery for delivery in DELIVERIES}
+
+
+def render(template, key, delivery):
+    """Independent renderer for the template subset the instructions use."""
+    if delivery not in DELIVERIES:
         raise ValueError(f"unknown delivery: {delivery}")
-    if template.count(CODEX_OPEN) != 1 or template.count(OMP_OPEN) != 1 or template.count(BLOCK_CLOSE) != 2:
-        raise ValueError("missing or repeated delivery conditional")
-    common, after_codex_open = template.split(CODEX_OPEN, 1)
-    if BLOCK_CLOSE not in after_codex_open:
-        raise ValueError("unclosed codex conditional")
-    codex_extra, after_codex_close = after_codex_open.split(BLOCK_CLOSE, 1)
-    if not after_codex_close.startswith("\n" + OMP_OPEN):
-        raise ValueError("omp conditional must immediately follow codex conditional")
-    _, after_omp_open = after_codex_close.split(OMP_OPEN, 1)
-    omp_extra, trailing = after_omp_open.split(BLOCK_CLOSE, 1)
-    if trailing != "\n":
-        raise ValueError("delivery conditional must end the template")
-    selected = common
-    if delivery == "codex":
-        selected += codex_extra
-    elif delivery == "omp":
-        selected += omp_extra
-    actions = re.findall(r"{{.*?}}", selected, flags=re.DOTALL)
-    if not actions or any(action != ACTION for action in actions):
-        raise ValueError("unknown or missing template action")
-    result = selected.replace(ACTION, key)
+    output, position, condition, trim = [], 0, None, False
+    for match in TEMPLATE_ACTION.finditer(template):
+        text = template[position:match.start()]
+        if trim:
+            text = text.lstrip()
+        if match[1]:
+            text = text.rstrip()
+        active = condition in (None, delivery)
+        if active:
+            output.append(text)
+        action = match[2].strip()
+        if action in FLAGS:
+            if condition is not None:
+                raise ValueError("nested delivery conditional")
+            condition = FLAGS[action]
+        elif action == "end":
+            if condition is None:
+                raise ValueError("unopened end")
+            condition = None
+        elif action == ACTION[3:-3]:
+            if active:
+                output.append(key)
+        else:
+            raise ValueError(f"unknown template action: {action}")
+        trim, position = bool(match[3]), match.end()
+    if condition is not None:
+        raise ValueError("unclosed delivery conditional")
+    tail = template[position:]
+    output.append(tail.lstrip() if trim else tail)
+    result = "".join(output)
     if "{{" in result or "}}" in result:
         raise ValueError("incomplete template action")
     return result
@@ -407,14 +513,39 @@ def sentence_once(text, sentence):
 
 
 def expected_headings(delivery):
-    if delivery == "codex":
-        return HEADINGS + [CODEX_HEADING]
-    if delivery == "omp":
-        return HEADINGS + [OMP_TOOLS_HEADING, OMP_ROLE_HEADING]
-    return list(HEADINGS)
+    return HEADINGS + [ROUTING_HEADING] + HARNESS_HEADINGS[delivery]
 
 
-def content_problems(text, key, delivery="common"):
+def subsection(body, title):
+    match = re.search(rf"(?ms)^## {re.escape(title)}\n(.*?)(?=^## |\Z)", body)
+    return match[1] if match else ""
+
+
+def chain_rows(body):
+    rows = {}
+    for role, cell in re.findall(r"(?m)^\| `([a-z-]+)` \| (.*) \|$", body):
+        rows[role] = None if role in rows else cell
+    return rows
+
+
+def chain_problems(body, expected, name):
+    actual = chain_rows(body)
+    return [
+        f"incorrect {name} chain for `{role}`"
+        for role in sorted(set(actual) | set(expected))
+        if actual.get(role) != expected.get(role)
+    ]
+
+
+def sentence_problems(body, sentences, name):
+    return [
+        f"missing, repeated or negated {name} policy: {sentence}"
+        for sentence in sentences
+        if not sentence_once(body, sentence)
+    ]
+
+
+def content_problems(text, key, delivery):
     problems = []
     matches = list(re.finditer(r"^# (.+)$", text, re.MULTILINE))
     if [m[1] for m in matches] != expected_headings(delivery) or not text.startswith("# "):
@@ -435,13 +566,7 @@ def content_problems(text, key, delivery="common"):
         problems.append("literal card key in fake-key instructions")
     # Store paths are opaque identifiers, not prose or policy.
     prose = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", text)
-    if delivery == "codex":
-        common = prose.split("# " + CODEX_HEADING, 1)[0]
-    elif delivery == "omp":
-        common = prose.split("# " + OMP_TOOLS_HEADING, 1)[0]
-    else:
-        common = prose
-    if REMOVED_COMMON.search(common):
+    if REMOVED_COMMON.search(prose.split("# " + ROUTING_HEADING, 1)[0]):
         problems.append("removed orchestration instructions")
     for heading in HEADINGS:
         sec = re.sub(r"/nix/store/[a-z0-9]{32}-[^\s`\"]*", "", sections.get(heading, ""))
@@ -451,40 +576,31 @@ def content_problems(text, key, delivery="common"):
         if REMOVED_NON_T3_SECTIONS.search(sec):
             problems.append("removed orchestration instructions")
             break
-    if delivery == "codex":
+
+    routing = sections.get(ROUTING_HEADING, "")
+    problems += sentence_problems(routing, ROUTING_SENTENCES, "routing")
+    problems += chain_problems(subsection(routing, "T3 Code table"), t3_chains(delivery), "T3")
+    if routing.strip() != routing_contract(delivery):
+        problems.append("unapproved routing section")
+
+    if delivery == "claude":
+        body = sections.get(CLAUDE_HEADING, "")
+        problems += sentence_problems(body, CLAUDE_SENTENCES, "Claude Code")
+        problems += chain_problems(body, HARNESS_CHAINS["claude"], "Claude Code")
+        if body.strip() != CLAUDE_CONTRACT:
+            problems.append("unapproved Claude Code normative section")
+    elif delivery == "codex":
         body = sections.get(CODEX_HEADING, "")
-        for sentence in CODEX_SENTENCES:
-            if not sentence_once(body, sentence):
-                problems.append(f"missing, repeated or negated Codex policy: {sentence}")
-        for profile, values in PROFILES.items():
-            rows = re.findall(rf"^\| {profile} \| (.+)$", body, re.MULTILINE)
-            fields = [field.strip().strip("`") for field in rows[0].split("|")[1:-1]] if len(rows) == 1 else []
-            if fields != list(values):
-                problems.append(f"incorrect Codex profile {profile}")
-        for role, profile in ROLE_PROFILES.items():
-            rows = [line for line in body.splitlines() if line.startswith("| ") and role in line]
-            if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
-                problems.append(f"missing Codex responsibility mapping: {role}")
+        problems += sentence_problems(body, CODEX_SENTENCES, "Codex")
+        problems += chain_problems(subsection(body, "Codex table"), HARNESS_CHAINS["codex"], "Codex")
         if body.strip() != CODEX_CONTRACT:
             problems.append("unapproved Codex normative section")
-    elif delivery == "omp":
+    else:
         tools_body = sections.get(OMP_TOOLS_HEADING, "")
-        for sentence in OMP_TOOLS_SENTENCES:
-            if not sentence_once(tools_body, sentence):
-                problems.append(f"missing, repeated or negated OMP tools policy: {sentence}")
+        problems += sentence_problems(tools_body, OMP_TOOLS_SENTENCES, "OMP tools")
         role_body = sections.get(OMP_ROLE_HEADING, "")
-        for sentence in OMP_ROLE_SENTENCES:
-            if not sentence_once(role_body, sentence):
-                problems.append(f"missing, repeated or negated OMP role policy: {sentence}")
-        for profile, values in OMP_PROFILES.items():
-            rows = re.findall(rf"^\| {profile} \| (.+)$", role_body, re.MULTILINE)
-            fields = [field.strip().strip("`") for field in rows[0].split("|")[1:-1]] if len(rows) == 1 else []
-            if fields != list(values):
-                problems.append(f"incorrect OMP profile {profile}")
-        for role, profile in ROLE_PROFILES.items():
-            rows = [line for line in role_body.splitlines() if line.startswith("| ") and role in line]
-            if len(rows) != 1 or rows[0].split("|")[-2].strip() != profile:
-                problems.append(f"missing OMP responsibility mapping: {role}")
+        problems += sentence_problems(role_body, OMP_ROLE_SENTENCES, "OMP role")
+        problems += chain_problems(subsection(role_body, "OMP table"), HARNESS_CHAINS["omp"], "OMP")
         if tools_body.strip() != OMP_TOOLS_CONTRACT or role_body.strip() != OMP_ROLE_CONTRACT:
             problems.append("unapproved OMP normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
@@ -497,7 +613,7 @@ def content_problems(text, key, delivery="common"):
     return problems
 
 
-def delivery_problems(path, expected, key, delivery="common"):
+def delivery_problems(path, expected, key, delivery):
     try:
         text = path.read_bytes().decode("utf-8")
     except OSError:
@@ -508,122 +624,154 @@ def delivery_problems(path, expected, key, delivery="common"):
     return problems
 
 
+def replace_token(cell, index, value):
+    """Replace the index-th code span of a chain cell."""
+    spans = list(re.finditer(r"`[^`]+`", cell))
+    span = spans[index]
+    return cell[:span.start()] + f"`{value}`" + cell[span.end():]
+
+
+def assert_problem(text, delivery, problem, label=""):
+    found = content_problems(text, FAKE_KEY, delivery)
+    assert any(problem in item for item in found), (label or problem, found)
+
+
+def assert_sentence_mutants(text, delivery, sentences):
+    for sentence in sentences:
+        for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
+            mutated = text.replace(sentence, replacement, 1)
+            assert mutated != text
+            assert_problem(mutated, delivery, sentence)
+
+
+def assert_chain_mutants(text, delivery, chains, name, entity_index):
+    """Changing any row's model or effort fails; T3 rows carry an instance first."""
+    for role, cell in chains.items():
+        row = f"| `{role}` | {cell} |"
+        assert text.count(row) == 1, row
+        spans = re.findall(r"`([^`]+)`", cell)
+        if not spans:
+            mutants = [cell.replace("selects", "prefers").replace("selection", "default")]
+        else:
+            effort = spans[entity_index + 1]
+            mutants = [
+                replace_token(cell, entity_index, "gpt-6-astra" if spans[entity_index] != "gpt-6-astra" else "gpt-6.1-sol"),
+                replace_token(cell, entity_index + 1, "max" if effort != "max" else "low"),
+            ]
+        for mutant in mutants:
+            assert mutant != cell
+            assert_problem(text.replace(row, f"| `{role}` | {mutant} |"), delivery, f"incorrect {name} chain for `{role}`")
+
+
+def insert_bullet(text, heading, bullet):
+    """Append a bullet at the end of a top-level section."""
+    start = text.index("# " + heading + "\n")
+    following = text.find("\n# ", start + 1)
+    end = len(text) if following == -1 else following
+    return text[:end].rstrip("\n") + "\n- " + bullet + "\n" + text[end:]
+
+
 def self_test(template):
     """Negative controls run the same boundaries as real deliveries."""
-    expected = render(template, FAKE_KEY, "common")
-    errors = content_problems(expected, FAKE_KEY, "common")
-    if errors:
-        raise AssertionError(f"unmodified common rendering fails: {errors}")
+    rendered = {delivery: render(template, FAKE_KEY, delivery) for delivery in DELIVERIES}
+    for delivery, text in rendered.items():
+        errors = content_problems(text, FAKE_KEY, delivery)
+        assert not errors, (delivery, errors)
+        for other in DELIVERIES:
+            if other != delivery:
+                assert_problem(text, other, "unexpected instruction sections")
+        assert_sentence_mutants(text, delivery, ROUTING_SENTENCES)
+        assert_chain_mutants(text, delivery, t3_chains(delivery), "T3", 1)
+        for other in DELIVERIES:
+            if other != delivery:
+                own = f"| `root` | {T3_ROOTS[delivery]} |"
+                assert_problem(text.replace(own, f"| `root` | {T3_ROOTS[other]} |"), delivery, "incorrect T3 chain for `root`")
+        clause = "; never revive an entry skipped for any other reason"
+        assert clause in text
+        assert_problem(text.replace(clause, ""), delivery, "unapproved routing section")
+        assert_problem(text.replace(clause, ""), delivery, "When every runnable entry was skipped")
+        assert_problem(insert_bullet(text, ROUTING_HEADING, "Revive an entry skipped for a disabled provider when nothing else runs."), delivery, "unapproved routing section")
+
+    expected = rendered["claude"]
     for heading, sentences in POLICIES.items():
         for sentence in sentences:
             for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
                 mutated = expected.replace(sentence, replacement, 1)
                 assert mutated != expected
-                assert any(f"policy in {heading}: {sentence}" in problem for problem in content_problems(mutated, FAKE_KEY, "common")), sentence
-    for snippet in ("\n# Pi over ACP\n",):
-        assert "removed orchestration instructions" in content_problems(expected + snippet, FAKE_KEY, "common")
+                assert_problem(mutated, "claude", f"policy in {heading}: {sentence}")
+    routing_start = "# " + ROUTING_HEADING + "\n"
+    assert_problem(expected.replace(routing_start, "# Pi over ACP\n\n" + routing_start, 1), "claude", "removed orchestration instructions")
     for injected in (
         "- Delegate work to a subagent.\n",
         "- Use T3 Code.\n",
         "- Use `delegate_task` for implementation.\n",
     ):
-        for mutated in (expected.replace("# Tests\n", "# Tests\n\n" + injected, 1), expected + "\n" + injected):
-            assert "removed orchestration instructions" in content_problems(mutated, FAKE_KEY, "common"), injected
+        for mutated in (
+            expected.replace("# Tests\n", "# Tests\n\n" + injected, 1),
+            expected.replace(routing_start, injected + "\n" + routing_start, 1),
+        ):
+            assert_problem(mutated, "claude", "removed orchestration instructions", injected)
     for alias in ("opus", "sonnet", "haiku", "fable"):
         for role in ("reviewers", "workers"):
-            text = expected + f"\n- Run {role} on `{alias}`.\n"
-            assert "removed orchestration instructions" in content_problems(text, FAKE_KEY, "common")
-    assert "incorrect host recipient" in content_problems(expected.replace(FAKE_KEY, CARD_KEY), FAKE_KEY, "common")
-    assert "unrendered placeholder" in content_problems(expected + "\n@missing@\n", FAKE_KEY, "common")
-    assert "unescaped Markdown tilde" in content_problems(expected + "\nabout ~5 minutes\n", FAKE_KEY, "common")
-    assert not content_problems(expected.replace("PIN is usually cached", "PIN is generally cached"), FAKE_KEY, "common")
-    for bad in (template + "{{ .unknown }}", template + "{{"):
+            mutated = expected.replace(routing_start, f"- Run {role} on `{alias}`.\n\n" + routing_start, 1)
+            assert_problem(mutated, "claude", "removed orchestration instructions")
+    assert_problem(expected.replace(FAKE_KEY, CARD_KEY), "claude", "incorrect host recipient")
+    assert_problem(expected + "\n@missing@\n", "claude", "unrendered placeholder")
+    assert_problem(expected + "\n<no value>\n", "claude", "unrendered placeholder")
+    assert_problem(expected + "\nabout ~5 minutes\n", "claude", "unescaped Markdown tilde")
+    assert not content_problems(expected.replace("PIN is usually cached", "PIN is generally cached"), FAKE_KEY, "claude")
+    for bad in (
+        template + "{{ .unknown }}",
+        template + "{{",
+        template + "{{ if .claude }}",
+        template.replace("{{ if .codex }}", "{{ if .claude }}{{ if .codex }}", 1),
+    ):
         try:
-            render(bad, FAKE_KEY, "common")
+            render(bad, FAKE_KEY, "claude")
         except ValueError:
             pass
         else:
             raise AssertionError("invalid action was accepted")
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "AGENTS.md"
-        assert delivery_problems(path, expected, FAKE_KEY, "common") == ["missing delivered instructions"]
+        assert delivery_problems(path, expected, FAKE_KEY, "claude") == ["missing delivered instructions"]
         path.write_text(expected)
-        assert not delivery_problems(path, expected, FAKE_KEY, "common")
+        assert not delivery_problems(path, expected, FAKE_KEY, "claude")
         path.write_text(expected + "\nAn unintended appendix.\n")
-        assert "delivered instructions differ from independent rendering" in delivery_problems(path, expected, FAKE_KEY, "common")
-        path.write_text(render(template, CARD_KEY, "common"))
-        assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY, "common")
+        assert "delivered instructions differ from independent rendering" in delivery_problems(path, expected, FAKE_KEY, "claude")
+        path.write_text(render(template, CARD_KEY, "claude"))
+        assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY, "claude")
 
-    codex = render(template, FAKE_KEY, "codex")
-    errors = content_problems(codex, FAKE_KEY, "codex")
-    assert not errors, errors
-    for sentence in CODEX_SENTENCES:
-        for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
-            mutated = codex.replace(sentence, replacement, 1)
-            assert mutated != codex
-            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, "codex")), sentence
-    for profile, (model, effort, service) in PROFILES.items():
-        row = next(line for line in codex.splitlines() if line.startswith(f"| {profile} |"))
-        mutant = row.replace(f"`{model}`", "`gpt-6-astra`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
-        assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
-        mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
-        assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
-        mutant = row.replace(f"| {service} |", "| Ultrafast |")
-        assert mutant != row
-        assert f"incorrect Codex profile {profile}" in content_problems(codex.replace(row, mutant), FAKE_KEY, "codex")
-    for role in ROLE_PROFILES:
-        row = next(line for line in codex.splitlines() if line.startswith("| ") and role in line)
-        assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, ""), FAKE_KEY, "codex")
-        for assignment in ("inherit root", "P40 regardless of output length", "P3; P4 is prohibited"):
-            wrong = row.rsplit(" | ", 1)[0] + f" | {assignment} |"
-            assert f"missing Codex responsibility mapping: {role}" in content_problems(codex.replace(row, wrong), FAKE_KEY, "codex")
-    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, "codex")
-    assert "unexpected instruction sections" in content_problems(codex, FAKE_KEY, "common")
-    assert "unexpected instruction sections" in content_problems(codex, FAKE_KEY, "omp")
-    for contrary in (
-        "Use Fast when allowance is unknown.",
-        "Always run reviewers at max effort.",
-        "Use Ultrafast without an explicit user request.",
-        "Treat a no-write prompt as sufficient enforcement for a restricted peer.",
-        "Count a completed peer with missing arrays as a successful empty review.",
-        "Treat returned provider labels as verified serving-family evidence.",
-    ):
-        for separator in (" ", "\n- "):
-            mutated_template = template.replace(BLOCK_CLOSE + "\n" + OMP_OPEN, separator + contrary + "\n" + BLOCK_CLOSE + "\n" + OMP_OPEN, 1)
-            mutated = render(mutated_template, FAKE_KEY, "codex")
-            assert "unapproved Codex normative section" in content_problems(mutated, FAKE_KEY, "codex"), contrary
-
-    omp = render(template, FAKE_KEY, "omp")
-    errors = content_problems(omp, FAKE_KEY, "omp")
-    assert not errors, errors
-    for sentence in OMP_TOOLS_SENTENCES + OMP_ROLE_SENTENCES:
-        for replacement in ("", "Do not " + sentence, sentence + " " + sentence):
-            mutated = omp.replace(sentence, replacement, 1)
-            assert mutated != omp
-            assert any(sentence in error for error in content_problems(mutated, FAKE_KEY, "omp")), sentence
-    for profile, (model, effort, service) in OMP_PROFILES.items():
-        row = next(line for line in omp.splitlines() if line.startswith(f"| {profile} |"))
-        mutant = row.replace(f"`{model}`", "`synthetic/hf:zai-org/GLM-5.3`") if profile != "P7" else row.replace("CE-selected external model", "automatic model")
-        assert mutant != row
-        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
-        mutant = row.replace(f"`{effort}`", "`max`") if profile != "P7" else row.replace("CE-prescribed effort", "automatic max")
-        assert mutant != row
-        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
-        mutant = row.replace(f"| {service} |", "| Ultrafast |")
-        assert mutant != row
-        assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, mutant), FAKE_KEY, "omp")
-        if profile in ("P3", "P4", "P5", "P6"):
-            min_mutant = row.replace(f"`{effort}`", "`minimal`")
-            assert f"incorrect OMP profile {profile}" in content_problems(omp.replace(row, min_mutant), FAKE_KEY, "omp")
-    assert "unapproved OMP normative section" in content_problems(omp + "\n- Route P3 tasks to `synthetic` automatically.\n", FAKE_KEY, "omp")
-    for role in ROLE_PROFILES:
-        row = next(line for line in omp.splitlines() if line.startswith("| ") and role in line)
-        assert f"missing OMP responsibility mapping: {role}" in content_problems(omp.replace(row, ""), FAKE_KEY, "omp")
-    assert "unexpected instruction sections" in content_problems(expected, FAKE_KEY, "omp")
-    assert "unexpected instruction sections" in content_problems(omp, FAKE_KEY, "common")
-    assert "unexpected instruction sections" in content_problems(omp, FAKE_KEY, "codex")
+    harness = {
+        "claude": (CLAUDE_HEADING, CLAUDE_SENTENCES, "Claude Code", "unapproved Claude Code normative section"),
+        "codex": (CODEX_HEADING, CODEX_SENTENCES, "Codex", "unapproved Codex normative section"),
+        "omp": (OMP_ROLE_HEADING, OMP_TOOLS_SENTENCES + OMP_ROLE_SENTENCES, "OMP", "unapproved OMP normative section"),
+    }
+    # Rules the role contract retired: each fails as an unapproved addition.
+    retired = {
+        "claude": ["Only CE-required peer tasks may receive a Claude effort."],
+        "codex": [
+            "Role titles, large context and importance do not authorize an increase, including to `xhigh`.",
+            "Standard is the default except for `scout` and `quick` Luna tasks, which have standing user authorization for Fast (`priority`).",
+            "Only Codex-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
+        ],
+        "omp": [
+            "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for `peer` tasks.",
+            "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
+        ],
+    }
+    for delivery, (heading, sentences, name, unapproved) in harness.items():
+        text = rendered[delivery]
+        assert_sentence_mutants(text, delivery, sentences)
+        assert_chain_mutants(text, delivery, HARNESS_CHAINS[delivery], name, 0)
+        for contrary in retired[delivery] + [
+            "Always run reviewers at max effort.",
+            "Use Ultrafast without an explicit user request.",
+            "Treat a no-write prompt as sufficient enforcement for a restricted peer.",
+        ]:
+            assert_problem(insert_bullet(text, heading, contrary), delivery, unapproved, contrary)
+    omp_implement = f"| `implement` | {HARNESS_CHAINS['omp']['implement']} |"
+    assert_problem(rendered["omp"].replace(omp_implement, omp_implement.replace("`low`", "`max`")), "omp", "incorrect OMP chain for `implement`")
 
 
 REPOSITORY_SENTENCES = {

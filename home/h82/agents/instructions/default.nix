@@ -15,6 +15,7 @@ let
         builtins.toJSON (
           (hostFacts.of config.my)
           // {
+            claude = delivery == "claude";
             codex = delivery == "codex";
             omp = delivery == "omp";
           }
@@ -24,8 +25,6 @@ let
     pkgs.runCommand "agent-instructions-${delivery}.md" { nativeBuildInputs = [ renderer ]; } ''
       text-template ${./instructions.md.tmpl} ${context} > $out
     '';
-
-  instructions = render "common";
 in
 {
   home.file = {
@@ -35,7 +34,7 @@ in
     };
     agent-instructions-claude-code = {
       target = ".claude/CLAUDE.md";
-      source = instructions;
+      source = render "claude";
     };
     agent-instructions-codex = {
       target = ".codex/AGENTS.md";

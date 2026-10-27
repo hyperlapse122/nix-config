@@ -28,9 +28,9 @@
     exit status, so a symlinked or malformed file fails the rebuild instead of
     passing silently.
   - the JSON this repository renders for each merge carries every declared key
-    and nested path at its declared value, lists every retired key for
-    removal, and prunes the Opus effort setting that earlier rebuilds wrote, only while
-    it still holds the value `medium` they wrote.
+    and nested path at its declared value and lists every retired key for
+    removal. It declares no effort, so an effort level already in the file,
+    top-level or per model, survives the merge.
     Asserting the rendered file rather than the Nix attribute set keeps the
     check on what activation actually feeds the merger.
   - no environment.etc entry declares claude-code/managed-settings.json, on
@@ -85,7 +85,6 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
-    "effortLevel"
   ];
 
   settingsPaths = [
@@ -105,32 +104,15 @@ let
     }
   ];
 
-  removePaths = [
-    {
-      path = [
-        "modelSettings"
-        "claude-opus-5-5"
-      ];
-      key = "effortLevel";
-      prune = true;
-      value = "medium";
-    }
-  ];
-
   globalConfigTier = {
     leftArrowOpensAgents = false;
   };
 
   expectedDeclared =
-    name: set: remove: setPaths: removePaths:
+    name: set: remove: setPaths:
     pkgs.writeText name (
       builtins.toJSON {
-        inherit
-          set
-          remove
-          setPaths
-          removePaths
-          ;
+        inherit set remove setPaths;
       }
     );
 
@@ -142,11 +124,8 @@ let
         set = settingsTier;
         remove = retiredKeys;
         setPaths = settingsPaths;
-        inherit removePaths;
       };
-      expected =
-        expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths
-          removePaths;
+      expected = expectedDeclared "claude-expected-settings.json" settingsTier retiredKeys settingsPaths;
     }
     {
       attr = "claudeGlobalConfig";
@@ -155,9 +134,8 @@ let
         set = globalConfigTier;
         remove = [ ];
         setPaths = [ ];
-        removePaths = [ ];
       };
-      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ] [ ];
+      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ];
     }
   ];
 
@@ -256,6 +234,7 @@ let
               };
               expected = {
                 activationUnmanaged = "keep";
+                effortLevel = "retired";
                 model = "opus[1m]";
                 language = "korean";
                 theme = "auto";
@@ -272,7 +251,10 @@ let
                   custom = "keep";
                   baseRef = "head";
                 };
-                modelSettings.custom.effortLevel = "high";
+                modelSettings = {
+                  claude-opus-5-5.effortLevel = "medium";
+                  custom.effortLevel = "high";
+                };
               };
             };
           }}

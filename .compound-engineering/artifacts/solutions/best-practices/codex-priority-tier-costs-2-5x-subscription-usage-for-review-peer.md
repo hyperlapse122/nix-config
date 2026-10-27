@@ -1,6 +1,7 @@
 ---
 title: The Codex priority service tier costs 2.5x subscription usage, so the review peer stays on the default tier
 date: "2026-10-23"
+last_updated: "2026-10-27"
 category: best-practices
 module: "Cross-model review peers (home/h82/agents/instructions/instructions.md.tmpl)"
 problem_type: tooling_decision
@@ -38,6 +39,8 @@ grep -o '"primary":{"used_percent":[0-9.]*' "$f" | sed -n '1p;$p'
 The 2026-10-23 `ce-code-review` Codex peer (default tier, 7:09 from `startedAt` to `completedAt` on a PR #318 diff of about 4,200 lines) moved the 5-hour window from 13 to 22 percent and the weekly window from 2 to 4 percent. At 2.5x, one `priority` review would take about 22 percent of the 5-hour window. A two-runs-per-tier benchmark needs about 62 percent of that window, so start one only right after the window resets.
 
 **The route outside T3 Code cannot take a tier anyway.** Compound Engineering 3.31.1 starts its codex peer through `acpx` with only `--config-option mode=read-only` and `--config-option reasoning_effort=...` (in the installed plugin, not this repository: `cross-model-adversarial-review.sh` line 437 under its `ce-code-review` skill and `cross-model-doc-review.sh` line 442 under its `ce-doc-review` skill), and no environment variable sets a service tier. The one lever left is a root `service_tier` key in `~/.codex/config.toml`. The user rejected it, because it would also move every interactive Codex session to `priority` and to 2.5x usage.
+
+**Status on 2026-10-27.** The review peer and the `review` role still run at `default`. The account is now on ChatGPT Pro (`planType` `promax` in Codex's rate-limit reply), which has a weekly window and no 5-hour window, and the user chose Fast for the roles where oh-my-openagent uses it: Luna in `scout` and `quick`, and Sol in the Codex `root` chain and the `deep` fallback (see `docs/agent-routing.md`). That was the user's call after weighing the 2.5x cost, not a reversal of this record's billing finding, which still holds. The 5-hour figures above describe the earlier Plus account; on Pro, budget against the weekly window, which `agent-usage --json` reports.
 
 ## Why This Matters
 

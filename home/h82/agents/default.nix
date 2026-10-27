@@ -6,11 +6,13 @@
     ./codex.nix
     ./cross-model-peers.nix
     ./gemini.nix
+    ./grok.nix
     ./instructions
     ./korean-skills.nix
     ./omp.nix
     ./skills.nix
     ./test-audit.nix
     ./tokscale.nix
+    ./usage.nix
   ];
 }

@@ -103,7 +103,6 @@
           "android-sdk"
           "baloo-extractor"
           "cargo-settings"
-          "claude-effort-absent"
           "desktop-autostart"
           "desktop-ssh"
           "elf-load-segments"
@@ -222,6 +221,8 @@
         codex = import ./packages/codex.nix { inherit pkgs; };
         omp = import ./packages/omp.nix { inherit pkgs; };
         omp-release = agentTools.ompRelease;
+        grok-build-release = agentTools.grokBuildRelease;
+        grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         npm-release = agentTools.npmRelease;
         acpx = import ./packages/acpx.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
@@ -532,10 +533,6 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
-          claude-effort-absent = import ./tests/claude-effort-absent.nix {
-            inherit pkgs self;
-            fixtures = linuxFixtures;
-          };
           git-cli-repo-flags = import ./tests/git-cli-repo-flags.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
@@ -563,6 +560,22 @@
             pythonScriptCheck "codex-release" ./scripts/codex-release
               ./tests/test_codex_release.py;
           omp-release = pythonScriptCheck "omp-release" ./scripts/omp-release ./tests/test_omp_release.py;
+          grok-build-release =
+            pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
+              ./tests/test_grok_build_release.py;
+          # The Claude helper runs against the pinned SDK with real Node, so the
+          # check carries both instead of letting that test skip.
+          agent-usage =
+            (pythonScriptCheckWith {
+              nativeBuildInputs = [ pkgs.nodejs_24 ];
+              modules = [ ./scripts/agent-usage-claude.mjs ];
+              setup = ''
+                export NODE_PATH=${import ./packages/claude-agent-sdk.nix { inherit pkgs; }}/lib/node_modules
+              '';
+            })
+              "agent-usage"
+              ./scripts/agent-usage
+              ./tests/test_agent_usage.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
@@ -1054,13 +1067,14 @@
           grok-absent =
             let
               inherit (pkgs) lib;
-              isGrokName = name: lib.hasInfix "grok" (lib.toLower name);
-              # Names that contain "grok" but are not Grok. None today.
+              isGrokName = name: lib.hasInfix "grok-bot" (lib.toLower name);
+              # Names that contain "grok-bot" but are not Grok Bot. None today.
               allowed = [ ];
               grokNamesOf =
                 names: lib.unique (builtins.filter (name: isGrokName name && !lib.elem name allowed) names);
               # A package counts by its pname or its name, so a renamed wrapper
-              # such as grok-cli is caught as well as grok-build or grok-bot.
+              # such as grok-bot-cli is caught as well as grok-bot. Grok Build is
+              # installed on purpose and is not matched.
               grokPackagesOf =
                 packages:
                 grokNamesOf (
@@ -1077,27 +1091,19 @@
                   echo ${lib.escapeShellArg "${message}: ${toString names}"} >&2
                   fail=1
                 '';
-              assertUser =
-                entry:
-                let
-                  grokFiles = builtins.filter (target: target == ".grok" || lib.hasPrefix ".grok/" target) (
-                    homeFileTargets entry
-                  );
-                in
-                ''
-                  ${report (grokPackagesOf (userPackagesOf entry)) "Grok packages are still in the user packages on ${entry.name}"}
-                  ${report grokFiles "home files under ~/.grok remain on ${entry.name}"}
-                '';
+              assertUser = entry: ''
+                ${report (grokPackagesOf (userPackagesOf entry)) "Grok Bot packages are still in the user packages on ${entry.name}"}
+              '';
               assertNixos = entry: ''
                 ${report (grokPackagesOf (
                   entry.config.environment.systemPackages or [ ]
-                )) "Grok packages are still in environment.systemPackages on ${entry.name}"}
+                )) "Grok Bot packages are still in environment.systemPackages on ${entry.name}"}
                 ${report (grokNamesOf (
                   builtins.attrNames (entry.config.systemd.services or { })
-                )) "${entry.name} still has Grok system units"}
+                )) "${entry.name} still has Grok Bot system units"}
                 ${report (grokNamesOf (
                   builtins.attrNames (entry.config.systemd.user.services or { })
-                )) "${entry.name} still has Grok user units"}
+                )) "${entry.name} still has Grok Bot user units"}
               '';
               assertFixture =
                 fixture:
@@ -1105,8 +1111,8 @@
                   smConfig = fixture.host.systemManager.config;
                 in
                 ''
-                  ${report (grokNamesOf (builtins.attrNames smConfig.environment.etc)) "the system-manager configuration of ${fixture.name} still writes /etc files for Grok"}
-                  ${report (grokNamesOf (builtins.attrNames smConfig.systemd.services)) "the system-manager configuration of ${fixture.name} still has Grok units"}
+                  ${report (grokNamesOf (builtins.attrNames smConfig.environment.etc)) "the system-manager configuration of ${fixture.name} still writes /etc files for Grok Bot"}
+                  ${report (grokNamesOf (builtins.attrNames smConfig.systemd.services)) "the system-manager configuration of ${fixture.name} still has Grok Bot units"}
                 '';
               # Real Mac hosts and the macOS fixtures alike, read from the
               # evaluated configuration, so a cask, App Store app, or package a
@@ -1123,11 +1129,11 @@
                 ''
                   ${report (grokNamesOf (
                     map (cask: cask.name) config.homebrew.casks
-                  )) "the macOS casks of ${entry.name} still include Grok"}
-                  ${report (grokNamesOf (builtins.attrNames config.homebrew.masApps)) "the App Store apps of ${entry.name} still include Grok"}
+                  )) "the macOS casks of ${entry.name} still include Grok Bot"}
+                  ${report (grokNamesOf (builtins.attrNames config.homebrew.masApps)) "the App Store apps of ${entry.name} still include Grok Bot"}
                   ${report (grokPackagesOf (
                     config.environment.systemPackages or [ ]
-                  )) "Grok packages are still in environment.systemPackages on ${entry.name}"}
+                  )) "Grok Bot packages are still in environment.systemPackages on ${entry.name}"}
                   ${assertUser {
                     inherit (entry) name;
                     inherit user;
@@ -1153,7 +1159,7 @@
                 fail=1
               ''}
               ${lib.concatMapStrings assertDarwin darwinEntries}
-              ${report grokApps "modules/shared/darwin-apps.nix still maps Grok apps"}
+              ${report grokApps "modules/shared/darwin-apps.nix still maps Grok Bot apps"}
               [ "$fail" = 0 ] || exit 1
               touch $out
             '';

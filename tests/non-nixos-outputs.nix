@@ -23,6 +23,9 @@
     after installPackages;
   - sccache is installed and the Cargo settings merge targets
     ~/.cargo/config.toml after installPackages;
+  - on fixtures of the builder's own architecture, grok on the profile's PATH
+    resolves to the packaged Grok Build wrapper, and the profile has no
+    `agent` executable;
   - on fixtures of the builder's own architecture, the Tokscale wrapper,
     OMP's key helper, and the registry credential helper read the tokens
     host-secrets publishes, not /run/secrets, which a non-NixOS host does not
@@ -195,6 +198,7 @@ let
       packageNamed = name: lib.findFirst (p: (p.pname or "") == name) null hm.home.packages;
       tokscale = packageNamed "tokscale";
       omp = packageNamed "omp";
+      grok = packageNamed "grok-build";
       helper = packageNamed "docker-credential-sops";
       state = hm.my.secrets.stateDir;
     in
@@ -220,6 +224,19 @@ let
               fi
               if ! grep -Fxq -- ${lib.escapeShellArg "KEY_FILE='${state}/openrouter_api_key'"} ${omp}/bin/omp-openrouter-key; then
                 ${fail "${entry.name}: OMP's OpenRouter key helper does not read ${state}/openrouter_api_key"}
+              fi
+            ''
+        )
+        (
+          if grok == null then
+            fail "${entry.name}: no grok-build in home.packages"
+          else
+            ''
+              if [ "$(readlink -f ${hm.home.path}/bin/grok || true)" != ${grok}/bin/grok ]; then
+                ${fail "${entry.name}: grok on PATH is not the grok-build wrapper"}
+              fi
+              if [ -e ${hm.home.path}/bin/agent ] || [ -L ${hm.home.path}/bin/agent ]; then
+                ${fail "${entry.name}: the profile puts an agent executable on PATH"}
               fi
             ''
         )

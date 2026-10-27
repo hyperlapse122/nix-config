@@ -92,6 +92,8 @@ in
       (import ../../../packages/acpx.nix { inherit pkgs; })
     ];
     home.file.".omp/agent/agents/architect.md".source = ./omp-architect.md;
+    home.file.".omp/agent/agents/writer.md".source = ./omp-writer.md;
+    home.file.".omp/agent/agents/designer.md".source = ./omp-designer.md;
     # These documents stay regular writable files: OMP's settings UI can edit
     # them between applies. Direct activation runs on every non-NixOS apply;
     # the system hook covers NixOS even when its home generation is unchanged.

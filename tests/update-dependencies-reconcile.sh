@@ -19,11 +19,11 @@
 #     release runner (`claude-desktop-release`, `claude-code-release`,
 #     `android-sdk-release`, `mise-release`, `chatgpt-release`,
 #     `t3code-release`, `wifiman-desktop-release`, `omp-release`, `npm-release`
-#     for `acpx`, `codex-release`);
+#     for `acpx` and `claude-agent-sdk`, `codex-release`, `grok-build-release`);
 #   - soft-failing updaters (`chatgpt-release`, `t3code-release`,
-#     `wifiman-desktop-release`, `omp-release`, `npm-release` for `acpx`,
-#     `codex-release`) emit `::warning`, restore their pin (and lock file for
-#     `acpx`), and let the remaining updates continue.
+#     `wifiman-desktop-release`, `omp-release`, `npm-release` for `acpx` and
+#     `claude-agent-sdk`, `codex-release`, `grok-build-release`) emit `::warning`, restore their
+#     pin (and lock file for the npm packages), and let the remaining updates continue.
 # - Runs `Verify updates` under `bash -e` (without `pipefail`):
 #   - `nix fmt`, `nix flake check`, and `.#vmChecks.all` failing in turn each
 #     report `status=failure`; all succeeding reports `status=success`;
@@ -31,7 +31,7 @@
 # - Runs `Push verified updates directly to main` against a sandboxed git
 #   remote initialized with the repository's real `.gitignore`:
 #   - per-pin bump commits (`compound-engineering`, `t3code`, `omp`, `acpx`,
-#     etc.) each land with their exact commit message and only their own files;
+#     `grok-build`, etc.) each land with their exact commit message and only their own files;
 #   - unchanged `origin/main` commits before `git rebase` and never sweeps
 #     `fmt.log`, `check.log`, or `vm-check.log` into `git add -A`;
 #   - diverged `origin/main` rebases cleanly and pushes both commits.
@@ -107,7 +107,7 @@ EOF
   }
 }
 EOF
-  mkdir -p "$clone/home/h82/agents" "$clone/packages/acpx"
+  mkdir -p "$clone/home/h82/agents" "$clone/packages/acpx" "$clone/packages/claude-agent-sdk"
   cat >"$clone/home/h82/agents/agent-plugin-pins.nix" <<'EOF'
 {
   compound-engineering = {
@@ -126,7 +126,10 @@ EOF
   printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
   printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
+  printf '{"version": "0.3.311"}\n' >"$clone/packages/claude-agent-sdk-release.json"
+  printf '{"lockfileVersion": 3, "name": "claude-agent-sdk"}\n' >"$clone/packages/claude-agent-sdk/package-lock.json"
   printf '{"version": "0.50.0"}\n' >"$clone/packages/codex-release.json"
+  printf '{"version": "1.0.62", "platforms": {}}\n' >"$clone/packages/grok-build-release.json"
   printf 'base\n' >"$clone/tracked.txt"
   "$git_bin" -C "$clone" add -A
   "$git_bin" -C "$clone" commit -qm init
@@ -379,6 +382,17 @@ case "\$*" in
     printf '{"version": "9.9.9"}\n' >packages/acpx-release.json
     printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >packages/acpx/package-lock.json
     ;;
+  "run .#npm-release -- --package @anthropic-ai/claude-agent-sdk --output packages/claude-agent-sdk-release.json --lock packages/claude-agent-sdk/package-lock.json")
+    echo "claude-agent-sdk" >>"$clone/npm-calls.log"
+    if [[ " \${FAIL_SOFT:-} " == *" claude-agent-sdk "* ]]; then
+      printf '{"version": "partial' >packages/claude-agent-sdk-release.json
+      printf 'partial' >packages/claude-agent-sdk/package-lock.json
+      echo "npm-release: npm could not write a lock file" >&2
+      exit 1
+    fi
+    printf '{"version": "9.9.9"}\n' >packages/claude-agent-sdk-release.json
+    printf '{"lockfileVersion": 3, "name": "claude-agent-sdk", "new": true}\n' >packages/claude-agent-sdk/package-lock.json
+    ;;
   "run .#codex-release -- --output packages/codex-release.json")
     if [[ " \${FAIL_SOFT:-} " == *" codex "* ]]; then
       printf '{"version": "partial' >packages/codex-release.json
@@ -386,6 +400,14 @@ case "\$*" in
       exit 1
     fi
     printf '{"version": "0.51.0"}\n' >packages/codex-release.json
+    ;;
+  "run .#grok-build-release -- --output packages/grok-build-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" grok "* ]]; then
+      printf '{"version": "partial' >packages/grok-build-release.json
+      echo "grok-build-release: 1.0.71 is not published for aarch64-darwin" >&2
+      exit 1
+    fi
+    printf '{"version": "1.0.71", "platforms": {}}\n' >packages/grok-build-release.json
     ;;
   *)
     echo "unexpected nix invocation: \$*" >&2
@@ -420,16 +442,21 @@ grep -q '0.0.47-nightly.20261005.2700' "$clone/packages/t3code-release.json" ||
   fail "update step did not update packages/t3code-release.json"
 grep -q '"1.5.0"' "$clone/packages/omp-release.json" ||
   fail "update step did not update packages/omp-release.json"
+grep -q '"1.0.71"' "$clone/packages/grok-build-release.json" ||
+  fail "update step did not update packages/grok-build-release.json"
 grep -q '"9.9.9"' "$clone/packages/acpx-release.json" &&
   grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
   fail "update step did not update acpx pin and lock file"
-[[ $(paste -sd ' ' "$clone/npm-calls.log") == "acpx" ]] ||
-  fail "npm-release did not run for acpx alone"
+grep -q '"9.9.9"' "$clone/packages/claude-agent-sdk-release.json" &&
+  grep -q '"new": true' "$clone/packages/claude-agent-sdk/package-lock.json" ||
+  fail "update step did not update the claude-agent-sdk pin and lock file"
+[[ $(paste -sd ' ' "$clone/npm-calls.log") == "acpx claude-agent-sdk" ]] ||
+  fail "npm-release did not run for acpx and claude-agent-sdk, in that order"
 pass 'the update step runs flake update, compound-engineering-plugin pin/lock update, and all release updaters'
 
-read -r status clone <<<"$(run_update_step update-soft-fail "FAIL_SOFT=chatgpt t3code wifiman omp acpx codex")"
+read -r status clone <<<"$(run_update_step update-soft-fail "FAIL_SOFT=chatgpt t3code wifiman omp acpx claude-agent-sdk codex grok")"
 ((status == 0)) || fail "soft-failing updaters aborted the update step: $(cat "$scratch/update-soft-fail-step.log")"
-for title in "ChatGPT update skipped" "T3 Code update skipped" "WiFiman Desktop update skipped" "OMP update skipped" "acpx update skipped" "Codex update skipped"; do
+for title in "ChatGPT update skipped" "T3 Code update skipped" "WiFiman Desktop update skipped" "OMP update skipped" "acpx update skipped" "claude-agent-sdk update skipped" "Codex update skipped" "Grok Build update skipped"; do
   grep -q "^::warning title=$title::" "$scratch/update-soft-fail-step.log" ||
     fail "missing warning for '$title': $(cat "$scratch/update-soft-fail-step.log")"
 done
@@ -440,9 +467,12 @@ done
   packages/omp-release.json \
   packages/acpx-release.json \
   packages/acpx/package-lock.json \
-  packages/codex-release.json) ]] ||
+  packages/claude-agent-sdk-release.json \
+  packages/claude-agent-sdk/package-lock.json \
+  packages/codex-release.json \
+  packages/grok-build-release.json) ]] ||
   fail "soft-failing updaters left partial changes in their pin or lock files"
-pass 'soft-failing updaters (chatgpt, t3code, wifiman, omp, acpx, codex) warn, restore their files, and let the step continue'
+pass 'soft-failing updaters (chatgpt, t3code, wifiman, omp, acpx, claude-agent-sdk, codex, grok-build) warn, restore their files, and let the step continue'
 
 read -r status _ <<<"$(run_update_step update-bad-rev "LOCKED_REV=null")"
 ((status != 0)) || fail "update step accepted a non-hex locked revision for compound-engineering-plugin"
@@ -515,6 +545,7 @@ new_t3_version=0.0.46-nightly.20261004.2644
 printf '{"version": "%s"}\n' "$new_t3_version" >"$clone/packages/t3code-release.json"
 printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
 printf '{"version": "0.21.0"}\n' >"$clone/packages/acpx-release.json"
+printf '{"version": "1.0.71", "platforms": {}}\n' >"$clone/packages/grok-build-release.json"
 printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >"$clone/packages/acpx/package-lock.json"
 sed -i 's/compound-engineering-v2.67.0/compound-engineering-v2.68.0/' \
   "$clone/flake.nix" "$clone/home/h82/agents/agent-plugin-pins.nix"
@@ -523,9 +554,10 @@ sed -i 's/1111111111111111111111111111111111111111/22222222222222222222222222222
 (cd "$clone" && bash -e -c "$push_script") >"$scratch/pin-bumps-step.log" 2>&1 ||
   fail "the push step failed on the per-pin updates: $(tail -n 5 "$scratch/pin-bumps-step.log")"
 commits=$("$git_bin" --git-dir "$origin" log --reverse --format='%H %s' "$base_sha..main")
-[[ $(wc -l <<<"$commits") == 4 ]] || fail "expected 4 per-pin commits, found: $commits"
+[[ $(wc -l <<<"$commits") == 5 ]] || fail "expected 5 per-pin commits, found: $commits"
 for expected in \
   'chore(packages): bump omp to 1.5.0|packages/omp-release.json' \
+  'chore(packages): bump grok-build to 1.0.71|packages/grok-build-release.json' \
   'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json' \
   "chore(packages): bump t3code to $new_t3_version|packages/t3code-release.json" \
   'chore(agents): bump compound-engineering to compound-engineering-v2.68.0|flake.lock flake.nix home/h82/agents/agent-plugin-pins.nix'; do
@@ -535,7 +567,7 @@ for expected in \
   files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$sha" | sort | paste -sd ' ')
   [[ $files == "$want" ]] || fail "'$subject' carries $files, want $want"
 done
-pass 'the t3code, omp, acpx, and compound-engineering changes each land as their own commit with only their files'
+pass 'the t3code, omp, acpx, grok-build, and compound-engineering changes each land as their own commit with only their files'
 
 # --- origin/main unchanged: dirty-tree commit-before-rebase & .gitignore logs
 read -r origin clone <<<"$(setup_clone same)"

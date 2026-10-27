@@ -28,6 +28,8 @@
   - installed OMP credential helpers read the user's secret state directory;
   - serve-html on PATH is the packaged helper the shared instructions name;
   - the VSCodium settings merge targets Application Support;
+  - grok on PATH resolves to the grok-build wrapper, and the profile has no
+    `agent` executable;
   - sccache is on PATH, and the Cargo settings merge updates
     ~/.cargo/config.toml with the profile sccache wrapper while preserving
     unowned state;
@@ -175,6 +177,7 @@ let
       masExe = lib.getExe entry.host.pkgs.mas;
       brewExe = "${config.homebrew.prefix}/bin/brew";
       peers = lib.concatStringsSep "," (expectedPeers user.home.packages);
+      grokPkg = import ../packages/grok-build.nix { inherit (entry.host) pkgs; };
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
       serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
@@ -320,6 +323,14 @@ let
           || bad "Ghostty's font-family is $families"
       else
         bad "no Ghostty config"
+      fi
+
+      grok=$(readlink -f "$gen/home-path/bin/grok" || true)
+      if [ -z "$grok" ] || [ "$grok" != ${lib.escapeShellArg "${grokPkg}/bin/grok"} ]; then
+        bad "grok on PATH is not the grok-build wrapper"
+      fi
+      if [ -e "$gen/home-path/bin/agent" ] || [ -L "$gen/home-path/bin/agent" ]; then
+        bad "the profile puts an agent executable on PATH"
       fi
 
       case $(readlink -f "$gen/home-path/bin/nr") in

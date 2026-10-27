@@ -110,11 +110,16 @@ jobs:
             git checkout -- packages/omp-release.json
           fi
 
-          # 12. Update the shared ACP client. Each pin moves with its
-          # regenerated lock file, so a failure restores both and lets the
-          # other updates through, as OMP's does.
-          for npm_package in acpx; do
-            if ! nix run .#npm-release -- --package "$npm_package" \
+          # 12. Update the npm packages: the shared ACP client and the Claude
+          # Agent SDK that agent-usage reads Claude limits through. Each pin
+          # moves with its regenerated lock file, so a failure restores both
+          # and lets the other updates through, as OMP's does.
+          for npm_package in acpx claude-agent-sdk; do
+            case "$npm_package" in
+              claude-agent-sdk) registry_name=@anthropic-ai/claude-agent-sdk ;;
+              *) registry_name=$npm_package ;;
+            esac
+            if ! nix run .#npm-release -- --package "$registry_name" \
               --output "packages/$npm_package-release.json" \
               --lock "packages/$npm_package/package-lock.json"; then
               echo "::warning title=$npm_package update skipped::npm-release failed; keeping the current pin in packages/$npm_package-release.json."
@@ -128,6 +133,14 @@ jobs:
           if ! nix run .#codex-release -- --output packages/codex-release.json; then
             echo "::warning title=Codex update skipped::codex-release failed; keeping the current pin in packages/codex-release.json."
             git checkout -- packages/codex-release.json
+          fi
+
+          # 14. Update Grok Build. The stable pointer can move before every
+          # platform's binary is published, so a failure keeps the current pin
+          # and lets the other updates through, as Codex's does.
+          if ! nix run .#grok-build-release -- --output packages/grok-build-release.json; then
+            echo "::warning title=Grok Build update skipped::grok-build-release failed; keeping the current pin in packages/grok-build-release.json."
+            git checkout -- packages/grok-build-release.json
           fi
 
           if [ -z "$(git status --porcelain)" ]; then
@@ -201,6 +214,12 @@ jobs:
             git commit -m "chore(packages): bump codex to $NEW_VER"
           fi
 
+          if [ -n "$(git status --porcelain packages/grok-build-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/grok-build-release.json)
+            git add packages/grok-build-release.json
+            git commit -m "chore(packages): bump grok-build to $NEW_VER"
+          fi
+
 
           if [ -n "$(git status --porcelain packages/omp-release.json)" ]; then
             NEW_VER=$(jq -r .version packages/omp-release.json)
@@ -208,7 +227,7 @@ jobs:
             git commit -m "chore(packages): bump omp to $NEW_VER"
           fi
 
-          for npm_package in acpx; do
+          for npm_package in acpx claude-agent-sdk; do
             if [ -n "$(git status --porcelain "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json")" ]; then
               NEW_VER=$(jq -r .version "packages/$npm_package-release.json")
               git add "packages/$npm_package-release.json" "packages/$npm_package/package-lock.json"

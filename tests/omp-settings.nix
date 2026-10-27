@@ -65,6 +65,19 @@ let
       unknown = toString unknownHelpers;
     }
   );
+  # The `writing` and `visual` roles run as these native agents outside T3.
+  roleAgents = pkgs.writeText "omp-role-agents.py" ''
+    import json, sys, yaml
+    from pathlib import Path
+    for entry in json.loads(Path(sys.argv[1]).read_text()):
+        for name in ("writer", "designer"):
+            path = Path(entry["files"]) / ".omp/agent/agents" / f"{name}.md"
+            text = path.read_text() if path.is_file() else ""
+            front = yaml.safe_load(text.split("---\n")[1]) if text.startswith("---\n") else {}
+            selection = (front.get("name"), front.get("model"), front.get("thinkingLevel"))
+            expected = (name, ["google-antigravity/gemini-4-argon"], "low")
+            assert selection == expected, (entry["name"], name, selection)
+  '';
 in
 pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
   ${lib.optionalString (!pkgs.stdenv.hostPlatform.isDarwin) configurations.userGuard}
@@ -75,5 +88,6 @@ pkgs.runCommand "omp-settings-tests" { nativeBuildInputs = [ pkgs.bash ]; } ''
     ${self.packages.${pkgs.stdenv.hostPlatform.system}.omp}/bin/omp \
     ${activations} ${helpers} ${../home/h82/agents/openrouter-catalog.json}
   ${tools.ompConfigPython}/bin/python3 ${./agent-retirement.py} ${activations} ${retiredFiles}
+  ${tools.ompConfigPython}/bin/python3 ${roleAgents} ${activations}
   touch $out
 ''
