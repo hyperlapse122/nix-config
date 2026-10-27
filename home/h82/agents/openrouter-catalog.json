@@ -6073,6 +6073,60 @@
       }
     },
     {
+      "id": "openai/gpt-6.1-terra-pro",
+      "name": "OpenAI: GPT-6.1 Terra Pro",
+      "architecture": {
+        "input_modalities": [
+          "file",
+          "image",
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "context_length": 1050000,
+      "reasoning": {
+        "mandatory": true,
+        "default_enabled": true,
+        "supported_efforts": [
+          "max",
+          "xhigh",
+          "high",
+          "medium",
+          "low"
+        ],
+        "default_effort": "medium"
+      }
+    },
+    {
+      "id": "openai/gpt-6.1-terra-pro:batch",
+      "name": "OpenAI: GPT-6.1 Terra Pro (batch)",
+      "architecture": {
+        "input_modalities": [
+          "file",
+          "image",
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "context_length": 1050000,
+      "reasoning": {
+        "mandatory": true,
+        "default_enabled": true,
+        "supported_efforts": [
+          "max",
+          "xhigh",
+          "high",
+          "medium",
+          "low"
+        ],
+        "default_effort": "medium"
+      }
+    },
+    {
       "id": "openai/gpt-6.1-terra:batch",
       "name": "OpenAI: GPT-6.1 Terra (batch)",
       "architecture": {
