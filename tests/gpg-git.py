@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -81,3 +82,12 @@ sys.exit(7)
             if mode == "hang":
                 assert 9 <= elapsed < 15, "refresh must have a bounded ten-second wait"
         print(f"gpg-git: {mode} passed")
+
+    for name in ("SIGPIPE", "SIGXFSZ"):
+        fake.write_text(f"#!/bin/sh\nkill -{int(getattr(signal, name))} $$\nexit 99\n")
+        result = subprocess.run(
+            [sys.executable, script, "--version"],
+            capture_output=True, env=environment, timeout=5,
+        )
+        assert result.returncode == -getattr(signal, name), f"GPG must retain default {name} behavior"
+        print(f"gpg-git: {name} passed")

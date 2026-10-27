@@ -366,6 +366,7 @@ sed \
   -e "s#^DELEGATE_PATH = .*#DELEGATE_PATH = \"$scratch/bin/fake-gnome-delegate\"#" \
   -e "s#^LINUX_FALLBACK_PATH = .*#LINUX_FALLBACK_PATH = \"$scratch/bin/fake-fallback-delegate\"#" \
   -e "s#^SECRET_TOOL_PATH = .*#SECRET_TOOL_PATH = \"$scratch/bin/secret-tool\"#" \
+  -e 's/KEYRING_CLEAR_TIMEOUT = 5/KEYRING_CLEAR_TIMEOUT = 1/' \
   "$rendered_gnome" >"$scratch/functional-cold.py"
 out="$scratch/out-cold" err="$scratch/err-cold"
 input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$stored_serial")")
@@ -770,7 +771,8 @@ getpin_count=$(grep -c '^GETPIN' "$gnome_log")
 pass '25: a repeated GETPIN under one rejection clears once and auto-submits nothing'
 
 # 26. A clear that fails or outruns the (1-second, rewritten) bound never
-#     blocks the delegated prompt.
+#     blocks the delegated prompt. Keep lookup at 30 seconds so accidentally
+#     using its deadline for removal fails this case.
 for mode in clear-fail clear-sleep; do
   reset_keyring
   out="$scratch/out26-$mode" err="$scratch/err26-$mode"
@@ -778,7 +780,7 @@ for mode in clear-fail clear-sleep; do
   input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$(card_desc "$serial_nfc" 'Remaining attempts: 2')")
   start=$(date +%s)
   rc=0
-  run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode" || rc=$?
+  run_wrapper "$scratch/functional-cold.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode" || rc=$?
   elapsed=$(( $(date +%s) - start ))
   [[ $rc -ne 124 ]] || fail "26 $mode: the wrapper hung past the 10-second test timeout"
   (( elapsed < 5 )) || fail "26 $mode: took ${elapsed}s, so the clear was not bounded"
