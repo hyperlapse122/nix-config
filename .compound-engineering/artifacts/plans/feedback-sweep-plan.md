@@ -1,6 +1,8 @@
 ---
 title: Feedback Sweep - Plan
+type: fix
 date: 2026-10-27
+execution: code
 topic: feedback-sweep
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-sweep
@@ -8,7 +10,9 @@ product_contract_source: ce-sweep
 
 ## Goal Capsule
 
-Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they merged.
+Deliver a T3 OMP session that asks once and waits for the user's answer, while advancing the first-signature timeout investigation without guessing its cause.
+
+Use the existing OMP instance overlay and packaged ACP fixture (KTD5, KTD6). The Product Contract governs behavior; the Planning Contract governs implementation. Deliver repository changes through a reviewed pull request and leave merging to the user. Stop a proposed repair when its evidence is inconclusive or it would change protected PIN handling. A delivered repository change does not complete the deferred sweep items or establish live acceptance.
 
 ## Human Notes
 
@@ -20,7 +24,17 @@ Triage and drive to resolution the open feedback items captured below: acknowled
 
 ### Summary
 
-Nine open issues remain: eight newly recorded items and the existing live-verification tracker. Recovered six acknowledgments from the failed sweep and added two missing acknowledgments. Nine older items are verified resolved by merged PRs #371 and #372; #370 was superseded by #373, not fixed. No recordings were attached.
+Implement the T3-only OMP question/reminder settings and their independent consumer regressions. Investigate the GPG timeout using secret-free stage and timing evidence. Keep the remaining live checks, upstream dependency, and deferred product choices open.
+
+Product Contract unchanged. R29 and R45-R52 retain their outcomes; this delivery advances the independently actionable work without claiming the whole sweep resolved.
+
+### Problem Frame
+
+OMP's form-question path and incomplete-todo continuations can repeat questions inside T3 Code. The common OMP configuration also serves terminal sessions, so changing that shared configuration would affect behavior outside the request. Separately, a first GPG signature after idle can fail while its retry succeeds; the reported Qt launch does not identify whether the wrapper timed out, found no PIN, or reached another fallback path.
+
+### Key Decisions
+
+- Keep R47-R51 as open questions for later planning (session-settled: user-directed — chosen over deciding them now: the user explicitly retained those choices). Governs R47, R48, R49, R50, and R51.
 
 ### Requirements
 
@@ -73,3 +87,112 @@ Nine open issues remain: eight newly recorded items and the existing live-verifi
 - [PR #371](https://github.com/hyperlapse122/nix-config/pull/371) merged to `main` as `a06ed33a3d6032f84c9ebee3bb622ae22177c2da`, resolving #328, #329, #340, #341, #357, #358, and #359.
 - [PR #372](https://github.com/hyperlapse122/nix-config/pull/372) merged to `main` as `41d3a378a9b1f85babd7e4bc8e297280f9d67090`, resolving #368 and #369.
 - [Supersession record for #370](https://github.com/hyperlapse122/nix-config/issues/370#issuecomment-6415889780): closed as not planned in favor of #373, without a verified recovery fix.
+
+---
+
+## Planning Contract
+
+### Key Technical Decisions
+
+- KTD5. Add `ask.enabled = false` and `todo.reminders = false` to `ompScope` in `home/h82/t3code.nix`. The existing instance command already passes this mapping with `--config`; it is the narrow owner for R45. OMP 18.13.0 at `011ab732fa2d8657203d17f6af80d57809eb24f4` loads this overlay after global/project settings. Runtime and setting-specific environment overrides may still win; do not claim an immutable policy. Keep common configuration and instruction templates unchanged.
+- KTD6. Extend the packaged ACP consumer fixture in `tests/omp-acp.py`, supplied by `tests/omp-acp.nix`. Exercise real todo operations and inspect captured provider requests instead of adding a source-level harness or production test seam. Independently remove each new setting in a scratch mutation to prove its regression fails for the intended reason. Governs R45 verification.
+- KTD7. Add bounded, secret-free lookup diagnostics for R52. The existing wrapper collapses timeout, OS error, nonzero exit, and empty output into `None`, so its Qt fallback cannot establish a cause. Emit only a fixed outcome category and monotonic elapsed time through a best-effort local system-log sink; never put diagnostics on Assuan stdout. Preserve signing when the sink is unavailable. Never log PIN bytes or length, command arguments, serials, subprocess output, or exception text. Do not use payload-capturing tracers, Assuan debugging, or print-instrumented wrapper copies. Preserve the five-second lookup bound, zero agent-cache TTLs, exact card-prompt matching, rejection handling, and protected pinentry. Repository tests prove diagnostic behavior with fake secrets. Incident classification still requires deployment and a naturally recurring failure; neither deployment nor forced idle is part of this run. Inconclusive observations leave #383 open and produce no speculative timeout, retry, wake-up, or cache change.
+- KTD8. Keep R29 and R46 as evidence-gated follow-up. R29's deployed MacBook Pro checklist remains authoritative. Research on 2026-10-27 found no released ordinary-turn/subagent recovery fix for R46; open upstream issues [#22390](https://github.com/openai/codex/issues/22390) and [#50959](https://github.com/openai/codex/issues/50959) are not adoption evidence. Keep the Codex pin and retry configuration unchanged.
+
+### High-Level Technical Design
+
+```mermaid
+flowchart TB
+  A[Shared OMP configuration] --> B[Standalone OMP]
+  A --> C[T3 OMP process]
+  D[T3 instance overlay] --> C
+  C --> E[Ask absent; todo retained]
+  C --> F[Incomplete-todo reminders disabled]
+```
+
+```mermaid
+sequenceDiagram
+  participant Client as ACP fixture
+  participant OMP as Packaged OMP
+  participant Provider as Local fake provider
+  Client->>OMP: Initialize with form elicitation
+  Client->>OMP: Prompt
+  OMP->>Provider: Tool schemas and context
+  Provider->>OMP: Create incomplete todo
+  OMP->>Provider: Real todo result
+  Provider->>OMP: Question followed by options
+  OMP->>Client: end_turn
+  Note over OMP,Provider: No reminder-driven provider request
+```
+
+### Assumptions
+
+The independent R45 repository change may ship while R29, R46, R47-R51, and unresolved R52 evidence remain open. This delivery sequencing is an implementation assumption, not a claim that those requirements are fulfilled. R52 delivers diagnostic support and an evidence handoff, not a repair without a confirmed cause.
+
+### Scope Boundaries
+
+Do not recreate the retired provisioning/verification manuals named in #363. Record the scoped settings and live-evidence handoff in this plan and the pull request. Do not add a general diagnostics framework, an outer agent continuation loop, or upstream-source testing seams: existing consumer boundaries are sufficient.
+
+#### Deferred to Follow-Up Work
+
+- R29: preserve the full issue and archived live checklist, including Mac memory/fan-out, cleanup timing, worktree location/base, effort, and usage observations.
+- R46: wait for an identified released fix, then validate ordinary sessions and subagents in T3 and CLI separately.
+- R47-R51: retain the Product Contract's explicit deferred choices.
+- R52: deploy the diagnostic change separately, then correlate a naturally idle failure with lookup outcome and elapsed time. Keep #383 open until the cause and repair are verified. A standalone lookup probe warms the service and is not evidence from the signing incident.
+- R45 live acceptance: use a fresh deployed OMP process for both a root thread and delegated task; verify a single question/answer handoff, retained todo tracking, and unchanged standalone interaction. Disabling reminders also suppresses mid-run todo nudges; check todo freshness over a longer run separately from tool availability. No host apply or unrelated session restart is authorized as validation.
+
+### Sources and Risks
+
+The pinned OMP [settings reference](https://github.com/can1357/oh-my-pi/blob/011ab732fa2d8657203d17f6af80d57809eb24f4/docs/settings.md), [tool inclusion gate](https://github.com/can1357/oh-my-pi/blob/011ab732fa2d8657203d17f6af80d57809eb24f4/packages/coding-agent/src/tools/index.ts), and [TodoTracker](https://github.com/can1357/oh-my-pi/blob/011ab732fa2d8657203d17f6af80d57809eb24f4/packages/coding-agent/src/session/todo-tracker.ts) establish KTD5. The setting does not suppress unrelated subsystem messages or failed-tool feedback.
+
+For KTD6, use the materialized-output guidance in [option-value checks](../solutions/best-practices/nix-check-reads-option-value-not-materialized-output.md). Preserve the settings-tier boundary described in [T3 settings precedence](../solutions/integration-issues/t3code-settings-json-value-outranks-repository-t3-json.md).
+
+For KTD7, [libsecret synchronous lookup](https://gnome.pages.gitlab.gnome.org/libsecret/method.Service.lookup_sync.html) can block, and [locked Secret Service items](https://specifications.freedesktop.org/secret-service/latest/unlocking.html) require unlocking. Neither proves this incident's cause. Read the existing [card provisioning traps](../solutions/integration-issues/tmpfs-gnupghome-card-provisioning-traps.md) before using an alternate GnuPG home; an unconfigured scratch home is not a faithful reproduction.
+
+---
+
+## Implementation Units
+
+### U10. Scope OMP interaction settings to T3 and prove the consumer behavior
+
+- **Goal:** Deliver R45's repository behavior under KTD5 and KTD6.
+- **Dependencies:** Pinned OMP 18.13.0 supports both keys; no new runtime package is needed.
+- **Files:** `home/h82/t3code.nix`, `tests/omp-acp.py`; `tests/omp-acp.nix` only if fixture inputs need adjustment; this plan for deployment evidence.
+- **Approach:** Add the two settings to the existing overlay. Extend the current fake-provider exchange with form-elicitation initialization, a real incomplete todo, and a final question/options response. Retain the existing write, MCP, cancellation, resume, and common-file preservation coverage.
+- **Patterns to follow:** `applied`, `prepare`, `Fixture`, and `exchange` in `tests/omp-acp.py`; existing generated deliveries in `tests/omp-acp.nix`.
+- **Execution note:** Establish the regression against the unmodified overlay, then verify each setting independently. Read `test-audit` and applicable repository mutation learnings before editing tests. Use isolated fake credentials and the existing local provider transport.
+- **Test scenarios:**
+  1. Apply the generated T3 settings in scratch state and launch the resulting command. With form elicitation advertised, captured provider schemas omit `ask` and include `todo`.
+  2. Execute a valid todo operation that leaves pending or in-progress work. The fake provider's final answer puts a Korean question first and ends with at least two numbered options, with no trailing question line. This ordering matters because OMP can suppress reminders when the last paragraph looks like a question. ACP returns `end_turn` with one final assistant answer and no reminder-driven follow-up request. Distinguish the tool-call exchange from the final answer; do not count every provider request as a separate user turn.
+  3. Restore only ask enablement in a temporary overlay and show the ask regression fails. Restore only reminders and show the incomplete-todo control reaches continuation for exactly the same answer shape. Bound observation by ACP terminal completion, not an arbitrary sleep.
+  4. Verify standalone configuration retains its prior/default ask and reminder values and its bytes are unchanged. Existing ACP write/MCP/cancel/resume behavior continues to pass.
+- **Verification:** Both independent negative controls fail at their behavior assertions, and the packaged ACP owner passes after repair. Report generated configuration, offline runtime, native platform, and live T3 evidence separately.
+
+### U11. Diagnose the first-signature timeout without changing the security policy
+
+- **Goal:** Make the next natural R52 incident diagnosable through KTD7 without changing signing policy.
+- **Dependencies:** Independent of U10. Repository proof uses fake credentials; incident evidence awaits a later deployment and natural recurrence.
+- **Files:** `scripts/pinentry-card`, `tests/pinentry-card.sh`, and `packages/gpg-tools.nix` only if the existing test owner needs packaging input. Inspect `home/h82/security/gpg.nix` without changing cache policy.
+- **Approach:** Emit a fixed lookup outcome and monotonic elapsed time through the platform's existing local logging facility, isolated from the Assuan stream. Keep logging best-effort and bounded; sink failure must not change lookup or fallback results. No raw values, lengths, arguments, serials, exception text, or payload tracing. Do not force idle, restart the wallet/agent, deploy, alter cache policy, delete credentials, or retry a rejected PIN. Do not claim a standalone probe observed the incident path.
+- **Test expectation:** Extend the existing wrapper owner with fake timeout, OS-error, nonzero, empty, and successful lookup cases. Observe the logging consumer and prove fixed-category/duration output, no fake PIN bytes or raw subprocess data, unchanged Assuan replies/fallback, and unchanged behavior when the log sink fails. Preserve existing prompt matching and rejected-PIN coverage. Establish a failing diagnostic regression before adding the implementation.
+- **Verification:** Record package-level diagnostic proof and an explicit handoff for deployed natural-incident evidence. This delivery does not establish the cause or repair the intermittent timeout; #383 remains open.
+
+---
+
+## Verification Contract
+
+| Boundary | Required evidence |
+| --- | --- |
+| Changed prose and formatting | `git diff --check`, changed Markdown lint, `nix fmt -- --ci` |
+| R45 consumer | `nix build --no-link .#checks.x86_64-linux.omp-acp`, independently discriminating ask/reminder controls, common configuration preservation |
+| R52 diagnosis | Existing pinentry package check proves fixed outcome/duration logging, secret exclusion, protocol preservation, and sink-failure behavior with fake data; deployed incident evidence remains pending |
+| Repository shipping | Flake evaluation, all declared checks, VM tests, and every production/bootstrap output on supported builders; current-head CI may supply platform evidence |
+| Live acceptance | Fresh deployed T3 root and delegated OMP sessions, standalone UI behavior, and target-Mac observations recorded separately; unavailable evidence stays pending |
+
+Follow repository build and shipping requirements in `AGENTS.md`. No `nr switch`, host deployment, paid model fallback, purchase, or card administration is part of validation. Keep #363 open until its live acceptance evidence is recorded; use a related-issue link rather than an automatic closing keyword when publishing only repository proof.
+
+---
+
+## Definition of Done
+
+U10's bounded repository change and U11's secret-free diagnostic support are implemented, regression-tested, reviewed, and published with accurate CI/platform evidence. U11 records the unresolved cause and pending deployed incident capture. R29, R46, and the user-deferred R47-R51 remain open. Missing live evidence is visible in the pull request and final report; no issue is marked fixed on the strength of declarations alone.
