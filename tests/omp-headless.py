@@ -121,6 +121,11 @@ class Provider(http.server.BaseHTTPRequestHandler):
         tools = {tool["function"]["name"] for tool in body.get("tools", [])}
         child = any(m["role"] == "user" and "Return the requested review fixture through yield." in str(m.get("content"))
                     for m in body["messages"])
+        # OMP compresses each skill description in a background one-shot request
+        # to the session model; it carries no session context.
+        if not tools and len(body["messages"]) == 1 and str(body["messages"][0].get("content")).startswith(
+                "Compress into one routing hint"):
+            return {"content": "fixture routing hint"}, "stop"
         if child:
             assert "yield" in tools, "structured child has no yield tool"
             name, arguments = "yield", {"data": child_receipt}

@@ -469,12 +469,11 @@ if __name__ == "__main__":
             api = instances["omp"]["config"]
             assert set(api["customModels"]) == expected and len(api["customModels"]) == len(expected), "T3 API selectors capped or changed"
             patterns = {
-                "synthetic/**",
                 "google-antigravity/gemini-*",
                 "google-antigravity/claude-*",
                 "google-antigravity/gpt-*",
                 "openai-codex/*",
-            } | {s for s in expected if s.startswith("openrouter/")}
+            } | {s for s in expected if s.startswith(("synthetic/", "openrouter/"))}
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
             assert args[args.index("--model") + 1] == "google-antigravity/gemini-4-argon"
