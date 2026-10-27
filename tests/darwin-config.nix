@@ -58,9 +58,13 @@
   - KakaoTalk: after the Xcode step and before Home Manager, postActivation
     installs (mas install, then mas get) or upgrades App Store id 869223134
     through its own wrapper in the primary user's session, every call guarded
-    the same way. A failed install names the App Store sign-in; unresolved
-    ids name system.primaryUser.
-  - Retired casks: after the KakaoTalk step and before Home Manager,
+    the same way. A failed install names the App Store sign-in, a failed
+    upgrade names the sign-in and the app bundle; unresolved ids name
+    system.primaryUser.
+  - Flighty: after the KakaoTalk step and before Home Manager, the same
+    App Store step installs or upgrades App Store id 1358823008 the same way,
+    with `flighty:` messages.
+  - Retired casks: after the Flighty step and before Home Manager,
     postActivation uninstalls the installed grok-bot cask with
     `brew uninstall --cask --force`, never `--zap`, through the absolute brew
     path under `sudo --preserve-env=PATH --user` for the primary user with
@@ -322,6 +326,7 @@ let
       primaryUser = config.system.primaryUser;
       xcodeId = "497799835";
       kakaoTalkId = "869223134";
+      flightyId = "1358823008";
       masExe = plain (lib.getExe entry.host.pkgs.mas);
       postActivation = plain config.system.activationScripts.postActivation.text;
       activationWithoutStorePaths = withoutStorePaths config.system.activationScripts.script.text;
@@ -364,6 +369,7 @@ let
       ];
       xcodeInstall = "if ! xcodeMas install ${xcodeId} && ! xcodeMas get ${xcodeId}; then";
       kakaoInstall = "if ! appStoreMas install ${kakaoTalkId} && ! appStoreMas get ${kakaoTalkId}; then";
+      flightyInstall = "if ! appStoreMas install ${flightyId} && ! appStoreMas get ${flightyId}; then";
       xcodebuildActions = lib.filter (
         line:
         lib.hasInfix "-license accept" line
@@ -690,6 +696,64 @@ let
         )
         rootLines
       ) "${entry.name}: unresolved ids must print a message naming system.primaryUser, not the App Store")
+      (lib.concatMapStrings
+        (
+          app:
+          check
+            (
+              let
+                upgrade = lineIndex "elif ! appStoreMas upgrade ${app.id}; then";
+                message = lib.elemAt rootLines (upgrade + 1);
+              in
+              upgrade != null
+              && lib.hasPrefix "echo \"${app.tag}: App Store upgrade failed; " message
+              && lib.hasInfix "signed in to the App Store" message
+              && lib.hasInfix "/Applications/${app.name}.app came from the App Store" message
+            )
+            "${entry.name}: a failed ${app.name} upgrade must print a ${app.tag} message naming the App Store sign-in and /Applications/${app.name}.app"
+        )
+        [
+          {
+            name = "KakaoTalk";
+            id = kakaoTalkId;
+            tag = "kakaotalk";
+          }
+          {
+            name = "Flighty";
+            id = flightyId;
+            tag = "flighty";
+          }
+        ]
+      )
+      (check (lib.elem flightyInstall rootLines) "${entry.name}: Flighty (1358823008) must be installed with mas install, falling back to mas get")
+      (check
+        (
+          let
+            missing = lineIndex "elif [[ ! -d /Applications/Flighty.app ]]; then";
+            install = lineIndex flightyInstall;
+            upgrade = lineIndex "elif ! appStoreMas upgrade ${flightyId}; then";
+          in
+          missing != null && install != null && upgrade != null && missing < install && install < upgrade
+        )
+        "${entry.name}: Flighty must be installed when /Applications/Flighty.app is missing and upgraded with mas upgrade 1358823008 otherwise"
+      )
+      (check (
+        let
+          kakao = lineIndex kakaoInstall;
+          flighty = lineIndex flightyInstall;
+        in
+        kakao != null && flighty != null && kakao < flighty
+      ) "${entry.name}: the Flighty step must run after the KakaoTalk step and before Home Manager")
+      (check (lib.any
+        (line: lib.hasPrefix "echo \"flighty: " line && lib.hasInfix "sign in to the App Store" line)
+        rootLines
+      ) "${entry.name}: a failed Flighty install must print a message naming the App Store sign-in")
+      (check
+        (lib.any (
+          line: lib.hasPrefix "echo \"flighty: cannot resolve" line && lib.hasInfix "system.primaryUser" line
+        ) rootLines)
+        "${entry.name}: unresolved ids must print a Flighty message naming system.primaryUser, not the App Store"
+      )
       (check
         (
           lib.length xcodebuildActions == 3
@@ -724,12 +788,15 @@ let
       (check (
         !lib.hasInfix "zap" activationWithoutStorePaths
       ) "${entry.name}: no activation step may zap a cask, since --zap deletes the app's user data")
-      (check (
-        let
-          kakao = lineIndex kakaoInstall;
-        in
-        kakao != null && retiredStart != null && kakao < retiredStart
-      ) "${entry.name}: the retired-cask step must run after the KakaoTalk step and before Home Manager")
+      (check
+        (
+          let
+            flighty = lineIndex flightyInstall;
+          in
+          flighty != null && retiredStart != null && flighty < retiredStart
+        )
+        "${entry.name}: the retired-cask step must run after the App Store app steps and before Home Manager"
+      )
       (check (!lib.elem "grok-bot" mapping.casks)
         "${entry.name}: modules/shared/darwin-apps.nix must map no grok-bot, or an apply would install the cask it removes"
       )
