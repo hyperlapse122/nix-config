@@ -2485,19 +2485,6 @@
       "context_length": 8192
     },
     {
-      "id": "ibm-granite/granite-4.0-h-micro",
-      "name": "IBM: Granite 4.0 Micro",
-      "architecture": {
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 131000
-    },
-    {
       "id": "ibm-granite/granite-4.2-8b",
       "name": "IBM: Granite 4.2 8B",
       "architecture": {
@@ -3253,20 +3240,6 @@
       "context_length": 256000
     },
     {
-      "id": "mistralai/codestral-2508:batch",
-      "name": "Mistral: Codestral 2508 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 256000
-    },
-    {
       "id": "mistralai/devstral-2512",
       "name": "Mistral: Devstral 2 2512",
       "architecture": {
@@ -3323,20 +3296,6 @@
       "context_length": 262144
     },
     {
-      "id": "mistralai/ministral-8b-2512:batch",
-      "name": "Mistral: Ministral 3 8B 2512 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 262144
-    },
-    {
       "id": "mistralai/mistral-large",
       "name": "Mistral Large",
       "architecture": {
@@ -3367,21 +3326,6 @@
     {
       "id": "mistralai/mistral-large-2512",
       "name": "Mistral: Mistral Large 3 2512",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 262144
-    },
-    {
-      "id": "mistralai/mistral-large-2512:batch",
-      "name": "Mistral: Mistral Large 3 2512 (batch)",
       "architecture": {
         "input_modalities": [
           "text",
@@ -3494,21 +3438,6 @@
       "context_length": 131072
     },
     {
-      "id": "mistralai/mistral-medium-3.1:batch",
-      "name": "Mistral: Mistral Medium 3.1 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 131072
-    },
-    {
       "id": "mistralai/mistral-nemo",
       "name": "Mistral: Mistral Nemo",
       "architecture": {
@@ -3551,29 +3480,6 @@
     {
       "id": "mistralai/mistral-small-2603",
       "name": "Mistral: Mistral Small 4",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 262144,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
-          "high",
-          "none"
-        ],
-        "default_effort": "high"
-      }
-    },
-    {
-      "id": "mistralai/mistral-small-2603:batch",
-      "name": "Mistral: Mistral Small 4 (batch)",
       "architecture": {
         "input_modalities": [
           "text",
