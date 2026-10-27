@@ -43,11 +43,11 @@ let
     setPaths = [
       {
         path = [ "model" ];
-        value = "gpt-6.1-sol";
+        value = "gpt-6-astra";
       }
       {
         path = [ "model_reasoning_effort" ];
-        value = "low";
+        value = "medium";
       }
       {
         path = [ "service_tier" ];
@@ -114,8 +114,8 @@ let
     enabled = true
   '';
   applied = {
-    model = "gpt-6.1-sol";
-    model_reasoning_effort = "low";
+    model = "gpt-6-astra";
+    model_reasoning_effort = "medium";
     service_tier = "default";
     unrelated = "keep me";
     agents = {

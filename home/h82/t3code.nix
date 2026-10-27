@@ -205,16 +205,12 @@ let
   # a leaf merge would keep a previous model's options.
   modelSelections = {
     defaultModelSelection = {
-      instanceId = "codex";
-      model = "gpt-6.1-sol";
+      instanceId = "claudeAgent";
+      model = "claude-opus-5-5";
       options = [
         {
-          id = "reasoningEffort";
-          value = "low";
-        }
-        {
-          id = "serviceTier";
-          value = "default";
+          id = "effort";
+          value = "medium";
         }
       ];
     };
