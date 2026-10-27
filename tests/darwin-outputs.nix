@@ -77,11 +77,14 @@ let
     }) (darwinFixtures ++ lib.mapAttrsToList (name: host: { inherit name host; }) darwinConfigurations);
   };
 
+  # The declared values belong to tests/codex-settings.nix; this reads them
+  # from the file the step hands the merge, so it checks only their effect.
   codexEffects = pkgs.writeText "codex-activation-effects.py" ''
-    import os, subprocess, sys, tempfile, tomllib
+    import json, os, re, subprocess, sys, tempfile, tomllib
     from pathlib import Path
     body = Path(sys.argv[1]).read_text()
     original = sys.argv[2]
+    declared = json.loads(Path(re.search(r"--declared (\S+)", body)[1]).read_text())
     with tempfile.TemporaryDirectory() as work:
         home = Path(work) / "home"
         target = home / ".codex/config.toml"
@@ -92,14 +95,23 @@ let
         env.pop("DRY_RUN", None)
         def run():
             return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
-        target.write_text('model = "old-model"\nmodel_reasoning_effort = "high"\nservice_tier = "priority"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "medium"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n')
+        seed = 'model = "old-model"\nmodel_reasoning_effort = "old-effort"\nservice_tier = "old-tier"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "old-effort"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n'
+        expected = tomllib.loads(seed)
+        for key in declared["remove"]:
+            assert key in expected, f"seed lacks retired key {key}"
+            del expected[key]
+        for entry in declared["setPaths"]:
+            *parents, leaf = entry["path"]
+            table = expected
+            for part in parents:
+                table = table[part]
+            assert table.get(leaf) != entry["value"], f"seed already holds declared {entry['path']}"
+            table[leaf] = entry["value"]
+        target.write_text(seed)
         result = run()
         assert result.returncode == 0, result.stderr
         actual = tomllib.loads(target.read_text())
-        assert actual == {"model": "gpt-6.1-sol", "model_reasoning_effort": "low", "service_tier": "default",
-            "agents": {"default_subagent_model": "gpt-6.1-sol", "default_subagent_reasoning_effort": "low", "max_threads": 3},
-            "check_for_update_on_startup": False, "custom": "keep",
-            "features": {"in_app_updates": False, "daemon_auto_start": False, "memories": False, "custom": True}}, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
+        assert actual == expected, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
         assert actual["check_for_update_on_startup"] is False
         assert all(actual["features"][key] is False for key in ["in_app_updates", "daemon_auto_start", "memories"]), "Codex settings must be TOML booleans"
         protected = b'[features\nmalformed = true\n'
