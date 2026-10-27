@@ -59,6 +59,11 @@
   - the retired-cask step runs after the Flighty step and before the Home
     Manager activation call, with every brew call going through /usr/bin/sudo
     as the primary user with the absolute brew path;
+  - with the TLS inspection CA trait, production shells and a RunAtLoad
+    login agent set all six CA variables to
+    /etc/ssl/nix-config/ca-certificates.crt, nix-daemon's plist names it, the
+    bundle step runs before /etc and the trust step after; bootstrap keeps
+    the default bundle and has neither step nor agent;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
     apply takes over an existing /opt/homebrew instead of stopping.
 
@@ -450,6 +455,50 @@ let
           || bad "no launch agent sets T3CODE_DISABLE_AUTO_UPDATE"
       ''}
 
+      # The TLS inspection CA trait, on in the fixture: production points
+      # shells, nix-daemon, and GUI apps at one bundle; bootstrap keeps the
+      # default and has no agent.
+      tlsbundle=/etc/ssl/nix-config/ca-certificates.crt
+      setenvfile=$(grep -o -m1 '/nix/store/[a-z0-9]*-set-environment' "$sys/etc/zshenv" || true)
+      daemonca=$(/usr/bin/plutil -extract EnvironmentVariables.NIX_SSL_CERT_FILE raw "$sys/Library/LaunchDaemons/org.nixos.nix-daemon.plist" 2>/dev/null || true)
+      caagent=$sys/user/Library/LaunchAgents/org.nixos.tls-inspection-ca-environment.plist
+      if [ "$production" = 1 ]; then
+        for v in SSL_CERT_FILE NIX_SSL_CERT_FILE NODE_EXTRA_CA_CERTS REQUESTS_CA_BUNDLE CURL_CA_BUNDLE GIT_SSL_CAINFO; do
+          grep -qsxF "export $v=\"$tlsbundle\"" "$setenvfile" || bad "shells do not set $v to the TLS inspection CA bundle"
+          /usr/bin/plutil -extract ProgramArguments.2 raw "$caagent" 2>/dev/null | grep -qxF "/bin/launchctl setenv $v $tlsbundle" \
+            || bad "no login agent sets $v to the TLS inspection CA bundle for GUI apps"
+        done
+        [ "$(/usr/bin/plutil -extract RunAtLoad raw "$caagent" 2>/dev/null)" = true ] || bad "the CA environment agent does not run at load"
+        [ "$daemonca" = "$tlsbundle" ] || bad "nix-daemon reads $daemonca, not the TLS inspection CA bundle"
+        bundleline=$(grep -n -m1 '/bin/tls-inspection-ca bundle ' "$sys/activate" | cut -d: -f1); bundleline=''${bundleline:-0}
+        etcline=$(grep -n -m1 'setting up /etc' "$sys/activate" | cut -d: -f1); etcline=''${etcline:-0}
+        trustline=$(grep -n -m1 '/bin/tls-inspection-ca trust ' "$sys/activate" | cut -d: -f1); trustline=''${trustline:-0}
+        if [ "$bundleline" = 0 ] || [ "$trustline" = 0 ] || ! [ "$bundleline" -lt "$etcline" ] || ! [ "$etcline" -lt "$trustline" ]; then
+          bad "the CA bundle step does not run before /etc and the trust step after it"
+        fi
+        # Run the materialized bundle step itself, so a step that only echoes
+        # its arguments fails: the fixture's fake CA decrypts with the fake
+        # identity beside it, and only the identity copy, its owner, and the
+        # output directory point into scratch space. launchctl is a stub.
+        castep=$(sed -n '/\/bin\/tls-inspection-ca bundle \\$/,/--daemon /p' "$sys/activate")
+        cafile=$(sed -n 's|^ *--certificate-file \([^ ]*\) .*|\1|p' <<<"$castep")
+        cabase=$(sed -n 's|^ *--base \([^ ]*\) .*|\1|p' <<<"$castep")
+        rm -rf "$TMPDIR/castep"; mkdir -p "$TMPDIR/castep/bin"
+        install -m 600 "$(dirname "$cafile")/key.txt" "$TMPDIR/castep/key.txt"
+        printf '#!/bin/sh\nexit 1\n' >"$TMPDIR/castep/bin/launchctl"; chmod +x "$TMPDIR/castep/bin/launchctl"
+        castep=$(sed -e "s|^\( *--identity \).*\( \\\\\)$|\1$TMPDIR/castep/key.txt\2|" \
+          -e "s|^\( *--identity-owner \).*\( \\\\\)$|\1$(id -un)\2|" \
+          -e "s|^\( *--out-dir \).*\( \\\\\)$|\1$TMPDIR/castep/out\2|" <<<"$castep")
+        if [ -z "$cafile" ] || [ -z "$cabase" ] || ! PATH=$TMPDIR/castep/bin:$PATH bash -euo pipefail -c "$castep" 2>"$TMPDIR/castep/err"; then
+          bad "the materialized CA bundle step fails: $(cat "$TMPDIR/castep/err" 2>/dev/null)"
+        elif ! cat "$cabase" "$(dirname "$cafile")/tls-inspection-ca.pem" | cmp -s - "$TMPDIR/castep/out/ca-certificates.crt"; then
+          bad "the materialized CA bundle step does not write this generation's roots followed by the CA"
+        fi
+      else
+        [ "$daemonca" = /etc/ssl/certs/ca-certificates.crt ] || bad "bootstrap nix-daemon reads $daemonca, not the default bundle"
+        [ ! -e "$caagent" ] || bad "bootstrap has the CA environment agent"
+        if grep -q 'tls-inspection-ca' "$sys/activate"; then bad "bootstrap activation runs a TLS inspection CA step"; fi
+      fi
       nixconf=$sys/etc/nix/nix.conf
       [ -f "$nixconf" ] || bad "the system has no nix.conf"
       if grep -Eq '^auto-optimise-store *= *true' "$nixconf"; then

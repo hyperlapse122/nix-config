@@ -171,7 +171,7 @@ The next `nr switch` from the checkout builds a new generation again, so fix the
 
 ## Secrets and authentication
 
-The age identity lives at `~/.config/nix-config/age/key.txt`, protected by FileVault. It decrypts only `secrets/tokens.yaml` and the host's own `secrets/hosts/<host>/ssh.yaml`; a Mac is never a recipient of the Wi-Fi or Tailscale secrets. The Mac joins the tailnet through the Tailscale app's own login instead of an auth key.
+The age identity lives at `~/.config/nix-config/age/key.txt`, protected by FileVault. It decrypts only `secrets/tokens.yaml` and the host's own `secrets/hosts/<host>/ssh.yaml` and, with the TLS inspection CA trait, `secrets/hosts/<host>/tls-inspection-ca.yaml`; a Mac is never a recipient of the Wi-Fi or Tailscale secrets. The Mac joins the tailnet through the Tailscale app's own login instead of an auth key.
 
 Production activation publishes:
 
@@ -192,6 +192,25 @@ ssh-keygen -y -f ~/.ssh/id_ed25519_nix_config
 ```
 
 Add it to GitHub under Settings > SSH and GPG keys, and to `~/.ssh/authorized_keys` on every server the host must reach. Register it as an authentication key only; Git signing still uses the YubiKey.
+
+### TLS inspection CA
+
+A Mac whose network traffic an endpoint protection product inspects re-signs TLS with that product's CA. macOS apps trust it through the System keychain, but tools from Nix read their own CA bundle and fail with errors such as `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`. The `my.tlsInspectionCa.enable` trait fixes that for one host:
+
+1. Add a `.sops.yaml` rule for `secrets/hosts/<host>/tls-inspection-ca.yaml` with only that host's recipient.
+2. Pipe the CA's PEM certificate into `sops`, never through a file in the checkout, as the `certificate` key:
+
+   ```sh
+   openssl x509 -in <downloaded CA> -outform PEM \
+     | yq -n '.certificate = load_str("/dev/stdin")' \
+     | sops --encrypt --filename-override secrets/hosts/<host>/tls-inspection-ca.yaml \
+         --input-type yaml --output-type yaml /dev/stdin \
+     > secrets/hosts/<host>/tls-inspection-ca.yaml
+   ```
+
+3. Set `my.tlsInspectionCa.enable = true;` in `hosts/<host>/default.nix` and apply.
+
+Every production apply then writes `/etc/ssl/nix-config/ca-certificates.crt`, this generation's Nix roots followed by the CA, and restarts nix-daemon when the bundle changed. Shells, nix-daemon, and apps launched from Finder or the Dock see `SSL_CERT_FILE`, `NIX_SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, and `GIT_SSL_CAINFO` pointing at it; relaunch a running app to pick them up. When macOS itself does not trust the CA as an SSL root in its admin trust settings, the apply adds that trust, which shows the authorization dialog; declining it prints a warning and the next apply asks again. To replace the CA, re-encrypt the file the same way. Keep the certificate's subject and fingerprint out of commits, since the repository is public.
 
 ## Containers
 

@@ -1,6 +1,8 @@
 creation_rules:
   - path_regex: secrets/hosts/MacBook-Pro-Mac17-9/ssh\.yaml$
     age: age1s9qs3km4wy0zt4g7tf0jc60fr2nhmr73kmsruj4y9h5wvmppxc9se70rcm
+  - path_regex: secrets/hosts/MacBook-Pro-Mac17-9/tls-inspection-ca\.yaml$
+    age: age1s9qs3km4wy0zt4g7tf0jc60fr2nhmr73kmsruj4y9h5wvmppxc9se70rcm
   - path_regex: secrets/hosts/MS-7D91/ssh\.yaml$
     age: age15lrv7hh8pkc9j30ca636n75h7da4dhpyjqlchcdkrp2fay45zaqstwxa9r
   - path_regex: secrets/tokens\.yaml$

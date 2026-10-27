@@ -32,6 +32,8 @@ creation_rules:
     age: <comma-separated recipients of every host that declares a printer queue>
   - path_regex: ^secrets/hosts/<host>/ssh\.yaml$
     age: <that one host's recipient>
+  - path_regex: ^secrets/hosts/<host>/tls-inspection-ca\.yaml$
+    age: <that one host's recipient>
 ```
 
 Only a host whose recipient appears in a file's rule can decrypt it.
@@ -140,6 +142,22 @@ age identity cannot decrypt another host's SSH source, but the shared recovery
 cards can recover every host identity. Removing recipients does not revoke
 keys exposed through historical ciphertext; revoke public SSH keys on their
 destinations when a host is compromised.
+
+A macOS host with the `my.tlsInspectionCa` trait has an encrypted
+`secrets/hosts/<host>/tls-inspection-ca.yaml`, encrypted to that host's
+recipient alone.  It holds one key, `certificate`, whose value is the PEM
+certificate of the CA its endpoint protection re-signs TLS with:
+
+```yaml
+certificate: |
+  -----BEGIN CERTIFICATE-----
+  <certificate lines>
+  -----END CERTIFICATE-----
+```
+
+The certificate is not secret, but its subject names an internal server, so
+it stays out of this public repository in plain text.
+[macOS hosts](../docs/macos.md#tls-inspection-ca) covers adding and replacing it.
 
 For NixOS desktops, `secrets/hosts/<host>/ssh.pub` holds the matching public
 Ed25519 identity. The `desktop-ssh` check reads ciphertext recipients,
