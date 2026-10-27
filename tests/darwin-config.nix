@@ -96,6 +96,14 @@
     those roots; OMP receives its contributed ~/.omp/agent/skills root; nothing
     lands under ~/.agents/skills or ~/.gemini/config/skills.
 
+  - TLS inspection CA: my.tlsInspectionCa.enable defaults to false and the
+    fixture enables it. In production, the bundle step runs before the /etc
+    step with this generation's CA bundle as its base, the trust step runs
+    after it, shells and nix-daemon name /etc/ssl/nix-config/ca-certificates.crt
+    in all six CA variables, a RunAtLoad login agent sets them for GUI apps,
+    and the trait without a CA file fails an assertion. Bootstrap runs no
+    step, has no agent, and keeps nix-darwin's default bundle.
+
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
   is interpolated, so the check builds on Linux.
@@ -930,6 +938,90 @@ let
     ) "my.mobileDevices accepts an empty version")
   ];
 
+  # The TLS inspection CA trait: in production the bundle step runs before
+  # the /etc step from this generation's CA bundle, the trust step after it,
+  # and shells, nix-daemon, and a login agent for GUI apps all name the
+  # bundle; bootstrap runs none of it and keeps nix-darwin's default.
+  tlsBundle = "/etc/ssl/nix-config/ca-certificates.crt";
+  tlsVariables = [
+    "SSL_CERT_FILE"
+    "NIX_SSL_CERT_FILE"
+    "NODE_EXTRA_CA_CERTS"
+    "REQUESTS_CA_BUNDLE"
+    "CURL_CA_BUNDLE"
+    "GIT_SSL_CAINFO"
+  ];
+  assertTlsInspectionCa =
+    entry:
+    let
+      config = entry.host.config;
+      production = !entry.bootstrap;
+      variables = config.environment.variables;
+      daemonCaFile =
+        config.launchd.daemons.nix-daemon.serviceConfig.EnvironmentVariables.NIX_SSL_CERT_FILE or null;
+      agent = config.launchd.user.agents.tls-inspection-ca-environment or null;
+      agentScript = plain (lib.concatStringsSep " " (agent.serviceConfig.ProgramArguments or [ ]));
+      script = plain config.system.activationScripts.script.text;
+      beforeEtc = lib.head (lib.splitString "setting up /etc..." script);
+      afterEtc = lib.concatStrings (lib.tail (lib.splitString "setting up /etc..." script));
+      base = plain config.environment.etc."ssl/certs/ca-certificates.crt".source;
+      bundleCall = "/bin/tls-inspection-ca bundle";
+      trustCall = "/bin/tls-inspection-ca trust --certificate /etc/ssl/nix-config/tls-inspection-ca.pem";
+      unset = lib.filter (name: name != "NIX_SSL_CERT_FILE") tlsVariables;
+      withoutFile = entry.host.extendModules {
+        modules = [ { my.tlsInspectionCa.certificateFile = lib.mkForce null; } ];
+      };
+      failing = map (a: a.message) (lib.filter (a: !a.assertion) withoutFile.config.assertions);
+    in
+    lib.concatStrings [
+      (check (config.my.tlsInspectionCa.enable) "${entry.name}: the fixture must enable my.tlsInspectionCa, or the checks below prove nothing")
+      (check (
+        !entry.host.options.my.tlsInspectionCa.enable.default
+      ) "${entry.name}: my.tlsInspectionCa.enable must default to false")
+      (check
+        (
+          if production then
+            lib.all (name: variables.${name} or null == tlsBundle) tlsVariables
+          else
+            variables.NIX_SSL_CERT_FILE or null == "/etc/ssl/certs/ca-certificates.crt"
+            && lib.all (name: !variables ? ${name}) unset
+        )
+        "${entry.name}: shells must name the TLS inspection CA bundle in production and nix-darwin's default bundle in bootstrap"
+      )
+      (check (daemonCaFile == (if production then tlsBundle else "/etc/ssl/certs/ca-certificates.crt"))
+        "${entry.name}: nix-daemon must read the TLS inspection CA bundle in production and the default bundle in bootstrap"
+      )
+      (check
+        (
+          if production then
+            agent != null
+            && agent.serviceConfig.RunAtLoad or false
+            && lib.all (
+              name: lib.hasInfix "/bin/launchctl setenv ${name} ${tlsBundle}" agentScript
+            ) tlsVariables
+          else
+            agent == null
+        )
+        "${entry.name}: a login agent must set every CA variable to the bundle for GUI apps in production, and none may exist in bootstrap"
+      )
+      (check
+        (
+          if production then
+            lib.hasInfix bundleCall beforeEtc
+            && lib.hasInfix "--base ${base}" beforeEtc
+            && !lib.hasInfix bundleCall afterEtc
+            && lib.hasInfix trustCall afterEtc
+            && !lib.hasInfix trustCall beforeEtc
+          else
+            !lib.hasInfix "tls-inspection-ca" script
+        )
+        "${entry.name}: the bundle step must run before /etc from this generation's CA bundle and the trust step after it, in production only"
+      )
+      (check (
+        !production || lib.any (lib.hasInfix "my.tlsInspectionCa.enable needs secrets/hosts/") failing
+      ) "${entry.name}: a production output with the trait and no CA file must fail an assertion")
+    ];
+
   # Device creation is macOS-only; the module must not reach other hosts.
   assertNoDevicesElsewhere = lib.concatStrings [
     (check (
@@ -952,6 +1044,7 @@ pkgs.runCommand "darwin-config" { } ''
   ${assertZapFilter}
   ${assertMapping}
   ${lib.concatMapStrings assertEntry darwinFixtures}
+  ${lib.concatMapStrings assertTlsInspectionCa darwinFixtures}
   ${assertNoDevicesElsewhere}
   ${assertMobileDeviceTypes}
   [ "$fail" = 0 ] || exit 1

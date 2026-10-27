@@ -22,4 +22,14 @@ let
 
   fixtureNames = (import ../../lib/hosts.nix { inherit lib; } ../fixtures/hosts).darwin;
 in
-import ./fixture-entries.nix { inherit lib; } mkDarwinHost fixtureNames
+import ./fixture-entries.nix { inherit lib; } (
+  args:
+  mkDarwinHost (
+    args
+    // {
+      extraModules = args.extraModules // {
+        system = [ ./fake-darwin-secrets-module.nix ];
+      };
+    }
+  )
+) fixtureNames
