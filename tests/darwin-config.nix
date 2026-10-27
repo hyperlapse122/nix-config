@@ -58,8 +58,9 @@
   - KakaoTalk: after the Xcode step and before Home Manager, postActivation
     installs (mas install, then mas get) or upgrades App Store id 869223134
     through its own wrapper in the primary user's session, every call guarded
-    the same way. A failed install names the App Store sign-in; unresolved
-    ids name system.primaryUser.
+    the same way. A failed install names the App Store sign-in, a failed
+    upgrade names the sign-in and the app bundle; unresolved ids name
+    system.primaryUser.
   - Flighty: after the KakaoTalk step and before Home Manager, the same
     App Store step installs or upgrades App Store id 1358823008 the same way,
     with `flighty:` messages.
@@ -695,6 +696,35 @@ let
         )
         rootLines
       ) "${entry.name}: unresolved ids must print a message naming system.primaryUser, not the App Store")
+      (lib.concatMapStrings
+        (
+          app:
+          check
+            (
+              let
+                upgrade = lineIndex "elif ! appStoreMas upgrade ${app.id}; then";
+                message = lib.elemAt rootLines (upgrade + 1);
+              in
+              upgrade != null
+              && lib.hasPrefix "echo \"${app.tag}: App Store upgrade failed; " message
+              && lib.hasInfix "signed in to the App Store" message
+              && lib.hasInfix "/Applications/${app.name}.app came from the App Store" message
+            )
+            "${entry.name}: a failed ${app.name} upgrade must print a ${app.tag} message naming the App Store sign-in and /Applications/${app.name}.app"
+        )
+        [
+          {
+            name = "KakaoTalk";
+            id = kakaoTalkId;
+            tag = "kakaotalk";
+          }
+          {
+            name = "Flighty";
+            id = flightyId;
+            tag = "flighty";
+          }
+        ]
+      )
       (check (lib.elem flightyInstall rootLines) "${entry.name}: Flighty (1358823008) must be installed with mas install, falling back to mas get")
       (check
         (

@@ -6,7 +6,6 @@
 }:
 let
   user = config.system.primaryUser;
-  # Installed in this order. tag prefixes each message the app's step prints.
   apps = [
     {
       name = "KakaoTalk";
