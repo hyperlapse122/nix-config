@@ -23,7 +23,11 @@
       # deletes, which rewrites HEAD in linked worktrees.
       trim.delete = "merged-local";
       trim.detach = false;
-      gpg.program = "${pkgs.gnupg}/bin/gpg";
+      gpg.program =
+        if config.my.kind == "darwin" then
+          "${(import ../../../packages/gpg-tools.nix { inherit pkgs; }).gitGpg}/bin/gpg-git"
+        else
+          "${pkgs.gnupg}/bin/gpg";
 
       "credential.https://gist.github.com" = {
         helper = [

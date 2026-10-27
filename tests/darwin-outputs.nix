@@ -304,6 +304,10 @@ let
       fi
 
       agentconf=$gen/home-files/.gnupg/gpg-agent.conf
+      gitgpg=$(${pkgs.git}/bin/git config --file "$gen/home-files/.config/git/config" --get gpg.program || true)
+      if [ "$gitgpg" != "${(import ../packages/gpg-tools.nix { inherit pkgs; }).gitGpg}/bin/gpg-git" ]; then
+        bad "Git does not use the card-discovery signing adapter"
+      fi
       if [ ! -f "$agentconf" ]; then
         bad "no gpg-agent.conf"
       else
