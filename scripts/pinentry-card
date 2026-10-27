@@ -14,6 +14,7 @@ import os
 import re
 import select
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -81,38 +82,70 @@ def normalize_serial(raw):
     return compact.lstrip("0") or None
 
 
+def log_lookup(outcome, started):
+    """One bounded, best-effort Linux syslog datagram, never Assuan output.
+
+    Avoid libc syslog's blocking writes and reconnects. Modern Darwin has no
+    syslog socket; native logging there needs a separate implementation.
+    A missing or saturated sink must not hold up protected PIN entry.
+    """
+    if not IS_LINUX:
+        return
+    elapsed_ms = min(999999, max(0, int((time.monotonic() - started) * 1000)))
+    message = f"<14>pinentry-card: lookup outcome={outcome} elapsed_ms={elapsed_ms}".encode("ascii")
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sink:
+            sink.setblocking(False)
+            sink.connect("/dev/log")
+            sink.send(message)
+    except OSError:
+        pass
+
+
 def lookup_pin(serial):
     if KEYRING_BACKEND == "secret-tool":
         argv = [SECRET_TOOL_PATH, "lookup", "service", "gnupg-card-pin", "username", serial]
     else:
         argv = [SECRET_TOOL_PATH, "find-generic-password", "-s", "gnupg-card-pin", "-a", serial, "-w"]
+    started = time.monotonic()
+    outcome = "os-error"
     try:
-        result = subprocess.run(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=KEYRING_LOOKUP_TIMEOUT,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    if result.returncode != 0:
-        return None
-    value = result.stdout[:-1] if result.stdout.endswith(b"\n") else result.stdout
-    if not value:
-        return None
-    if KEYRING_BACKEND == "security":
-        text = value.decode("utf-8", "replace")
-        if text.startswith("go-keyring-base64:"):
-            try:
-                return base64.b64decode(text[len("go-keyring-base64:") :], validate=True)
-            except (ValueError, base64.binascii.Error):
-                return None
-        if text.startswith("go-keyring-encoded:"):
-            try:
-                return bytes.fromhex(text[len("go-keyring-encoded:") :])
-            except ValueError:
-                return None
-    return value
+        try:
+            result = subprocess.run(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=KEYRING_LOOKUP_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            outcome = "timeout"
+            return None
+        except OSError:
+            return None
+        if result.returncode != 0:
+            outcome = "nonzero"
+            return None
+        value = result.stdout[:-1] if result.stdout.endswith(b"\n") else result.stdout
+        if not value:
+            outcome = "empty"
+            return None
+        if KEYRING_BACKEND == "security":
+            text = value.decode("utf-8", "replace")
+            outcome = "invalid-encoding"
+            if text.startswith("go-keyring-base64:"):
+                try:
+                    value = base64.b64decode(text[len("go-keyring-base64:") :], validate=True)
+                except (ValueError, base64.binascii.Error):
+                    return None
+            elif text.startswith("go-keyring-encoded:"):
+                try:
+                    value = bytes.fromhex(text[len("go-keyring-encoded:") :])
+                except ValueError:
+                    return None
+        outcome = "success"
+        return value
+    finally:
+        log_lookup(outcome, started)
 
 
 def clear_pin(serial):
