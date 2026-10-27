@@ -54,8 +54,9 @@
   - the system activate script runs the Xcode step, mas through launchctl
     asuser for App Store id 497799835, after brew bundle and before the Home
     Manager activation call, then the KakaoTalk step for App Store id
-    869223134, through its own launchctl asuser wrapper, before that call;
-  - the retired-cask step runs after the KakaoTalk step and before the Home
+    869223134, through its own launchctl asuser wrapper, then the Flighty
+    step for App Store id 1358823008, before that call;
+  - the retired-cask step runs after the Flighty step and before the Home
     Manager activation call, with every brew call going through /usr/bin/sudo
     as the primary user with the absolute brew path;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
@@ -481,6 +482,7 @@ let
       installline=$(lineof 'if ! xcodeMas install 497799835 && ! xcodeMas get 497799835; then'); installline=''${installline:-0}
       kakaomasline=$(lineof ${lib.escapeShellArg ''/bin/launchctl asuser "$appStoreUid" /usr/bin/env SUDO_UID="$appStoreUid" SUDO_GID="$appStoreGid" ${masExe} "$@"''}); kakaomasline=''${kakaomasline:-0}
       kakaoline=$(lineof 'if ! appStoreMas install 869223134 && ! appStoreMas get 869223134; then'); kakaoline=''${kakaoline:-0}
+      flightyline=$(lineof 'if ! appStoreMas install 1358823008 && ! appStoreMas get 1358823008; then'); flightyline=''${flightyline:-0}
       retiredbrewline=$(lineof ${lib.escapeShellArg ''PATH="${config.homebrew.prefix}/bin:$PATH" /usr/bin/sudo --preserve-env=PATH --user=${config.system.primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''}); retiredbrewline=''${retiredbrewline:-0}
       retiredlistline=$(lineof ${lib.escapeShellArg ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'grok-bot' is not installed." ]; then''}); retiredlistline=''${retiredlistline:-0}
       retiredline=$(lineof 'elif ! retiredBrew uninstall --cask --force grok-bot; then'); retiredline=''${retiredline:-0}
@@ -497,10 +499,15 @@ let
       elif ! [ "$installline" -lt "$kakaomasline" ] || ! [ "$kakaomasline" -lt "$kakaoline" ] || ! [ "$kakaoline" -lt "$hmline" ]; then
         bad "the KakaoTalk step does not run after the Xcode step and before Home Manager"
       fi
+      if [ "$flightyline" = 0 ]; then
+        bad "the system activation has no Flighty step running mas for 1358823008"
+      elif ! [ "$kakaoline" -lt "$flightyline" ] || ! [ "$flightyline" -lt "$hmline" ]; then
+        bad "the Flighty step does not run after the KakaoTalk step and before Home Manager"
+      fi
       if [ "$retiredbrewline" = 0 ] || [ "$retiredlistline" = 0 ] || [ "$retiredline" = 0 ]; then
         bad "the system activation has no retired-cask step running brew through sudo for grok-bot, telling not-installed from other brew list failures, and uninstalling with --force"
-      elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$kakaoline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
-        bad "the retired-cask step does not run after brew bundle and the KakaoTalk step and before Home Manager"
+      elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$flightyline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
+        bad "the retired-cask step does not run after brew bundle and the Flighty step and before Home Manager"
       fi
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
