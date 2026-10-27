@@ -23,8 +23,8 @@
     files, checking destination/declaration, real file effects, repeat apply,
     dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Claude, Codex, and one OMP instance, the
-    disabled Grok, Pi and OpenCode instances, the Claude instance's launch arguments emptied,
+    enabled Claude, Codex, Grok, and one OMP instance, the
+    disabled Pi and OpenCode instances, the Claude instance's launch arguments emptied,
     which retires the --add-dir an earlier generation wrote, no environment
     entry upserted, and the Codex instance's launch arguments emptied, which
     retires the developer_instructions override an earlier generation wrote; the
@@ -253,7 +253,7 @@ let
           "grok"
           "enabled"
         ];
-        value = false;
+        value = true;
       }
       {
         path = [

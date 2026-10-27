@@ -119,10 +119,10 @@ let
           setupMode = "existing";
         };
       };
-      # T3 Code enables its built-in Grok instance unless one is declared.
+      # The Grok Build CLI is installed by home/h82/agents/grok.nix.
       grok = {
         driver = "grok";
-        enabled = false;
+        enabled = true;
       };
       # OpenCode is gone, but the merge keeps undeclared fields, so this stays
       # declared to turn off the instance an earlier generation enabled.

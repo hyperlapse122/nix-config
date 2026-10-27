@@ -89,6 +89,12 @@ let
   codexRelease = pythonHelper "codex-release" ../scripts/codex-release;
   ompRelease = pythonHelper "omp-release" ../scripts/omp-release;
 
+  # Resolves the newest stable Grok Build CLI release and hashes its
+  # per-platform binaries, which xAI publishes no checksum for. Its network
+  # calls go through overridable commands so the sandboxed repository check
+  # can drive it with fixtures.
+  grokBuildRelease = pythonHelper "grok-build-release" ../scripts/grok-build-release;
+
   # Resolves the latest release of an npm package that ships no lock file,
   # such as acpx, and regenerates its lock file and npmDepsHash.
   # npm and prefetch-npm-deps come from the store so the update workflow's
@@ -143,6 +149,7 @@ in
     miseRelease
     codexRelease
     ompRelease
+    grokBuildRelease
     npmRelease
     t3codeRelease
     syntheticModelsWatch

@@ -67,21 +67,6 @@ let
     }
   ];
 
-  # settingsPaths only assigns, so a nested key this repository stops
-  # declaring is removed here instead.  `value` is what this repository wrote,
-  # so a level the user saves with /effort stays.
-  removePaths = [
-    {
-      path = [
-        "modelSettings"
-        "claude-opus-5-5"
-      ];
-      key = "effortLevel";
-      prune = true;
-      value = "medium";
-    }
-  ];
-
   # Keys Claude Code reads only from its global config, ~/.claude.json, and
   # never from settings.json.  That file is Claude Code's own runtime state too,
   # so the same merge assigns these keys and leaves the rest untouched.
@@ -96,29 +81,18 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
-    "effortLevel"
   ];
 
   renderDeclared =
-    name: set: remove: setPaths: removePaths:
+    name: set: remove: setPaths:
     pkgs.writeText name (
       builtins.toJSON {
-        inherit
-          set
-          remove
-          setPaths
-          removePaths
-          ;
+        inherit set remove setPaths;
       }
     );
 
-  declared =
-    renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths
-      removePaths;
-  declaredGlobalConfig =
-    renderDeclared "claude-declared-global-config.json" globalConfigTier [ ]
-      [ ]
-      [ ];
+  declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths;
+  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];
 in
 {
   my.agents.crossModelPeers = [ "claude" ];
