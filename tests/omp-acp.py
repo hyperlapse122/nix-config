@@ -69,7 +69,8 @@ class Acp:
         return self.receive(self.send(method, params))
 
     def initialize(self):
-        response = self.call("initialize", protocolVersion=1, clientCapabilities={})
+        response = self.call("initialize", protocolVersion=1,
+                             clientCapabilities={"elicitation": {"form": {}}})
         assert response["agentInfo"]["name"] == "omp"
         assert response["agentCapabilities"]["loadSession"] is True
         return response
@@ -185,7 +186,17 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         assert "ACP_REPOSITORY_PROOF" in messages, "ACP omitted repository instructions"
         assert "ACP_SKILL_PROOF" in messages, "ACP omitted native skill discovery"
         results = str([m for m in body["messages"] if m["role"] == "tool"])
-        if "ACP_RESUME" in last_user:
+        if "ACP_INTERACTION" in messages:
+            if not any(m["role"] == "tool" for m in body["messages"]):
+                delta, reason = self.tool("todo", {"op": "init", "list": [
+                    {"phase": "Decision", "items": ["Await fixture choice"]}]}), "tool_calls"
+            elif "incomplete todo item(s)" in messages:
+                delta, reason = {"content": "ACP_REMINDER_CONTINUATION"}, "stop"
+            else:
+                assert "Await fixture choice" in results and any(
+                    status in results for status in ("[pending]", "[in_progress]")), results
+                delta, reason = {"content": INTERACTION_ANSWER}, "stop"
+        elif "ACP_RESUME" in last_user:
             assert self.server.nonce in results, "resume lost prior MCP result"
             delta, reason = {"content": "ACP_RESUMED"}, "stop"
         elif not any(m["role"] == "tool" for m in body["messages"]):
@@ -281,6 +292,43 @@ def exchange(config, home, work):
             client.stderr.seek(0)
             print("ACP fixture diagnostics:", server.errors, client.stderr.read(), file=sys.stderr)
         server.cancel_release.set()
+        client.close()
+        server.shutdown()
+        server.server_close()
+
+
+INTERACTION_ANSWER = "어떤 작업을 먼저 진행할까요?\n\n1. 문서 검토\n2. 코드 검토"
+
+
+def interaction(config, home, work, selector, *, standalone=False):
+    server, env, _ = endpoint(home)
+    client = Acp(config, home, work, env)
+    try:
+        client.initialize()
+        state = client.call("session/new", cwd=str(work), mcpServers=[])
+        session = state["sessionId"]
+        client.call("session/set_config_option", sessionId=session, configId="model", value=selector)
+        reply = client.call("session/prompt", sessionId=session,
+                            prompt=[{"type": "text", "text": "ACP_INTERACTION"}])
+        assert reply["stopReason"] == "end_turn", (reply, server.errors)
+        assert not server.errors, server.errors
+        tools = {tool["function"]["name"] for tool in server.requests[0]["tools"]}
+        assert ("ask" in tools) == standalone, ("ask availability differs from interaction scope", tools)
+        assert "todo" in tools, "interaction scope disabled todo tracking"
+        # Tool exchange and final answer are one user turn. A third request
+        # means the runtime continued after the answer, without user input.
+        assert len(server.requests) == (3 if standalone else 2), (
+            "unexpected reminder-driven follow-up", len(server.requests))
+        updates = [e["params"]["update"] for e in client.events if e["method"] == "session/update"]
+        answers = "".join(u["content"]["text"] for u in updates
+                          if u["sessionUpdate"] == "agent_message_chunk" and u["content"]["type"] == "text")
+        expected = INTERACTION_ANSWER + ("ACP_REMINDER_CONTINUATION" if standalone else "")
+        assert answers == expected, ("unexpected assistant answer or reminder", answers)
+        print(f"{selector}: {'standalone ask/reminder controls' if standalone else 'T3 ask absent, todo incomplete, one answer, no reminder'} passed")
+    finally:
+        if sys.exc_info()[0]:
+            client.stderr.seek(0)
+            print("ACP interaction diagnostics:", server.errors, client.stderr.read(), file=sys.stderr)
         client.close()
         server.shutdown()
         server.server_close()
@@ -492,6 +540,9 @@ if __name__ == "__main__":
             assert set(json.loads(common.decode())["enabledModels"]) == patterns, "common CLI config.yml missing curated enabledModels"
             catalog(api, home, work, expected_names)
             exchange(api, home, work)
+            interaction(api, home, work, "synthetic/hf:zai-org/GLM-5.3")
+            interaction({"commandPath": api["commandPath"], "commandArgs": ["--mode", "acp"]},
+                        home, work, "synthetic/hf:zai-org/GLM-5.3", standalone=True)
             standalone_cli_scope(entry, api, expected_names)
             print("ACP prompt/native tool/MCP result/cancel/persistent resume and standalone CLI scope passed")
             assert (home / ".omp/agent/config.yml").read_bytes() == common, "ACP scope changed common CLI settings"

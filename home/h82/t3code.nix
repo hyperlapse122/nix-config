@@ -31,6 +31,8 @@ let
   ompScope = pkgs.writeText "omp-t3-OMP.json" (
     builtins.toJSON {
       enabledModels = ompPatterns;
+      ask.enabled = false;
+      todo.reminders = false;
       inherit (ompRoles)
         defaultThinkingLevel
         github
