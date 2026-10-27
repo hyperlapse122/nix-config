@@ -21,6 +21,7 @@ del sys.argv[1:3]
 ACTIVATIONS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else []
 HELPERS = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {}
 OPENROUTER = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {"data": []}
+SYNTHETIC = json.loads(Path(sys.argv.pop(1)).read_text()) if len(sys.argv) > 1 else {"data": []}
 
 
 class Restoration(unittest.TestCase):
@@ -294,7 +295,7 @@ class Activation(unittest.TestCase):
                     self.assertEqual(result.returncode == 0, success, result.stderr)
 
                 expected_patterns = [
-                    "synthetic/**",
+                    *(f"synthetic/{row['id']}" for row in SYNTHETIC["data"]),
                     "google-antigravity/gemini-*",
                     "google-antigravity/claude-*",
                     "google-antigravity/gpt-*",

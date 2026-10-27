@@ -1,9 +1,10 @@
 { pkgs, inputs }:
 let
+  synthetic = builtins.fromJSON (builtins.readFile ../home/h82/agents/synthetic-catalog.json);
   openrouter = builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json);
   expectedPatterns = builtins.toJSON (
-    [
-      "synthetic/**"
+    map (row: "synthetic/${row.id}") synthetic.data
+    ++ [
       "google-antigravity/gemini-*"
       "google-antigravity/claude-*"
       "google-antigravity/gpt-*"

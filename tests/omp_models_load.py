@@ -95,7 +95,7 @@ if __name__ == "__main__":
     assert [row["id"] for row in selected["openrouter"]["data"]] == [
         "openrouter/future-model", "openrouter/bodybuilder-new"], "raw-ID regex and exact exclusion"
     assert selected["patterns"] == [
-        "synthetic/**",
+        "synthetic/unchanged-synthetic",
         "google-antigravity/gemini-*",
         "google-antigravity/claude-*",
         "google-antigravity/gpt-*",
