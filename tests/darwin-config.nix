@@ -98,8 +98,9 @@
 
   - TLS inspection CA: my.tlsInspectionCa.enable defaults to false and the
     fixture enables it. In production, the bundle step runs before the /etc
-    step with this generation's CA bundle as its base, the trust step runs
-    after it, shells and nix-daemon name /etc/ssl/nix-config/ca-certificates.crt
+    step with this generation's CA bundle as its base, the CA file, the host
+    identity and its owner, and /etc/ssl/nix-config as its output; the trust
+    step runs after it inside an `if !` guard; shells and nix-daemon name /etc/ssl/nix-config/ca-certificates.crt
     in all six CA variables, a RunAtLoad login agent sets them for GUI apps,
     and the trait without a CA file fails an assertion. Bootstrap runs no
     step, has no agent, and keeps nix-darwin's default bundle.
@@ -967,6 +968,19 @@ let
       base = plain config.environment.etc."ssl/certs/ca-certificates.crt".source;
       bundleCall = "/bin/tls-inspection-ca bundle";
       trustCall = "/bin/tls-inspection-ca trust --certificate /etc/ssl/nix-config/tls-inspection-ca.pem";
+      bundleArguments = [
+        "--certificate-file ${lib.escapeShellArg (plain "${config.my.tlsInspectionCa.certificateFile}")}"
+        "--identity ${lib.escapeShellArg "${config.my.user.home}/.config/nix-config/age/key.txt"}"
+        "--identity-owner ${lib.escapeShellArg config.my.user.name}"
+        "--base ${base}"
+        "--out-dir /etc/ssl/nix-config"
+        "--daemon org.nixos.nix-daemon"
+      ];
+      # The apply runs under set -e, so only a guarded call keeps a failing
+      # trust check from aborting it.
+      guardedTrust = lib.any (
+        line: lib.hasPrefix "if ! " line && lib.hasSuffix "${trustCall}; then" line
+      ) (map lib.trim (lib.splitString "\n" afterEtc));
       unset = lib.filter (name: name != "NIX_SSL_CERT_FILE") tlsVariables;
       withoutFile = entry.host.extendModules {
         modules = [ { my.tlsInspectionCa.certificateFile = lib.mkForce null; } ];
@@ -1008,14 +1022,14 @@ let
         (
           if production then
             lib.hasInfix bundleCall beforeEtc
-            && lib.hasInfix "--base ${base}" beforeEtc
+            && lib.all (argument: lib.hasInfix argument beforeEtc) bundleArguments
             && !lib.hasInfix bundleCall afterEtc
-            && lib.hasInfix trustCall afterEtc
+            && guardedTrust
             && !lib.hasInfix trustCall beforeEtc
           else
             !lib.hasInfix "tls-inspection-ca" script
         )
-        "${entry.name}: the bundle step must run before /etc from this generation's CA bundle and the trust step after it, in production only"
+        "${entry.name}: the bundle step must run before /etc with this generation's CA bundle, the CA file, the host identity and its owner, into /etc/ssl/nix-config, and the trust step after it inside an if ! guard, in production only"
       )
       (check (
         !production || lib.any (lib.hasInfix "my.tlsInspectionCa.enable needs secrets/hosts/") failing

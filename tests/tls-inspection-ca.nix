@@ -127,12 +127,22 @@ pkgs.runCommand "tls-inspection-ca-tests"
 
     # --- trust -----------------------------------------------------------------
     hash=$(openssl x509 -in ${secrets}/tls-inspection-ca.pem -noout -fingerprint -sha1 | sed 's/^.*=//; s/://g')
-    # admin_plist HASH POLICY... writes the admin trust settings with one
-    # trustRoot entry per policy name for HASH; no policy means unconstrained.
+    # admin_plist HASH SETTING... writes the admin trust settings for HASH, one
+    # entry per SETTING: a policy name for a trustRoot grant on that policy,
+    # "any" for an unconstrained trustRoot grant, "empty" for an empty
+    # dictionary, or "deny-ssl" for an SSL deny; no SETTING means no entries.
     admin_plist() {
       python3 - "$@" <<'PY'
     import plistlib, sys
-    settings = [{"kSecTrustSettingsPolicyName": p, "kSecTrustSettingsResult": 1} for p in sys.argv[2:]]
+    def setting(p):
+        if p == "any":
+            return {"kSecTrustSettingsResult": 1}
+        if p == "empty":
+            return {}
+        if p == "deny-ssl":
+            return {"kSecTrustSettingsPolicyName": "sslServer", "kSecTrustSettingsResult": 3}
+        return {"kSecTrustSettingsPolicyName": p, "kSecTrustSettingsResult": 1}
+    settings = [setting(p) for p in sys.argv[2:]]
     with open("state/admin.plist", "wb") as f:
         plistlib.dump({"trustVersion": 1, "trustList": {sys.argv[1]: {"trustSettings": settings}}}, f)
     PY
@@ -149,9 +159,11 @@ pkgs.runCommand "tls-inspection-ca-tests"
     run_trust
     if added; then fail 'trust added trust the admin settings already grant'; fi
     [ ! -s out.log ] && [ ! -s err.log ] || fail 'trust printed output when trust was present'
-    admin_plist "$hash"
-    run_trust
-    if added; then fail 'trust added trust over an unconstrained admin entry'; fi
+    for unconstrained in "" any empty; do
+      admin_plist "$hash" $unconstrained
+      run_trust
+      if added; then fail "trust added trust over an unconstrained admin entry ($unconstrained)"; fi
+    done
     pass 'trust adds nothing when the admin settings make the CA an SSL root'
 
     admin_plist 0000000000000000000000000000000000000000 sslServer
@@ -162,6 +174,9 @@ pkgs.runCommand "tls-inspection-ca-tests"
     admin_plist "$hash" SMIME
     run_trust
     added || fail 'trust did not add trust for an entry that grants only S/MIME'
+    admin_plist "$hash" any deny-ssl
+    run_trust
+    added || fail 'trust did not add trust for an entry that denies SSL'
     admin_plist "$hash" sslServer
     rm state/verify-ok
     run_trust

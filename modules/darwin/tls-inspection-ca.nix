@@ -58,10 +58,13 @@ in
         --daemon org.nixos.nix-daemon
     '';
 
-    # Never fails the apply; a missing trust prompts once per apply.
+    # Never fails the apply, which runs under set -e; a missing trust prompts
+    # once per apply.
     system.activationScripts.postActivation.text = lib.mkAfter ''
       echo "checking macOS trust for the TLS inspection CA..." >&2
-      ${tool} trust --certificate ${dir}/tls-inspection-ca.pem
+      if ! ${tool} trust --certificate ${dir}/tls-inspection-ca.pem; then
+        echo "tls-inspection-ca: the macOS trust check failed; the apply continues" >&2
+      fi
     '';
 
     # Shells, and through the mkDefault nix-daemon takes from here, the daemon.

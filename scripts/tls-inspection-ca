@@ -75,7 +75,6 @@ write_bundle() {
     >"$work/ca.pem" 2>/dev/null ||
     die "cannot decrypt the CA with $identity; it is not this host's identity, or the host is not a recipient of $certificate_file"
 
-  # Exactly one PEM block, a certificate, and a CA.
   if [[ $(grep -c -- '^-----BEGIN ' "$work/ca.pem") != 1 ]] ||
     ! grep -q -- '^-----BEGIN CERTIFICATE-----$' "$work/ca.pem"; then
     die "the decrypted value in $certificate_file is not exactly one certificate"
@@ -108,8 +107,9 @@ write_bundle() {
 }
 
 # True when the admin-domain trust settings make the certificate whose SHA-1
-# hash is $1 an SSL root: an entry with no constraints, or an sslServer entry
-# whose result is trustRoot (1, the default), and no sslServer deny.
+# hash is $1 an SSL root. A setting without a policy applies to every policy,
+# SSL included; the result defaults to trustRoot (1), and a deny (3) for SSL
+# wins.
 admin_ssl_root() {
   python3 - "$1" "$2" <<'PY'
 import plistlib, sys
@@ -124,7 +124,8 @@ settings = entry.get("trustSettings", [])
 if not settings:
     sys.exit(0)
 ssl = [s.get("kSecTrustSettingsResult", 1) for s in settings
-       if s.get("kSecTrustSettingsPolicyName") == "sslServer"]
+       if s.get("kSecTrustSettingsPolicyName", "sslServer") == "sslServer"
+       and ("kSecTrustSettingsPolicy" not in s or "kSecTrustSettingsPolicyName" in s)]
 sys.exit(0 if 1 in ssl and 3 not in ssl else 1)
 PY
 }
@@ -141,16 +142,15 @@ repair_trust() {
     return 0
   fi
 
-  local hash trusted=0
+  local hash
   hash=$(openssl x509 -in "$certificate" -noout -fingerprint -sha1 | sed 's/^.*=//; s/://g')
   work=$(mktemp -d)
   trap 'rm -rf -- "$work"' EXIT
   if security trust-settings-export -d "$work/admin.plist" >/dev/null 2>&1 &&
     admin_ssl_root "$hash" "$work/admin.plist" &&
     security verify-cert -c "$certificate" -p ssl -L -l >/dev/null 2>&1; then
-    trusted=1
+    return 0
   fi
-  [[ $trusted == 0 ]] || return 0
 
   echo "tls-inspection-ca: macOS does not trust the TLS inspection CA as an SSL root; approve the dialog to add it" >&2
   if ! security add-trusted-cert -d -r trustRoot -p ssl -k /Library/Keychains/System.keychain "$certificate"; then
