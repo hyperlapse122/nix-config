@@ -7,6 +7,7 @@
     [
       bat
       fd
+      ffmpeg
       file
       fzf
       jq
