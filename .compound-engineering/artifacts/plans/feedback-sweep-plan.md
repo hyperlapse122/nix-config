@@ -35,6 +35,7 @@ OMP's form-question path and incomplete-todo continuations can repeat questions 
 ### Key Decisions
 
 - Keep R47-R51 as open questions for later planning (session-settled: user-directed — chosen over deciding them now: the user explicitly retained those choices). Governs R47, R48, R49, R50, and R51.
+- Limit lookup diagnostics to Linux for #383's NixOS investigation; defer a native macOS logging backend (session-settled: user-directed — chosen over implementing native macOS diagnostics in this delivery).
 
 ### Requirements
 
@@ -101,6 +102,8 @@ OMP's form-question path and incomplete-todo continuations can repeat questions 
 
 ### High-Level Technical Design
 
+KTD7's diagnostic sink is Linux-only. Modern macOS no longer listens on the legacy syslog domain socket, so the shared Darwin proxy emits no diagnostic and keeps its existing PIN behavior. A future native backend needs its own delivery and retrieval proof; changing the syslog priority cannot restore the removed transport. See [Python's platform note](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.SysLogHandler) and [Apple's syslogd configuration](https://github.com/apple-oss-distributions/syslog/blob/main/syslogd.tproj/com.apple.syslogd.plist).
+
 ```mermaid
 flowchart TB
   A[Shared OMP configuration] --> B[Standalone OMP]
@@ -139,6 +142,7 @@ Do not recreate the retired provisioning/verification manuals named in #363. Rec
 - R46: wait for an identified released fix, then validate ordinary sessions and subagents in T3 and CLI separately.
 - R47-R51: retain the Product Contract's explicit deferred choices.
 - R52: deploy the diagnostic change separately, then correlate a naturally idle failure with lookup outcome and elapsed time. Keep #383 open until the cause and repair are verified. A standalone lookup probe warms the service and is not evidence from the signing incident.
+- R52 observation limits: a missing record is inconclusive because a sink can drop it and SIGINT/SIGTERM can exit before the lookup's logging block runs. Preserve the existing signal shutdown behavior. The Linux record times only the proxy lookup, not a later prompt or card operation. Native macOS diagnostics are deferred; the proxy's Keychain lookup and pinentry_mac's saved-PIN lookup use different items, so future Mac work must identify the stage it measures.
 - R45 live acceptance: use a fresh deployed OMP process for both a root thread and delegated task; verify a single question/answer handoff, retained todo tracking, and unchanged standalone interaction. Disabling reminders also suppresses mid-run todo nudges; check todo freshness over a longer run separately from tool availability. No host apply or unrelated session restart is authorized as validation.
 
 ### Sources and Risks
@@ -173,7 +177,7 @@ For KTD7, [libsecret synchronous lookup](https://gnome.pages.gitlab.gnome.org/li
 - **Goal:** Make the next natural R52 incident diagnosable through KTD7 without changing signing policy.
 - **Dependencies:** Independent of U10. Repository proof uses fake credentials; incident evidence awaits a later deployment and natural recurrence.
 - **Files:** `scripts/pinentry-card`, `tests/pinentry-card.sh`, and `packages/gpg-tools.nix` only if the existing test owner needs packaging input. Inspect `home/h82/security/gpg.nix` without changing cache policy.
-- **Approach:** Emit a fixed lookup outcome and monotonic elapsed time through the platform's existing local logging facility, isolated from the Assuan stream. Keep logging best-effort and bounded; sink failure must not change lookup or fallback results. No raw values, lengths, arguments, serials, exception text, or payload tracing. Do not force idle, restart the wallet/agent, deploy, alter cache policy, delete credentials, or retry a rejected PIN. Do not claim a standalone probe observed the incident path.
+- **Approach:** On Linux, emit a fixed lookup outcome and monotonic elapsed time through the local syslog-compatible socket, isolated from the Assuan stream. Darwin emits no diagnostic and retains its existing decoding and fallback behavior. Keep logging best-effort and bounded; sink failure must not change lookup or fallback results. No raw values, lengths, arguments, serials, exception text, or payload tracing. Do not force idle, restart the wallet/agent, deploy, alter cache policy, delete credentials, or retry a rejected PIN. Do not claim a standalone probe observed the incident path.
 - **Test expectation:** Extend the existing wrapper owner with fake timeout, OS-error, nonzero, empty, and successful lookup cases. Observe the logging consumer and prove fixed-category/duration output, no fake PIN bytes or raw subprocess data, unchanged Assuan replies/fallback, and unchanged behavior when the log sink fails. Preserve existing prompt matching and rejected-PIN coverage. Establish a failing diagnostic regression before adding the implementation.
 - **Verification:** Record package-level diagnostic proof and an explicit handoff for deployed natural-incident evidence. This delivery does not establish the cause or repair the intermittent timeout; #383 remains open.
 
@@ -185,7 +189,7 @@ For KTD7, [libsecret synchronous lookup](https://gnome.pages.gitlab.gnome.org/li
 | --- | --- |
 | Changed prose and formatting | `git diff --check`, changed Markdown lint, `nix fmt -- --ci` |
 | R45 consumer | `nix build --no-link .#checks.x86_64-linux.omp-acp`, independently discriminating ask/reminder controls, common configuration preservation |
-| R52 diagnosis | Existing pinentry package check proves fixed outcome/duration logging, secret exclusion, protocol preservation, and sink-failure behavior with fake data; deployed incident evidence remains pending |
+| R52 diagnosis | Existing pinentry package check proves Linux fixed outcome/duration logging, secret exclusion, protocol preservation, and sink-failure behavior with fake data; Darwin retains decoding/fallback without attempting diagnostic delivery; deployed incident evidence remains pending |
 | Repository shipping | Flake evaluation, all declared checks, VM tests, and every production/bootstrap output on supported builders; current-head CI may supply platform evidence |
 | Live acceptance | Fresh deployed T3 root and delegated OMP sessions, standalone UI behavior, and target-Mac observations recorded separately; unavailable evidence stays pending |
 

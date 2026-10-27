@@ -261,6 +261,7 @@ endpoint, mode, wrapper, address = sys.argv[1:]
 original = socket.socket
 class LocalLogSocket(original):
     def __init__(self, *args, **kwargs):
+        assert mode != "forbidden", "Darwin must not open a diagnostic socket"
         if mode == "socket-error":
             raise OSError("PRIVATE-EXCEPTION-TEXT")
         super().__init__(*args, **kwargs)
@@ -540,13 +541,12 @@ done
 diagnostic_sink=healthy
 pass '12: unavailable or full logging sinks preserve cached answers and delegated replies'
 
-# The shared Darwin proxy must classify decoding failures at the outcome,
-# rather than treating every zero-exit Keychain lookup as success. This is a
-# Linux-hosted proxy render, not evidence of native macOS syslog delivery.
+# Linux-only diagnostics must leave Darwin decoding and fallback intact,
+# without trying to open a logging socket on that platform.
 sed -e 's/IS_LINUX = True/IS_LINUX = False/' \
   -e 's/KEYRING_BACKEND = "secret-tool"/KEYRING_BACKEND = "security"/' \
   "$scratch/functional-gnome.py" >"$scratch/functional-darwin-proxy.py"
-diagnostic_address=/var/run/syslog
+diagnostic_sink=forbidden
 for encoding in valid invalid; do
   if [[ $encoding == valid ]]; then
     printf 'go-keyring-base64:%s' "$(printf '%s' "$stored_pin" | "$base64_bin" | "$tr_bin" -d '\n')" >"$keyring_dir/$stored_serial"
@@ -556,16 +556,15 @@ for encoding in valid invalid; do
   out="$scratch/out12-darwin-$encoding" err="$scratch/err12-darwin-$encoding"
   run_wrapper "$scratch/functional-darwin-proxy.py" "$input" "$out" "$err" DISPLAY=:0
   if [[ $encoding == valid ]]; then
-    assert_lookup_diagnostic success
     assert_contains "$out" "D $stored_pin_encoded" '12 Darwin decoded success'
   else
-    assert_lookup_diagnostic invalid-encoding
     assert_contains "$out" 'D DELEGATE-PIN-gnome' '12 Darwin decode fallback'
   fi
+  [[ ! -s $err && ! -s $err.log ]] || fail 'Darwin emitted diagnostics'
 done
-diagnostic_address=/dev/log
+diagnostic_sink=healthy
 reset_keyring
-pass '12: the shared Darwin proxy logs the decoded outcome to its platform socket'
+pass '12: Darwin preserves decoded answers and fallback without Linux diagnostics'
 
 # 13. An unknown serial (no keyring record) passes through.
 out="$scratch/out13" err="$scratch/err13"

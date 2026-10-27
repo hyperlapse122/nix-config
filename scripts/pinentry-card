@@ -83,18 +83,20 @@ def normalize_serial(raw):
 
 
 def log_lookup(outcome, started):
-    """One bounded, best-effort local syslog datagram, never Assuan output.
+    """One bounded, best-effort Linux syslog datagram, never Assuan output.
 
-    Avoid libc syslog's blocking writes and reconnects. Darwin's shared proxy
-    uses syslogd's socket; Linux uses the journal's syslog-compatible socket.
+    Avoid libc syslog's blocking writes and reconnects. Modern Darwin has no
+    syslog socket; native logging there needs a separate implementation.
     A missing or saturated sink must not hold up protected PIN entry.
     """
+    if not IS_LINUX:
+        return
     elapsed_ms = min(999999, max(0, int((time.monotonic() - started) * 1000)))
     message = f"<14>pinentry-card: lookup outcome={outcome} elapsed_ms={elapsed_ms}".encode("ascii")
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sink:
             sink.setblocking(False)
-            sink.connect("/dev/log" if IS_LINUX else "/var/run/syslog")
+            sink.connect("/dev/log")
             sink.send(message)
     except OSError:
         pass
