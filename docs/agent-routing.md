@@ -18,6 +18,12 @@
 | `architect` | Architecture and plan consultation |
 | `peer` | CE-required independent cross-model review |
 
+## When delegation starts
+
+The common instructions call for early delegation when substantial research or triage contains independently answerable questions. Examples include comparing sources, reconciling datasets, and investigating distinct plausible causes. Agents assign bounded investigations with evidence and uncertainty in the return, then the root reconciles the results and gives the final answer.
+
+Simple lookups and indivisible dependent reasoning stay local. This policy works within user authorization, runtime restrictions, recipient permissions, and each invoked skill's ownership and sequencing rules. The role tables select the model after the agent identifies useful work to delegate.
+
 ## T3 Code table
 
 Inside T3 Code, every harness receives its own `root` row and the same delegated role rows. Entries marked `(S)` use Synthetic and expire after 2026-11-18; Codex entries marked `Fast` run at `serviceTier` `priority`, and all other Codex entries run at `default`.

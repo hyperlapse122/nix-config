@@ -117,6 +117,14 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 - Apply the user's current overrides for their stated task, recipient, fields and duration first, then the owning skill's constraints, then the role. Fill unspecified fields from the role's table entry, never implicitly from the parent.
 - Give unlisted or new delegated work the `implement` role. Mixed work takes the role of its substantive part; split it only where the owning skill already permits. Root-owned work stays in the active root, and a delegated authoring assignment does not move it out.
 
+## When to delegate
+
+- At the start of research or triage that is likely to require several searches, source comparisons, data reconciliation, or investigation of multiple plausible causes, identify independently answerable questions and delegate useful separable investigations to subagents. Do not wait for the work to become slow or for the user to request delegation.
+- Base the split on questions that can be investigated independently and whose results contribute to the answer, not on elapsed time or tool-call count. Keep simple lookups and indivisible dependent reasoning local; batch related small questions when separate dispatch would add more overhead than useful work.
+- Give each child a bounded question, relevant context and sources, and an expected return containing conclusions, supporting evidence with source references, and remaining uncertainty. Use the existing role and model rules for that assignment.
+- While children investigate, advance complementary work instead of repeating their searches. The root integrates their results, checks conflicting evidence, and owns user communication and the final conclusion.
+- This policy permits proactive delegation within existing user authorization, runtime restrictions, recipient permissions, and the invoked skill's ownership and sequencing rules. It does not override an explicit delegation prohibition or move a skill's root-owned decisions to a child.
+
 ## Compound Engineering coverage
 
 | Workflow / identity | Role and boundary |
