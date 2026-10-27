@@ -13,5 +13,6 @@
     ./skills.nix
     ./test-audit.nix
     ./tokscale.nix
+    ./usage.nix
   ];
 }

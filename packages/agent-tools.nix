@@ -95,6 +95,38 @@ let
   # can drive it with fixtures.
   grokBuildRelease = pythonHelper "grok-build-release" ../scripts/grok-build-release;
 
+  # Reports every coding-agent provider's usage windows with a shared cache.
+  # Its readers call codex, omp, grok, curl and a Node helper on the Claude
+  # Agent SDK, so the wrapper puts exactly those on PATH. Home Manager
+  # overrides the Synthetic key file per host kind, as omp.nix does.
+  agentUsage = pkgs.lib.makeOverridable (
+    {
+      syntheticKeyFile ? "/run/secrets/cli-auth/synthetic_api_key",
+    }:
+    let
+      sdk = import ./claude-agent-sdk.nix { inherit pkgs; };
+      omp = import ./omp.nix { inherit pkgs syntheticKeyFile; };
+      runtimePath = pkgs.lib.makeBinPath [
+        (import ./codex.nix { inherit pkgs; })
+        (import ./claude-code.nix { inherit pkgs; })
+        (import ./grok-build.nix { inherit pkgs; })
+        omp
+        pkgs.nodejs_24
+        pkgs.curl
+      ];
+    in
+    (pythonHelper "agent-usage" ../scripts/agent-usage).overrideAttrs (old: {
+      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
+      installPhase = old.installPhase + ''
+        install -Dm644 ${../scripts/agent-usage-claude.mjs} \
+          $out/bin/agent-usage-claude.mjs
+        wrapProgram $out/bin/agent-usage \
+          --prefix PATH : ${runtimePath} \
+          --set NODE_PATH ${sdk}/lib/node_modules
+      '';
+    })
+  ) { };
+
   # Resolves the latest release of an npm package that ships no lock file,
   # such as acpx, and regenerates its lock file and npmDepsHash.
   # npm and prefetch-npm-deps come from the store so the update workflow's
@@ -150,6 +182,7 @@ in
     codexRelease
     ompRelease
     grokBuildRelease
+    agentUsage
     npmRelease
     t3codeRelease
     syntheticModelsWatch

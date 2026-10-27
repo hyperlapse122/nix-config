@@ -563,6 +563,7 @@
           grok-build-release =
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
+          agent-usage = pythonScriptCheck "agent-usage" ./scripts/agent-usage ./tests/test_agent_usage.py;
           npm-release = pythonScriptCheck "npm-release" ./scripts/npm-release ./tests/test_npm_release.py;
           t3code-release =
             pythonScriptCheck "t3code-release" ./scripts/t3code-release
