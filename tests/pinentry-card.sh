@@ -155,7 +155,7 @@ case "\$op:\$mode" in
   clear:clear-sleep) "$sleep_bin" 9; exit 0 ;;
 esac
 case "\$mode" in
-  fail-nonzero) exit 1 ;;
+  fail-nonzero) printf 'PRIVATE-SUBPROCESS-OUTPUT'; printf 'PRIVATE-SUBPROCESS-ERROR' >&2; exit 1 ;;
   empty) printf ''; exit 0 ;;
   sleep) "$sleep_bin" 3; exit 0 ;;
 esac
@@ -164,7 +164,7 @@ if [[ "\$op" == clear ]]; then
   "$rm_bin" -f "$keyring_dir/\$serial"
   exit 0
 fi
-if [[ "\$op" == lookup && -f "$keyring_dir/\$serial" ]]; then
+if [[ ( "\$op" == lookup || "\$op" == find-generic-password ) && -f "$keyring_dir/\$serial" ]]; then
   printf '%s' "\$(<"$keyring_dir/\$serial")"
   exit 0
 fi
@@ -230,6 +230,69 @@ sed \
 
 pipe_into() { cat >"$1"; }
 
+# Redirect only the OS logging boundary, leaving real socket operations and
+# the wrapper's Assuan consumer intact. No diagnostic switch enters production.
+cat >"$scratch/log-consumer.py" <<'PYLOG'
+import os
+import pathlib
+import socket
+import subprocess
+import sys
+
+wrapper, log_path, mode, address = sys.argv[1:]
+endpoint = str(pathlib.Path(log_path).with_suffix(".sock"))
+receiver = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+receiver.setblocking(False)
+if mode != "missing":
+    receiver.bind(endpoint)
+if mode == "full":
+    filler = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    filler.setblocking(False)
+    filler.connect(endpoint)
+    while True:
+        try:
+            filler.send(b"filler")
+        except BlockingIOError:
+            break
+
+bootstrap = r'''
+import runpy, socket, sys, time
+endpoint, mode, wrapper, address = sys.argv[1:]
+original = socket.socket
+class LocalLogSocket(original):
+    def __init__(self, *args, **kwargs):
+        if mode == "socket-error":
+            raise OSError("PRIVATE-EXCEPTION-TEXT")
+        super().__init__(*args, **kwargs)
+    def connect(self, address):
+        assert address == expected_address
+        return super().connect(endpoint)
+expected_address = address
+socket.socket = LocalLogSocket
+def forbidden_wall_clock():
+    raise AssertionError("lookup diagnostics must use monotonic time")
+time.time = forbidden_wall_clock
+sys.argv = [wrapper]
+runpy.run_path(wrapper, run_name="__main__")
+'''
+status = subprocess.call([sys.executable, "-c", bootstrap, endpoint, mode, wrapper, address])
+packets = []
+while mode != "missing":
+    try:
+        packet = receiver.recv(4096)
+    except BlockingIOError:
+        break
+    if packet != b"filler":
+        packets.append(packet)
+pathlib.Path(log_path).write_bytes(b"\n".join(packets))
+receiver.close()
+if mode != "missing":
+    os.unlink(endpoint)
+sys.exit(status)
+PYLOG
+diagnostic_sink=healthy
+diagnostic_address=/dev/log
+
 run_wrapper() {
   # run_wrapper <functional.py> <stdin-text> <out-file> <err-file> [env NAME=value ...]
   # <stdin-text> is command-substitution output, which already lost its
@@ -243,10 +306,10 @@ run_wrapper() {
   shift 4
   if [[ -p $out ]]; then
     printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" "$@" PATH="$scratch/bin:/usr/bin:/bin" \
-      "$python3_bin" "$functional" >"$out" 2>"$err" || rc=$?
+      "$python3_bin" "$scratch/log-consumer.py" "$functional" "$err.log" "$diagnostic_sink" "$diagnostic_address" >"$out" 2>"$err" || rc=$?
   else
     printf '%s\n' "$input" | "$timeout_bin" 10 "$env_bin" "$@" PATH="$scratch/bin:/usr/bin:/bin" \
-      "$python3_bin" "$functional" 2>"$err" | pipe_into "$out" || rc=$?
+      "$python3_bin" "$scratch/log-consumer.py" "$functional" "$err.log" "$diagnostic_sink" "$diagnostic_address" 2>"$err" | pipe_into "$out" || rc=$?
   fi
   if (( rc != 0 )); then
     printf 'pinentry-card: wrapper exited %d; its stderr follows:\n%s\n' "$rc" "$(<"$err")" >&2
@@ -271,6 +334,21 @@ assert_not_contains() {
   if grep -qF -- "$needle" "$file"; then
     fail "$label: unexpectedly found $(printf '%q' "$needle") in $file"
   fi
+}
+
+assert_lookup_diagnostic() {
+  "$python3_bin" - "$err.log" "$1" "$out" "$err" <<'PYASSERT'
+import pathlib, re, sys
+log, category, protocol, stderr = sys.argv[1:]
+data = pathlib.Path(log).read_bytes()
+match = re.fullmatch(rb"<14>pinentry-card: lookup outcome=" + category.encode() + rb" elapsed_ms=([0-9]{1,6})", data)
+assert match, "missing or unsafe lookup diagnostic for " + category
+elapsed = int(match[1])
+if category == "timeout":
+    assert 900 <= elapsed < 3000, "timeout duration did not measure the lookup"
+assert b"pinentry-card:" not in pathlib.Path(protocol).read_bytes(), "diagnostic contaminated Assuan"
+assert not pathlib.Path(stderr).read_bytes(), "lookup leaked stderr"
+PYASSERT
 }
 
 yubikey5_desc() {
@@ -300,6 +378,7 @@ for index in "${!answered_labels[@]}"; do
   assert_contains "$gnome_log" 'SETPROMPT PIN' "$label"
   assert_contains "$gnome_log" 'SETDESC' "$label"
   assert_not_contains "$gnome_log" 'GETPIN' "$label"
+  assert_lookup_diagnostic success
   pass "answered grammar: $label"
 done
 
@@ -417,14 +496,76 @@ reset_keyring
 #     (1-second, rewritten) bound: pass-through in each case.
 desc='Please unlock the card%0A%0ANumber: 14 963 605'
 input=$(printf 'SETPROMPT PIN\nSETDESC %s\nGETPIN\n' "$desc")
-for mode in fail-nonzero empty sleep; do
+for mode in fail-nonzero empty sleep os-error; do
   out="$scratch/out12-$mode" err="$scratch/err12-$mode"
   rm -f "$gnome_log"
+  if [[ $mode == os-error ]]; then
+    mv "$scratch/bin/secret-tool" "$scratch/bin/secret-tool-away"
+  fi
   run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode"
+  if [[ $mode == os-error ]]; then
+    mv "$scratch/bin/secret-tool-away" "$scratch/bin/secret-tool"
+  fi
   assert_contains "$gnome_log" 'GETPIN' "12 keyring-stub-$mode"
   assert_not_contains "$out" "D $stored_pin_encoded" "12 keyring-stub-$mode"
+  assert_contains "$out" 'D DELEGATE-PIN-gnome' "12 keyring-stub-$mode fallback"
+  case $mode in
+    fail-nonzero) category=nonzero ;;
+    sleep) category=timeout ;;
+    *) category=$mode ;;
+  esac
+  assert_lookup_diagnostic "$category"
 done
-pass '12: a keyring stub that fails, prints nothing, or times out passes GETPIN through in every case'
+pass '12: timeout, OS error, nonzero, and empty lookups log only category/duration and delegate GETPIN'
+
+# A missing, saturated, or unopenable local log sink must preserve both a
+# cached answer and fallback, without blocking or adding any protocol bytes.
+for diagnostic_sink in missing full socket-error; do
+  for mode in ok fail-nonzero; do
+    out="$scratch/out12-sink-$diagnostic_sink-$mode" err="$scratch/err12-sink-$diagnostic_sink-$mode"
+    rm -f "$gnome_log"
+    run_wrapper "$scratch/functional-gnome.py" "$input" "$out" "$err" DISPLAY=:0 KEYRING_STUB_MODE="$mode"
+    "$python3_bin" - "$out" "$err" "$mode" <<'PYPROTOCOL'
+import pathlib, sys
+out, err, mode = sys.argv[1:]
+pin = b"D te%25st pin" if mode == "ok" else b"D DELEGATE-PIN-gnome"
+assert sorted(pathlib.Path(out).read_bytes().splitlines()) == sorted([
+    b"OK Pleased to meet you", b"OK", b"OK", pin, b"OK"
+]), "log sink failure changed Assuan replies"
+assert not pathlib.Path(err).read_bytes(), "log sink failure escaped to stderr"
+assert not pathlib.Path(err + ".log").read_bytes(), "failed sink unexpectedly accepted a diagnostic"
+PYPROTOCOL
+  done
+done
+diagnostic_sink=healthy
+pass '12: unavailable or full logging sinks preserve cached answers and delegated replies'
+
+# The shared Darwin proxy must classify decoding failures at the outcome,
+# rather than treating every zero-exit Keychain lookup as success. This is a
+# Linux-hosted proxy render, not evidence of native macOS syslog delivery.
+sed -e 's/IS_LINUX = True/IS_LINUX = False/' \
+  -e 's/KEYRING_BACKEND = "secret-tool"/KEYRING_BACKEND = "security"/' \
+  "$scratch/functional-gnome.py" >"$scratch/functional-darwin-proxy.py"
+diagnostic_address=/var/run/syslog
+for encoding in valid invalid; do
+  if [[ $encoding == valid ]]; then
+    printf 'go-keyring-base64:%s' "$(printf '%s' "$stored_pin" | "$base64_bin" | "$tr_bin" -d '\n')" >"$keyring_dir/$stored_serial"
+  else
+    printf 'go-keyring-base64:PRIVATE-INVALID-ENCODING' >"$keyring_dir/$stored_serial"
+  fi
+  out="$scratch/out12-darwin-$encoding" err="$scratch/err12-darwin-$encoding"
+  run_wrapper "$scratch/functional-darwin-proxy.py" "$input" "$out" "$err" DISPLAY=:0
+  if [[ $encoding == valid ]]; then
+    assert_lookup_diagnostic success
+    assert_contains "$out" "D $stored_pin_encoded" '12 Darwin decoded success'
+  else
+    assert_lookup_diagnostic invalid-encoding
+    assert_contains "$out" 'D DELEGATE-PIN-gnome' '12 Darwin decode fallback'
+  fi
+done
+diagnostic_address=/dev/log
+reset_keyring
+pass '12: the shared Darwin proxy logs the decoded outcome to its platform socket'
 
 # 13. An unknown serial (no keyring record) passes through.
 out="$scratch/out13" err="$scratch/err13"
