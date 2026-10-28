@@ -23,13 +23,22 @@
     files, checking destination/declaration, real file effects, repeat apply,
     dry-run byte protection and refusal propagation. The
     settings.json declaration names the provider instances' leaves: the
-    enabled Claude, Codex, Grok, and one OMP instance, the
+    enabled Antigravity, Claude, Codex, Grok, and one OMP instance, the
     disabled Pi and OpenCode instances, the Claude instance's launch arguments emptied,
     which retires the --add-dir an earlier generation wrote, no environment
     entry upserted, and the Codex instance's launch arguments emptied, which
     retires the developer_instructions override an earlier generation wrote; the
     retired `providers` block of those six instances is migrated into them
-    first. The Codex instance also declares `~/.codex` as its home path and
+    first. The Antigravity instance names the executable of the runtime built
+    from the release the pinned T3 Code embeds, by store path;
+    tests/t3code-antigravity-instance.py reads the rendered declaration and
+    fails when that path is not inside that runtime, is not a store path (so
+    could resolve through PATH or ~/.t3/tools), names the PATH wrapper's
+    runtime while the two pins differ, or when the pin does not record the
+    localharness_external T3 Code looks for beside it; it also runs the real
+    merger over a settings.json that already holds an antigravity instance
+    with app state, which must survive with the declared path and enabled.
+    The Codex instance also declares `~/.codex` as its home path and
     the non-managed `existing` setup mode, so neither a home or managed setup
     set in the app nor a CODEX_HOME in the instance's environment can move it;
     tests/t3code-codex-home.py reads the rendered declaration and fails when
@@ -120,6 +129,23 @@ let
 
   profileEntries = configurations.entries ++ cliTrait.disabled ++ desktopTrait.disabled;
 
+  # The Antigravity runtime behind the instance is built from the pinned T3
+  # Code's embedded release, the one behind the PATH wrapper from Google's
+  # newest. Neither is built here: the archives weigh hundreds of megabytes, so
+  # the check compares the store paths the module would install.
+  t3AntigravityRuntime = import ../packages/antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ../packages/t3code-release.json)).antigravity;
+  };
+  pathAntigravityRuntime = import ../packages/antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
+  };
+  t3Pin = t3AntigravityRuntime.pin;
+  t3AntigravityDir = "${t3AntigravityRuntime}/libexec/antigravity-acp";
+  pinsDiffer = t3AntigravityRuntime.version != pathAntigravityRuntime.version;
+  pathAntigravityDir = "${pathAntigravityRuntime}/libexec/antigravity-acp";
+
   settingsExpectedBase = {
     set = {
       addProjectBaseDirectory = "~/src";
@@ -133,10 +159,6 @@ let
     };
     remove = [ ];
     removePaths = [
-      {
-        path = [ "providerInstances" ];
-        key = "antigravity";
-      }
       {
         path = [ "providerInstances" ];
         key = "omp-codex";
@@ -162,6 +184,7 @@ let
       from = "providers";
       to = "providerInstances";
       kinds = [
+        "antigravity"
         "claudeAgent"
         "codex"
         "grok"
@@ -171,6 +194,31 @@ let
       ];
     };
     setPaths = [
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
+          "config"
+          "binaryPath"
+        ];
+        value = noContext "${t3AntigravityDir}/${t3Pin.executable.name}";
+      }
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
+          "driver"
+        ];
+        value = "antigravity";
+      }
+      {
+        path = [
+          "providerInstances"
+          "antigravity"
+          "enabled"
+        ];
+        value = true;
+      }
       {
         path = [
           "providerInstances"
@@ -758,6 +806,24 @@ pkgs.runCommand "t3code-traits" { nativeBuildInputs = [ pkgs.python3 ]; } ''
     [ "$attr" = t3codeSettings ] || return 0
     [ "$full" = true ] || return 0
     checkOpencodeDisabled "$name" "$merger" "$declared"
+    checkAntigravityInstance "$name" "$merger" "$declared"
+  }
+
+  # The declared Antigravity instance names the T3-pinned runtime's executable
+  # by store path, and the real merger keeps an existing instance's app state.
+  # The harness binary the pin records sits in the same directory by the
+  # builder's construction; the runtime is not built here.
+  checkAntigravityInstance() {
+    local name=$1 realMerger=$2 declared=$3
+    if ! python3 -I ${./t3code-antigravity-instance.py} "$realMerger" "$declared" \
+      ${esc (noContext t3AntigravityDir)} ${
+        esc (if pinsDiffer then noContext pathAntigravityDir else "-")
+      } \
+      ${esc t3Pin.executable.name} ${esc t3Pin.harness.name} 2> antigravity-instance.log; then
+      echo "$name: the Antigravity instance is not the T3-pinned runtime or the merge drops it:" >&2
+      cat antigravity-instance.log >&2
+      fail=1
+    fi
   }
 
   # Merges the declared document into a settings.json that holds an enabled
