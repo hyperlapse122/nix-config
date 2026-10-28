@@ -21,9 +21,9 @@ let
     CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH = "1";
     # Lets a bypass-permissions (T3 Code full access) session run a command
     # that trips the dangerous-rm check without an approval prompt. Claude
-    # Code ignores it in subagents and whenever any PermissionRequest hook or
-    # Bash or PowerShell deny or ask rule exists, so one left in
-    # ~/.claude/settings.json or a plugin silently brings the prompt back.
+    # Code ignores it whenever any PermissionRequest hook or Bash, Edit, or
+    # Read deny or ask rule exists, so one left in ~/.claude/settings.json or
+    # an enabled plugin silently brings the prompt back.
     CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
   };
 
