@@ -41,7 +41,7 @@ elif [ "$keep" -lt ${limit} ]; then
 fi
 ```
 
-The operand is not a constant: `modules/nixos/system/boot.nix` sets `boot.lanzaboote.configurationLimit`, and mutating it to `15` correctly turned the check red. The assertion looked live, and by the repository's existing tests for liveness it was.
+The operand is not a constant: `modules/nixos/system/boot.nix` set `boot.lanzaboote.configurationLimit` at the time (it now sets `boot.loader.systemd-boot.configurationLimit`, since NixOS hosts no longer use Lanzaboote), and mutating it to `15` correctly turned the check red. The assertion looked live, and by the repository's existing tests for liveness it was.
 
 It still passed in the one case the invariant exists for.
 
@@ -49,7 +49,7 @@ It still passed in the one case the invariant exists for.
 
 **Enumerate the values the option's type admits, not the value it holds.** For each one that the comparison cannot take, add a Nix-level branch that fails, rather than letting it reach the shell.
 
-Both `boot.loader.systemd-boot.configurationLimit` and `boot.lanzaboote.configurationLimit` are `types.nullOr types.int` with `default = null`, documented in nixpkgs as "`null` means no limit i.e. all generations that have not been garbage collected yet". An unbounded menu is precisely the state a finite retention count cannot cover — and it is the type's default.
+`boot.loader.systemd-boot.configurationLimit` is `types.nullOr types.int`, as Lanzaboote's `configurationLimit` was, with `default = null`, documented in nixpkgs as "`null` means no limit i.e. all generations that have not been garbage collected yet". An unbounded menu is precisely the state a finite retention count cannot cover — and it is the type's default.
 
 With the limit null, the emitted builder line is:
 
@@ -108,7 +108,7 @@ The null-limit round, which passed before the fix and fails after it:
 
 ```sh
 # mutate: an unbounded boot menu
-sed -i 's/boot.lanzaboote.configurationLimit = lib.mkIf (!bootstrap) 5;/boot.lanzaboote.configurationLimit = lib.mkForce null;/' modules/nixos/system/boot.nix
+sed -i 's/boot.loader.systemd-boot.configurationLimit = 5;/boot.loader.systemd-boot.configurationLimit = lib.mkForce null;/' modules/nixos/system/boot.nix
 nix build --no-link .#checks.x86_64-linux.nix-cleanup
 ```
 
