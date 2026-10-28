@@ -43,7 +43,7 @@ GLM = "`omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S)"
 DEEPSEEK = "`omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`"
 T3_ROOTS = {
     "claude": f"`claudeAgent` `claude-opus-5-5` `medium` → {KIMI} → {GLM}",
-    "codex": "`codex` `gpt-6-astra` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium`",
+    "codex": "`codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium`",
     "omp": "`omp` `google-antigravity/gemini-4-argon` `high`",
 }
 T3_CHAINS = {
@@ -54,13 +54,14 @@ T3_CHAINS = {
     "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high`",
     "implement-high": f"`claudeAgent` `claude-opus-5-5` `medium` → {GLM} → {KIMI} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high`",
     "deep": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh`",
-    "hard-decision": "`codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-fable-5-1` `max`",
+    "hard-decision": "`codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-fable-5-1` `max`",
     "review": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high`",
-    "review-gate": "`codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-opus-5-5` `max`",
+    "review-gate": "`codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-opus-5-5` `max`",
     "architect": f"`claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI} → `codex` `gpt-6.1-sol` `xhigh`",
     "peer": "The external model and effort the owning CE skill selects",
 }
 SOL = "`gpt-6.1-sol`"
+TERRA = "`gpt-6.1-terra`"
 ARGON = "`google-antigravity/gemini-4-argon`"
 FLASH = "`google-antigravity/gemini-3.8-flash`"
 LITE = "`google-antigravity/gemini-3.5-flash-lite`"
@@ -81,17 +82,17 @@ HARNESS_CHAINS = {
         "peer": "CE selection",
     },
     "codex": {
-        "root": f"`gpt-6-astra` `medium` → {SOL} `medium` Fast → {SOL} `medium`",
+        "root": f"{SOL} `high` → {SOL} `medium` Fast → {SOL} `medium`",
         "scout": "`gpt-6-luna` `low` Fast",
         "quick": "`gpt-6-luna` `low` Fast",
-        "writing": f"{SOL} `low`",
-        "visual": f"{SOL} `low`",
-        "implement": f"{SOL} `low`",
+        "writing": f"{TERRA} `medium`",
+        "visual": f"{TERRA} `medium`",
+        "implement": f"{TERRA} `medium`",
         "implement-high": f"{SOL} `medium`",
         "deep": f"{SOL} `medium`",
-        "hard-decision": f"{SOL} `medium`",
+        "hard-decision": f"{SOL} `max`",
         "review": f"{SOL} `medium`",
-        "review-gate": f"{SOL} `medium`",
+        "review-gate": f"{SOL} `max`",
         "architect": f"{SOL} `medium`",
         "peer": "CE selection",
     },
@@ -173,7 +174,7 @@ ROUTING_SENTENCES = [
     "From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish.",
     "Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.",
     "The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.",
-    "GPT `max` and `ultra` run only on the user's explicit request for the affected work.",
+    "`gpt-6.1-sol` at `max` runs automatically only for `hard-decision` and `review-gate`; every other GPT `max` use and every GPT `ultra` use requires the user's explicit request for the affected work.",
     "OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.",
     "A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`.",
     "Never select `ultrafast`.",
@@ -219,7 +220,7 @@ def routing_contract(delivery):
 - Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.
 - Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.
 - The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.
-- GPT `max` and `ultra` run only on the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
+- `gpt-6.1-sol` at `max` runs automatically only for `hard-decision` and `review-gate`; every other GPT `max` use and every GPT `ultra` use requires the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
 - A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`. Never select `ultrafast`.
 - Run each entry at its listed effort. Formatting errors, transient network failures, busy slots and missing credentials justify neither a higher effort nor another role.
 - Set options by the names `orchestrator_capabilities` lists: `effort` for `claudeAgent`, `reasoningEffort` and `serviceTier` for `codex`, `thinking` for `omp`, and the listed effort option for `grok`.

@@ -166,7 +166,7 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 - Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.
 - Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.
 - The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.
-- GPT `max` and `ultra` run only on the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
+- `gpt-6.1-sol` at `max` runs automatically only for `hard-decision` and `review-gate`; every other GPT `max` use and every GPT `ultra` use requires the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
 - A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`. Never select `ultrafast`.
 - Run each entry at its listed effort. Formatting errors, transient network failures, busy slots and missing credentials justify neither a higher effort nor another role.
 - Set options by the names `orchestrator_capabilities` lists: `effort` for `claudeAgent`, `reasoningEffort` and `serviceTier` for `codex`, `thinking` for `omp`, and the listed effort option for `grok`.
@@ -184,7 +184,7 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 | Role | Chain |
 | --- | --- |
 {{ if .claude }}| `root` | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) |
-{{ end }}{{ if .codex }}| `root` | `codex` `gpt-6-astra` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
+{{ end }}{{ if .codex }}| `root` | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
 {{ end }}{{ if .omp }}| `root` | `omp` `google-antigravity/gemini-4-argon` `high` |
 {{ end }}| `scout` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
 | `quick` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
@@ -193,9 +193,9 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high` |
 | `implement-high` | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high` |
 | `deep` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh` |
-| `hard-decision` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-fable-5-1` `max` |
+| `hard-decision` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-fable-5-1` `max` |
 | `review` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high` |
-| `review-gate` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-opus-5-5` `max` |
+| `review-gate` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-opus-5-5` `max` |
 | `architect` | `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `xhigh` |
 | `peer` | The external model and effort the owning CE skill selects |
 {{ if .claude }}
@@ -236,17 +236,17 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 
 | Role | Chain |
 | --- | --- |
-| `root` | `gpt-6-astra` `medium` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
+| `root` | `gpt-6.1-sol` `high` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
 | `scout` | `gpt-6-luna` `low` Fast |
 | `quick` | `gpt-6-luna` `low` Fast |
-| `writing` | `gpt-6.1-sol` `low` |
-| `visual` | `gpt-6.1-sol` `low` |
-| `implement` | `gpt-6.1-sol` `low` |
+| `writing` | `gpt-6.1-terra` `medium` |
+| `visual` | `gpt-6.1-terra` `medium` |
+| `implement` | `gpt-6.1-terra` `medium` |
 | `implement-high` | `gpt-6.1-sol` `medium` |
 | `deep` | `gpt-6.1-sol` `medium` |
-| `hard-decision` | `gpt-6.1-sol` `medium` |
+| `hard-decision` | `gpt-6.1-sol` `max` |
 | `review` | `gpt-6.1-sol` `medium` |
-| `review-gate` | `gpt-6.1-sol` `medium` |
+| `review-gate` | `gpt-6.1-sol` `max` |
 | `architect` | `gpt-6.1-sol` `medium` |
 | `peer` | CE selection |
 
