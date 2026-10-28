@@ -102,6 +102,7 @@ pkgs.runCommand "network-recovery-tests"
     #!/bin/sh
     . "@STUBDIR@/_log"
     log_call curl "$@"
+    if [ -f "@ANSWERS@/slow-repair" ]; then sleep 5; fi
     phase=0
     if [ -f "@VAR@/phase" ]; then
       phase=$(cat "@VAR@/phase")
@@ -122,6 +123,7 @@ pkgs.runCommand "network-recovery-tests"
     . "@STUBDIR@/_log"
     log_call dscacheutil "$@"
     if [ "$1" = "-flushcache" ]; then
+      if [ -f "@ANSWERS@/slow-repair" ]; then sleep 60; fi
       printf 'flushed\n' > "@VAR@/phase"
       exit 0
     fi
@@ -167,6 +169,7 @@ pkgs.runCommand "network-recovery-tests"
     #!/bin/sh
     . "@STUBDIR@/_log"
     log_call killall "$@"
+    if [ -f "@ANSWERS@/slow-repair" ]; then sleep 60; fi
     exit 0
     SH
       write_stub networksetup <<'SH'
@@ -175,6 +178,7 @@ pkgs.runCommand "network-recovery-tests"
     log_call networksetup "$@"
     case $1 in
       -listnetworkserviceorder)
+        if [ -f "@ANSWERS@/slow-discovery" ]; then sleep 60; fi
         cat "@ANSWERS@/services"
         ;;
       -listallhardwareports)
@@ -188,6 +192,7 @@ pkgs.runCommand "network-recovery-tests"
           printf 'HAD_PENDING %s\n' "$action" >> "@VAR@/pending-trace"
         fi
         if [ "$action" = "on" ]; then
+          if [ -f "@ANSWERS@/on-fail" ]; then exit 1; fi
           printf 'cycled\n' > "@VAR@/phase"
         fi
         ;;
@@ -226,12 +231,21 @@ pkgs.runCommand "network-recovery-tests"
         exit 0
         ;;
       down)
+        if [ "$(cat "@VAR@/pending-tailscale" 2>/dev/null)" = "$(printf 'testuser\n501')" ]; then
+          printf 'HAD_PENDING down\n' >> "@VAR@/pending-tailscale-trace"
+        else
+          printf 'MISSING_PENDING down\n' >> "@VAR@/pending-tailscale-trace"
+        fi
         exit 0
         ;;
       up)
-        printf 'tailscale\n' > "@VAR@/phase"
         if [ -f "@ANSWERS@/up-fail" ]; then
           exit 1
+        fi
+        if [ -f "@ANSWERS@/up-needs-cycle" ]; then
+          [ "$(cat "@VAR@/phase" 2>/dev/null)" = cycled ] || exit 1
+        else
+          printf 'tailscale\n' > "@VAR@/phase"
         fi
         exit 0
         ;;
@@ -369,6 +383,7 @@ pkgs.runCommand "network-recovery-tests"
       if grep -qF '[-setnetworkserviceenabled]' "$CALLS"; then fail "$label: service"; fi
     }
     assert_tailscale_toggle() {
+      grep -qx 'HAD_PENDING down' "$CASE/var/pending-tailscale-trace" || fail "no restore record before Tailscale down"
       down="launchctl [asuser] [501] [sudo] [-u] [testuser] [$CASE/stubs/tailscale] [down]"
       up="launchctl [asuser] [501] [sudo] [-u] [testuser] [$CASE/stubs/tailscale] [up]"
       grep -qF "$down" "$CALLS" || fail "tailscale down was not run as the console user: $(cat "$CALLS")"
@@ -598,23 +613,54 @@ pkgs.runCommand "network-recovery-tests"
     run_case
     grep -qE 'captive|policy' "$CASE/out.log" || fail "captive: log did not record a captive or policy result"
     assert_no_repair captive
+    age_episode
+    run_case
+    assert_no_repair "captive after grace"
     pass "a portal page runs no repair"
 
-    # --- pending service restore ----------------------------------------------
-    setup_case pending-service
+    setup_case deadline-progress
+    set_all_fail
+    run_in_grace
+    age_episode
+    touch "$ANSWERS/slow-repair"
     run_case
-    printf 'airport\nen0\n' > "$CASE/var/pending-service"
+    grep -qF 'deadline reached' "$CASE/out.log" || fail "slow repair did not exhaust the run budget"
+    rm "$ANSWERS/slow-repair"
+    pass_from cycled
+    run_case
+    if grep -qF '[-flushcache]' "$CALLS"; then fail "deadline restarted the ladder at DNS"
+    fi
+    assert_tailscale_toggle
+    grep -qF '[-setairportpower] [en0] [off]' "$CALLS" || fail "deadline prevented the physical repair"
+    grep -qF 'repair restored cycle' "$CASE/out.log" || fail "resumed ladder did not restore connectivity"
+    pass "a deadline resumes the ladder without repeating DNS"
+
+    # --- interrupted physical restore ----------------------------------------
+    setup_case pending-service
+    set_all_fail
+    pass_from cycled
+    touch "$ANSWERS/on-fail"
+    run_past_grace
+    grep -qx 'HAD_PENDING off' "$CASE/var/pending-trace" || fail "no service restore record before off"
+    [ -f "$CASE/var/pending-service" ] || fail "failed on lost the restore record"
+    run_case
+    [ -f "$CASE/var/pending-service" ] || fail "failed retry lost the restore record"
+    if grep -qF '[-setairportpower] [en0] [off]' "$CALLS"; then fail "failed restore repeated off"; fi
+    if grep -qF 'tailscale [down]' "$CALLS"; then fail "failed physical restore allowed another repair"; fi
+    rm "$ANSWERS/on-fail"
     run_case
     grep -qF '[-setairportpower] [en0] [on]' "$CALLS" || fail "pending service was not turned on"
     if grep -qF '[-setairportpower] [en0] [off]' "$CALLS"; then fail "pending restore turned the service off"; fi
     if [ -e "$CASE/var/pending-service" ]; then fail "pending service record was not cleared"; fi
-    pass "a pending service record turns the service on and clears"
+    pass "failed service on persists and retries without another off"
 
     # --- pending tailscale restore fails --------------------------------------
     setup_case pending-tailscale
-    run_case
-    printf 'testuser\n501\n' > "$CASE/var/pending-tailscale"
+    set_all_fail
     : > "$ANSWERS/up-fail"
+    run_past_grace
+    assert_tailscale_toggle
+    [ -f "$CASE/var/pending-tailscale" ] || fail "failed up lost the produced record"
     set_loginwindow
     run_case
     up="launchctl [asuser] [501] [sudo] [-u] [testuser] [$CASE/stubs/tailscale] [up]"
@@ -622,7 +668,47 @@ pkgs.runCommand "network-recovery-tests"
     if grep -qF 'tailscale [down]' "$CALLS"; then fail "pending tailscale restore ran down"; fi
     if grep -qF 'tailscale [up] [' "$CALLS"; then fail "pending tailscale up had flags"; fi
     if [ ! -f "$CASE/var/pending-tailscale" ]; then fail "failed tailscale restore cleared the record"; fi
-    pass "a failed tailscale restore keeps the pending record"
+    rm "$ANSWERS/up-fail"
+    pass_from tailscale
+    run_case
+    grep -qF "$up" "$CALLS" || fail "successful retry did not use the stored user"
+    if grep -qF 'tailscale [down]' "$CALLS"; then fail "successful retry repeated down"; fi
+    [ ! -e "$CASE/var/pending-tailscale" ] || fail "successful retry retained the record"
+    pass "failed Tailscale up persists and retries with the original console user"
+
+    setup_case pending-tailscale-needs-physical
+    set_all_fail
+    pass_from cycled
+    touch "$ANSWERS/up-needs-cycle" "$ANSWERS/slow-discovery"
+    run_past_grace
+    assert_tailscale_toggle
+    [ -f "$CASE/var/pending-tailscale" ] || fail "offline tunnel lost its restore record"
+    [ ! -e "$CASE/var/pending-service" ] || fail "discovery timeout wrote an off record"
+    rm "$ANSWERS/slow-discovery"
+    run_case
+    if grep -qF 'tailscale [down]' "$CALLS"; then fail "pending tunnel was taken down again"; fi
+    grep -qF '[-setairportpower] [en0] [off]' "$CALLS" || fail "pending tunnel blocked physical repair"
+    [ ! -e "$CASE/var/pending-tailscale" ] || fail "tunnel did not recover after the physical cycle"
+    grep -qF 'repair restored cycle' "$CASE/out.log" || fail "physical repair did not recover connectivity"
+    pass "discovery resumes across runs and repairs the link before retrying the tunnel"
+
+    for change in gateway mac address; do
+      setup_case "same-interface-$change"
+      set_all_fail
+      run_past_grace
+      run_case
+      assert_no_repair "unchanged exhausted network"
+      case $change in
+        gateway) file=route; before=203.0.113.1; after=203.0.113.2 ;;
+        mac) file=arp; before=02:00:5e:00:53:01; after=02:00:5e:00:53:02 ;;
+        address) file=ifconfig; before=203.0.113.50; after=203.0.113.51 ;;
+      esac
+      sed "s/$before/$after/" "$ANSWERS/$file" > "$ANSWERS/$file.new"
+      mv "$ANSWERS/$file.new" "$ANSWERS/$file"
+      run_case
+      grep -qF 'episode open' "$CASE/out.log" || fail "$change did not open a new episode on en0"
+      pass "same-interface $change change starts a new recovery episode"
+    done
 
     # --- exhausted episode then passes ----------------------------------------
     setup_case exhausted-pass

@@ -25,13 +25,11 @@ in
       ];
       StartInterval = 5;
       RunAtLoad = true;
-      # The macOS tools the script calls by name.
       EnvironmentVariables.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
       StandardOutPath = log;
       StandardErrorPath = log;
     };
 
-    # Rotate at 1 MiB and keep five compressed generations.
     environment.etc."newsyslog.d/network-recovery.conf".text = ''
       # logfilename          [owner:group]    mode count size when  flags
       ${log}   root:wheel   644  5     1024 *     J

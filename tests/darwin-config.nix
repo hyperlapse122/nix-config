@@ -1067,12 +1067,13 @@ let
           if production then
             daemon != null
             && lib.hasSuffix "/bin/network-recovery" (plain (lib.head (arguments ++ [ "" ])))
-            && lib.drop 1 arguments == [
-              "--state-dir"
-              "/var/db/network-recovery"
-              "--tailscale"
-              "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-            ]
+            &&
+              lib.drop 1 arguments == [
+                "--state-dir"
+                "/var/db/network-recovery"
+                "--tailscale"
+                "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+              ]
             && (daemon.serviceConfig.StartInterval or null) == 5
             && (daemon.serviceConfig.RunAtLoad or false)
             && (daemon.serviceConfig.StandardOutPath or null) == "/var/log/network-recovery.log"

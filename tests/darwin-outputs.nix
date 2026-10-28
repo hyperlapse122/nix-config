@@ -82,6 +82,48 @@
 }:
 let
   inherit (pkgs) lib;
+  streamTimeoutEffects = pkgs.writeText "claude-stream-timeout-effects.py" ''
+    import os, plistlib, re, subprocess, sys, tempfile
+    from pathlib import Path
+
+    generation = Path(sys.argv[1])
+    enabled = sys.argv[2] == "1"
+    body = (generation / "activate").read_text()
+    marker = '_iNote "Activating %s" "claudeStreamTimeout"\n'
+    assert marker in body, "missing GUI timeout activation"
+    step = body.split(marker, 1)[1].split('_iNote "Activating %s"', 1)[0]
+    agent = generation / "LaunchAgents/org.nix-community.home.claude-stream-timeout.plist"
+    assert agent.exists() == enabled, "GUI timeout login agent has the wrong trait gate"
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        state = root / "environment"
+        stub = root / "launchctl"
+        stub.write_text("""#!/bin/sh
+    case "$2" in CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS) ;; *) exit 1 ;; esac
+    case "$1" in
+      setenv) printf '%s' "$3" > "$TIMEOUT_STATE" ;;
+      getenv) cat "$TIMEOUT_STATE" ;;
+      unsetenv) rm "$TIMEOUT_STATE" ;;
+      *) exit 1 ;;
+    esac
+    """)
+        stub.chmod(0o755)
+        env = dict(os.environ, HOME=scratch, TIMEOUT_STATE=str(state))
+        env.pop("DRY_RUN", None)
+        for initial in ("60000", "90000"):
+            state.write_text(initial)
+            subprocess.run(["bash", "-euo", "pipefail", "-c", step.replace("/bin/launchctl", str(stub))], env=env, check=True)
+            expected = "60000" if enabled else (None if initial == "60000" else initial)
+            assert (state.read_text() if state.exists() else None) == expected, "activation failed to publish or retire its GUI timeout"
+        if enabled:
+            with agent.open("rb") as source:
+                plist = plistlib.load(source)
+            assert plist["RunAtLoad"] is True, "timeout is not published on login"
+            argv = [arg.replace("/bin/launchctl", str(stub)) for arg in plist["ProgramArguments"]]
+            state.unlink()
+            subprocess.run(argv, env=env, check=True)
+            assert state.read_text() == "60000", "login agent failed to publish the timeout"
+  '';
   instructionDelivery = import ./agent-instructions.nix {
     inherit pkgs;
     entries = map (entry: {
@@ -516,6 +558,7 @@ let
       # directory and the Tailscale CLI, logging to the file newsyslog rotates;
       # bootstrap has neither.
       nrdaemon=$sys/Library/LaunchDaemons/org.nixos.network-recovery.plist
+      python3 ${streamTimeoutEffects} "$gen" "$production" || bad "Claude GUI timeout lifecycle failed"
       nrrotate=$sys/etc/newsyslog.d/network-recovery.conf
       if [ "$production" = 1 ]; then
         nrarg() { /usr/bin/plutil -extract "$1" raw "$nrdaemon" 2>/dev/null || true; }
@@ -529,6 +572,15 @@ let
           || bad "the network recovery daemon does not pass the state directory and the Tailscale CLI"
         [ "$(nrarg StartInterval)" = 5 ] && [ "$(nrarg RunAtLoad)" = true ] \
           || bad "the network recovery daemon does not run at load and every 5 seconds"
+        nrpath=$(nrarg EnvironmentVariables.PATH)
+        for directory in /usr/bin /bin /usr/sbin /sbin; do
+          case :$nrpath: in
+            *":$directory:"*) ;;
+            *) bad "the network recovery daemon PATH lacks $directory" ;;
+          esac
+        done
+        grep -qxF 'export CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS="60000"' "$vars" \
+          || bad "the session does not export the 60-second Claude stream timeout"
         [ "$(nrarg StandardOutPath)" = /var/log/network-recovery.log ] \
           && [ "$(nrarg StandardErrorPath)" = /var/log/network-recovery.log ] \
           || bad "the network recovery daemon does not log to /var/log/network-recovery.log"
@@ -537,6 +589,9 @@ let
       else
         [ ! -e "$nrdaemon" ] || bad "bootstrap has the network recovery daemon"
         [ ! -e "$nrrotate" ] || bad "bootstrap rotates the network recovery log"
+        if grep -q '^export CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=' "$vars"; then
+          bad "bootstrap exports the Claude stream timeout"
+        fi
       fi
       nixconf=$sys/etc/nix/nix.conf
       [ -f "$nixconf" ] || bad "the system has no nix.conf"
@@ -634,6 +689,28 @@ pkgs.runCommand "darwin-outputs"
       name_host=${lib.escapeShellArg entry.fixture}
       ${assertEntry entry}
     '') darwinFixtures}
+    ${lib.concatMapStrings (
+      entry:
+      let
+        disabled = entry.host.extendModules {
+          modules = [ { my.networkRecovery.enable = lib.mkForce false; } ];
+        };
+        user = disabled.config.home-manager.users.${disabled.config.my.user.name};
+      in
+      ''
+        name=${lib.escapeShellArg "${entry.name}-network-recovery-disabled"}
+        sys=${disabled.config.system.build.toplevel}
+        vars=${user.home.activationPackage}/home-path/etc/profile.d/hm-session-vars.sh
+        python3 ${streamTimeoutEffects} ${user.home.activationPackage} 0 || bad "disabled Claude GUI timeout cleanup failed"
+        [ ! -e "$sys/Library/LaunchDaemons/org.nixos.network-recovery.plist" ] \
+          || bad "trait-disabled production has the network recovery daemon"
+        [ ! -e "$sys/etc/newsyslog.d/network-recovery.conf" ] \
+          || bad "trait-disabled production rotates the network recovery log"
+        if grep -q '^export CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=' "$vars"; then
+          bad "trait-disabled production exports the Claude stream timeout"
+        fi
+      ''
+    ) (lib.filter (entry: !entry.bootstrap) darwinFixtures)}
     [ "$fail" = 0 ] || exit 1
     touch "$out"
   ''

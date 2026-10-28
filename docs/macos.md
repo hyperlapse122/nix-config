@@ -224,7 +224,9 @@ On a Mac where switching networks can leave it offline until Wi-Fi is turned off
 
 A captive portal or a policy page answers the HTTP check with its own page; the daemon logs that and repairs nothing. When every step fails, the daemon stops trying on that network and only checks until the network changes again. It never restarts an app, and it never touches Endpoint Protector or Defender.
 
-The log is `/var/log/network-recovery.log`, rotated by `newsyslog`. Each line names the episode by a short hash, never by a network name or address, so you can attach it to an issue as it is. Running Claude Code sessions on such a host also get `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=60000`, so a stream that stalled during the switch is dropped after a minute and the next message succeeds. Codex's built-in provider cannot take a shorter timeout; it gives up on a stalled stream after its default 300 seconds. To turn the feature off, remove the trait from `hosts/<host>/default.nix` and apply.
+Each daemon run has a 25-second budget. When it runs out, the next run continues the unfinished ladder. A failed off/on or down/up pair leaves a restore record: physical services are restored first, and a pending Tailscale reconnect does not block the physical repair it may need.
+
+The log is `/var/log/network-recovery.log`, rotated by `newsyslog`. Each line names the episode by a short hash, never by a network name or address, so you can attach it to an issue as it is. Newly launched Claude Code sessions on such a host get `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=60000` through both shell exports and the macOS GUI environment. Relaunch T3 Code after applying to pick it up. A stream that stalls during a switch can then time out after a minute; retry once connectivity returns. Codex keeps its default 300-second stream timeout. To turn the feature off, remove the trait from `hosts/<host>/default.nix` and apply; this also removes the managed GUI timeout, while preserving a different value you set yourself.
 
 ## Containers
 

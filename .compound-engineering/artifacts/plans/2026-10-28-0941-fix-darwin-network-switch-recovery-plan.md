@@ -93,7 +93,7 @@ The user plans to add AdGuard, which by default would add another network extens
 
 ### Scope Boundaries
 
-- Diagnosing which layer breaks on a switch is tracked as a separate GitHub issue. A cause it finds may let a later change remove repair steps or fix the layer directly.
+- Diagnosing which layer breaks on a switch is tracked in [issue #392](https://github.com/hyperlapse122/nix-config/issues/392). A cause it finds may let a later change remove repair steps or fix the layer directly.
 - Installing AdGuard and choosing its filtering mode are deferred to the AdGuard work.
 - Changing Endpoint Protector or Defender, or their Intune policies, is outside this repository's control.
 - Restarting stuck application processes is excluded (R6).
@@ -279,3 +279,10 @@ flowchart TD
 - No SSID, internal address, or host name appears in the diff.
 - No dead-end or experimental code is left in the diff.
 - The PR body lists the live checks as pending for the user, with the Tailscale-as-console-user assumption called out.
+
+## Implementation review corrections
+
+- The pinned T3 desktop app imports selected shell variables, excluding the Claude stream timeout. KTD7's shell-inheritance assumption was incorrect. The implementation keeps the shell export and publishes the timeout through a macOS login agent and activation step. Disabling the trait removes the managed GUI value. Existing T3 processes need relaunching after apply.
+- A 25-second run can end before the repair ladder finishes. The episode persists its next step, and incomplete service discovery retains the cycle step for the next run.
+- Restore physical services before retrying Tailscale. Keep a failed Tailscale restore record without blocking the physical repair it may depend on, and never issue a fresh down while that record remains.
+- Regression scenarios exercise production-created restore records, failed on/up retries, and gateway, gateway-MAC, and IPv4 changes on the same interface. The materialized Darwin check verifies GUI publication and removal as well as shell exports and trait gates.

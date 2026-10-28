@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# One run of the network-switch recovery flowchart. A root launchd daemon
-# starts this every few seconds. Repairs touch only the network: flush the
-# DNS cache, reconnect Tailscale with a flagless up/down, then cycle the
-# physical service that carries the default route.
-#
-# Nothing runs while there is no default route, and the first repair of an
-# episode waits until it is 10 seconds old, so an ordinary switch that settles
-# on its own never reaches the ladder.
-#
-# State directory (the daemon passes /var/db/network-recovery):
-#   signature            12 hex chars of the route signature
-#   last-run             epoch seconds from date +%s
-#   episode              status, started_at, tailscale, signature
-#   pending-service      "airport" or "service", then the device or name
-#   pending-tailscale    console user, then uid
-# A pending file is written before the matching off/down and removed only
-# after the matching on/up exits 0, so the next run finishes a killed one.
-#
 # stdout is the log: one UTC timestamped line per event. Lines name a short
 # hash of the signature and never include command output, an SSID, or an
 # address. Exit 0 after the run. Exit 2 only when the arguments are wrong.
@@ -49,6 +31,7 @@ http_result=fail
 dns_result=fail
 ip_result=fail
 check_result=fail
+refresh_signature=0
 
 # Apple's captive-portal success document, compared with whitespace and case
 # ignored. Any other body is a portal or a policy page.
@@ -86,7 +69,6 @@ trim() {
   printf '%s' "$v"
 }
 
-# Bound every external command, and stop the run 25 seconds after it started.
 check_deadline() {
   local now left
   now=$(date +%s)
@@ -118,20 +100,6 @@ capture_out() {
   return 1
 }
 
-capture_stdin() {
-  local input=$1
-  shift
-  if ! check_deadline; then
-    CAP=
-    return 1
-  fi
-  if CAP=$(printf '%s\n' "$input" | timeout "$cmd_timeout" "$@" 2>/dev/null); then
-    return 0
-  fi
-  CAP=
-  return 1
-}
-
 run_ok() {
   if ! check_deadline; then
     return 1
@@ -147,6 +115,7 @@ hash_signature() {
 }
 
 read_signature() {
+  local old_hash=$sig_hash
   iface=
   gw=
   mac=
@@ -158,6 +127,9 @@ read_signature() {
     if [[ $CAP =~ gateway:[[:space:]]*([^[:space:]]+) ]]; then
       gw=${BASH_REMATCH[1]}
     fi
+  elif [[ $in_finish -eq 1 ]]; then
+    sig_hash=$old_hash
+    return 1
   fi
   if [[ -n $gw ]]; then
     if capture_out arp -n "$gw"; then
@@ -177,9 +149,6 @@ read_signature() {
   hash_signature
 }
 
-# Poll until the default route has an address again. Stubs that already
-# report one return on the first look, so a test does not sleep. A link that
-# is still down waits at most 8 seconds, inside the run deadline.
 link_ready() {
   local route_cap got_iface
   if ! capture_out route -n get default; then
@@ -224,7 +193,7 @@ read_console() {
   local line
   console_name=
   console_uid=
-  if ! capture_stdin 'show State:/Users/ConsoleUser' scutil; then
+  if ! capture_out scutil <<< 'show State:/Users/ConsoleUser'; then
     return 1
   fi
   while IFS= read -r line; do
@@ -286,7 +255,7 @@ open_episode() {
 status=open
 started_at=$now
 tailscale=$ts_state
-signature=$sig_hash
+next_step=dns-flush
 EOF
   reason=signature
   if [[ -n $prev_hash && $prev_hash == "$sig_hash" ]]; then
@@ -309,20 +278,23 @@ close_episode() {
   log "episode close duration=${duration}s"
 }
 
-mark_exhausted() {
-  local started tail sig
+save_step() {
+  local status=$1 next=$2 started tail
   episode_get started_at
   started=$field_value
   episode_get tailscale
   tail=$field_value
-  episode_get signature
-  sig=$field_value
-  cat > "$state_dir/episode" <<EOF
-status=exhausted
+  cat > "$state_dir/episode.new" <<EOF
+status=$status
 started_at=$started
 tailscale=$tail
-signature=$sig
+next_step=$next
 EOF
+  mv -f "$state_dir/episode.new" "$state_dir/episode"
+}
+
+mark_exhausted() {
+  save_step exhausted 'done'
   log "episode exhausted"
   log "repair restored none"
 }
@@ -343,7 +315,7 @@ probe_http() {
 
 probe_dns() {
   dns_result=fail
-  if ! capture_out dscacheutil -q host -a name example.com; then
+  if ! capture_out timeout 2 dscacheutil -q host -a name example.com; then
     return 0
   fi
   case $CAP in
@@ -397,9 +369,10 @@ log_check() {
   esac
 }
 
-restore_pending() {
-  local user uid mode value ok
+restore_tailscale() {
+  local user uid
   if [[ -f $state_dir/pending-tailscale ]]; then
+    refresh_signature=1
     user=
     uid=
     {
@@ -409,14 +382,21 @@ restore_pending() {
     user=$(trim "$user")
     uid=$(trim "$uid")
     log "pending-restore tailscale"
-    if [[ -n $user && -n $uid ]] && run_ok launchctl asuser "$uid" sudo -u "$user" "$tailscale_bin" up; then
+    # The tunnel may need the physical repair first; do not spend the whole
+    # run waiting for it to become Running on a broken underlying network.
+    if [[ -n $user && -n $uid ]] && run_ok timeout 2 launchctl asuser "$uid" sudo -u "$user" "$tailscale_bin" up; then
       rm -f -- "$state_dir/pending-tailscale"
       log "pending-restore tailscale done"
     else
       log "pending-restore tailscale failed"
     fi
   fi
+}
+
+restore_service() {
+  local mode value ok
   if [[ -f $state_dir/pending-service ]]; then
+    refresh_signature=1
     mode=
     value=
     {
@@ -452,6 +432,10 @@ write_pending_service() {
 }
 
 reconnect_tailscale() {
+  if [[ -f $state_dir/pending-tailscale ]]; then
+    log "repair skip tailscale pending-restore"
+    return 1
+  fi
   episode_get tailscale
   if [[ $field_value != Running ]]; then
     log "repair skip tailscale ${field_value:-unknown}"
@@ -464,6 +448,7 @@ reconnect_tailscale() {
   printf '%s\n%s\n' "$console_name" "$console_uid" > "$state_dir/pending-tailscale.new"
   mv -f "$state_dir/pending-tailscale.new" "$state_dir/pending-tailscale"
   log "repair tailscale"
+  refresh_signature=1
   run_ok launchctl asuser "$console_uid" sudo -u "$console_name" "$tailscale_bin" down || true
   if run_ok launchctl asuser "$console_uid" sudo -u "$console_name" "$tailscale_bin" up; then
     rm -f -- "$state_dir/pending-tailscale"
@@ -530,8 +515,8 @@ cycle_service() {
   esac
   services=
   if ! capture_out networksetup -listnetworkserviceorder; then
-    log "repair skip cycle no-single-match"
-    return 1
+    log "repair wait service-discovery"
+    return 2
   fi
   services=$CAP
   match_count=0
@@ -547,15 +532,23 @@ cycle_service() {
     log "repair skip cycle no-single-match"
     return 1
   fi
+  if ! capture_out networksetup -listallhardwareports; then
+    log "repair wait hardware-discovery"
+    return 2
+  fi
+  check_deadline
   log "repair cycle"
-  if capture_out networksetup -listallhardwareports && printf '%s\n' "$CAP" | service_is_wifi; then
+  refresh_signature=1
+  if printf '%s\n' "$CAP" | service_is_wifi; then
     write_pending_service airport "$cycle_iface"
+    save_step open 'done'
     run_ok networksetup -setairportpower "$cycle_iface" off || true
     if run_ok networksetup -setairportpower "$cycle_iface" on; then
       rm -f -- "$state_dir/pending-service"
     fi
   else
     write_pending_service service "$match_name"
+    save_step open 'done'
     run_ok networksetup -setnetworkserviceenabled "$match_name" off || true
     if run_ok networksetup -setnetworkserviceenabled "$match_name" on; then
       rm -f -- "$state_dir/pending-service"
@@ -578,40 +571,59 @@ stop_if_restored() {
 }
 
 attempt_repairs() {
-  log "repair dns-flush"
-  run_ok dscacheutil -flushcache || true
-  run_ok killall -HUP mDNSResponder || true
-  settle
-  run_checks
-  log_check
-  if stop_if_restored dns-flush; then
-    return 0
-  fi
-
-  if reconnect_tailscale; then
-    settle
-    run_checks
-    log_check
-    if stop_if_restored tailscale; then
-      return 0
+  local step attempted result
+  episode_get next_step
+  step=${field_value:-dns-flush}
+  while [[ $step != 'done' ]]; do
+    check_deadline
+    attempted=0
+    # Persist progress before a repair can use the remaining budget. Pending
+    # restore records separately guarantee that every off/down gets its on/up.
+    case $step in
+      dns-flush)
+        save_step open tailscale
+        log "repair dns-flush"
+        run_ok dscacheutil -flushcache || true
+        run_ok killall -HUP mDNSResponder || true
+        attempted=1
+        ;;
+      tailscale)
+        save_step open cycle
+        if reconnect_tailscale; then attempted=1; fi
+        ;;
+      cycle)
+        if cycle_service; then
+          attempted=1
+        else
+          result=$?
+          if [[ $result -eq 2 ]]; then return 0; fi
+          save_step open 'done'
+        fi
+        ;;
+      *) mark_exhausted; return 0 ;;
+    esac
+    if [[ $attempted -eq 1 ]]; then
+      settle
+      if [[ $step == cycle && ! -f $state_dir/pending-service ]]; then
+        restore_tailscale
+      fi
+      run_checks
+      log_check
+      if stop_if_restored "$step"; then
+        return 0
+      fi
     fi
-  fi
-
-  if cycle_service; then
-    settle
-    run_checks
-    log_check
-    if stop_if_restored cycle; then
-      return 0
-    fi
-  fi
-
+    episode_get next_step
+    step=$field_value
+  done
   mark_exhausted
 }
 
 finish() {
   in_finish=1
-  read_signature || true
+  if [[ $refresh_signature -eq 1 ]] && check_deadline; then
+    read_signature || true
+  fi
   if [[ -n $sig_hash ]]; then
     printf '%s\n' "$sig_hash" > "$state_dir/signature"
   fi
@@ -623,7 +635,11 @@ chmod 700 "$state_dir" || true
 deadline=$(( $(date +%s) + 25 ))
 trap finish EXIT
 
-restore_pending
+restore_service
+if [[ -f $state_dir/pending-service ]]; then
+  exit 0
+fi
+restore_tailscale
 read_signature
 cycle_iface=$iface
 if [[ -f $state_dir/signature ]]; then
