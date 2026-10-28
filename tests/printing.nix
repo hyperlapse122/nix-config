@@ -19,8 +19,9 @@
   - the hosts line of nsswitch.conf carries mdns4_minimal, before resolve
     when resolve is present.
   - on a configuration that runs systemd-resolved, resolved.conf turns its
-    mDNS responder off. At least one enabled configuration must run resolved,
-    so this branch never covers zero configurations.
+    mDNS responder off. When no enabled configuration runs resolved, each
+    production configuration is also checked re-evaluated with printing and
+    resolved on, so this branch never covers zero configurations.
   - the firewall start script accepts UDP 5353.
   - the cupsd driver tree carries the gutenprint and hplip filters.
 
@@ -39,10 +40,11 @@
     scheme and no IPv4 address, so a device URI or address rendered into the
     Nix store fails.
   On every other configuration, including bootstrap outputs, no
-  ensure-printers.service exists. At least one production configuration must
-  declare a queue. When every production configuration declares one, each is
-  re-evaluated with no queues, so the absence assertion still covers a
-  production configuration.
+  ensure-printers.service exists. When no production configuration declares a
+  queue, each is re-evaluated with printing on and one queue, and when every
+  production configuration declares one, each is re-evaluated with no queues,
+  so both the queue and the absence assertions cover a production
+  configuration.
 
   The builder collects every failure instead of exiting at the first, so one
   red build names every affected configuration.
@@ -55,7 +57,28 @@ let
   printing = configurations.withTrait "my.printing.enable" (config: config.my.printing.enable);
 
   declaresQueues = entry: !entry.bootstrap && entry.config.my.printing.queues != [ ];
-  queued = lib.filter declaresQueues configurations.entries;
+  # A production configuration re-evaluated with printing on and one printer
+  # queue, for a fleet in which no production configuration declares one. The
+  # label must exist in secrets/printers.yaml: sops-nix validates every
+  # secret it reads against the file's keys at build time.
+  withQueue =
+    entry:
+    configurations.entryOf "${entry.name} with a printer queue" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [
+          {
+            my.printing.enable = lib.mkForce true;
+            my.printing.queues = lib.mkForce [ "office" ];
+          }
+        ];
+      }
+    );
+
+  queued =
+    let
+      declared = lib.filter declaresQueues configurations.entries;
+    in
+    if declared != [ ] then declared else map withQueue configurations.production;
   # A production configuration re-evaluated with no printer queues, for a
   # fleet in which every production configuration declares one.
   withoutQueues =
@@ -93,6 +116,27 @@ let
 
   # The Proton VPN module, not the module under test, decides this.
   runsResolved = config: config.services.resolved.enable;
+
+  # A production configuration re-evaluated with printing and resolved on, for
+  # a fleet in which no configuration enabling printing runs resolved.
+  withResolved =
+    entry:
+    configurations.entryOf "${entry.name} with printing and resolved on" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [
+          {
+            my.printing.enable = lib.mkForce true;
+            services.resolved.enable = lib.mkForce true;
+          }
+        ];
+      }
+    );
+
+  enabled =
+    printing.enabled
+    ++ lib.optionals (!lib.any (entry: runsResolved entry.config) printing.enabled) (
+      map withResolved configurations.production
+    );
 
   withTree =
     entry: body:
@@ -330,13 +374,13 @@ let
       fi
     '');
 
-  resolvedGuard = lib.optionalString (!lib.any (entry: runsResolved entry.config) printing.enabled) ''
-    echo 'tests/printing.nix: no configuration enabling my.printing.enable runs resolved, so the mDNS conflict branch would cover none' >&2
+  resolvedGuard = lib.optionalString (!lib.any (entry: runsResolved entry.config) enabled) ''
+    echo 'tests/printing.nix: no configuration enabling my.printing.enable runs resolved, even one re-evaluated with resolved on, so the mDNS conflict branch would cover none' >&2
     exit 1
   '';
 
-  queueGuard = lib.optionalString (queued == [ ]) ''
-    echo 'tests/printing.nix: no production configuration declares my.printing.queues, so the queue branch would cover none' >&2
+  queueGuard = lib.optionalString (!lib.any declaresQueues queued) ''
+    echo 'tests/printing.nix: no production configuration declares my.printing.queues, even one re-evaluated with a queue, so the queue branch would cover none' >&2
     exit 1
   '';
 
@@ -375,7 +419,7 @@ pkgs.runCommand "printing-tests"
     ${unqueuedGuard}
     failed=0
 
-    ${lib.concatMapStringsSep "\n" assertEnabled printing.enabled}
+    ${lib.concatMapStringsSep "\n" assertEnabled enabled}
     ${lib.concatMapStringsSep "\n" assertDisabled printing.disabled}
     ${lib.concatMapStringsSep "\n" assertQueued queued}
     ${lib.concatMapStringsSep "\n" assertUnqueued unqueued}

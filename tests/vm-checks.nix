@@ -28,6 +28,7 @@
   tailscale-provisioning = import ./tailscale-provisioning.nix { inherit pkgs inputs; };
   podman-registry-auth = import ./podman-registry-auth.nix { inherit pkgs inputs; };
   podman-prune = import ./podman-prune.nix { inherit pkgs; };
+  gpg-agent-relay = import ./gpg-agent-relay.nix { inherit pkgs inputs; };
   non-nixos-vm = import ./non-nixos-vm.nix {
     inherit pkgs inputs;
     fixtures = linuxFixtures;

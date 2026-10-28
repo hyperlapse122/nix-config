@@ -23,7 +23,8 @@
     libayatana-appindicator3.so.1, which it dlopens for the tray, and its
     wrapper puts iw and awk on PATH.
 
-  Every bootstrap configuration must enable the trait, and every
+  Every bootstrap configuration must agree with its production output on the
+  trait, so installation media never lose WiFiman the host keeps, and every
   configuration with it off, or forced off when none leaves it off, must carry
   neither the GUI nor a unit that runs wifiman-desktopd.
 
@@ -240,10 +241,15 @@ let
       ''}
     '';
 
+  # Both outputs of a host come from one directory; the production output is
+  # the bootstrap output's name without its suffix.
   checkBootstrap =
     entry:
-    lib.optionalString (!entry.config.my.wifiman.enable) (
-      fail "${entry.name}: the bootstrap output leaves my.wifiman.enable off"
+    let
+      production = self.nixosConfigurations.${lib.removeSuffix "-bootstrap" entry.name}.config;
+    in
+    lib.optionalString (entry.config.my.wifiman.enable != production.my.wifiman.enable) (
+      fail "${entry.name}: the bootstrap output disagrees with its production output on my.wifiman.enable"
     );
 in
 pkgs.runCommand "wifiman-tests"

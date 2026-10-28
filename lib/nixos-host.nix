@@ -20,7 +20,6 @@ lib.nixosSystem {
     inputs.disko.nixosModules.disko
     inputs.home-manager.nixosModules.home-manager
     inputs.sops-nix.nixosModules.sops
-    inputs.lanzaboote.nixosModules.lanzaboote
     # The host directory precedes the profile so list-valued options keep the
     # merge order they had when each host imported the profile itself.
     ../hosts/${hostName}

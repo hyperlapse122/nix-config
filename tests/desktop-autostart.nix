@@ -23,7 +23,9 @@
   - Where services.tailscale.enable is true, the same for
     autostart/tailscale-systray.desktop running that configuration's
     services.tailscale.package with `systray`; where it is false, no entry
-    targets that file. One production configuration is re-evaluated with
+    targets that file. When no production configuration enables Tailscale,
+    each one is also checked re-evaluated with it forced on. One production
+    configuration is re-evaluated with Tailscale on and
     services.tailscale.package swapped for a distinct derivation, and its entry
     must follow the swap, because the default package equals pkgs.tailscale.
   - Where services.tailscale.enable is true, the materialized
@@ -82,26 +84,35 @@ let
     "telegram"
   ];
 
-  # A production configuration whose Tailscale package is a distinct
-  # derivation. Its store path is compared as text and never built.
-  swappedTailscale =
-    let
-      entry = lib.lists.findFirst (e: e.config.services.tailscale.enable) null configurations.production;
-    in
-    lib.mapNullable (
-      entry:
-      configurations.entryOf "${entry.name} with a swapped tailscale package" (
-        self.nixosConfigurations.${entry.name}.extendModules {
-          modules = [
-            {
-              services.tailscale.package = lib.mkForce (
-                pkgs.tailscale.overrideAttrs { env.DESKTOP_AUTOSTART_MARKER = "1"; }
-              );
-            }
-          ];
-        }
-      )
-    ) entry;
+  # Production configurations, plus each one re-evaluated with Tailscale
+  # forced on when none enables it, so the Tailscale assertions never cover
+  # zero production configurations.
+  tailscale = configurations.withTrait "my.tailscale.enable" (
+    config: config.services.tailscale.enable
+  );
+  production =
+    configurations.production
+    ++ lib.optionals (
+      !lib.any (e: e.config.services.tailscale.enable) configurations.production
+    ) tailscale.enabled;
+
+  # A production configuration with Tailscale on whose Tailscale package is a
+  # distinct derivation. Its store path is compared as text and never built.
+  swappedTailscale = lib.mapNullable (
+    entry:
+    configurations.entryOf "${entry.name} with a swapped tailscale package" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [
+          {
+            my.tailscale.enable = lib.mkForce true;
+            services.tailscale.package = lib.mkForce (
+              pkgs.tailscale.overrideAttrs { env.DESKTOP_AUTOSTART_MARKER = "1"; }
+            );
+          }
+        ];
+      }
+    )
+  ) (lib.lists.findFirst (_: true) null configurations.production);
 
   dropInName = app: "systemd/user/app-${app}@autostart.service.d/restart.conf";
   unitName = app: "systemd/user/app-${app}@autostart.service";
@@ -345,7 +356,7 @@ let
   # entry that hardcodes pkgs.tailscale no longer matches.
   assertSwappedTailscale =
     if swappedTailscale == null then
-      fail "no production configuration enables services.tailscale, so the tray's package source is unchecked"
+      fail "there is no production configuration, so the tray's package source is unchecked"
     else
       let
         entry = entryFor swappedTailscale.user "autostart/tailscale-systray.desktop";
@@ -374,7 +385,8 @@ pkgs.runCommand "desktop-autostart-tests" { nativeBuildInputs = [ pkgs.gnugrep ]
   failed=0
 
   ${lib.concatMapStringsSep "\n" assertCli configurations.entries}
-  ${lib.concatMapStringsSep "\n" assertProduction configurations.production}
+  ${tailscale.guard}
+  ${lib.concatMapStringsSep "\n" assertProduction production}
   ${lib.concatMapStringsSep "\n" assertBootstrap configurations.bootstraps}
   ${lib.concatMapStringsSep "\n" assertChatgptManualLaunch configurations.entries}
   ${assertSwappedTailscale}
