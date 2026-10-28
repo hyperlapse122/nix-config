@@ -20,6 +20,8 @@
   - the session and a login agent at load set CROSS_MODEL_PEERS to the
     peers the installed packages call for (tests/lib/cross-model-peers.nix),
     codex among them, and CROSS_MODEL_MAX_PEERS to 2;
+  - a login agent at load sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS
+    to 1 for GUI apps, both variants;
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -350,6 +352,11 @@ let
       case $peeragent in
         *'launchctlsetenvCROSS_MODEL_PEERS${peers}/bin/launchctlsetenvCROSS_MODEL_MAX_PEERS2'*'<key>RunAtLoad</key><true/>'*) ;;
         *) bad "no login agent sets CROSS_MODEL_PEERS to ${peers} and CROSS_MODEL_MAX_PEERS to 2 for GUI apps" ;;
+      esac
+      waiveragent=$(agent claude-rm-waiver)
+      case $waiveragent in
+        *'<string>/bin/launchctl</string><string>setenv</string><string>CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS</string><string>1</string></array>'*'<key>RunAtLoad</key><true/>'*) ;;
+        *) bad "no login agent sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS to 1 for GUI apps" ;;
       esac
       minikube=$(agent minikube)
       if [ "$production" = 1 ]; then
