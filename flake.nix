@@ -51,6 +51,38 @@
       url = "github:DaleSeo/korean-skills/v1.0.0";
       flake = false;
     };
+    # Published design and stack skills, installed unchanged. Each is pinned to
+    # a tag where upstream has one and to a commit otherwise; the registry in
+    # home/h82/agents/pinned-skills-pin.nix records the revision each must
+    # resolve to, and the pinned-skills check compares it with flake.lock.
+    anthropic-skills = {
+      url = "github:anthropics/skills/dbd4588f9e1033efb41dad4bef2f7947c8993d44";
+      flake = false;
+    };
+    vercel-agent-skills = {
+      url = "github:vercel-labs/agent-skills/agent-skills-1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62";
+      flake = false;
+    };
+    expo-skills = {
+      url = "github:expo/skills/8a0dc4fa57ae345923c357e1451cbcd8b6f2a7db";
+      flake = false;
+    };
+    playwright-best-practices-skill = {
+      url = "github:currents-dev/playwright-best-practices-skill/283d5cbc5d11aac1abda058b16ad22c317d54dc0";
+      flake = false;
+    };
+    ux-writing-skill = {
+      url = "github:content-designer/ux-writing-skill/v1.5.0";
+      flake = false;
+    };
+    kergoth-dotfiles = {
+      url = "github:kergoth/dotfiles/7f61f919d27e3016b64c37ce09b7006199ad7878";
+      flake = false;
+    };
+    impeccable = {
+      url = "github:pbakaus/impeccable/skill-v4.8.0";
+      flake = false;
+    };
   };
 
   outputs =
@@ -126,6 +158,7 @@
           "non-nixos-outputs"
           "omp-models-load"
           "omp-settings"
+          "pinned-skills"
           "podman-containers"
           "printing"
           "proton-vpn"
@@ -227,6 +260,7 @@
         grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         npm-release = agentTools.npmRelease;
         acpx = import ./packages/acpx.nix { inherit pkgs; };
+        tanstack-intent = import ./packages/tanstack-intent.nix { inherit pkgs; };
         antigravity-cli-release = agentTools.antigravityCliRelease;
         antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
         antigravity-acp-release = agentTools.antigravityAcpRelease;
@@ -546,6 +580,10 @@
             fixtures = linuxFixtures;
           };
           test-audit-skill = import ./tests/test-audit-skill.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          pinned-skills = import ./tests/pinned-skills.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };

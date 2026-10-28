@@ -436,6 +436,30 @@ let
       # The vendored test-audit skill shares those roots; its source is the
       # in-tree skill directory inside the flake's source tree.
       testAuditTargets = map (root: "${root}/test-audit") koreanRoots;
+      # The pinned design and stack skills and the local design-lenses and
+      # ux-flows skills share those roots too; tests/pinned-skills.nix checks
+      # their content on Linux.
+      pinnedTargets = lib.concatMap (
+        root:
+        map (name: "${root}/${name}") [
+          "frontend-design"
+          "web-design-guidelines"
+          "vercel-react-best-practices"
+          "vercel-composition-patterns"
+          "vercel-react-native-skills"
+          "expo-native-ui"
+          "expo-upgrade"
+          "expo-ui"
+          "expo-animation"
+          "expo-router"
+          "expo-data-fetching"
+          "playwright-best-practices"
+          "ux-writing"
+          "cli-design"
+          "design-lenses"
+          "ux-flows"
+        ]
+      ) koreanRoots;
       # Antigravity loads no plugins, so its root also holds every skill of
       # the pinned Compound Engineering input, named by that input.
       ceSkillsDir = "${self.inputs.compound-engineering-plugin}/skills";
@@ -867,9 +891,10 @@ let
           )
           "${entry.name}: ${target} must be exactly one enabled home.file whose source is the in-tree test-audit skill directory, got ${builtins.toJSON (map koreanSourceOf files)}"
       ) testAuditTargets)
-      (check (sort koreanUnderRoots == sort (koreanTargets ++ testAuditTargets ++ ceTargets))
+      (check
+        (sort koreanUnderRoots == sort (koreanTargets ++ testAuditTargets ++ pinnedTargets ++ ceTargets))
         "${entry.name}: the targets under the skill roots must be exactly ${
-          builtins.toJSON (koreanTargets ++ testAuditTargets ++ ceTargets)
+          builtins.toJSON (koreanTargets ++ testAuditTargets ++ pinnedTargets ++ ceTargets)
         }, got ${builtins.toJSON (sort koreanUnderRoots)}"
       )
       (check (lib.length (koreanFilesAt ".omp/agent/skills") == 1)

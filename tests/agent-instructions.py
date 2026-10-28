@@ -173,6 +173,7 @@ ANTIGRAVITY_T3_SENTENCES = [
     "Dispatch an `antigravity` entry by setting `target.model` only, with no effort option, and compare the returned model ID with the requested one before counting configuration as applied.",
     f"Inside T3 Code, run a Compound Engineering `antigravity` peer on the T3 `antigravity` instance by mapping the skill's bare model ID and effort to `<id>-<effort>`, such as `gemini-4-argon` with `high` to `gemini-4-argon-high`; this mapping holds for ACP `{ACP_VERSION}`.",
     "Antigravity ACP sessions, the T3 `antigravity` instance and Compound Engineering peers alike, load none of these instructions, not even a repository's `AGENTS.md`; put every rule a delegated Antigravity task needs in its prompt.",
+    "When work the UI and UX section covers goes to an Antigravity task, name in its prompt the skills that section loads and the check it requires before the work is done.",
 ]
 
 ROUTING_SENTENCES = [
@@ -425,9 +426,26 @@ HEADINGS = [
     "Markdown",
     "Korean text",
     "Tests",
+    "UI and UX",
     "Review findings",
     "Browser and device verification",
     "Cross-model reviews",
+]
+
+# The installed skills the UI and UX section must route work to; the expo-*
+# skills are named together.
+UI_SKILLS = [
+    "frontend-design",
+    "web-design-guidelines",
+    "design-lenses",
+    "ux-writing",
+    "ux-flows",
+    "cli-design",
+    "vercel-react-best-practices",
+    "vercel-composition-patterns",
+    "vercel-react-native-skills",
+    "expo-*",
+    "playwright-best-practices",
 ]
 
 POLICIES = {
@@ -468,6 +486,18 @@ POLICIES = {
         "Load the `test-audit` skill before writing, changing, reviewing, or deleting a test.",
         "When `ce-code-review` or `ce-simplify-code` meets a changed test, audit it with `test-audit` and report each problem as a finding of that review.",
         "Use the skill's `CAMPAIGN.md` only when the user asks to prune a whole subsystem's tests.",
+    ],
+    "UI and UX": [
+        "This section covers designing, building, changing, or reviewing anything a person sees or operates: screens and components, CLI flags, prompts, and output, error messages, notifications, and settings, even when the task never names UI or UX.",
+        "Before such work, load the `ux-flows`, `design-lenses`, and `ux-writing` skills, plus `frontend-design` and `web-design-guidelines` for a graphical interface and `cli-design` for a command-line one.",
+        "Before calling such work done, check the result against those skills and fix every problem you find.",
+        "When `ce-brainstorm` or `ce-plan` handles a requirement that defines a user flow, apply `ux-flows` to design the flow and its states before anything is built.",
+        "When `ce-code-review`, `ce-simplify-code`, or `ce-polish` meets a change this section covers, audit it with those skills and report each problem as a finding of that review, whoever wrote the change.",
+        "The project's own design system, components, tokens, and established patterns take precedence over every skill; apply a skill's own aesthetic direction only where the project sets none.",
+        "Follow `design-lenses`' exclusions: never run impeccable's commands or scripts, and never create `PRODUCT.md` or `DESIGN.md` for it.",
+        "In a project that depends on TanStack packages, find their skills with `intent list` and load the matching one with `intent load <package>#<skill>` before writing code against that package; never run `intent install` unless the user asks.",
+        "`test-audit` decides which tests exist and `ce-test-browser` owns browser verification; `playwright-best-practices` governs only how a Playwright test is written.",
+        "Your own chat replies and reports to the user are outside this section; `ce-noslop` covers them.",
     ],
     "Review findings": [
         "Assess every finding that a review, verification, or check step of any Compound Engineering skill reports about the work the workflow produces or changes, including testing gaps and residual risks.",
@@ -635,6 +665,15 @@ def content_problems(text, key, delivery):
         if REMOVED_NON_T3_SECTIONS.search(sec):
             problems.append("removed orchestration instructions")
             break
+
+    ui = sections.get("UI and UX", "")
+    if any(f"`{role}`" in ui for role in ROLES):
+        problems.append("the UI and UX section names a role")
+    problems += [
+        f"the UI and UX section names no `{skill}`"
+        for skill in UI_SKILLS
+        if f"`{skill}`" not in ui
+    ]
 
     routing = sections.get(ROUTING_HEADING, "")
     problems += sentence_problems(routing, ROUTING_SENTENCES, "routing")
