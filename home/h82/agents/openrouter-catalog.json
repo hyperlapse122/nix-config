@@ -2828,7 +2828,7 @@
           "text"
         ]
       },
-      "context_length": 1310720
+      "context_length": 327680
     },
     {
       "id": "meta-llama/llama-guard-4-12b",
@@ -3930,7 +3930,7 @@
           "text"
         ]
       },
-      "context_length": 262144,
+      "context_length": 1048576,
       "reasoning": {
         "mandatory": false,
         "default_enabled": true,
@@ -4148,20 +4148,6 @@
       "context_length": 8191
     },
     {
-      "id": "openai/gpt-4-turbo:batch",
-      "name": "OpenAI: GPT-4 Turbo (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 128000
-    },
-    {
       "id": "openai/gpt-4.1",
       "name": "OpenAI: GPT-4.1",
       "architecture": {
@@ -4192,53 +4178,8 @@
       "context_length": 1047576
     },
     {
-      "id": "openai/gpt-4.1-mini:batch",
-      "name": "OpenAI: GPT-4.1 Mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1047576
-    },
-    {
       "id": "openai/gpt-4.1-nano",
       "name": "OpenAI: GPT-4.1 Nano",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1047576
-    },
-    {
-      "id": "openai/gpt-4.1-nano:batch",
-      "name": "OpenAI: GPT-4.1 Nano (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1047576
-    },
-    {
-      "id": "openai/gpt-4.1:batch",
-      "name": "OpenAI: GPT-4.1 (batch)",
       "architecture": {
         "input_modalities": [
           "image",
@@ -4342,36 +4283,6 @@
       "context_length": 128000
     },
     {
-      "id": "openai/gpt-4o-mini:batch",
-      "name": "OpenAI: GPT-4o-mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 128000
-    },
-    {
-      "id": "openai/gpt-4o:batch",
-      "name": "OpenAI: GPT-4o (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 128000
-    },
-    {
       "id": "openai/gpt-5",
       "name": "OpenAI: GPT-5",
       "architecture": {
@@ -4460,31 +4371,6 @@
       }
     },
     {
-      "id": "openai/gpt-5-mini:batch",
-      "name": "OpenAI: GPT-5 Mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "high",
-          "medium",
-          "low",
-          "minimal"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
       "id": "openai/gpt-5-nano",
       "name": "OpenAI: GPT-5 Nano",
       "architecture": {
@@ -4537,28 +4423,6 @@
     {
       "id": "openai/gpt-5-pro",
       "name": "OpenAI: GPT-5 Pro",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "high"
-        ],
-        "default_effort": "high"
-      }
-    },
-    {
-      "id": "openai/gpt-5-pro:batch",
-      "name": "OpenAI: GPT-5 Pro (batch)",
       "architecture": {
         "input_modalities": [
           "image",
@@ -4675,32 +4539,6 @@
       }
     },
     {
-      "id": "openai/gpt-5.1:batch",
-      "name": "OpenAI: GPT-5.1 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
-          "high",
-          "medium",
-          "low",
-          "none"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
       "id": "openai/gpt-5.2",
       "name": "OpenAI: GPT-5.2",
       "architecture": {
@@ -4725,21 +4563,6 @@
         ],
         "default_effort": "medium"
       }
-    },
-    {
-      "id": "openai/gpt-5.2-chat",
-      "name": "OpenAI: GPT-5.2 Chat",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 128000
     },
     {
       "id": "openai/gpt-5.2-codex",
@@ -4785,56 +4608,6 @@
           "xhigh",
           "high",
           "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.2-pro:batch",
-      "name": "OpenAI: GPT-5.2 Pro (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.2:batch",
-      "name": "OpenAI: GPT-5.2 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": false,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium",
-          "low",
-          "none"
         ],
         "default_effort": "medium"
       }
@@ -4948,62 +4721,8 @@
       }
     },
     {
-      "id": "openai/gpt-5.4-mini:batch",
-      "name": "OpenAI: GPT-5.4 Mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium",
-          "low",
-          "none"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
       "id": "openai/gpt-5.4-nano",
       "name": "OpenAI: GPT-5.4 Nano",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium",
-          "low",
-          "none"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.4-nano:batch",
-      "name": "OpenAI: GPT-5.4 Nano (batch)",
       "architecture": {
         "input_modalities": [
           "file",
@@ -5048,57 +4767,6 @@
           "xhigh",
           "high",
           "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.4-pro:batch",
-      "name": "OpenAI: GPT-5.4 Pro (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1050000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.4:batch",
-      "name": "OpenAI: GPT-5.4 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1050000,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium",
-          "low",
-          "none"
         ],
         "default_effort": "medium"
       }
@@ -5150,57 +4818,6 @@
           "xhigh",
           "high",
           "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.5-pro:batch",
-      "name": "OpenAI: GPT-5.5 Pro (batch)",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1050000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5.5:batch",
-      "name": "OpenAI: GPT-5.5 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "file",
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 1050000,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": true,
-        "supported_efforts": [
-          "xhigh",
-          "high",
-          "medium",
-          "low",
-          "none"
         ],
         "default_effort": "medium"
       }
@@ -5537,31 +5154,6 @@
           "medium",
           "low",
           "none"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "openai/gpt-5:batch",
-      "name": "OpenAI: GPT-5 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "image",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 400000,
-      "reasoning": {
-        "mandatory": true,
-        "supported_efforts": [
-          "high",
-          "medium",
-          "low",
-          "minimal"
         ],
         "default_effort": "medium"
       }
@@ -6284,23 +5876,6 @@
       }
     },
     {
-      "id": "openai/o3-mini:batch",
-      "name": "OpenAI: o3 Mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 200000,
-      "reasoning": {
-        "mandatory": true
-      }
-    },
-    {
       "id": "openai/o3-pro",
       "name": "OpenAI: o3 Pro",
       "architecture": {
@@ -6308,42 +5883,6 @@
           "text",
           "file",
           "image"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 200000,
-      "reasoning": {
-        "mandatory": true
-      }
-    },
-    {
-      "id": "openai/o3:batch",
-      "name": "OpenAI: o3 (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 200000,
-      "reasoning": {
-        "mandatory": true
-      }
-    },
-    {
-      "id": "openai/o4-mini:batch",
-      "name": "OpenAI: o4 Mini (batch)",
-      "architecture": {
-        "input_modalities": [
-          "image",
-          "text",
-          "file"
         ],
         "output_modalities": [
           "text"
@@ -6442,6 +5981,34 @@
         ]
       },
       "context_length": 2000000
+    },
+    {
+      "id": "particle-ai/particle-1",
+      "name": "Particle AI: Particle-1",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "context_length": 1048576,
+      "reasoning": {
+        "mandatory": false,
+        "default_enabled": true,
+        "supported_efforts": [
+          "max",
+          "xhigh",
+          "high",
+          "medium",
+          "low",
+          "minimal",
+          "none"
+        ],
+        "default_effort": "high"
+      }
     },
     {
       "id": "perceptron/perceptron-mk1",
