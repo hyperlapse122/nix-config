@@ -3,6 +3,8 @@
   files and the Antigravity rules directory.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
+  agent-instructions.py also holds docs/agent-routing.md's tables to the
+  template's, and the T3 Code ACP pin to the version the T3 table records.
   Linux callers supply self/fixtures; native Darwin callers supply explicit
   entries, each { name, user }, from production/bootstrap and fixture hosts.
 */
@@ -120,7 +122,7 @@ pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 
     (import ../packages/agent-tools.nix { inherit pkgs; }).agentInstructions
   }/bin/agent-instructions ${
     (import ../packages/text-template.nix { inherit pkgs; })
-  }/bin/text-template; then
+  }/bin/text-template ${../docs/agent-routing.md} ${../packages/t3code-release.json}; then
     failed=1
   fi
   if [ "$failed" != "0" ]; then
