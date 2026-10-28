@@ -32,6 +32,19 @@
       description = "Public SSH metadata shared by the desktop provisioner and user agent.";
     };
 
+    locale = {
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "C.UTF-8";
+        description = "OS Locale used when no user formatting preference is present.";
+      };
+      language = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Persistent OS message-language fallback, derived by the host assembly.";
+      };
+    };
+
     user = {
       name = lib.mkOption {
         type = lib.types.str;

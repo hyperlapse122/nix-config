@@ -18,6 +18,20 @@
 | `architect` | Architecture and plan consultation |
 | `peer` | CE-required independent cross-model review |
 
+## Conversation language
+
+The shared instructions include the OS Locale and preferred language, captured when the user environment is applied.
+NixOS reads the effective Plasma translation preference, while macOS reads the first entry in the user's preferred-language list.
+Region does not determine the conversation language.
+An explicit language request takes precedence, and repository or task rules still determine the language of saved artifacts.
+
+The installed prompts are static between applies; agents do not query OS language settings at startup.
+On NixOS, use `nr switch` or `nr test` to refresh after a preference change even when the Home Manager generation is unchanged.
+Direct `nixos-rebuild` can skip Home Manager activation in that case.
+On macOS, each apply runs the refresh through Home Manager activation.
+Build-only and boot-only operations leave the currently installed prompts unchanged.
+Non-NixOS Linux retains its configured Home Manager language preference without OS discovery.
+
 ## When delegation starts
 
 The common instructions call for early delegation when substantial research or triage contains independently answerable questions. Examples include comparing sources, reconciling datasets, and investigating distinct plausible causes. Agents assign bounded investigations with evidence and uncertainty in the return, then the root reconciles the results and gives the final answer.

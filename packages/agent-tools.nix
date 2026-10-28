@@ -48,6 +48,14 @@ let
   # flake check runs the source copy of the tests under this same interpreter.
   agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
   agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
+  agentInstructions =
+    (pythonHelper "agent-instructions" ../scripts/agent-instructions).overrideAttrs
+      {
+        doInstallCheck = true;
+        installCheckPhase = ''
+          $out/bin/agent-instructions --help >/dev/null
+        '';
+      };
 
   ompConfigPython = pkgs.python3.withPackages (ps: [
     ps.pyyaml
@@ -169,6 +177,7 @@ in
 {
   inherit
     agentSettings
+    agentInstructions
     agentSettingsPython
     ompConfigReconcile
     ompConfigPython

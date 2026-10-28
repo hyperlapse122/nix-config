@@ -140,6 +140,12 @@ sudo -v
 "${cmd[@]}"
 after=$(readlink -f "$diff_target")
 
+# Older generations have no refresh helper. Read it from the newly applied
+# user environment, including when Home Manager's generation did not change.
+if [[ $subcommand != boot && -x $HOME/.local/share/nix-config/refresh-agent-instructions ]]; then
+  "$HOME/.local/share/nix-config/refresh-agent-instructions"
+fi
+
 if [[ $before == "$after" ]]; then
   printf 'nr: %s produced no change to %s\n' "$subcommand" "$diff_target"
 else

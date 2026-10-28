@@ -21,9 +21,6 @@ in
       ${kwrite} --file powerdevilrc --group LowBattery --group Display --key DimDisplayWhenIdle --type bool true
       ${kwrite} --file powerdevilrc --group LowBattery --group Display --key DimDisplayIdleTimeoutSec -- 60
 
-      # UI translations and locale fallback
-      ${kwrite} --file plasma-localerc --group Translations --key LANGUAGE ko:en_US
-      ${kwrite} --file kdeglobals --group Locale --key Language ko:en_US
     fi
   '';
 }

@@ -29,7 +29,6 @@ let
   # that a project-level .claude/settings.json still outranks this tier.
   settingsTier = {
     model = "opus[1m]";
-    language = "korean";
     # `auto` follows the background the terminal reports, so the palette
     # tracks whichever theme Ghostty is running rather than pinning one here.
     theme = "auto";
@@ -83,6 +82,7 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
+    "language"
   ];
 
   renderDeclared =

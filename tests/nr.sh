@@ -10,6 +10,8 @@ script=$(cd -- "$(dirname -- "$script")" && pwd -P)/$(basename -- "$script")
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/nr-tests.XXXXXX")
 trap 'rm -rf -- "$scratch"' EXIT
+export HOME=$scratch/home
+mkdir -p "$HOME"
 
 fail() { printf 'nr: FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'nr: ok - %s\n' "$*"; }
@@ -188,13 +190,19 @@ export NR_NIXOS_REBUILD=$stub_dir/rebuild-stub
 reset_generations() {
   ln -sfn "$scratch/genA" "$scratch/current"
   ln -sfn "$scratch/genA" "$scratch/profile"
-  rm -f "$scratch/nvd.log"
+  rm -f "$scratch/nvd.log" "$scratch/refresh.log"
 }
+
+refresh=$HOME/.local/share/nix-config/refresh-agent-instructions
+mkdir -p "$(dirname "$refresh")"
+printf '#!%s\nprintf "refreshed\\n" >>"%s/refresh.log"\n' "$(command -v bash)" "$scratch" >"$refresh"
+chmod +x "$refresh"
 
 reset_generations
 NR_STUB_MOVES= out=$(PATH=$stub_dir:$PATH "$rendered_run" switch --flake-dir "$repo" --host testhost 2>&1)
 [[ $out == *"produced no change"* ]] || fail "unchanged generation not reported: $out"
 [[ ! -f $scratch/nvd.log ]] || fail 'nvd was called even though the generation did not change'
+[[ $(cat "$scratch/refresh.log") == refreshed ]] || fail 'unchanged switch did not refresh instructions once'
 pass 'an unchanged generation reports no change and does not call nvd'
 
 # switch samples /run/current-system, so moving that link must be what it sees.
@@ -205,6 +213,11 @@ NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \
 grep -qxF "nvd-called diff $scratch/genA $scratch/genB" "$scratch/nvd.log" ||
   fail "switch diffed the wrong pair: $(cat "$scratch/nvd.log")"
 pass 'switch diffs the before and after of /run/current-system, in that order'
+[[ $(cat "$scratch/refresh.log") == refreshed ]] || fail 'changed switch did not refresh instructions once'
+
+reset_generations
+PATH=$stub_dir:$PATH "$rendered_run" test --flake-dir "$repo" --host testhost >/dev/null 2>&1
+[[ $(cat "$scratch/refresh.log") == refreshed ]] || fail 'test apply did not refresh instructions'
 
 # boot does not activate, so only the system profile moves. Start from links
 # that already diverge -- the state a previous boot leaves behind -- because
@@ -212,13 +225,14 @@ pass 'switch diffs the before and after of /run/current-system, in that order'
 # yields the same pair as one read from the profile, and the assertion could
 # not tell a correct implementation from the bug it guards.
 mkdir -p "$scratch/genC"
-rm -f "$scratch/nvd.log"
+rm -f "$scratch/nvd.log" "$scratch/refresh.log"
 ln -sfn "$scratch/genA" "$scratch/current"
 ln -sfn "$scratch/genB" "$scratch/profile"
 printf '#!%s\nln -sfn "%s/genC" "%s/profile"\nexit 0\n' \
   "$(command -v bash)" "$scratch" "$scratch" >"$stub_dir/rebuild-stub"
 chmod +x "$stub_dir/rebuild-stub"
 PATH=$stub_dir:$PATH "$rendered_run" boot --flake-dir "$repo" --host testhost >/dev/null 2>&1
+[[ ! -e $scratch/refresh.log ]] || fail 'boot-only rebuild refreshed running instructions'
 [[ -f $scratch/nvd.log ]] || fail 'nvd was not called after boot changed the system profile'
 grep -qxF "nvd-called diff $scratch/genB $scratch/genC" "$scratch/nvd.log" ||
   fail "boot did not diff the profile's own before and after: $(cat "$scratch/nvd.log")"
@@ -241,6 +255,14 @@ if ! NR_STUB_MOVES=$scratch/current PATH=$stub_dir:$PATH \
   fail 'a failing nvd made a successful rebuild look failed'
 fi
 pass 'a failing nvd is reported but does not fail the run'
+
+reset_generations
+printf '#!%s\nexit 17\n' "$(command -v bash)" >"$stub_dir/rebuild-stub"
+expect_failure env PATH="$stub_dir:$PATH" "$rendered_run" switch --flake-dir "$repo" --host testhost
+[[ ! -e $scratch/refresh.log ]] || fail 'failed rebuild refreshed instructions'
+
+NR_DRY_RUN=1 PATH=$stub_dir:$PATH "$rendered_run" switch --flake-dir "$repo" --host testhost >/dev/null 2>&1
+[[ ! -e $scratch/refresh.log ]] || fail 'dry run refreshed instructions'
 
 unset NR_NIXOS_REBUILD NR_CURRENT NR_PROFILE
 export NR_DRY_RUN=1

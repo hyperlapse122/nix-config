@@ -1,7 +1,11 @@
 """Check delivered prompt bytes and independent policy boundaries across variants."""
 
 import json
+import os
+import plistlib
 import re
+import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -378,6 +382,7 @@ OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, in
 - Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`."""
 
 HEADINGS = [
+    "Language and Locale",
     "GPG and encryption",
     "File I/O",
     "Git",
@@ -391,6 +396,11 @@ HEADINGS = [
 ]
 
 POLICIES = {
+    "Language and Locale": [
+        "Use the rendered preferred language as the default for conversation with the user; choose language from the language preference, never from the region.",
+        "An explicit user request for another conversation language overrides this default.",
+        "Follow repository and task rules for the language of saved artifacts independently of the conversation language.",
+    ],
     "GPG and encryption": [
         "Stop and report only when the PIN is rejected, the prompt times out, or the card is missing.",
         "Never print decrypted values, pass them as arguments, or open decrypted files with the file tools; pipe decrypted output straight into the command that consumes it.",
@@ -470,11 +480,16 @@ TEMPLATE_ACTION = re.compile(r"{{(- )?(.*?)( -)?}}", re.DOTALL)
 FLAGS = {f"if .{delivery}": delivery for delivery in DELIVERIES}
 
 
-def render(template, key, delivery):
+def render(template, key, delivery, locale=None):
     """Independent renderer for the template subset the instructions use."""
     if delivery not in DELIVERIES:
         raise ValueError(f"unknown delivery: {delivery}")
     output, position, condition, trim = [], 0, None, False
+    values = {
+        ".user.gpgKey": key,
+        ".locale.name": (locale or {}).get("name", "ko_KR.UTF-8"),
+        ".locale.language": (locale or {}).get("language", "ko-KR"),
+    }
     for match in TEMPLATE_ACTION.finditer(template):
         text = template[position:match.start()]
         if trim:
@@ -493,9 +508,9 @@ def render(template, key, delivery):
             if condition is None:
                 raise ValueError("unopened end")
             condition = None
-        elif action == ACTION[3:-3]:
+        elif action in values:
             if active:
-                output.append(key)
+                output.append(values[action])
         else:
             raise ValueError(f"unknown template action: {action}")
         trim, position = bool(match[3]), match.end()
@@ -828,11 +843,118 @@ def check_repository_docs(agents, concepts):
     return problems
 
 
+def check_activation(template, entry):
+    """Exercise the delivered activation, including a second apply of one generation."""
+    assert entry["activation"], "missing instruction activation"
+    with tempfile.TemporaryDirectory() as temporary:
+        home = Path(temporary)
+        config = home / ".config"
+        config.mkdir()
+        stubs = home / "bin"
+        stubs.mkdir()
+        defaults = stubs / "defaults"
+        defaults.write_text(
+            f"#!{sys.executable}\nimport os, pathlib, sys\n"
+            "assert sys.argv[1:] == ['export', 'NSGlobalDomain', '-']\n"
+            "sys.stdout.buffer.write((pathlib.Path(os.environ['HOME']) / 'preferences.plist').read_bytes())\n"
+        )
+        defaults.chmod(0o755)
+        env = os.environ | {
+            "HOME": str(home), "XDG_CONFIG_HOME": str(config),
+            "XDG_CONFIG_DIRS": str(home / "xdg-defaults"),
+            "PATH": str(stubs) + os.pathsep + os.environ["PATH"],
+            "LANG": "C", "LANGUAGE": "fr", "LC_ALL": "C",
+        }
+        env.pop("DRY_RUN", None)
+        raw_locale = "ko_KR" if entry["kind"] == "darwin" else "ko_KR.UTF-8"
+
+        def preferences(language):
+            (config / "plasma-localerc").write_text(
+                f"[Translations]\nLANGUAGE={language}\n[Formats]\nLANG={raw_locale}\n"
+            )
+            (home / "preferences.plist").write_bytes(plistlib.dumps({
+                "AppleLocale": raw_locale, "AppleLanguages": [language, "ko-KR"],
+            }))
+
+        def apply(environment=env):
+            subprocess.run(["bash", "-eu", "-c", entry["activation"]], env=environment, check=True)
+
+        def verify(language, locale=raw_locale):
+            for item in entry["paths"]:
+                path = home / item["target"]
+                expected = render(template, entry["key"], item["delivery"], {
+                    "name": locale, "language": language,
+                })
+                assert not path.is_symlink(), f"instruction still a symlink: {path}"
+                assert not delivery_problems(path, expected, entry["key"], item["delivery"]), path
+
+        preferences("en-US")
+        sentinel = home / "old-generation-instructions"
+        sentinel.write_text("old generation")
+        sentinel.chmod(0o444)
+        for item in entry["paths"]:
+            path = home / item["target"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.symlink_to(sentinel)
+        if entry["kdeActivation"]:
+            subprocess.run(["bash", "-eu", "-c", entry["kdeActivation"]], env=env, check=True)
+        apply()
+        verify("en-US")
+        assert sentinel.read_text() == "old generation", "wrote through old generation link"
+        preferences("ko_KR.UTF-8")
+        verify("en-US")  # Source changed, but no apply has happened.
+        apply(env | {"DRY_RUN": "1"})
+        verify("en-US")
+        apply()
+        verify("ko-KR")
+        if entry["kind"] == "darwin":
+            for bad in (b"not a property list", plistlib.dumps([]), plistlib.dumps({})):
+                (home / "preferences.plist").write_bytes(bad)
+                apply()
+                verify("en", "unavailable")
+        if entry.get("failureTemplate"):
+            snapshot = {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+            preferences("en-US")
+            # The second delivery fails after the first rendered successfully.
+            Path(entry["failureTemplate"]).write_text(template + "\n{{ if .codex }}{{ .missing }}{{ end }}\n")
+            result = subprocess.run(
+                ["bash", "-eu", "-c", entry["activation"]], env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            assert result.returncode != 0, "renderer failure was swallowed"
+            assert snapshot == {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+
+
+def check_darwin_helper(template, helper, renderer, template_path):
+    """Cross-platform native-preference parsing, with a real packaged renderer."""
+    with tempfile.TemporaryDirectory() as temporary:
+        template_copy = Path(temporary) / "instructions.tmpl"
+        template_copy.write_text(template)
+        context = Path(temporary) / "context.json"
+        context.write_text(json.dumps({
+            "kind": "darwin", "user": {"gpgKey": FAKE_KEY},
+            "locale": {"name": "C.UTF-8", "language": "fr"},
+        }))
+        command = shlex.join([
+            helper, "--context", str(context), "--template", str(template_copy), "--renderer", renderer,
+        ]) + ' --home "$HOME"'
+        entry = {
+            "kind": "darwin", "key": FAKE_KEY, "activation": command, "kdeActivation": "",
+            "failureTemplate": str(template_copy),
+            "paths": [{"target": target, "delivery": delivery} for delivery, target in (
+                ("claude", ".claude/CLAUDE.md"), ("codex", ".codex/AGENTS.md"),
+                ("omp", ".omp/agent/AGENTS.md"),
+            )],
+        }
+        check_activation(template, entry)
+
+
 def main():
     template = Path(sys.argv[1]).read_bytes().decode("utf-8")
     self_test(template)
     if len(sys.argv) == 2:
         return
+    check_darwin_helper(template, sys.argv[5], sys.argv[6], sys.argv[1])
     entries = json.loads(Path(sys.argv[2]).read_text())
     problems = check_repository_docs(Path(sys.argv[3]).read_text(), Path(sys.argv[4]).read_text())
     for problem in problems:
@@ -841,11 +963,13 @@ def main():
     expected_renderings = {}
     for entry in entries:
         key = entry["key"]
-        for item in entry["paths"]:
+        if entry["kind"] != "linux":
+            check_activation(template, entry)
+        for item in entry["paths"] if entry["kind"] == "linux" else []:
             path, delivery = item["path"], item["delivery"]
-            variant = (key, delivery)
+            variant = (key, delivery, entry["locale"]["name"], entry["locale"]["language"])
             if variant not in expected_renderings:
-                expected_renderings[variant] = render(template, key, delivery)
+                expected_renderings[variant] = render(template, key, delivery, entry["locale"])
             expected = expected_renderings[variant]
             for problem in delivery_problems(Path(path), expected, key, delivery):
                 print(f"{entry['name']} {path}: {problem}", file=sys.stderr)

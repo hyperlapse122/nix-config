@@ -49,7 +49,12 @@ let
     let
       inherit (entry) name user;
     in
-    lib.concatMapStrings (target: homeFile name user target 1) deliveryPaths
+    lib.concatMapStrings (
+      target: homeFile name user target (if user.my.kind == "linux" then 1 else 0)
+    ) deliveryPaths
+    + homeFile name user ".local/share/nix-config/refresh-agent-instructions" (
+      if user.my.kind == "linux" then 0 else 1
+    )
     + lib.concatMapStrings (target: homeFile name user target 0) retiredPaths
     + lib.optionalString ((user.my.user.gpgKey or null) == null) ''
       echo ${esc "my.user.gpgKey is unset on ${name}"} >&2
@@ -67,7 +72,15 @@ let
       map (entry: {
         inherit (entry) name;
         key = entry.user.my.user.gpgKey;
+        kind = entry.user.my.kind;
+        activation = entry.user.home.activation.agentInstructions.data or "";
+        kdeActivation = entry.user.home.activation.kdeSession.data or "";
+        locale = {
+          name = entry.user.my.locale.name;
+          language = "ko-KR";
+        };
         paths = map (target: {
+          inherit target;
           path = "${entry.user.home-files}/${target}";
           delivery =
             if target == ".codex/AGENTS.md" then
@@ -100,7 +113,11 @@ pkgs.runCommand "agent-instructions-tests" { nativeBuildInputs = [ pkgs.python3 
       failed=1
     ''
   }
-  if ! python3 ${./agent-instructions.py} ${../home/h82/agents/instructions/instructions.md.tmpl} ${manifest} ${../AGENTS.md} ${../CONCEPTS.md}; then
+  if ! python3 ${./agent-instructions.py} ${../home/h82/agents/instructions/instructions.md.tmpl} ${manifest} ${../AGENTS.md} ${../CONCEPTS.md} ${
+    (import ../packages/agent-tools.nix { inherit pkgs; }).agentInstructions
+  }/bin/agent-instructions ${
+    (import ../packages/text-template.nix { inherit pkgs; })
+  }/bin/text-template; then
     failed=1
   fi
   if [ "$failed" != "0" ]; then
