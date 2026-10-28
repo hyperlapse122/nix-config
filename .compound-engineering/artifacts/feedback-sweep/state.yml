@@ -1,7 +1,7 @@
 schema_version: 1
 sources:
   gh-issues:
-    cursor: "2026-10-27T04:38:05Z"
+    cursor: "2026-10-28T08:59:49Z"
 items:
   "gh-issues:hyperlapse122/nix-config#247":
     source: "gh-issues"
@@ -715,13 +715,17 @@ items:
     source: "gh-issues"
     status: "in_plan"
     sensitive: false
-    body: "Disable the OMP ask tool and automatic todo reminders only in T3 Code; retain the todo tool and standalone behavior."
+    title: "fix(t3code): disable OMP ask tool and todo reminders in T3 Code"
+    body: "Disable ask and automatic todo reminders only in T3 OMP while retaining todo and standalone interaction; merged repository proof still needs fresh deployed root and delegated-session acceptance."
+    ack_actor: "hyperlapse122"
     author_class: "teammate"
     existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#363"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/363"
+    related_merged_prs: ["#385"]
+    remaining_evidence: "Merged repository changes are partial; deployed incident or session acceptance remains pending."
     requirement_id: "R45"
     updatedAt: "2026-10-27T09:36:45Z"
   "gh-issues:hyperlapse122/nix-config#368":
@@ -776,7 +780,9 @@ items:
     source: "gh-issues"
     status: "in_plan"
     sensitive: false
-    body: "Track and adopt an upstream Codex capacity-recovery fix, then validate ordinary sessions and subagents separately in T3 and CLI without duplicated operations."
+    title: "Track upstream Codex capacity-error retry recovery"
+    body: "Track upstream Codex capacity recovery for ordinary sessions and native subagents. The owner reports partial T3 adapter retries and diagnostic-only hooks; released recovery and live acceptance remain unverified."
+    ack_actor: "hyperlapse122"
     author_class: "teammate"
     existing_ack: true
     existing_closeout: false
@@ -784,7 +790,8 @@ items:
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/373"
     requirement_id: "R46"
-    updatedAt: "2026-10-27T03:43:34Z"
+    research_origin: "https://github.com/hyperlapse122/nix-config/issues/373#issuecomment-6464502618"
+    updatedAt: "2026-10-28T08:40:19Z"
   "gh-issues:hyperlapse122/nix-config#376":
     source: "gh-issues"
     status: "in_plan"
@@ -826,12 +833,16 @@ items:
     updatedAt: "2026-10-27T03:43:42Z"
   "gh-issues:hyperlapse122/nix-config#379":
     source: "gh-issues"
-    status: "in_plan"
+    status: "closed"
     sensitive: false
     body: "Define usage-pace routing across multiple and rolling quota windows, including its relationship to chain order and the existing remaining-allowance floor."
+    fix_ref: "#399"
+    verified_merge_sha: "1dfa02194bc5882a129c309d184568ab66805b2b"
+    verified_at: "2026-10-28T10:40:23.855951+00:00"
     author_class: "teammate"
+    closeout_decision: "PR #399 explicitly closes #379 and is merged into the default branch main; configured close-out label read back."
     existing_ack: true
-    existing_closeout: false
+    existing_closeout: true
     id: "hyperlapse122/nix-config#379"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/379"
@@ -854,27 +865,126 @@ items:
     source: "gh-issues"
     status: "in_plan"
     sensitive: false
-    body: "Diagnose why the first GPG signature after idle times out while a retry succeeds; establish the cause before selecting a fix."
+    title: "Retry-only GPG signing: first signature times out after idle"
+    body: "Resolve first-signature timeouts after idle on NixOS using incident evidence. PRs #385 and #391 add diagnostics and preventive behavior, but do not confirm the cause or original-incident recovery."
+    ack_actor: "hyperlapse122"
     author_class: "teammate"
     existing_ack: true
     existing_closeout: false
     id: "hyperlapse122/nix-config#383"
     media: []
     origin: "https://github.com/hyperlapse122/nix-config/issues/383"
+    related_merged_prs: ["#385", "#391"]
+    remaining_evidence: "Merged repository changes are partial; deployed incident or session acceptance remains pending."
     requirement_id: "R52"
     updatedAt: "2026-10-27T09:36:52Z"
+  "gh-issues:hyperlapse122/nix-config#386":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "GPG signing on macOS fails with No secret key until gpg --card-status"
+    body: "Resolve macOS Git signing that reports No secret key until card discovery is refreshed. PR #391 adds preventive bounded discovery; the original idle incident still needs native verification."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#386"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/386"
+    related_merged_prs: ["#391"]
+    remaining_evidence: "Merged repository changes are partial; deployed incident or session acceptance remains pending."
+    requirement_id: "R53"
+    updatedAt: "2026-10-27T14:05:10Z"
+  "gh-issues:hyperlapse122/nix-config#392":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "Diagnose why a network switch takes the work MacBook offline"
+    body: "Diagnose whole-Mac connectivity loss after network switches using recovery logs and separate DNS, direct-IP, Tailscale, and network-extension evidence; no responsible layer is confirmed."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#392"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/392"
+    requirement_id: "R54"
+    updatedAt: "2026-10-28T02:30:16Z"
+  "gh-issues:hyperlapse122/nix-config#397":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "Install UI and UX design skills so no role or model produces AI slop"
+    body: "Provide shared UI and UX guidance across active harnesses and all roles, including planning and review. Select skills and their maintenance approach before implementing provisioning and consumer checks."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    decision: "User deferred product choices to the rolling plan on 2026-10-28."
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#397"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/397"
+    requirement_id: "R55"
+    updatedAt: "2026-10-28T06:00:36Z"
+  "gh-issues:hyperlapse122/nix-config#398":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "Allow shell waits for pipelines outside a PR or MR in T3 Code"
+    body: "Clarify T3 waiting rules for workflow or pipeline runs outside pull and merge requests, retaining request watches and delegated-task restrictions; execution mode and wait duration need a decision."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    decision: "User deferred product choices to the rolling plan on 2026-10-28."
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#398"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/398"
+    requirement_id: "R56"
+    updatedAt: "2026-10-28T06:30:02Z"
+  "gh-issues:hyperlapse122/nix-config#400":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "Disable built-in Codex app and connector integrations"
+    body: "Disable built-in Codex app connectors while retaining ordinary MCP, skills, plugins, and credentials. PR #404 merged repository and standalone proof; fresh changed-package T3 acceptance remains pending."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#400"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/400"
+    related_merged_prs: ["#404"]
+    remaining_evidence: "Merged repository changes are partial; deployed incident or session acceptance remains pending."
+    requirement_id: "R57"
+    updatedAt: "2026-10-28T08:49:06Z"
+  "gh-issues:hyperlapse122/nix-config#402":
+    source: "gh-issues"
+    status: "in_plan"
+    sensitive: false
+    title: "Tighten delegated research briefs so scouts finish or fail loudly"
+    body: "Tighten delegated research with bounded lookup questions, appropriate interpretation roles, complete reads, explicit tool failures, and root checks of negative results; defer optional effort changes until evidence supports them."
+    ack_actor: "hyperlapse122"
+    author_class: "teammate"
+    existing_ack: true
+    existing_closeout: false
+    id: "hyperlapse122/nix-config#402"
+    media: []
+    origin: "https://github.com/hyperlapse122/nix-config/issues/402"
+    requirement_id: "R58"
+    updatedAt: "2026-10-28T08:59:49Z"
 last_run:
-  timestamp: "2026-10-27T09:39:20Z"
+  timestamp: "2026-10-28T10:43:19.643518+00:00"
   outcome: "completed"
-  writer: "sweep-codex-t3-99121b7b-20261027"
+  writer: "sweep-codex-MS-7D91-20261028-ed54c585"
   counts:
     gh-issues:
+      ack_added: 6
       ack_deferred: 0
-      acknowledged: 2
-      closed: 9
-      ingested: 8
-      manual_stuck: 0
-      open: 9
+      closed: 1
+      existing_ack: 3
+      fetched: 9
+      new: 6
+      open: 14
       recordings_analyzed: 0
-      recovered_acknowledgments: 6
-      superseded: 1
