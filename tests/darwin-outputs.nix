@@ -20,6 +20,12 @@
   - the session and a login agent at load set CROSS_MODEL_PEERS to the
     peers the installed packages call for (tests/lib/cross-model-peers.nix),
     codex among them, and CROSS_MODEL_MAX_PEERS to 2;
+  - a login agent at load sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS
+    to 1 for GUI apps, both variants;
+  - the retireOrca activation, run in scratch homes, removes Orca's agent
+    hooks, status line, and state directories, ~/Library/Application
+    Support/orca included, and keeps what other tools wrote
+    (tests/test_retire_orca.py);
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -62,7 +68,9 @@
     step for App Store id 1358823008, before that call;
   - the retired-cask step runs after the Flighty step and before the Home
     Manager activation call, with every brew call going through /usr/bin/sudo
-    as the primary user with the absolute brew path;
+    as the primary user with the absolute brew path; it uninstalls the
+    grok-bot and orca casks, then untaps stablyai/orca, which
+    tests/retired-brew-effects.py runs against a recording brew stub;
   - with the TLS inspection CA trait, production shells and a RunAtLoad
     login agent set all six CA variables to
     /etc/ssl/nix-config/ca-certificates.crt, nix-daemon's plist names it, the
@@ -351,6 +359,11 @@ let
         *'launchctlsetenvCROSS_MODEL_PEERS${peers}/bin/launchctlsetenvCROSS_MODEL_MAX_PEERS2'*'<key>RunAtLoad</key><true/>'*) ;;
         *) bad "no login agent sets CROSS_MODEL_PEERS to ${peers} and CROSS_MODEL_MAX_PEERS to 2 for GUI apps" ;;
       esac
+      waiveragent=$(agent claude-rm-waiver)
+      case $waiveragent in
+        *'exec/bin/launchctlsetenvCLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS1</string></array>'*'<key>RunAtLoad</key><true/>'*) ;;
+        *) bad "no login agent sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS to 1 for GUI apps" ;;
+      esac
       minikube=$(agent minikube)
       if [ "$production" = 1 ]; then
         case $minikube in *minikube-darwin-start*'<key>RunAtLoad</key><true/>'*) ;; *) bad "the minikube login agent is missing" ;; esac
@@ -585,6 +598,9 @@ let
       # bootstrap has neither.
       nrdaemon=$sys/Library/LaunchDaemons/org.nixos.network-recovery.plist
       python3 ${streamTimeoutEffects} "$gen" "$production" || bad "Claude GUI timeout lifecycle failed"
+      python3 ${./test_retire_orca.py} ${
+        pkgs.writeText "retire-orca-block.sh" (user.home.activation.retireOrca.data or "exit 1")
+      } 1 || bad "the retireOrca activation failed its contract"
       nrrotate=$sys/etc/newsyslog.d/network-recovery.conf
       if [ "$production" = 1 ]; then
         nrarg() { /usr/bin/plutil -extract "$1" raw "$nrdaemon" 2>/dev/null || true; }
@@ -678,6 +694,8 @@ let
       elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$flightyline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
         bad "the retired-cask step does not run after brew bundle and the Flighty step and before Home Manager"
       fi
+      python3 ${./retired-brew-effects.py} "$sys/activate" \
+        || bad "the retired-cask step did not uninstall orca before untapping stablyai/orca, or failed the apply (tests/retired-brew-effects.py)"
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
         || bad "no fonts under Library/Fonts/Nix Fonts"

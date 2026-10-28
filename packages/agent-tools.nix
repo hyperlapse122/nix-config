@@ -48,6 +48,10 @@ let
   # flake check runs the source copy of the tests under this same interpreter.
   agentSettingsPython = pkgs.python3.withPackages (ps: [ ps.tomlkit ]);
   agentSettings = helperWith "agent-settings" ../scripts/agent-settings agentSettingsPython;
+  # Removes the retired Orca app's hooks, status line, and state from a home.
+  # tomlkit lets it drop Codex's hook trust entries without rewriting the rest
+  # of config.toml.
+  retireOrca = helperWith "retire-orca" ../scripts/retire-orca agentSettingsPython;
   agentInstructions =
     (pythonHelper "agent-instructions" ../scripts/agent-instructions).overrideAttrs
       {
@@ -212,5 +216,6 @@ in
     openrouterCatalogSnapshot
     androidSdkRelease
     serveHtml
+    retireOrca
     ;
 }
