@@ -16,8 +16,8 @@ Use the machine's distinctive model identifier, such as the DMI product name or 
 
 Create `hosts/<host>/` with three files.
 
-- `hardware.nix`: kernel modules, firmware, CPU microcode, and graphics drivers. The production boot splash needs the GPU's KMS driver in the initrd: selecting `nvidia` in `services.xserver.videoDrivers` with `hardware.nvidia.modesetting.enable` loads it automatically, and any other GPU adds its driver (for example `i915`) to `boot.initrd.kernelModules` under `lib.mkIf (!config.my.bootstrap)`; the `boot-splash` check fails otherwise. Start from `nixos-generate-config --no-filesystems --show-hardware-config` run on the target from the installation media, then keep only what the machine needs.
-- `disko.nix`: the disk layout. Copy an existing host's `disko.nix` to keep the shared layout (a 2 GiB ESP, then LUKS2 around Btrfs subvolumes for `/`, `/home`, `/nix`, `/var/log`, and `/swap`), and change only `device` to the target disk's `/dev/disk/by-id/` path.
+- `hardware.nix`: kernel modules, firmware, CPU microcode, and graphics drivers. The production boot splash needs the GPU's KMS driver in the initrd: add it (for example `i915`, or `vmwgfx` in a VMware guest) to `boot.initrd.kernelModules` under `lib.mkIf (!config.my.bootstrap)`; the `boot-splash` check fails otherwise. Start from `nixos-generate-config --no-filesystems --show-hardware-config` run on the target from the installation media, then keep only what the machine needs.
+- `disko.nix`: the disk layout. Copy an existing host's `disko.nix` to keep the shared layout (a 2 GiB ESP, then a `root` partition holding Btrfs subvolumes for `/`, `/home`, `/nix`, `/var/log`, and `/swap`, unencrypted; protect the disk outside NixOS), and change only `device` to the target disk's `/dev/disk/by-id/` path.
 - `default.nix`: imports the other two files and declares the host's traits.
 
 ```nix
@@ -27,7 +27,7 @@ Create `hosts/<host>/` with three files.
     ./hardware.nix
     ./disko.nix
   ];
-  my.nuphyGem80.enable = true;
+  my.t3.desktop.enable = true;
 }
 ```
 
@@ -39,14 +39,15 @@ A trait is a `my.*.enable` option that defaults to `false`. Hardware-specific mo
 
 | Trait | Enables |
 | --- | --- |
-| `my.nuphyGem80.enable` | Device access for the NuPhy Gem80 configurator and firmware flashing. |
+| `my.gpgAgentRelay.enable` | Serves gpg from a remote gpg-agent through a socket-activated TCP relay to `my.gpgAgentRelay.endpoint` (`host:port`), in place of a local agent and card reader. |
+| `my.sshServer.enable` | An OpenSSH server that accepts only the user, authenticated by the OpenPGP card's authentication subkey. NixOS hosts only. |
 | `my.t3.cli.enable` | The headless T3 Code server, `t3` (`packages/t3code-cli.nix`). It also works on a non-NixOS host. |
 | `my.t3.desktop.enable` | The T3 Code desktop app (`packages/t3code.nix`). NixOS and macOS hosts only. |
 | `my.wifiman.enable` | UniFi WiFiman Desktop (`packages/wifiman-desktop.nix`) and its root daemon (`modules/nixos/services/wifiman.nix`). On by default on every NixOS output, bootstrap included; set it to `false` to drop both. NixOS hosts only; a macOS host gets the `wifiman` cask regardless. |
 
 Other per-host options keep their own meaning. `my.tailscale.advertiseRoutes` makes the host the tailnet's subnet router, which only one host should be, and `my.cliAuth.enableDockerToken` decrypts the Docker Hub token (see `secrets/README.md`). Keep anything that is not a trait, such as an extra mount, in the host's `default.nix`.
 
-A check that covers a trait expects at least one production configuration to enable it. Removing the last host that enables a trait therefore fails `nix flake check`.
+A check that covers a trait runs its positive branch on every production configuration that enables it, or, when none does, on each production configuration re-evaluated with the trait forced on, so removing the last host that enables a trait keeps the trait covered.
 
 ## Create bootstrap age material
 
@@ -148,7 +149,7 @@ Build every other output too before shipping, using the host-build loops in `../
 These checks fail when a step above was missed:
 
 - `bootstrap-recipients` (`tests/bootstrap-recipients.nix`) pairs `hosts/` with `secrets/bootstrap/`. It names the side that is missing when a host has no bootstrap material or bootstrap material has no host. It also fails when the recorded recipient does not appear in `.sops.yaml`. Run it alone with `nix build --no-link .#checks.x86_64-linux.bootstrap-recipients`.
-- `boot-layout-invariants` (`tests/boot-layout-invariants.nix`) checks the new host's `disko.nix` for the LUKS, ESP, btrfs, and swapfile layout that `boot.nix` relies on. The `boot-layout` VM test boots only the first host's layout, so this check is what covers the new one.
+- `boot-layout-invariants` (`tests/boot-layout-invariants.nix`) checks the new host's `disko.nix` for the ESP, btrfs, and swapfile layout, with no LUKS container, that `boot.nix` relies on. The `boot-layout` VM test boots only the first host's layout, so this check is what covers the new one.
 - `host-name-guard` fails when the new name appears in one of the paths listed under [Choose the name](#choose-the-name). Rename the directory, or replace the reference in shared code with a trait.
 - `desktop-ssh` (`tests/desktop-ssh.nix`) fails when a NixOS host lacks its encrypted SSH source or matching public metadata, lists another recipient, or duplicates another desktop's public identity, and checks the materialized production services, launchers, and configuration, and their absence from bootstrap and non-NixOS outputs.
 

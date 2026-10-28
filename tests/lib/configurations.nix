@@ -19,8 +19,6 @@
   - `entryOf name host`: the same entry shape for any evaluated host, such as
     one re-evaluated with `extendModules`.
   - `production` and `bootstraps`: `entries` split by `bootstrap`.
-  - `withTraitForcedOff label entry`: a production `entry` re-evaluated with
-    the option at `label` forced to `false`, named after the forced option.
   - `linuxFixtures`: the non-NixOS fixture hosts of the builder's
     architecture, each `{ name, fixture, bootstrap, host }`.
   - `guard`: a script fragment that fails the builder when `entries` is empty
@@ -28,12 +26,17 @@
     assertions, so an empty list is a failure, never a silent pass.
   - `withTrait label predicate`: `{ enabled, disabled, guard }` for the trait
     `predicate config` computes, where `label` is the trait's option path
-    (`my.printing.enable`). `enabled` and `disabled` split `entries`; `guard`
-    fails the builder when no production configuration enables the trait, so
-    a check's positive branch can never cover zero configurations. When no
-    configuration leaves the trait off, `disabled` holds each production
-    configuration re-evaluated with `label` forced to `false`, so the
-    negative branch never covers zero configurations either.
+    (`my.printing.enable`). `enabled` and `disabled` split `entries`. When
+    no production configuration enables the trait, `enabled` holds each
+    production configuration re-evaluated with `label` forced to `true`, and
+    when no configuration leaves it off, `disabled` holds each production
+    configuration re-evaluated with it forced to `false`, so neither branch
+    covers zero production configurations. `guard` fails the builder when
+    `enabled` still holds no production configuration with the trait on,
+    which catches a forced value that stopped taking effect.
+  - `withTraitForcedOff label entry` and `withTraitForcedOn label entry`: a
+    production `entry` re-evaluated with the option at `label` forced to
+    `false` or `true`, named after the forced option.
 
   - `userEntries`: one `{ name, kind, bootstrap, user }` per Home Manager
     user environment the flake builds for this architecture: the NixOS
@@ -77,6 +80,16 @@ let
       }
     );
 
+  # The mirror image, for a fleet in which no production configuration
+  # enables the trait.
+  withTraitForcedOn =
+    label: entry:
+    entryOf "${entry.name} with ${label} forced on" (
+      self.nixosConfigurations.${entry.name}.extendModules {
+        modules = [ (lib.setAttrByPath (lib.splitString "." label) (lib.mkForce true)) ];
+      }
+    );
+
   production = lib.filter (entry: !entry.bootstrap) entries;
 
   # Only fixtures of the builder's architecture: a check interpolates their
@@ -102,6 +115,7 @@ in
     production
     userEntries
     withTraitForcedOff
+    withTraitForcedOn
     ;
 
   userGuard =
@@ -137,13 +151,18 @@ in
   withTrait =
     label: predicate:
     let
-      disabled = lib.filter (entry: !predicate entry.config) entries;
+      isOn = entry: predicate entry.config;
+      on = lib.filter isOn entries;
+      off = lib.filter (entry: !isOn entry) entries;
+      enabled =
+        on
+        ++ lib.optionals (!lib.any (entry: !entry.bootstrap) on) (map (withTraitForcedOn label) production);
     in
     {
-      enabled = lib.filter (entry: predicate entry.config) entries;
-      disabled = if disabled != [ ] then disabled else map (withTraitForcedOff label) production;
-      guard = lib.optionalString (!lib.any (entry: predicate entry.config) production) ''
-        echo ${lib.escapeShellArg "tests/lib/configurations.nix: no production configuration enables ${label}, so this check's positive branch would cover no configuration"} >&2
+      inherit enabled;
+      disabled = if off != [ ] then off else map (withTraitForcedOff label) production;
+      guard = lib.optionalString (!lib.any (entry: !entry.bootstrap && isOn entry) enabled) ''
+        echo ${lib.escapeShellArg "tests/lib/configurations.nix: no production configuration enables ${label}, even one re-evaluated with it forced on, so this check's positive branch would cover no configuration"} >&2
         exit 1
       '';
     };

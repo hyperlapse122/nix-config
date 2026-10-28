@@ -67,35 +67,19 @@ let
       diskOf (lib.head hostNames);
 
   testDisk = lib.recursiveUpdate firstDisk {
-    disko.devices.disk.main.content.partitions.luks.content.passwordFile = "/tmp/secret.key";
-    disko.devices.disk.main.content.partitions.luks.content.content.subvolumes."/swap".swap.swapfile.size =
+    disko.devices.disk.main.content.partitions.root.content.subvolumes."/swap".swap.swapfile.size =
       "100M";
   };
-  testSystem = {
-    imports = [
-      bootModule
-      inputs.lanzaboote.nixosModules.lanzaboote
-    ];
-    options.my.bootstrap = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-    };
-    config.my.bootstrap = true;
-  };
+  testSystem.imports = [ bootModule ];
 in
 diskoLib.testLib.makeDiskoTest {
   inherit pkgs;
   name = "boot-layout";
   disko-config = testDisk;
   extraSystemConfig = testSystem;
-  enableOCR = true;
-  bootCommands = ''
-    machine.wait_for_text("[Pp]assphrase for")
-    machine.send_chars("secretsecret\n")
-  '';
   extraTestScript = ''
-    machine.succeed("cryptsetup isLuks /dev/vda2")
-    machine.succeed("cryptsetup luksDump /dev/vda2 | grep -q 'Version:.*2'")
+    machine.succeed("findmnt -no FSTYPE / | grep -qx btrfs")
+    machine.succeed("findmnt -no FSTYPE /boot | grep -qx vfat")
     machine.succeed("btrfs subvolume list / | grep -qs 'path root$'")
     machine.succeed("btrfs subvolume list / | grep -qs 'path home$'")
     machine.succeed("btrfs subvolume list / | grep -qs 'path nix$'")

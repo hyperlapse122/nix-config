@@ -76,7 +76,7 @@ The opposite fix, hard-coding the expected split from the inputs, overcorrects. 
 
 - Any check over a trait whose profile default is a boolean expression of other options or of `my.bootstrap`, such as the `tailscale` and `protonVpn` defaults in `modules/nixos/profile.nix`.
 - When a mutation that drops or flips one clause of a default leaves the check green: look for an expected split read from the trait being guarded.
-- Not needed for traits a host sets directly with no computed default, such as `my.nuphyGem80.enable` (the removed `my.laptop.enable` was another); there `withTrait` alone is the right split.
+- Not needed for traits a host sets directly with no computed default, such as `my.t3.desktop.enable` (the removed `my.laptop.enable` and `my.nuphyGem80.enable` were others); there `withTrait` alone is the right split.
 
 ## Examples
 

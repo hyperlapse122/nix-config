@@ -56,7 +56,7 @@ Placing `D2CodingLigature Nerd Font` before `D2KodingLigature Nerd Font` ensures
 Use `ghostty +show-face` to test character resolution:
 
 ```sh
-CONFIG_PATH=$(nix-build --impure --expr 'let f = builtins.getFlake (toString ./.); in f.nixosConfigurations.MS-7D91.config.home-manager.users.h82.xdg.configFile."ghostty/config".source' --no-out-link)
+CONFIG_PATH=$(nix-build --impure --expr 'let f = builtins.getFlake (toString ./.); in f.nixosConfigurations.MS-7D91-VM.config.home-manager.users.h82.xdg.configFile."ghostty/config".source' --no-out-link)
 ghostty +show-face --config-file="$CONFIG_PATH" --string="한글"
 ```
 

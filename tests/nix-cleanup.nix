@@ -64,15 +64,7 @@ let
     failed=1
   '';
 
-  # The limit that governs each host's menu: modules/nixos/system/boot.nix forces
-  # systemd-boot off on production and lanzaboote off on bootstrap, so reading
-  # one of them unconditionally would read the loader that is not in use.
-  bootLimit =
-    cfg:
-    if cfg.boot.lanzaboote.enable then
-      cfg.boot.lanzaboote.configurationLimit
-    else
-      cfg.boot.loader.systemd-boot.configurationLimit;
+  bootLimit = cfg: cfg.boot.loader.systemd-boot.configurationLimit;
 
   # Store-path interpolations stay inside optionalString guards so that removing
   # what they name fails inside the builder with the message below, rather than

@@ -60,7 +60,7 @@ unqueuedGuard = lib.optionalString (!lib.any (entry: !entry.bootstrap && !declar
 '';
 ```
 
-The same shape now drives the non-NVIDIA branch of `tests/boot-splash.nix` (`withIntelDriver`, `tests/boot-splash.nix:99`). It forces `services.xserver.videoDrivers` to `[ "modesetting" ]`, turns NVIDIA modesetting and the container toolkit off, and loads `i915` in the initrd so the variant still has a KMS driver.
+The same shape drove the non-NVIDIA branch of `tests/boot-splash.nix` (`withIntelDriver`) until the NVIDIA module was removed with the bare-metal MS-7D91 host. That second removal, which left the VMware guest `MS-7D91-VM` as the only NixOS host, emptied the other side: no production host declared a printer queue or ran resolved beside printing. `tests/printing.nix` now appends `withQueue` and `withResolved` variants the same way, and the queue variant must name a label that exists in `secrets/printers.yaml`, because sops-nix validates every secret it reads against the file's keys at build time.
 
 Mutation-test each variant twice. First break the module so the guarded side would misbehave: the variant must turn the check red. Then disable the variant: the guard must fire. When this fix was made, both printing mutations failed for the expected reasons ("MS-7D91 with no printer queues: no queue is declared for this configuration but ensure-printers.service exists", and the guard message), and so did both boot-splash mutations.
 
@@ -72,7 +72,7 @@ A partition check is only as strong as its thinnest side. When the fleet shrinks
 
 - Before merging any change that adds or removes a directory under `hosts/`, including fixture hosts under `tests/fixtures/hosts/` for checks that read those.
 - When writing a new check that sorts configurations by any value. Add the variant and both guards from the start, not when the fleet happens to shrink.
-- Not needed for splits made with `configurations.withTrait`. Its forced-off fallback and `guard` already cover both sides, though [trait-split-check-cannot-catch-a-widened-default.md](trait-split-check-cannot-catch-a-widened-default.md) still applies when the trait has a computed default.
+- Not needed for splits made with `configurations.withTrait`. Its forced-on and forced-off fallbacks and `guard` already cover both sides, though [trait-split-check-cannot-catch-a-widened-default.md](trait-split-check-cannot-catch-a-widened-default.md) still applies when the trait has a computed default.
 
 ## Examples
 
