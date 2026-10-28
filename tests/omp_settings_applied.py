@@ -296,9 +296,6 @@ class Activation(unittest.TestCase):
 
                 expected_patterns = [
                     *(f"synthetic/{row['id']}" for row in SYNTHETIC["data"]),
-                    "google-antigravity/gemini-*",
-                    "google-antigravity/claude-*",
-                    "google-antigravity/gpt-*",
                     *(f"openrouter/{row['id']}" for row in OPENROUTER["data"]
                       if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"),
                 ]
@@ -315,24 +312,24 @@ class Activation(unittest.TestCase):
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
                 self.assertIs(value["tui"]["mouse"], False)
                 self.assertEqual(value["enabledModels"], expected_patterns)
-                self.assertEqual(value["disabledProviders"], ["omp-managed", "openai-codex"])
+                self.assertEqual(value["disabledProviders"], ["omp-managed", "openai-codex", "google-antigravity"])
                 expected_roles = {
-                    "default": "google-antigravity/gemini-4-argon",
-                    "smol": "google-antigravity/gemini-3.5-flash-lite:low",
-                    "slow": "google-antigravity/gemini-4-argon:high",
-                    "plan": "google-antigravity/gemini-4-argon:high",
-                    "task": "google-antigravity/gemini-3.8-flash:low",
-                    "commit": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                    "default": "synthetic/hf:moonshotai/Kimi-K3",
+                    "smol": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "slow": "synthetic/hf:moonshotai/Kimi-K3:high",
+                    "plan": "synthetic/hf:moonshotai/Kimi-K3:high",
+                    "task": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "commit": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
                     "web": "web/synthetic",
                 }
                 expected_overrides = {
-                    "sonic": "google-antigravity/gemini-3.5-flash-lite:minimal",
-                    "scout": "google-antigravity/gemini-3.5-flash-lite:low",
-                    "seance": "google-antigravity/gemini-3.5-flash-lite:low",
-                    "task": "google-antigravity/gemini-3.8-flash:low",
-                    "reviewer": "google-antigravity/gemini-3.8-flash:medium",
-                    "security-reviewer": "google-antigravity/gemini-3.8-flash:medium",
-                    "architect": "google-antigravity/gemini-4-argon:high",
+                    "sonic": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "scout": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "seance": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "task": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "reviewer": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "security-reviewer": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "architect": "synthetic/hf:moonshotai/Kimi-K3:high",
                 }
                 for key, expected in (("modelRoles", expected_roles),
                                       ("task.agentModelOverrides", expected_overrides),
@@ -342,7 +339,7 @@ class Activation(unittest.TestCase):
                                       ("task.maxEffort", "high"),
                                       ("tui.mouse", "false"),
                                       ("enabledModels", expected_patterns),
-                                      ("disabledProviders", ["omp-managed", "openai-codex"])):
+                                      ("disabledProviders", ["omp-managed", "openai-codex", "google-antigravity"])):
                     result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
                                             capture_output=True, text=True, timeout=20)
                     actual = json.loads(result.stdout) if key in ("modelRoles", "task.agentModelOverrides", "enabledModels", "disabledProviders") else result.stdout.strip()

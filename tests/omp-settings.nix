@@ -75,7 +75,7 @@ let
             text = path.read_text() if path.is_file() else ""
             front = yaml.safe_load(text.split("---\n")[1]) if text.startswith("---\n") else {}
             selection = (front.get("name"), front.get("model"), front.get("thinkingLevel"))
-            expected = (name, ["google-antigravity/gemini-4-argon"], "low")
+            expected = (name, ["synthetic/hf:moonshotai/Kimi-K3"], "low")
             assert selection == expected, (entry["name"], name, selection)
   '';
 in

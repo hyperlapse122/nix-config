@@ -4,11 +4,6 @@ let
   openrouter = builtins.fromJSON (builtins.readFile ../home/h82/agents/openrouter-catalog.json);
   expectedPatterns = builtins.toJSON (
     map (row: "synthetic/${row.id}") synthetic.data
-    ++ [
-      "google-antigravity/gemini-*"
-      "google-antigravity/claude-*"
-      "google-antigravity/gpt-*"
-    ]
     ++ map (row: "openrouter/${row.id}") (
       builtins.filter (
         row: builtins.match "^openrouter/.*$" row.id != null && row.id != "openrouter/bodybuilder"
@@ -22,6 +17,7 @@ let
       disabledProviders = [
         "omp-managed"
         "openai-codex"
+        "google-antigravity"
       ];
       startup = {
         checkUpdate = false;
@@ -80,19 +76,19 @@ pkgs.testers.nixosTest {
         value = json.loads(machine.succeed("cat " + config))
         expected = {"memory": {"backend": "off"}, "startup": {"checkUpdate": False},
                     "marketplace": {"autoUpdate": "off"}, "autolearn": {"enabled": False},
-                    "disabledProviders": ["omp-managed", "openai-codex"]}
+                    "disabledProviders": ["omp-managed", "openai-codex", "google-antigravity"]}
         if quiet:
             expected["startup"]["quiet"] = True
         else:
             expected["enabledModels"] = json.loads(${pkgs.lib.escapeShellArg expectedPatterns})
             expected["github"] = {"enabled": True}
             expected["modelRoles"] = {
-                "default": "google-antigravity/gemini-4-argon",
-                "smol": "google-antigravity/gemini-3.5-flash-lite:low",
-                "slow": "google-antigravity/gemini-4-argon:high",
-                "plan": "google-antigravity/gemini-4-argon:high",
-                "task": "google-antigravity/gemini-3.8-flash:low",
-                "commit": "google-antigravity/gemini-3.5-flash-lite:minimal",
+                "default": "synthetic/hf:moonshotai/Kimi-K3",
+                "smol": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                "slow": "synthetic/hf:moonshotai/Kimi-K3:high",
+                "plan": "synthetic/hf:moonshotai/Kimi-K3:high",
+                "task": "synthetic/hf:zai-org/GLM-5.3:high",
+                "commit": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
                 "web": "web/synthetic",
             }
             expected["defaultThinkingLevel"] = "high"
@@ -102,13 +98,13 @@ pkgs.testers.nixosTest {
                 "enableEffort": True,
                 "maxEffort": "high",
                 "agentModelOverrides": {
-                    "sonic": "google-antigravity/gemini-3.5-flash-lite:minimal",
-                    "scout": "google-antigravity/gemini-3.5-flash-lite:low",
-                    "seance": "google-antigravity/gemini-3.5-flash-lite:low",
-                    "task": "google-antigravity/gemini-3.8-flash:low",
-                    "reviewer": "google-antigravity/gemini-3.8-flash:medium",
-                    "security-reviewer": "google-antigravity/gemini-3.8-flash:medium",
-                    "architect": "google-antigravity/gemini-4-argon:high",
+                    "sonic": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "scout": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "seance": "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low",
+                    "task": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "reviewer": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "security-reviewer": "synthetic/hf:zai-org/GLM-5.3:high",
+                    "architect": "synthetic/hf:moonshotai/Kimi-K3:high",
                 },
             }
             expected["symbolPreset"] = "nerd"

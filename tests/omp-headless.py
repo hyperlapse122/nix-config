@@ -273,9 +273,9 @@ try:
             # Synchronous dispatch makes the terminal artifact observable before process exit.
             config["async"] = {"enabled": False}
             assert config["github"]["enabled"] is True
-            assert config["modelRoles"]["default"] == "google-antigravity/gemini-4-argon"
+            assert config["modelRoles"]["default"] == "synthetic/hf:moonshotai/Kimi-K3"
             assert config["task"]["enableEffort"] is True and config["task"]["maxEffort"] == "high"
-            assert config["task"]["agentModelOverrides"]["architect"] == "google-antigravity/gemini-4-argon:high"
+            assert config["task"]["agentModelOverrides"]["architect"] == "synthetic/hf:moonshotai/Kimi-K3:high"
             # Native children inherit the explicit API fixture's model role in offline tests.
             config["modelRoles"] = {"default": "synthetic/hf:zai-org/GLM-5.3", "web": "web/synthetic"}
             config["task"]["agentModelOverrides"] = {}

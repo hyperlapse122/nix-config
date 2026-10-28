@@ -3,7 +3,7 @@ name: designer
 description: Frontend and UI subagent for interface implementation and visual changes
 spawns: "*"
 model:
-  - google-antigravity/gemini-4-argon
+  - synthetic/hf:moonshotai/Kimi-K3
 thinkingLevel: low
 ---
 

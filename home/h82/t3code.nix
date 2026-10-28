@@ -73,9 +73,9 @@ let
         "--models"
         (lib.concatStringsSep "," ompPatterns)
         # --models otherwise falls back to the first available API model
-        # when the configured Antigravity default has no authentication.
+        # when the configured Synthetic default has no authentication.
         "--model"
-        "google-antigravity/gemini-4-argon"
+        "synthetic/hf:moonshotai/Kimi-K3"
         "--thinking"
         "high"
       ];

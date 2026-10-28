@@ -3,7 +3,7 @@ name: writer
 description: Documentation and prose subagent for guides, plans, handoffs, and other writing
 spawns: "*"
 model:
-  - google-antigravity/gemini-4-argon
+  - synthetic/hf:moonshotai/Kimi-K3
 thinkingLevel: low
 ---
 

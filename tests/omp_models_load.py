@@ -13,6 +13,9 @@ def environment(home):
             "SYNTHETIC_API_KEY": "sk-fake-synthetic",
             "OPENROUTER_API_KEY": "sk-fake-openrouter"}
 
+EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
+
+
 def expected_name(provider, row):
     if provider == "synthetic":
         name = row["display_name"]
@@ -25,8 +28,7 @@ def expected_name(provider, row):
 
 def run(omp, documents, snapshots):
     providers = json.loads(Path(documents["models.yml"]).read_text())["providers"]
-    assert set(providers) == {"synthetic", "openrouter", "google-antigravity"}, "unexpected providers in models.yml"
-    assert set(providers["google-antigravity"]) == {"modelOverrides"}, "google-antigravity must carry modelOverrides only"
+    assert set(providers) == {"synthetic", "openrouter"}, "unexpected providers in models.yml"
     selected_ids = {row["id"] for row in json.loads(Path(snapshots["openrouter"]).read_text())["data"]
                     if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"}
     managed = providers["openrouter"]
@@ -68,10 +70,19 @@ def run(omp, documents, snapshots):
                 if reasoning:
                     efforts = reasoning.get("efforts" if provider == "synthetic" else "supported_efforts")
                     if efforts:
-                        expected = [e for e in ("minimal", "low", "medium", "high", "xhigh", "max") if e in efforts]
+                        expected = [e for e in EFFORTS if e in efforts]
                         assert actual["thinking"] == expected, row["id"]
         glm = listed["synthetic/hf:zai-org/GLM-5.3"]
         assert glm["thinking"] == ["low", "high", "max"], glm
+        # Every managed role runs a Synthetic model at an effort its loaded ladder offers.
+        config = json.loads(Path(documents["config.yml"]).read_text())
+        roles = [*(("modelRoles", k, v) for k, v in config["modelRoles"].items() if k != "web"),
+                 *(("agentModelOverrides", k, v) for k, v in config["task"]["agentModelOverrides"].items())]
+        for *role, value in roles:
+            head, _, suffix = value.rpartition(":")
+            selector, effort = (head, suffix) if suffix in EFFORTS else (value, config["defaultThinkingLevel"])
+            assert selector.startswith("synthetic/") and selector in listed, (role, value)
+            assert effort in listed[selector]["thinking"], (role, value, listed[selector]["thinking"])
         print("OMP loaded selected API metadata")
 
 
@@ -96,9 +107,6 @@ if __name__ == "__main__":
         "openrouter/future-model", "openrouter/bodybuilder-new"], "raw-ID regex and exact exclusion"
     assert selected["patterns"] == [
         "synthetic/unchanged-synthetic",
-        "google-antigravity/gemini-*",
-        "google-antigravity/claude-*",
-        "google-antigravity/gpt-*",
         "openrouter/openrouter/future-model",
         "openrouter/openrouter/bodybuilder-new",
     ], selected.get("patterns")
