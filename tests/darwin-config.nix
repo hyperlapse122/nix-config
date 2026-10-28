@@ -140,6 +140,12 @@ let
 
   plain = builtins.unsafeDiscardStringContext;
 
+  # lib.hasInfix matches ".*<infix>.*", and on Linux Nix's regex engine
+  # recurses once per character it scans, so a search across a whole
+  # activation script, Dock plists included, overflows the evaluator's stack.
+  # Search one line at a time for an infix that holds no newline.
+  hasInfixInLines = infix: text: lib.any (lib.hasInfix infix) (lib.splitString "\n" text);
+
   # A store path's hash or name can spell "zap" by chance, so the zap check
   # reads the whole activation script with every store path replaced by a
   # fixed word.
@@ -819,7 +825,7 @@ let
         "${entry.name}: the grok-bot cask must be uninstalled with --force when installed, a brew list failure other than not-installed must print brew's stderr, with one line per outcome and no exit on failure"
       )
       (check (
-        !lib.hasInfix "zap" activationWithoutStorePaths
+        !hasInfixInLines "zap" activationWithoutStorePaths
       ) "${entry.name}: no activation step may zap a cask, since --zap deletes the app's user data")
       (check
         (
@@ -1047,11 +1053,11 @@ let
           if production then
             lib.hasInfix bundleCall beforeEtc
             && lib.all (argument: lib.hasInfix argument beforeEtc) bundleArguments
-            && !lib.hasInfix bundleCall afterEtc
+            && !hasInfixInLines bundleCall afterEtc
             && guardedTrust
             && !lib.hasInfix trustCall beforeEtc
           else
-            !lib.hasInfix "tls-inspection-ca" script
+            !hasInfixInLines "tls-inspection-ca" script
         )
         "${entry.name}: the bundle step must run before /etc with this generation's CA bundle, the CA file, the host identity and its owner, into /etc/ssl/nix-config, and the trust step after it inside an if ! guard, in production only"
       )
