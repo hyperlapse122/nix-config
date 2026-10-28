@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Render static agent instructions at the target user's apply boundary."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import plistlib
+import re
+import subprocess
+import sys
+import tempfile
+
+DELIVERIES = {
+    "claude": ".claude/CLAUDE.md",
+    "codex": ".codex/AGENTS.md",
+    "omp": ".omp/agent/AGENTS.md",
+}
+
+
+def language_tag(value):
+    if isinstance(value, str):
+        for item in value.split(":"):
+            tag = re.split(r"[.@]", item)[0].replace("_", "-")
+            if tag in ("C", "POSIX"):
+                return "en"
+            if re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", tag):
+                return tag
+    return None
+
+
+def warn(message):
+    print(f"agent-instructions: {message}", file=sys.stderr)
+
+
+def os_context(context, kreadconfig):
+    fallback = context["locale"]
+    name, preference = fallback["name"], fallback["language"]
+    if context["kind"] == "darwin":
+        try:
+            result = subprocess.run(
+                ["defaults", "export", "NSGlobalDomain", "-"],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            prefs = plistlib.loads(result.stdout)
+            if not isinstance(prefs, dict):
+                raise ValueError("global preferences are not a dictionary")
+            name = prefs.get("AppleLocale")
+            languages = prefs.get("AppleLanguages")
+            preference = languages[0] if isinstance(languages, list) and languages else None
+        except (OSError, subprocess.CalledProcessError, plistlib.InvalidFileException, ValueError):
+            name, preference = None, None
+            warn("cannot read macOS preferences; using an explicit English fallback")
+    elif context["kind"] == "nixos":
+        def read(group, key, default):
+            return subprocess.run(
+                [kreadconfig, "--file", "plasma-localerc", "--group", group,
+                 "--key", key, "--default", default],
+                check=True, stdout=subprocess.PIPE, text=True,
+            ).stdout.strip()
+        name = read("Formats", "LANG", name)
+        preference = read("Translations", "LANGUAGE", preference)
+    tag = language_tag(preference)
+    if tag is None:
+        tag = "en"
+        warn("missing or unusable language preference; using English")
+    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.@=;-]{1,128}", name):
+        name = "unavailable"
+        warn("missing or unusable Locale; recording it as unavailable")
+    return {"name": name, "language": tag}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--context", type=Path, required=True)
+    parser.add_argument("--template", type=Path, required=True)
+    parser.add_argument("--renderer", required=True)
+    parser.add_argument("--home", type=Path, required=True)
+    parser.add_argument("--kreadconfig")
+    args = parser.parse_args()
+    if "DRY_RUN" in os.environ:
+        return
+    context = json.loads(args.context.read_text())
+    context["locale"] = os_context(context, args.kreadconfig)
+    rendered = {}
+    with tempfile.TemporaryDirectory(prefix="agent-instructions-") as temporary:
+        data = Path(temporary) / "context.json"
+        for delivery, target in DELIVERIES.items():
+            flags = {name: name == delivery for name in DELIVERIES}
+            data.write_text(json.dumps(context | flags))
+            rendered[target] = subprocess.run(
+                [args.renderer, str(args.template), str(data)],
+                check=True, stdout=subprocess.PIPE,
+            ).stdout
+    for target, content in rendered.items():
+        destination = args.home / target
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        # Replace the link itself during migration, never its store target.
+        descriptor, staging = tempfile.mkstemp(prefix=".instructions-", dir=destination.parent)
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(content)
+                os.fchmod(output.fileno(), 0o644)
+            os.replace(staging, destination)
+        finally:
+            Path(staging).unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        warn(f"rendering failed ({type(error).__name__})")
+        raise SystemExit(1)

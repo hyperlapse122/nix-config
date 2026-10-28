@@ -1,3 +1,11 @@
+# Language and Locale
+
+- Locale: `{{ .locale.name }}`.
+- Preferred language: `{{ .locale.language }}`.
+- Use the rendered preferred language as the default for conversation with the user; choose language from the language preference, never from the region.
+- An explicit user request for another conversation language overrides this default.
+- Follow repository and task rules for the language of saved artifacts independently of the conversation language.
+
 # GPG and encryption
 
 The user's GPG key is on a YubiKey that stays connected, and its PIN is usually cached.

@@ -32,6 +32,12 @@ lib.nixosSystem {
         my.hostName = hostName;
         my.bootstrap = bootstrap;
         my.kind = kind;
+        my.locale = {
+          name = config.i18n.defaultLocale;
+          language =
+            config.i18n.extraLocaleSettings.LANGUAGE or config.environment.variables.LANGUAGE
+              or config.i18n.extraLocaleSettings.LC_MESSAGES or config.i18n.defaultLocale;
+        };
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
         # specialArgs reaches NixOS modules only; the agent-plugin registry

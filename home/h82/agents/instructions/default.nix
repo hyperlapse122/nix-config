@@ -8,37 +8,68 @@ let
   hostFacts = import ../../../../lib/host-facts.nix { inherit lib; };
   renderer = import ../../../../packages/text-template.nix { inherit pkgs; };
 
-  render =
-    delivery:
-    let
-      context = pkgs.writeText "agent-instructions-${delivery}.json" (
-        builtins.toJSON (
-          (hostFacts.of config.my)
-          // {
-            claude = delivery == "claude";
-            codex = delivery == "codex";
-            omp = delivery == "omp";
-          }
-        )
-      );
-    in
-    pkgs.runCommand "agent-instructions-${delivery}.md" { nativeBuildInputs = [ renderer ]; } ''
-      text-template ${./instructions.md.tmpl} ${context} > $out
-    '';
+  helper = (import ../../../../packages/agent-tools.nix { inherit pkgs; }).agentInstructions;
+  live = config.my.kind != "linux";
+  context = pkgs.writeText "agent-instructions-context.json" (
+    builtins.toJSON (
+      (hostFacts.of config.my)
+      // {
+        locale = {
+          name = config.my.locale.name;
+          language =
+            config.home.sessionVariables.LANGUAGE
+              or (if config.my.locale.language != null then config.my.locale.language else config.my.locale.name);
+        };
+      }
+    )
+  );
+  command = lib.concatStringsSep " " (
+    [
+      "${helper}/bin/agent-instructions"
+      "--context ${context}"
+      "--template ${./instructions.md.tmpl}"
+      "--renderer ${renderer}/bin/text-template"
+    ]
+    ++ lib.optional (
+      config.my.kind == "nixos"
+    ) "--kreadconfig ${pkgs.kdePackages.kconfig}/bin/kreadconfig6"
+  );
+  refresh = pkgs.writeShellScript "refresh-agent-instructions" ''
+    set -eu
+    ${lib.optionalString (config.my.kind == "darwin") ''
+      export PATH="''${PATH:+$PATH:}/usr/bin:/bin"
+    ''}
+    ${command} --home "$HOME"
+  '';
+  rendered = pkgs.runCommand "agent-instructions" { } ''
+    ${command} --home "$out"
+  '';
+  targets = {
+    claude = ".claude/CLAUDE.md";
+    codex = ".codex/AGENTS.md";
+    omp = ".omp/agent/AGENTS.md";
+  };
 in
 {
-  home.file = {
-    agent-instructions-omp = {
-      target = ".omp/agent/AGENTS.md";
-      source = render "omp";
-    };
-    agent-instructions-claude-code = {
-      target = ".claude/CLAUDE.md";
-      source = render "claude";
-    };
-    agent-instructions-codex = {
-      target = ".codex/AGENTS.md";
-      source = render "codex";
-    };
-  };
+  home.file =
+    if live then
+      { ".local/share/nix-config/refresh-agent-instructions".source = refresh; }
+    else
+      lib.mapAttrs' (
+        delivery: target:
+        lib.nameValuePair "agent-instructions-${delivery}" {
+          inherit target;
+          source = "${rendered}/${target}";
+        }
+      ) targets;
+
+  home.activation.agentInstructions = lib.mkIf live (
+    lib.hm.dag.entryAfter
+      ([ "installPackages" ] ++ lib.optional (config.my.kind == "nixos") "kdeSession")
+      ''
+        if [[ ! -v DRY_RUN ]]; then
+          ${refresh}
+        fi
+      ''
+  );
 }

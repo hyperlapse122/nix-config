@@ -8,6 +8,7 @@ import http.server
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import ssl
@@ -241,6 +242,15 @@ try:
             assert (agent / "agents/architect.md").is_file(), "P6 architect agent was not materialized"
             for directory, _, _ in os.walk(agent):
                 Path(directory).chmod(0o755)
+            # Native hosts generate the personal prompt during apply.
+            script = Path(entry["activate"]).read_text()
+            step = re.search(r'_iNote "Activating %s" "agentInstructions"\n(.*?)(?=\n_iNote|\Z)',
+                             script, re.S)
+            if step:
+                subprocess.run(["bash", "-eu", "-c", step.group(1)], check=True,
+                               env={"HOME": str(home), "PATH": os.environ["PATH"],
+                                    "XDG_CONFIG_HOME": str(home / ".config"),
+                                    "XDG_CONFIG_DIRS": str(home / "xdg-defaults")})
             # A complete tree preserves scripts and relative references, not just SKILL.md.
             delivered_ce = agent / "plugins/compound-engineering"
             for source in Path(CE_SOURCE).rglob("*"):

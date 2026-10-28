@@ -140,6 +140,16 @@ sudo -v
 "${cmd[@]}"
 after=$(readlink -f "$diff_target")
 
+# Older generations have no refresh helper. Read it from the newly applied
+# user environment, including when Home Manager's generation did not change.
+refresh_status=0
+if [[ $subcommand != boot && -x $HOME/.local/share/nix-config/refresh-agent-instructions ]]; then
+  "$HOME/.local/share/nix-config/refresh-agent-instructions" || {
+    refresh_status=$?
+    printf 'nr: configuration applied, but agent instruction refresh failed (exit %s)\n' "$refresh_status" >&2
+  }
+fi
+
 if [[ $before == "$after" ]]; then
   printf 'nr: %s produced no change to %s\n' "$subcommand" "$diff_target"
 else
@@ -148,3 +158,5 @@ else
   "$NVD" diff "$before" "$after" ||
     printf 'nr: %s succeeded but nvd could not diff the generations\n' "$subcommand" >&2
 fi
+
+exit "$refresh_status"

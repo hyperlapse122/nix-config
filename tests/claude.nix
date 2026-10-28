@@ -75,7 +75,6 @@ let
 
   settingsTier = {
     model = "opus[1m]";
-    language = "korean";
     theme = "auto";
     preferredNotifChannel = "ghostty";
     agentPushNotifEnabled = false;
@@ -87,6 +86,7 @@ let
   retiredKeys = [
     "advisorModel"
     "autoCompactWindow"
+    "language"
   ];
 
   settingsPaths = [
@@ -223,6 +223,7 @@ let
             // lib.optionalAttrs (merge.attr == "claudeSettings") {
               seed = {
                 activationUnmanaged = "keep";
+                language = "korean";
                 advisorModel = "retired";
                 autoCompactWindow = "retired";
                 effortLevel = "retired";
@@ -238,7 +239,6 @@ let
                 activationUnmanaged = "keep";
                 effortLevel = "retired";
                 model = "opus[1m]";
-                language = "korean";
                 theme = "auto";
                 preferredNotifChannel = "ghostty";
                 agentPushNotifEnabled = false;
