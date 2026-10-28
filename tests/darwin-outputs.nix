@@ -64,6 +64,11 @@
     /etc/ssl/nix-config/ca-certificates.crt, nix-daemon's plist names it, the
     bundle step runs before /etc and the trust step after; bootstrap keeps
     the default bundle and has neither step nor agent;
+  - with the network recovery trait, production loads a root daemon at load
+    and every 5 seconds that runs the packaged network-recovery script with
+    /var/db/network-recovery and the Tailscale app's CLI, logging to
+    /var/log/network-recovery.log, which newsyslog rotates; bootstrap has
+    neither the daemon nor the rotation entry;
   - the nix-homebrew setup script is built with autoMigrate on, so the first
     apply takes over an existing /opt/homebrew instead of stopping.
 
@@ -504,6 +509,34 @@ let
         [ "$daemonca" = /etc/ssl/certs/ca-certificates.crt ] || bad "bootstrap nix-daemon reads $daemonca, not the default bundle"
         [ ! -e "$caagent" ] || bad "bootstrap has the CA environment agent"
         if grep -q 'tls-inspection-ca' "$sys/activate"; then bad "bootstrap activation runs a TLS inspection CA step"; fi
+      fi
+
+      # The network recovery trait, on in the fixture: production loads a root
+      # daemon every 5 seconds that runs the packaged script with the state
+      # directory and the Tailscale CLI, logging to the file newsyslog rotates;
+      # bootstrap has neither.
+      nrdaemon=$sys/Library/LaunchDaemons/org.nixos.network-recovery.plist
+      nrrotate=$sys/etc/newsyslog.d/network-recovery.conf
+      if [ "$production" = 1 ]; then
+        nrarg() { /usr/bin/plutil -extract "$1" raw "$nrdaemon" 2>/dev/null || true; }
+        nrexe=$(nrarg ProgramArguments.0)
+        case $nrexe in
+          /nix/store/*-network-recovery/bin/network-recovery) [ -x "$nrexe" ] || bad "the network recovery daemon runs $nrexe, which is not executable" ;;
+          *) bad "the network recovery daemon runs '$nrexe', not the packaged script" ;;
+        esac
+        [ "$(nrarg ProgramArguments.1) $(nrarg ProgramArguments.2) $(nrarg ProgramArguments.3) $(nrarg ProgramArguments.4)" \
+          = "--state-dir /var/db/network-recovery --tailscale /Applications/Tailscale.app/Contents/MacOS/Tailscale" ] \
+          || bad "the network recovery daemon does not pass the state directory and the Tailscale CLI"
+        [ "$(nrarg StartInterval)" = 5 ] && [ "$(nrarg RunAtLoad)" = true ] \
+          || bad "the network recovery daemon does not run at load and every 5 seconds"
+        [ "$(nrarg StandardOutPath)" = /var/log/network-recovery.log ] \
+          && [ "$(nrarg StandardErrorPath)" = /var/log/network-recovery.log ] \
+          || bad "the network recovery daemon does not log to /var/log/network-recovery.log"
+        grep -qE '^/var/log/network-recovery\.log[[:space:]]' "$nrrotate" \
+          || bad "newsyslog does not rotate /var/log/network-recovery.log"
+      else
+        [ ! -e "$nrdaemon" ] || bad "bootstrap has the network recovery daemon"
+        [ ! -e "$nrrotate" ] || bad "bootstrap rotates the network recovery log"
       fi
       nixconf=$sys/etc/nix/nix.conf
       [ -f "$nixconf" ] || bad "the system has no nix.conf"
