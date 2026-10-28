@@ -1,5 +1,6 @@
 /*
-  Read each Home Manager generation's three delivered instruction files.
+  Read each Home Manager generation's four instruction deliveries: three
+  files and the Antigravity rules directory.
   Target/enable checks here distinguish a declaration from its delivery.
   tests/text-template.nix owns the renderer's language and failure contracts.
   Linux callers supply self/fixtures; native Darwin callers supply explicit
@@ -17,11 +18,13 @@ let
   userEntries = if entries == null then configurations.userEntries else entries;
   esc = value: lib.escapeShellArg (toString value);
   fakeKey = "0123456789ABCDEF0123456789ABCDEF01234567";
-  deliveryPaths = [
-    ".omp/agent/AGENTS.md"
-    ".claude/CLAUDE.md"
-    ".codex/AGENTS.md"
-  ];
+  deliveries = {
+    ".omp/agent/AGENTS.md" = "omp";
+    ".claude/CLAUDE.md" = "claude";
+    ".codex/AGENTS.md" = "codex";
+    ".gemini/config/rules" = "antigravity";
+  };
+  deliveryPaths = lib.attrNames deliveries;
   retiredPaths = [
     ".pi/agent/AGENTS.md"
     ".omp/agent/OMP.md"
@@ -88,13 +91,7 @@ let
         paths = map (target: {
           inherit target;
           path = "${entry.user.home-files}/${target}";
-          delivery =
-            if target == ".codex/AGENTS.md" then
-              "codex"
-            else if target == ".omp/agent/AGENTS.md" then
-              "omp"
-            else
-              "claude";
+          delivery = deliveries.${target};
         }) deliveryPaths;
         git = "${entry.user.home-files}/.config/git/config";
       }) presentEntries

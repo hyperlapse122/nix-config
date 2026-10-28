@@ -14,17 +14,22 @@ from pathlib import Path
 CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
-DELIVERIES = ("claude", "codex", "omp")
+DELIVERIES = ("claude", "codex", "omp", "antigravity")
 ROUTING_HEADING = "Agent roles and routing"
 CLAUDE_HEADING = "Claude Code role orchestration"
 CODEX_HEADING = "Codex role orchestration"
 OMP_TOOLS_HEADING = "OMP tools and Compound Engineering"
 OMP_ROLE_HEADING = "OMP role orchestration"
+ANTIGRAVITY_HEADING = "Antigravity harness"
 HARNESS_HEADINGS = {
     "claude": [CLAUDE_HEADING],
     "codex": [CODEX_HEADING],
     "omp": [OMP_TOOLS_HEADING, OMP_ROLE_HEADING],
+    "antigravity": [ANTIGRAVITY_HEADING],
 }
+# Antigravity truncates a rule file at 24,000 bytes.
+RULE_FRONTMATTER = "---\ntrigger: always_on\n---\n\n"
+RULE_LIMIT = 24000
 
 ROLES = {
     "root": "Conversation with the user, delegation, progress",
@@ -128,7 +133,8 @@ def chain_table(chains):
 
 
 def t3_chains(delivery):
-    return {"root": T3_ROOTS[delivery], **T3_CHAINS}
+    root = {"root": T3_ROOTS[delivery]} if delivery in T3_ROOTS else {}
+    return root | T3_CHAINS
 
 
 CE_COVERAGE = """| Workflow / identity | Role and boundary |
@@ -385,6 +391,12 @@ OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, in
 - Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"lo"` for `implement` and `"med"` for `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`. Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`.
 - Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`."""
 
+ANTIGRAVITY_SENTENCES = [
+    "This section applies only to the active Antigravity harness, including Antigravity-led T3 sessions.",
+    "An Antigravity-led session passes host family `gemini` and `CROSS_MODEL_HOST_HARNESS=antigravity` to Compound Engineering cross-model reviews, so sanctioned `claude` and `codex` peers run as different-family reviews.",
+]
+ANTIGRAVITY_CONTRACT = "\n".join("- " + sentence for sentence in ANTIGRAVITY_SENTENCES)
+
 HEADINGS = [
     "Language and Locale",
     "GPG and encryption",
@@ -623,7 +635,7 @@ def content_problems(text, key, delivery):
         problems += chain_problems(subsection(body, "Codex table"), HARNESS_CHAINS["codex"], "Codex")
         if body.strip() != CODEX_CONTRACT:
             problems.append("unapproved Codex normative section")
-    else:
+    elif delivery == "omp":
         tools_body = sections.get(OMP_TOOLS_HEADING, "")
         problems += sentence_problems(tools_body, OMP_TOOLS_SENTENCES, "OMP tools")
         role_body = sections.get(OMP_ROLE_HEADING, "")
@@ -631,6 +643,11 @@ def content_problems(text, key, delivery):
         problems += chain_problems(subsection(role_body, "OMP table"), HARNESS_CHAINS["omp"], "OMP")
         if tools_body.strip() != OMP_TOOLS_CONTRACT or role_body.strip() != OMP_ROLE_CONTRACT:
             problems.append("unapproved OMP normative section")
+    else:
+        body = sections.get(ANTIGRAVITY_HEADING, "")
+        problems += sentence_problems(body, ANTIGRAVITY_SENTENCES, "Antigravity")
+        if body.strip() != ANTIGRAVITY_CONTRACT:
+            problems.append("unapproved Antigravity normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -641,12 +658,39 @@ def content_problems(text, key, delivery):
     return problems
 
 
-def delivery_problems(path, expected, key, delivery):
+def read_rules(directory):
+    """Join a rules directory's prefixed files back into one render."""
     try:
-        text = path.read_bytes().decode("utf-8")
+        names = sorted(path.name for path in directory.iterdir() if path.name.startswith("nix-config-"))
     except OSError:
-        return ["missing delivered instructions"]
-    problems = content_problems(text, key, delivery)
+        return None, ["missing delivered instructions"]
+    problems = []
+    if not names or names != [f"nix-config-{index:02d}.md" for index in range(1, len(names) + 1)]:
+        problems.append(f"unexpected rule files: {names}")
+    bodies = []
+    for name in names:
+        data = (directory / name).read_bytes()
+        if len(data) >= RULE_LIMIT:
+            problems.append(f"rule file reaches {RULE_LIMIT} bytes: {name}")
+        text = data.decode("utf-8")
+        if not text.startswith(RULE_FRONTMATTER + "# "):
+            problems.append(f"rule file does not open with always_on frontmatter and a section: {name}")
+        bodies.append(text.removeprefix(RULE_FRONTMATTER))
+    return "".join(bodies), problems
+
+
+def delivery_problems(path, expected, key, delivery):
+    if delivery == "antigravity":
+        text, problems = read_rules(path)
+        if text is None:
+            return problems
+    else:
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except OSError:
+            return ["missing delivered instructions"]
+        problems = []
+    problems += content_problems(text, key, delivery)
     if text != expected:
         problems.append("delivered instructions differ from independent rendering")
     return problems
@@ -710,7 +754,7 @@ def self_test(template):
                 assert_problem(text, other, "unexpected instruction sections")
         assert_sentence_mutants(text, delivery, ROUTING_SENTENCES)
         assert_chain_mutants(text, delivery, t3_chains(delivery), "T3", 1)
-        for other in DELIVERIES:
+        for other in T3_ROOTS if delivery in T3_ROOTS else ():
             if other != delivery:
                 own = f"| `root` | {T3_ROOTS[delivery]} |"
                 assert_problem(text.replace(own, f"| `root` | {T3_ROOTS[other]} |"), delivery, "incorrect T3 chain for `root`")
@@ -770,10 +814,40 @@ def self_test(template):
         path.write_text(render(template, CARD_KEY, "claude"))
         assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY, "claude")
 
+        rules = Path(directory) / "rules"
+        sections = re.split(r"(?m)^(?=# )", rendered["antigravity"])[1:]
+        split = len(sections) // 2
+
+        def write_rules(bodies, frontmatter=RULE_FRONTMATTER):
+            shutil.rmtree(rules, ignore_errors=True)
+            rules.mkdir()
+            for index, body in enumerate(bodies, 1):
+                (rules / f"nix-config-{index:02d}.md").write_text(frontmatter + body)
+
+        def rule_problems():
+            return delivery_problems(rules, rendered["antigravity"], FAKE_KEY, "antigravity")
+
+        assert rule_problems() == ["missing delivered instructions"]
+        halves = ["".join(sections[:split]), "".join(sections[split:])]
+        write_rules(halves)
+        assert not rule_problems(), rule_problems()
+        write_rules(["".join(sections)])
+        assert any("reaches" in problem for problem in rule_problems())
+        write_rules(halves, "")
+        assert any("always_on" in problem for problem in rule_problems())
+        write_rules([halves[0][:-1], halves[0][-1] + halves[1]])
+        assert any("always_on" in problem for problem in rule_problems())
+        write_rules(halves + ["# Stale\n"])
+        assert "delivered instructions differ from independent rendering" in rule_problems()
+        write_rules(halves)
+        (rules / "nix-config-02.md").rename(rules / "nix-config-03.md")
+        assert any("unexpected rule files" in problem for problem in rule_problems())
+
     harness = {
         "claude": (CLAUDE_HEADING, CLAUDE_SENTENCES, "Claude Code", "unapproved Claude Code normative section"),
         "codex": (CODEX_HEADING, CODEX_SENTENCES, "Codex", "unapproved Codex normative section"),
         "omp": (OMP_ROLE_HEADING, OMP_TOOLS_SENTENCES + OMP_ROLE_SENTENCES, "OMP", "unapproved OMP normative section"),
+        "antigravity": (ANTIGRAVITY_HEADING, ANTIGRAVITY_SENTENCES, "Antigravity", "unapproved Antigravity normative section"),
     }
     # Rules the role contract retired: each fails as an unapproved addition.
     retired = {
@@ -787,11 +861,13 @@ def self_test(template):
             "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for `peer` tasks.",
             "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
         ],
+        "antigravity": [],
     }
     for delivery, (heading, sentences, name, unapproved) in harness.items():
         text = rendered[delivery]
         assert_sentence_mutants(text, delivery, sentences)
-        assert_chain_mutants(text, delivery, HARNESS_CHAINS[delivery], name, 0)
+        if delivery in HARNESS_CHAINS:
+            assert_chain_mutants(text, delivery, HARNESS_CHAINS[delivery], name, 0)
         for contrary in retired[delivery] + [
             "Always run reviewers at max effort.",
             "Use Ultrafast without an explicit user request.",
@@ -905,6 +981,12 @@ def check_activation(template, entry):
         sentinel.chmod(0o444)
         for item in entry["paths"]:
             path = home / item["target"]
+            if item["delivery"] == "antigravity":
+                # An earlier render's extra rule file and the user's own rule.
+                path.mkdir(parents=True)
+                (path / "nix-config-99.md").write_text("stale")
+                (path / "own.md").write_text("user rule")
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.symlink_to(sentinel)
         if entry["kdeActivation"]:
@@ -912,6 +994,10 @@ def check_activation(template, entry):
         apply()
         verify("en-US")
         assert sentinel.read_text() == "old generation", "wrote through old generation link"
+        for item in entry["paths"]:
+            if item["delivery"] == "antigravity":
+                own = home / item["target"] / "own.md"
+                assert own.is_file() and own.read_text() == "user rule", "removed a user rule"
         preferences("ko_KR.UTF-8")
         verify("en-US")  # Source changed, but no apply has happened.
         apply(env | {"DRY_RUN": "1"})
@@ -932,16 +1018,29 @@ def check_activation(template, entry):
                 apply()
                 verify("en", "unavailable")
         if entry.get("failureTemplate"):
-            snapshot = {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+            def snapshot():
+                return {
+                    str(path): path.read_bytes()
+                    for item in entry["paths"]
+                    for path in [home / item["target"], *(home / item["target"]).glob("*")]
+                    if path.is_file()
+                }
+
+            before = snapshot()
             preferences("en-US")
-            # The second delivery fails after the first rendered successfully.
-            Path(entry["failureTemplate"]).write_text(template + "\n{{ if .codex }}{{ .missing }}{{ end }}\n")
-            result = subprocess.run(
-                [bash, "-eu", "-c", entry["activation"]], env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            )
-            assert result.returncode != 0, "renderer failure was swallowed"
-            assert snapshot == {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+            for failure in (
+                # The second delivery fails after the first rendered successfully.
+                "\n{{ if .codex }}{{ .missing }}{{ end }}\n",
+                # One top-level section cannot fit in a rule file.
+                "\n{{ if .antigravity }}# Oversized\n\n" + "x" * RULE_LIMIT + "\n{{ end }}",
+            ):
+                Path(entry["failureTemplate"]).write_text(template + failure)
+                result = subprocess.run(
+                    [bash, "-eu", "-c", entry["activation"]], env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                assert result.returncode != 0, "renderer failure was swallowed"
+                assert before == snapshot(), "a failed render changed delivered instructions"
 
 
 def check_darwin_helper(template, helper, renderer, template_path):
@@ -962,7 +1061,7 @@ def check_darwin_helper(template, helper, renderer, template_path):
             "failureTemplate": str(template_copy),
             "paths": [{"target": target, "delivery": delivery} for delivery, target in (
                 ("claude", ".claude/CLAUDE.md"), ("codex", ".codex/AGENTS.md"),
-                ("omp", ".omp/agent/AGENTS.md"),
+                ("omp", ".omp/agent/AGENTS.md"), ("antigravity", ".gemini/config/rules"),
             )],
         }
         check_activation(template, entry)
