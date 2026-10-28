@@ -72,7 +72,7 @@ def run(omp, documents, snapshots):
                         assert actual["thinking"] == expected, row["id"]
         glm = listed["synthetic/hf:zai-org/GLM-5.3"]
         assert glm["thinking"] == ["low", "high", "max"], glm
-        print("OMP loaded selected API metadata; native Codex remains unmanaged")
+        print("OMP loaded selected API metadata")
 
 
 if __name__ == "__main__":
@@ -101,7 +101,6 @@ if __name__ == "__main__":
         "google-antigravity/gpt-*",
         "openrouter/openrouter/future-model",
         "openrouter/openrouter/bodybuilder-new",
-        "openai-codex/*",
     ], selected.get("patterns")
     with tempfile.TemporaryDirectory() as temporary:
         fixture = Path(temporary)

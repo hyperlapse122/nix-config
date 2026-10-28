@@ -14,13 +14,15 @@ let
         row: builtins.match "^openrouter/.*$" row.id != null && row.id != "openrouter/bodybuilder"
       ) openrouter.data
     )
-    ++ [ "openai-codex/*" ]
   );
   changed = pkgs.writeText "omp-changed-config.json" (
     builtins.toJSON {
       memory.backend = "off";
       autolearn.enabled = false;
-      disabledProviders = [ "omp-managed" ];
+      disabledProviders = [
+        "omp-managed"
+        "openai-codex"
+      ];
       startup = {
         checkUpdate = false;
         quiet = true;
@@ -78,7 +80,7 @@ pkgs.testers.nixosTest {
         value = json.loads(machine.succeed("cat " + config))
         expected = {"memory": {"backend": "off"}, "startup": {"checkUpdate": False},
                     "marketplace": {"autoUpdate": "off"}, "autolearn": {"enabled": False},
-                    "disabledProviders": ["omp-managed"]}
+                    "disabledProviders": ["omp-managed", "openai-codex"]}
         if quiet:
             expected["startup"]["quiet"] = True
         else:

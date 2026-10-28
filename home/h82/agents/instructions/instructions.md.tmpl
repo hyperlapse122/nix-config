@@ -294,7 +294,8 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 # OMP role orchestration
 
 - This section applies only to the active OMP harness, including OMP-led T3 sessions.
-- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
+- OMP model execution uses only `synthetic`, `google-antigravity`, and `openrouter`; `openai-codex` is disabled. Native Codex remains available for sanctioned external reviews.
+- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
 
 ## OMP table
 

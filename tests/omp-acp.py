@@ -414,7 +414,15 @@ def standalone_cli_scope(entry, api, api_expected_names):
         home = Path(temporary)
         work = prepare(entry, home)
         import_fake_oauth(api["commandPath"], home, ("google-antigravity", "openai-codex"))
-        raw = raw_bundled_models(api["commandPath"], home)
+        config_path = home / ".omp/agent/config.yml"
+        common = config_path.read_bytes()
+        control = json.loads(common)
+        control["disabledProviders"] = [p for p in control["disabledProviders"] if p != "openai-codex"]
+        config_path.write_text(json.dumps(control))
+        try:
+            raw = raw_bundled_models(api["commandPath"], home)
+        finally:
+            config_path.write_bytes(common)
         raw_selectors = {row["selector"] for row in raw}
         assert {"google-antigravity/tab_flash_lite_preview",
                 "google-antigravity/tab_jump_flash_lite_preview"} <= raw_selectors, "raw catalog missing tab_* controls"
@@ -438,22 +446,47 @@ def standalone_cli_scope(entry, api, api_expected_names):
             session = state["sessionId"]
             state = client.call("session/set_config_option", sessionId=session, configId="model", value="google-antigravity/gemini-3.8-flash")
             assert values(state, "thinking") == {"off", "auto", "low", "medium", "high"}, option(state, "thinking")
-            expected_standalone = set(api_expected_names) | set(antigravity_names) | set(codex_names)
+            expected_standalone = set(api_expected_names) | set(antigravity_names)
             assert values(state, "model") == expected_standalone, (
                 sorted(values(state, "model") - expected_standalone)[:8],
                 sorted(expected_standalone - values(state, "model"))[:8],
             )
+            rejected = client.receive(client.send(
+                "session/set_config_option", {"sessionId": session, "configId": "model",
+                                              "value": "openai-codex/gpt-6-astra"}), allow_error=True)
+            assert "error" in rejected, "ACP accepted the disabled Codex provider"
+            state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="high")
+            assert option(state, "model")["currentValue"] == "google-antigravity/gemini-3.8-flash", state
         finally:
             client.close()
+        widened = json.loads(common)
+        widened["enabledModels"].append("openai-codex/*")
+        config_path.write_text(json.dumps(widened))
+        explicit = subprocess.run(
+            [api["commandPath"], "--no-extensions", "--no-session", "--model",
+             "openai-codex/gpt-6-astra", "-p", "smoke"],
+            cwd=work, env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
+            capture_output=True, text=True, timeout=20,
+        )
+        assert explicit.returncode != 0 and 'Provider "openai-codex" is disabled.' in explicit.stderr, explicit.stderr
     # Also verify T3's ACP command isolates T3 sessions when ~/.omp/agent/config.yml drifts wider.
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         work = prepare(entry, home)
         drifted = json.loads((home / ".omp/agent/config.yml").read_text())
         drifted["enabledModels"] = ["synthetic/**", "google-antigravity/**", "openrouter/**", "openai-codex/*"]
+        drifted["disabledProviders"] = []
         (home / ".omp/agent/config.yml").write_text(json.dumps(drifted))
-        import_fake_oauth(api["commandPath"], home, ("google-antigravity",))
+        import_fake_oauth(api["commandPath"], home, ("google-antigravity", "openai-codex"))
         catalog(api, home, work, {**api_expected_names, **antigravity_names})
+        pinned_args = list(api["commandArgs"])
+        pinned_args[pinned_args.index("--model") + 1] = "openai-codex/gpt-6-astra"
+        explicit = subprocess.run(
+            [api["commandPath"], *pinned_args], input="", cwd=work,
+            env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
+            capture_output=True, text=True, timeout=20,
+        )
+        assert explicit.returncode != 0 and 'Provider "openai-codex" is disabled.' in explicit.stderr, explicit.stderr
 
 def applied(entry, home):
     target = home / ".t3/userdata/settings.json"
@@ -520,7 +553,6 @@ if __name__ == "__main__":
                 "google-antigravity/gemini-*",
                 "google-antigravity/claude-*",
                 "google-antigravity/gpt-*",
-                "openai-codex/*",
             } | {s for s in expected if s.startswith(("synthetic/", "openrouter/"))}
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"

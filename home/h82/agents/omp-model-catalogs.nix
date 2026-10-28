@@ -14,6 +14,10 @@ in
   openrouter = openrouter // {
     data = openrouterData;
   };
+  disabledProviders = [
+    "omp-managed"
+    "openai-codex"
+  ];
   # OMP uses path globs: model IDs themselves contain slashes. Synthetic rows
   # are listed exactly because OMP's bundled catalog can carry models the live
   # catalog has retired, and a glob would offer those too.
@@ -24,6 +28,5 @@ in
       "google-antigravity/claude-*"
       "google-antigravity/gpt-*"
     ]
-    ++ map (row: "openrouter/${row.id}") openrouterData
-    ++ [ "openai-codex/*" ];
+    ++ map (row: "openrouter/${row.id}") openrouterData;
 }
