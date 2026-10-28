@@ -112,6 +112,11 @@
     Tailscale app's CLI, logging to /var/log/network-recovery.log, newsyslog
     rotates that log, and the user's session sets
     CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS to 60000. Bootstrap has none of it.
+  - Dock: the pinned apps are the shared list in order, with the fixture's
+    my.dock.hostApps between ChatGPT and Discord and T3 Code (Nightly) only
+    with my.t3.desktop; Downloads is the one right-side folder, as a fanned
+    stack sorted by date added; recent apps are hidden, the tile size is 32,
+    and position, auto-hide, magnification, and minimize settings are unset.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -1106,6 +1111,99 @@ let
       )
     ];
 
+  # The Dock pins the shared apps in order with the host's own apps between
+  # ChatGPT and Discord, T3 Code only with its trait, Downloads as the one
+  # folder, and sets only show-recents and tilesize among the other keys.
+  assertDock =
+    entry:
+    let
+      config = entry.host.config;
+      home = config.my.user.home;
+      hostApps = config.my.dock.hostApps or [ ];
+      expected =
+        t3:
+        [
+          "/Applications/Google Chrome.app"
+          "/System/Applications/Mail.app"
+          "/System/Applications/Messages.app"
+          "/System/Applications/Phone.app"
+          "/System/Applications/FaceTime.app"
+          "/System/Applications/iPhone Mirroring.app"
+          "/System/Applications/Calendar.app"
+          "/System/Applications/Reminders.app"
+          "/System/Applications/Notes.app"
+          "/System/Applications/Photos.app"
+          "/Applications/Ghostty.app"
+        ]
+        ++ lib.optional t3 "${home}/Applications/Home Manager Apps/T3 Code (Nightly).app"
+        ++ [
+          "${home}/Applications/Home Manager Apps/VSCodium.app"
+          "/Applications/Xcode.app"
+          "/Applications/Claude.app"
+          "/Applications/ChatGPT.app"
+        ]
+        ++ hostApps
+        ++ [
+          "/Applications/Discord.app"
+          "/Applications/1Password.app"
+          "/System/Applications/System Settings.app"
+        ];
+      appsOf =
+        c:
+        map (tile: tile.tile-data.file-data._CFURLString or null) (
+          lib.defaultTo [ ] c.system.defaults.dock.persistent-apps
+        );
+      withoutT3 =
+        (entry.host.extendModules {
+          modules = [ { my.t3.desktop.enable = lib.mkForce false; } ];
+        }).config;
+      dock = config.system.defaults.dock;
+      unmanaged = [
+        "autohide"
+        "orientation"
+        "magnification"
+        "mineffect"
+        "minimize-to-application"
+        "largesize"
+      ];
+    in
+    lib.concatStrings [
+      (check (config.my.t3.desktop.enable && hostApps != [ ])
+        "${entry.name}: the fixture must enable my.t3.desktop and set my.dock.hostApps, or the order checks prove nothing"
+      )
+      (check (
+        appsOf config == expected true
+      ) "${entry.name}: the Dock's pinned apps differ from the declared order")
+      (check (
+        appsOf withoutT3 == expected false
+      ) "${entry.name}: without my.t3.desktop the Dock must pin no T3 Code and keep the rest in order")
+      (check
+        (
+          dock.persistent-others or null == [
+            {
+              tile-data = {
+                file-data = {
+                  _CFURLString = "file://${home}/Downloads";
+                  _CFURLStringType = 15;
+                };
+                arrangement = 2;
+                displayas = 0;
+                showas = 1;
+              };
+              tile-type = "directory-tile";
+            }
+          ]
+        )
+        "${entry.name}: the Dock's right side must hold only Downloads, sorted by date added as a fanned stack"
+      )
+      (check (
+        dock.show-recents or null == false && dock.tilesize or null == 32
+      ) "${entry.name}: the Dock must hide recent apps and use tile size 32")
+      (check (lib.all (key: dock.${key} or null == null)
+        unmanaged
+      ) "${entry.name}: the Dock must leave ${lib.concatStringsSep ", " unmanaged} to the user")
+    ];
+
   # Device creation is macOS-only; the module must not reach other hosts.
   assertNoDevicesElsewhere = lib.concatStrings [
     (check (
@@ -1130,6 +1228,7 @@ pkgs.runCommand "darwin-config" { } ''
   ${lib.concatMapStrings assertEntry darwinFixtures}
   ${lib.concatMapStrings assertTlsInspectionCa darwinFixtures}
   ${lib.concatMapStrings assertNetworkRecovery darwinFixtures}
+  ${lib.concatMapStrings assertDock darwinFixtures}
   ${assertNoDevicesElsewhere}
   ${assertMobileDeviceTypes}
   [ "$fail" = 0 ] || exit 1

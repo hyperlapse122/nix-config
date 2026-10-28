@@ -61,6 +61,9 @@
     /etc/nix-config-host records the host and variant, the Brewfile lists the
     expected casks, the shared fonts are installed, and activation turns on
     automatic appearance without pinning AppleInterfaceStyle;
+  - activation writes exactly the Dock's persistent-apps, persistent-others,
+    show-recents, and tilesize, each with the value its option holds, and no
+    other Dock key;
   - the system activate script runs the Xcode step, mas through launchctl
     asuser for App Store id 497799835, after brew bundle and before the Home
     Manager activation call, then the KakaoTalk step for App Store id
@@ -226,6 +229,31 @@ let
 
   authEffects = ./lib/containers-auth-effects.py;
 
+  # Reads every `defaults write com.apple.dock` the system activation runs and
+  # compares the written plists with the Dock options; tests/darwin-config.nix
+  # owns what those options must be.
+  dockWrites = pkgs.writeText "dock-writes.py" ''
+    import json, plistlib, re, sys
+
+    activate = open(sys.argv[1]).read()
+    expected = json.load(open(sys.argv[2]))
+    writes = {
+        m.group(1): plistlib.loads(m.group(2).encode())
+        for m in re.finditer(
+            r"defaults write com\.apple\.dock '?([\w-]+)'? '(<\?xml.*?</plist>)'", activate, re.S
+        )
+    }
+    problems = []
+    if sorted(writes) != sorted(expected):
+        problems.append(f"writes Dock keys {sorted(writes)}, not {sorted(expected)}")
+    for key, value in expected.items():
+        if key in writes and writes[key] != value:
+            problems.append(f"writes {key} as {writes[key]!r}, not {value!r}")
+    for problem in problems:
+        print(f"the system activation {problem}", file=sys.stderr)
+    sys.exit(1 if problems else 0)
+  '';
+
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
@@ -265,6 +293,17 @@ let
           pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
         }
       }/libexec/antigravity-acp";
+      # Only these four Dock keys may be written; the rest stay the user's.
+      expectedDock = pkgs.writeText "expected-dock.json" (
+        builtins.toJSON {
+          inherit (config.system.defaults.dock)
+            persistent-apps
+            persistent-others
+            show-recents
+            tilesize
+            ;
+        }
+      );
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -712,6 +751,8 @@ let
       if grep -Eq "defaults write -g '?AppleInterfaceStyle'? " "$sys/activate"; then
         bad "the system activation pins AppleInterfaceStyle"
       fi
+      python3 ${dockWrites} "$sys/activate" ${expectedDock} \
+        || bad "the system activation's Dock writes differ from the Dock options"
     '';
 in
 pkgs.runCommand "darwin-outputs"

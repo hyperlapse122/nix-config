@@ -7,6 +7,7 @@
     ./nix.nix
     ./host-marker.nix
     ./defaults.nix
+    ./dock.nix
     ./homebrew.nix
     ./fonts.nix
     ./xcode.nix
