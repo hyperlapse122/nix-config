@@ -39,7 +39,6 @@ let
   impeccable = registry.impeccable;
   impeccableSrc = "${inputs.${impeccable.input}}";
 
-  # The local wrapper beside impeccable's lens references, both unchanged.
   designLenses = pkgs.runCommand "design-lenses" { } ''
     mkdir -p $out/references
     cp --no-preserve=mode ${./skills/design-lenses/SKILL.md} $out/SKILL.md
@@ -50,15 +49,26 @@ let
     cp --no-preserve=mode ${esc "${impeccableSrc}/${impeccable.license}"} $out/LICENSE
     cp --no-preserve=mode ${esc "${impeccableSrc}/${impeccable.notice}"} $out/NOTICE.md
   '';
+
+  # listToAttrs keeps one of two entries with the same name, so a duplicate
+  # would silently drop an upstream skill.
+  names = lib.concatMap (upstream: map (skill: skill.name) upstream.skills) registry.upstreams ++ [
+    "design-lenses"
+  ];
+  duplicates = lib.unique (lib.filter (name: lib.count (other: other == name) names > 1) names);
 in
 {
   my.agentSkills =
-    lib.listToAttrs (
-      lib.concatMap (
-        upstream: map (skill: lib.nameValuePair skill.name (skillTree upstream skill)) upstream.skills
-      ) registry.upstreams
-    )
-    // {
-      design-lenses = designLenses;
-    };
+    lib.throwIf (duplicates != [ ])
+      "pinned-skills: the skill name(s) ${lib.concatStringsSep ", " duplicates} appear more than once"
+      (
+        lib.listToAttrs (
+          lib.concatMap (
+            upstream: map (skill: lib.nameValuePair skill.name (skillTree upstream skill)) upstream.skills
+          ) registry.upstreams
+        )
+        // {
+          design-lenses = designLenses;
+        }
+      );
 }

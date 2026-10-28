@@ -107,6 +107,18 @@ let
     "typeset.md"
   ];
 
+  # A skill whose repository root holds more than the skill installs only the
+  # entries upstream packages as the skill (ux-writing's build-skill.sh).
+  selectedFiles = {
+    ux-writing = [
+      "SKILL.md"
+      "docs"
+      "examples"
+      "references"
+      "templates"
+    ];
+  };
+
   allNames = publishedNames ++ [
     "design-lenses"
     "ux-flows"
@@ -230,15 +242,22 @@ let
         echo ${esc "no registry entry or flake input to compare ~/${target} on ${label} against"} >&2
         failed=1
       ''
-    else if skill ? files then
-      entriesCheck "~/${target} on ${label}" "$dir" (skill.files ++ [ licenseName ])
+    else if (skill ? files) || selectedFiles ? ${name} then
+      let
+        files = selectedFiles.${name} or [ ];
+      in
+      lib.optionalString (sorted (skill.files or [ ]) != sorted files) ''
+        echo ${esc "the registry must select exactly ${lib.concatStringsSep ", " (sorted files)} for ${name}, got: ${lib.concatStringsSep ", " (sorted (skill.files or [ ]))}"} >&2
+        failed=1
+      ''
+      + entriesCheck "~/${target} on ${label}" "$dir" (files ++ [ licenseName ])
       + lib.concatMapStrings (file: ''
         if ! diff -r "$dir"/${esc file} ${src}/${esc "${path}/${file}"} >&2; then
           echo ${esc "~/${target}/${file} on ${label} differs from ${path}/${file} of the pinned ${upstream.input} input"} >&2
           failed=1
         fi
-      '') skill.files
-      + licenseCheck target label src license licenseName
+      '') files
+      + licenseCheck target label src license licenseName upstream
     else
       ''
         if ! diff -r ${
@@ -248,14 +267,15 @@ let
           failed=1
         fi
       ''
-      + licenseCheck target label src license licenseName;
+      + licenseCheck target label src license licenseName upstream;
 
   licenseCheck =
-    target: label: src: license: licenseName:
+    target: label: src: license: licenseName: upstream:
     if license == null then
       ''
-        if [ ! -s "$dir/LICENSE-SOURCE" ]; then
-          echo ${esc "~/${target} on ${label} has no license file upstream, so it must carry a non-empty LICENSE-SOURCE"} >&2
+        if ! grep -q 'MIT' "$dir/LICENSE-SOURCE" 2>/dev/null \
+          || ! grep -qF ${esc (upstream.expectedRev or "missing")} "$dir/LICENSE-SOURCE"; then
+          echo ${esc "~/${target} on ${label} has no license file upstream, so its LICENSE-SOURCE must name the MIT license and the pinned revision"} >&2
           failed=1
         fi
       ''
