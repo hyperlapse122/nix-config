@@ -97,7 +97,14 @@ in
 {
   my.agents.crossModelPeers = [ "claude" ];
 
-  home.sessionVariables = environmentTier;
+  # A running session drops a stream that stalls after a network switch within
+  # a minute instead of Claude Code's 180-second default, so it recovers on the
+  # next request once the network recovery daemon has the Mac back online.
+  home.sessionVariables =
+    environmentTier
+    // lib.optionalAttrs (config.my.networkRecovery.enable && !config.my.bootstrap) {
+      CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS = "60000";
+    };
 
   # No executable-existence guard, unlike the KDE activation blocks. Those test their
   # tool with `[ -x ]` because it comes from a package that may be absent; this
