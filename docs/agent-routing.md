@@ -31,7 +31,7 @@ Inside T3 Code, every harness receives its own `root` row and the same delegated
 | Role | Chain |
 | --- | --- |
 | `root` (Claude Code) | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) |
-| `root` (Codex) | `codex` `gpt-6-astra` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
+| `root` (Codex) | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
 | `root` (OMP) | `omp` `google-antigravity/gemini-4-argon` `high` |
 | `scout` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
 | `quick` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
@@ -40,9 +40,9 @@ Inside T3 Code, every harness receives its own `root` row and the same delegated
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high` |
 | `implement-high` | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high` |
 | `deep` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh` |
-| `hard-decision` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-fable-5-1` `max` |
+| `hard-decision` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-fable-5-1` `max` |
 | `review` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high` |
-| `review-gate` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-opus-5-5` `max` |
+| `review-gate` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-opus-5-5` `max` |
 | `architect` | `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `xhigh` |
 | `peer` | The external model and effort the owning CE skill selects |
 
@@ -70,19 +70,23 @@ Outside T3 Code, each harness routes delegated roles within its own provider.
 
 ### Codex
 
+Managed startup settings use Sol `high` at service tier `default`; the default subagent uses Terra `medium`.
+Sol `max` is automatic only for `hard-decision` and `review-gate`.
+All other GPT `max` uses and every GPT `ultra` use require an explicit request for the affected work.
+
 | Role | Chain |
 | --- | --- |
-| `root` | `gpt-6-astra` `medium` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
+| `root` | `gpt-6.1-sol` `high` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
 | `scout` | `gpt-6-luna` `low` Fast |
 | `quick` | `gpt-6-luna` `low` Fast |
-| `writing` | `gpt-6.1-sol` `low` |
-| `visual` | `gpt-6.1-sol` `low` |
-| `implement` | `gpt-6.1-sol` `low` |
+| `writing` | `gpt-6.1-terra` `medium` |
+| `visual` | `gpt-6.1-terra` `medium` |
+| `implement` | `gpt-6.1-terra` `medium` |
 | `implement-high` | `gpt-6.1-sol` `medium` |
 | `deep` | `gpt-6.1-sol` `medium` |
-| `hard-decision` | `gpt-6.1-sol` `medium` |
+| `hard-decision` | `gpt-6.1-sol` `max` |
 | `review` | `gpt-6.1-sol` `medium` |
-| `review-gate` | `gpt-6.1-sol` `medium` |
+| `review-gate` | `gpt-6.1-sol` `max` |
 | `architect` | `gpt-6.1-sol` `medium` |
 | `peer` | CE selection |
 
@@ -115,7 +119,7 @@ This routing is compared against `docs/guide/agent-model-matching.md` in <https:
 | Role | This repository (T3 Code) | oh-my-openagent default | Difference |
 | --- | --- | --- | --- |
 | `root` (Claude Code) | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) | Daily · Normal root: Opus 5.5 `medium` → Kimi K3 `max` → GLM-5.3 `max` | OMP effort caps at `high`, so `max` becomes `high` on Kimi K3 and GLM-5.3; Synthetic entries expire after 2026-11-18. |
-| `root` (Codex) | `codex` `gpt-6-astra` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` | Obsessive · Normal root: Astra `medium` → Sol Fast `medium` → Sol `medium` (+GPT-5.6 Sol) | Drops the older GPT-5.6 Sol fallback. |
+| `root` (Codex) | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` | Obsessive · Normal root: Astra `medium` → Sol Fast `medium` → Sol `medium` (+GPT-5.6 Sol) | Uses Sol `high` as primary; retains the Sol fallbacks and drops the older GPT-5.6 Sol fallback. |
 | `root` (OMP) | `omp` `google-antigravity/gemini-4-argon` `high` | None | OMP root Argon `high` has no oh-my-openagent counterpart. |
 | `scout` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) | `explore`, `librarian`: Kimi highspeed → Luna Fast `low` → Haiku `medium` → DeepSeek Flash `max` → Qwen/MiniMax | Kimi highspeed, Qwen, and MiniMax are unavailable here; DeepSeek Flash runs at `high` instead of `max` under the OMP cap and expires after 2026-11-18. |
 | `quick` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) | `quick`: Luna Fast `low` → Haiku `medium` → DeepSeek Flash `off` → … Grok 4.20 non-reasoning → GLM-5.3-Flash `low` → MiMo | Grok 4.20 and MiMo are unavailable here; Synthetic entries expire after 2026-11-18. |
@@ -124,9 +128,9 @@ This routing is compared against `docs/guide/agent-model-matching.md` in <https:
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high` | `unspecified-low`: Sonnet `medium` → MiMo → Grok 4.7 `xhigh` → GLM-5.3 `high` → Sol `medium` … | MiMo is unavailable here; appends Gemini 3.8 Flash `high`; GLM-5.3 expires after 2026-11-18. |
 | `implement-high` | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high` | `unspecified-high`: Opus `medium` → GLM-5.3 `max` → Kimi K3 `max` | GLM-5.3 and Kimi K3 run at `high` under the OMP cap and expire after 2026-11-18; appends Sol `medium` and Argon `high`. |
 | `deep` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh` | `deep-low`: Sol `medium` → Sol Fast `medium` | Appends Opus 5.5 `xhigh` as cross-provider fallback. |
-| `hard-decision` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-fable-5-1` `max` | `deep-high`: Astra `high`; `ultrabrain`: Astra `max` | Sol `xhigh` replaces Astra as the primary outside the root; GPT `max` is explicit-request only; appends Fable 5.1 `max`. |
+| `hard-decision` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-fable-5-1` `max` | `deep-high`: Astra `high`; `ultrabrain`: Astra `max` | Uses Sol `max` automatically for this role, followed by Fable 5.1 `max`. |
 | `review` | `codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high` | `omo-native-code-reviewer`: `unspecified-high` (Opus `medium`) | Review personas run on GPT-6.1 Sol (`medium` then `high`) instead of Opus first, with Opus 5.5 `high` as fallback. |
-| `review-gate` | `codex` `gpt-6.1-sol` `xhigh` → `codex` `gpt-6-astra` `high` → `claudeAgent` `claude-opus-5-5` `max` | `plan-reviewer`: Astra `xhigh` → Opus `max`; `gate-reviewer`: Astra `high` → Opus `medium` | Sol `xhigh` replaces Astra at the front of the chain, followed by Astra `high` and Opus 5.5 `max`. |
+| `review-gate` | `codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-opus-5-5` `max` | `plan-reviewer`: Astra `xhigh` → Opus `max`; `gate-reviewer`: Astra `high` → Opus `medium` | Uses Sol `max` automatically for this role, followed by Opus 5.5 `max`. |
 | `architect` | `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `codex` `gpt-6.1-sol` `xhigh` | `architect`: Fable 5.1 `max`; `plan-consultant`: Fable `max` → Opus `max` → Kimi K3 `max` | Combines both into one chain; Kimi K3 runs at `high` under the OMP cap and expires after 2026-11-18; appends Sol `xhigh`. |
 | `peer` | The external model and effort the owning CE skill selects | None | Compound Engineering cross-model peer role specific to this repository. |
 
@@ -134,10 +138,10 @@ This routing is compared against `docs/guide/agent-model-matching.md` in <https:
 
 - OMP effort caps at `high` (the highest effort T3 Code passes to OMP), so oh-my-openagent entries at `max` become `high` on OMP entries.
 - Kimi highspeed, Qwen, MiniMax, MiMo, and Grok 4.20 are unavailable here.
-- GPT-6.1 Sol replaces GPT-6 Astra as the primary model outside the root.
+- GPT-6.1 Sol replaces GPT-6 Astra in all managed GPT chains, including the root.
 - Review personas (`review`) run on GPT-6.1 Sol instead of Claude Opus.
 - The OMP root (`google-antigravity/gemini-4-argon` `high`) has no oh-my-openagent counterpart.
-- GPT-6.1 Terra stays unused because oh-my-openagent does not use it.
+- GPT-6.1 Terra `medium` handles standalone Codex writing, visual work, and routine implementation, plus the managed default subagent.
 - Synthetic entries expire after 2026-11-18; other catalog Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash, and the `syn:*` aliases) run only on explicit request under the same expiry.
 
 ## Follow-up issues

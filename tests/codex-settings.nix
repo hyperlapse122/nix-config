@@ -43,11 +43,11 @@ let
     setPaths = [
       {
         path = [ "model" ];
-        value = "gpt-6-astra";
+        value = "gpt-6.1-sol";
       }
       {
         path = [ "model_reasoning_effort" ];
-        value = "medium";
+        value = "high";
       }
       {
         path = [ "service_tier" ];
@@ -58,14 +58,14 @@ let
           "agents"
           "default_subagent_model"
         ];
-        value = "gpt-6.1-sol";
+        value = "gpt-6.1-terra";
       }
       {
         path = [
           "agents"
           "default_subagent_reasoning_effort"
         ];
-        value = "low";
+        value = "medium";
       }
       {
         path = [ "check_for_update_on_startup" ];
@@ -100,13 +100,13 @@ let
   seed = ''
     # user comment survives
     model = "old-model"
-    model_reasoning_effort = "high"
+    model_reasoning_effort = "low"
     service_tier = "priority"
     developer_instructions = "retired"
     unrelated = "keep me"
     [agents]
     default_subagent_model = "old-child"
-    default_subagent_reasoning_effort = "medium"
+    default_subagent_reasoning_effort = "low"
     max_threads = 3
     [projects."/scratch/project"]
     trust_level = "trusted"
@@ -114,13 +114,13 @@ let
     enabled = true
   '';
   applied = {
-    model = "gpt-6-astra";
-    model_reasoning_effort = "medium";
+    model = "gpt-6.1-sol";
+    model_reasoning_effort = "high";
     service_tier = "default";
     unrelated = "keep me";
     agents = {
-      default_subagent_model = "gpt-6.1-sol";
-      default_subagent_reasoning_effort = "low";
+      default_subagent_model = "gpt-6.1-terra";
+      default_subagent_reasoning_effort = "medium";
       max_threads = 3;
     };
     projects."/scratch/project".trust_level = "trusted";

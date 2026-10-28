@@ -23,11 +23,11 @@ let
   declaredPaths = [
     {
       path = [ "model" ];
-      value = "gpt-6-astra";
+      value = "gpt-6.1-sol";
     }
     {
       path = [ "model_reasoning_effort" ];
-      value = "medium";
+      value = "high";
     }
     {
       path = [ "service_tier" ];
@@ -38,14 +38,14 @@ let
         "agents"
         "default_subagent_model"
       ];
-      value = "gpt-6.1-sol";
+      value = "gpt-6.1-terra";
     }
     {
       path = [
         "agents"
         "default_subagent_reasoning_effort"
       ];
-      value = "low";
+      value = "medium";
     }
     {
       path = [ "check_for_update_on_startup" ];
