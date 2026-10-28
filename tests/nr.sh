@@ -257,6 +257,14 @@ fi
 pass 'a failing nvd is reported but does not fail the run'
 
 reset_generations
+printf '#!%s\nexit 19\n' "$(command -v bash)" >"$refresh"
+printf '#!%s\nprintf "diffed\\n" >"%s/nvd.log"\n' "$(command -v bash)" "$scratch" >"$stub_dir/nvd"
+expect_failure env NR_STUB_MOVES="$scratch/current" PATH="$stub_dir:$PATH" "$rendered_run" switch --flake-dir "$repo" --host testhost
+[[ $(readlink -f "$scratch/current") == "$scratch/genB" ]] || fail 'refresh-failure case did not actually apply'
+[[ $err == *'configuration applied, but agent instruction refresh failed'* ]] || fail 'partial apply failure is not explained'
+[[ -e $scratch/nvd.log ]] || fail 'refresh failure skipped the generation diff'
+
+reset_generations
 printf '#!%s\nexit 17\n' "$(command -v bash)" >"$stub_dir/rebuild-stub"
 expect_failure env PATH="$stub_dir:$PATH" "$rendered_run" switch --flake-dir "$repo" --host testhost
 [[ ! -e $scratch/refresh.log ]] || fail 'failed rebuild refreshed instructions'

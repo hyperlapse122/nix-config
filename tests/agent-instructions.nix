@@ -75,6 +75,12 @@ let
         kind = entry.user.my.kind;
         activation = entry.user.home.activation.agentInstructions.data or "";
         kdeActivation = entry.user.home.activation.kdeSession.data or "";
+        kdeDefaults =
+          if entry.user.my.kind == "nixos" then
+            (import ./lib/etc-file.nix { inherit lib; }) self.nixosConfigurations.${entry.name}.config
+              "xdg/plasma-localerc"
+          else
+            null;
         locale = {
           name = entry.user.my.locale.name;
           language = "ko-KR";

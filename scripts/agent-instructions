@@ -103,8 +103,7 @@ def main():
                 os.fchmod(output.fileno(), 0o644)
             os.replace(staging, destination)
         finally:
-            if os.path.exists(staging):
-                os.unlink(staging)
+            Path(staging).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

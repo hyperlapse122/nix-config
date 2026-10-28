@@ -5,6 +5,7 @@ import os
 import plistlib
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -846,6 +847,8 @@ def check_repository_docs(agents, concepts):
 def check_activation(template, entry):
     """Exercise the delivered activation, including a second apply of one generation."""
     assert entry["activation"], "missing instruction activation"
+    bash = shutil.which("bash")
+    assert bash
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         config = home / ".config"
@@ -853,16 +856,21 @@ def check_activation(template, entry):
         stubs = home / "bin"
         stubs.mkdir()
         defaults = stubs / "defaults"
+        path_check = (
+            "assert '/usr/bin' in os.environ['PATH'].split(os.pathsep)\n"
+            if entry.get("requireNativePath") else ""
+        )
         defaults.write_text(
             f"#!{sys.executable}\nimport os, pathlib, sys\n"
-            "assert sys.argv[1:] == ['export', 'NSGlobalDomain', '-']\n"
+            + path_check
+            + "assert sys.argv[1:] == ['export', 'NSGlobalDomain', '-']\n"
             "sys.stdout.buffer.write((pathlib.Path(os.environ['HOME']) / 'preferences.plist').read_bytes())\n"
         )
         defaults.chmod(0o755)
         env = os.environ | {
             "HOME": str(home), "XDG_CONFIG_HOME": str(config),
             "XDG_CONFIG_DIRS": str(home / "xdg-defaults"),
-            "PATH": str(stubs) + os.pathsep + os.environ["PATH"],
+            "PATH": str(stubs),
             "LANG": "C", "LANGUAGE": "fr", "LC_ALL": "C",
         }
         env.pop("DRY_RUN", None)
@@ -877,7 +885,7 @@ def check_activation(template, entry):
             }))
 
         def apply(environment=env):
-            subprocess.run(["bash", "-eu", "-c", entry["activation"]], env=environment, check=True)
+            subprocess.run([bash, "-eu", "-c", entry["activation"]], env=environment, check=True)
 
         def verify(language, locale=raw_locale):
             for item in entry["paths"]:
@@ -897,7 +905,7 @@ def check_activation(template, entry):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.symlink_to(sentinel)
         if entry["kdeActivation"]:
-            subprocess.run(["bash", "-eu", "-c", entry["kdeActivation"]], env=env, check=True)
+            subprocess.run([bash, "-eu", "-c", entry["kdeActivation"]], env=env, check=True)
         apply()
         verify("en-US")
         assert sentinel.read_text() == "old generation", "wrote through old generation link"
@@ -907,6 +915,14 @@ def check_activation(template, entry):
         verify("en-US")
         apply()
         verify("ko-KR")
+        if entry["kind"] == "nixos":
+            defaults_dir = home / "xdg-defaults"
+            defaults_dir.mkdir()
+            assert entry["kdeDefaults"], "missing materialized Plasma defaults"
+            shutil.copyfile(entry["kdeDefaults"], defaults_dir / "plasma-localerc")
+            (config / "plasma-localerc").unlink()
+            apply()
+            verify("ko", entry["locale"]["name"])
         if entry["kind"] == "darwin":
             for bad in (b"not a property list", plistlib.dumps([]), plistlib.dumps({})):
                 (home / "preferences.plist").write_bytes(bad)
@@ -918,7 +934,7 @@ def check_activation(template, entry):
             # The second delivery fails after the first rendered successfully.
             Path(entry["failureTemplate"]).write_text(template + "\n{{ if .codex }}{{ .missing }}{{ end }}\n")
             result = subprocess.run(
-                ["bash", "-eu", "-c", entry["activation"]], env=env,
+                [bash, "-eu", "-c", entry["activation"]], env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
             assert result.returncode != 0, "renderer failure was swallowed"
@@ -964,6 +980,7 @@ def main():
     for entry in entries:
         key = entry["key"]
         if entry["kind"] != "linux":
+            entry["requireNativePath"] = entry["kind"] == "darwin"
             check_activation(template, entry)
         for item in entry["paths"] if entry["kind"] == "linux" else []:
             path, delivery = item["path"], item["delivery"]

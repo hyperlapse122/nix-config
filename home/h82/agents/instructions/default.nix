@@ -36,6 +36,9 @@ let
   );
   refresh = pkgs.writeShellScript "refresh-agent-instructions" ''
     set -eu
+    ${lib.optionalString (config.my.kind == "darwin") ''
+      export PATH="''${PATH:+$PATH:}/usr/bin:/bin"
+    ''}
     ${command} --home "$HOME"
   '';
   rendered = pkgs.runCommand "agent-instructions" { } ''
