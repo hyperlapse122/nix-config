@@ -1,6 +1,7 @@
 """Offline command-boundary proofs for provider usage and shared cache behavior."""
 
 import concurrent.futures
+import datetime
 import http.server
 import json
 import os
@@ -34,14 +35,19 @@ class UsageTest(unittest.TestCase):
                         GROK_HOME=str(self.root / ".grok"),
                         CLAUDE_CONFIG_DIR=str(self.root / ".claude"),
                         PI_CODING_AGENT_DIR=str(self.root / ".omp/agent"),
+                        AGENT_USAGE_ANTIGRAVITY_VERSION="9.9.9",
                         PATH=str(self.root) + os.pathsep + os.environ.get("PATH", ""))
-        for key in ("XAI_API_KEY", "XAI_BASE_URL", "GROK_BASE_URL", "ANTHROPIC_API_KEY"):
+        for key in ("XAI_API_KEY", "XAI_BASE_URL", "GROK_BASE_URL", "ANTHROPIC_API_KEY", "GEMINI_HOME"):
             self.env.pop(key, None)
         self.write(".codex/auth.json", {"tokens": {"account_id": "codex-account"}})
         self.write(".claude.json", {"oauthAccount": {"accountUuid": "claude-account"}})
         self.write(".grok/auth.json", {"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828": {
             "key": TOKEN, "email": "example@example.invalid"}})
         reset = int(time.time()) + 7200
+        self.write(".gemini/antigravity-acp/acp_token.json", {
+            "client_id": "antigravity-client", "client_secret": TOKEN, "refresh_token": TOKEN,
+            "token_uri": "https://oauth2.googleapis.com/token", "project_id": "gemini-project"})
+        reset_time = datetime.datetime.fromtimestamp(reset, datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
         self.data = {
             "codex": {"accountId": "codex-account", "rateLimits": {
                 "primary": {"usedPercent": 50, "windowDurationMins": 300, "resetsAt": reset},
@@ -49,6 +55,12 @@ class UsageTest(unittest.TestCase):
             "claude": {"rate_limits": {"five_hour": {"utilization": 30, "resets_at": reset},
                 "seven_day": {"utilization": 40, "resets_at": reset}},
                 "model_scoped": [{"display_name": "Fable", "utilization": 90, "resets_at": reset}]},
+            "antigravity": {"groups": [
+                {"displayName": "Gemini Models", "buckets": [
+                    {"bucketId": "gemini-weekly", "window": "weekly", "resetTime": reset_time, "remainingFraction": .8},
+                    {"bucketId": "gemini-5h", "window": "5h", "resetTime": reset_time, "remainingFraction": .9}]},
+                {"displayName": "Claude and GPT models", "buckets": [
+                    {"bucketId": "3p-weekly", "window": "weekly", "resetTime": reset_time, "remainingFraction": .01}]}]},
             "grok": {"config": {"creditUsagePercent": 10, "currentPeriod": {
                 "type": "USAGE_PERIOD_TYPE_WEEKLY", "start": reset - 604800, "end": reset}}},
             "synthetic": {"subscription": {"limit": 100, "requests": 30, "renewsAt": reset},
@@ -97,11 +109,24 @@ for line in sys.stdin:
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         self.stub("curl", f'''
-import sys,urllib.request,urllib.error
-assert sys.argv[1:3]==['--config','-']
+import sys,urllib.parse,urllib.request,urllib.error
+assert sys.argv[1:3]==['--config','-'] and not any('{TOKEN}' in arg for arg in sys.argv)
 config=sys.stdin.read()
-assert 'Bearer {TOKEN}' in config
 url=sys.argv[-1]
+body=[json.loads(line[len('data = '):]) for line in config.splitlines() if line.startswith('data = ')]
+if url=='https://oauth2.googleapis.com/token':
+ assert 'Authorization' not in config
+ assert urllib.parse.parse_qs(body[0])=={{'client_id':['antigravity-client'],'client_secret':['{TOKEN}'],
+  'refresh_token':['{TOKEN}'],'grant_type':['refresh_token']}}
+ print(json.dumps({{'access_token':'{TOKEN}'}})+'\\n200',end='')
+ sys.exit()
+if url=='https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary':
+ assert 'header = "Authorization: Bearer {TOKEN}"' in config
+ assert 'header = "User-Agent: antigravity/acp/9.9.9 (aidev_client)"' in config
+ assert json.loads(body[0])=={{'project':'gemini-project'}}
+ print(json.dumps(data['antigravity'])+'\\n200',end='')
+ sys.exit()
+assert 'Bearer {TOKEN}' in config
 assert url in ['https://cli-chat-proxy.grok.com/v1/billing?format=credits','https://api.synthetic.new/v2/quotas']
 req=urllib.request.Request('http://127.0.0.1:{server.server_port}/'+url.split('/',3)[3],headers={{'Authorization':'Bearer {TOKEN}'}})
 try: response=urllib.request.urlopen(req)
@@ -215,14 +240,20 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
         self.assertEqual(provider_windows(self.invoke('--refresh')['claude']),
                          provider_windows(legacy))
 
-    def test_gemini_is_unknown_with_reason_and_skips_nothing(self):
+    def test_gemini_reads_only_gemini_buckets_from_antigravity(self):
         result = self.invoke()['gemini']
-        self.assertEqual(result['status'], 'unknown')
-        self.assertTrue(result['reason'])
-        self.assertEqual(result['windows'], [])
+        self.assertEqual(result['status'], 'ok')
+        self.assertEqual([(w['label'], w['remainingPercent'], w['durationMins']) for w in result['windows']],
+                         [('weekly', 80, 10080), ('5h', 90, 300)])
         self.assertFalse(result['skip'])
         self.assertEqual(result['skipModels'], {})
-        self.assertEqual(self.calls('omp'), 0)
+
+    def test_gemini_without_antigravity_sign_in_is_unknown_and_skips_nothing(self):
+        (self.root / '.gemini/antigravity-acp/acp_token.json').unlink()
+        result = self.invoke()['gemini']
+        self.assertEqual(result['status'], 'unknown')
+        self.assertEqual(result['reason'], 'no Antigravity ACP sign-in')
+        self.assertFalse(result['skip'])
 
     def test_synthetic_search_is_reported_outside_routing_windows(self):
         self.data['synthetic']['subscription']['requests'] = 5

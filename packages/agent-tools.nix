@@ -106,7 +106,9 @@ let
   # Reports every coding-agent provider's usage windows with a shared cache.
   # Its readers call codex, omp, grok, curl and a Node helper on the Claude
   # Agent SDK, so the wrapper puts exactly those on PATH. Home Manager
-  # overrides the Synthetic key file per host kind, as omp.nix does.
+  # overrides the Synthetic key file per host kind, as omp.nix does. The
+  # Antigravity quota service lists Gemini buckets only for a current ACP
+  # client, so the wrapper names the pinned ACP runtime's version.
   agentUsage = pkgs.lib.makeOverridable (
     {
       syntheticKeyFile ? "/run/secrets/cli-auth/synthetic_api_key",
@@ -130,7 +132,8 @@ let
           $out/bin/agent-usage-claude.mjs
         wrapProgram $out/bin/agent-usage \
           --prefix PATH : ${runtimePath} \
-          --set NODE_PATH ${sdk}/lib/node_modules
+          --set NODE_PATH ${sdk}/lib/node_modules \
+          --set AGENT_USAGE_ANTIGRAVITY_VERSION ${(builtins.fromJSON (builtins.readFile ./antigravity-acp-release.json)).version}
       '';
     })
   ) { };
