@@ -4,7 +4,7 @@ description: Frontend and UI subagent for interface implementation and visual ch
 spawns: "*"
 model:
   - synthetic/hf:moonshotai/Kimi-K3
-thinkingLevel: low
+thinkingLevel: high
 ---
 
 Worker agent: delegated frontend and UI tasks.

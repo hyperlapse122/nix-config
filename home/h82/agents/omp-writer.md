@@ -4,7 +4,7 @@ description: Documentation and prose subagent for guides, plans, handoffs, and o
 spawns: "*"
 model:
   - synthetic/hf:moonshotai/Kimi-K3
-thinkingLevel: low
+thinkingLevel: high
 ---
 
 Worker agent: delegated writing tasks.

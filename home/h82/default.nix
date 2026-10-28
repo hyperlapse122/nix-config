@@ -71,7 +71,7 @@ in
       # Compound Engineering's Antigravity route finds the runtime on PATH.
       (import ../../packages/antigravity-acp-path.nix {
         inherit pkgs;
-        skills = lib.attrNames config.my.agentSkills;
+        skills = config.my.antigravitySkillNames;
       })
       (import ../../packages/agent-tools.nix { inherit pkgs; }).serveHtml
       (

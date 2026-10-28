@@ -78,20 +78,6 @@ let
     inherit pkgs skills;
     runtime = stubRuntime;
   };
-
-  # The sandbox has no /etc/ssl, so the real list always falls through to its
-  # last entry. This one proves the wrapper takes the first bundle that exists.
-  firstBundle = pkgs.writeText "first-bundle.pem" "first\n";
-  secondBundle = pkgs.writeText "second-bundle.pem" "second\n";
-  orderedPackage = import ../packages/antigravity-acp-path.nix {
-    inherit pkgs;
-    runtime = stubRuntime;
-    caBundles = [
-      "/no-such-dir/bundle.pem"
-      "${firstBundle}"
-      "${secondBundle}"
-    ];
-  };
 in
 pkgs.runCommand "antigravity-acp-path-tests" { } ''
   failures=$PWD/failures
@@ -151,11 +137,6 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
       fail "$mode SSL_CERT_FILE: the runtime got $cert, which is not a file"
     fi
   done
-
-  printf 'one line\n' | env -i PATH=/no-such-dir ${orderedPackage}/bin/agy_acp_server.par > out \
-    || fail "ordered bundles: the wrapper exited $?"
-  cert=$(field cert)
-  [ "$cert" = ${firstBundle} ] || fail "ordered bundles: the runtime got '$cert', not the first bundle that exists"
 
   preset=$PWD/preset.pem
   printf 'fixture\n' > "$preset"

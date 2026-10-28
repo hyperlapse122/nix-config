@@ -10,9 +10,10 @@
 
   - bin/agy resolves to packages/antigravity-cli.nix, built from its pin;
   - bin/agy_acp_server.par execs the runtime built from
-    packages/antigravity-acp-release.json, never T3 Code's pin, and links the
-    skills the user's my.agentSkills declares into Compound Engineering run
-    homes;
+    packages/antigravity-acp-release.json, never T3 Code's pin, and links
+    into Compound Engineering run homes exactly the skills the user's
+    home-files puts in ~/.gemini/antigravity-cli/skills, the pinned Compound
+    Engineering skills (ce-plan among them) included;
   - bin/localharness_external, beside it, is that runtime's executable helper.
 
   tests/antigravity-acp-path.nix runs the wrapper itself. macOS users are
@@ -40,16 +41,9 @@ let
 
   esc = value: lib.escapeShellArg (toString value);
 
-  assertEntry =
-    entry:
-    let
-      skills = lib.attrNames (entry.user.my.agentSkills or { });
-    in
-    ''
-      checkUser ${esc entry.name} ${
-        esc (entry.user.home.path or "")
-      } ${esc "for skill in ${lib.escapeShellArgs skills}; do"}
-    '';
+  assertEntry = entry: ''
+    checkUser ${esc entry.name} ${esc (entry.user.home.path or "")} ${esc (entry.user.home-files or "")}
+  '';
 in
 pkgs.runCommand "antigravity-profiles-tests" { } ''
   ${configurations.userGuard}
@@ -57,7 +51,7 @@ pkgs.runCommand "antigravity-profiles-tests" { } ''
   : > "$failures"
 
   checkUser() (
-    user=$1 homePath=$2 skillLoop=$3
+    user=$1 homePath=$2 homeFiles=$3
     fail() { echo "$user: $*" >> "$failures"; }
 
     if [ -z "$homePath" ] || [ ! -d "$homePath/bin" ]; then
@@ -83,8 +77,27 @@ pkgs.runCommand "antigravity-profiles-tests" { } ''
     wrapper=$(readlink -f "$par")
     grep -qxF 'exec ${runtimeDir}/agy_acp_server.par "$@"' "$wrapper" \
       || fail "agy_acp_server.par does not exec the PATH-pinned runtime's .par"
-    grep -qF -- "$skillLoop" "$wrapper" \
-      || fail "agy_acp_server.par does not link the user's agent skills: no '$skillLoop'"
+
+    skillsDir=$homeFiles/.gemini/antigravity-cli/skills
+    if [ -z "$homeFiles" ] || [ ! -d "$skillsDir" ]; then
+      fail "home-files has no .gemini/antigravity-cli/skills"
+      exit
+    fi
+    work=$(mktemp -d)
+    ls -A "$skillsDir" | sort > "$work/linked"
+    loops=$(grep -cE '^ *for skill in .*; do$' "$wrapper" || true)
+    if [ "$loops" != 1 ]; then
+      fail "agy_acp_server.par has $loops skill loops, not 1"
+      exit
+    fi
+    loop=$(grep -E '^ *for skill in .*; do$' "$wrapper")
+    loop=''${loop#*for skill in }
+    eval "set -- ''${loop%; do}"
+    printf '%s\n' "$@" | sort > "$work/wrapper"
+    cmp -s "$work/linked" "$work/wrapper" \
+      || fail "agy_acp_server.par links other skills than ~/.gemini/antigravity-cli/skills holds: $(diff "$work/linked" "$work/wrapper" | grep '^[<>]' | tr '\n' ' ')"
+    grep -qx ce-plan "$work/wrapper" \
+      || fail "agy_acp_server.par does not link the Compound Engineering skill ce-plan"
   )
 
   ${lib.concatMapStringsSep "\n" assertEntry configurations.userEntries}

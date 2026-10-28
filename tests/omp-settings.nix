@@ -75,7 +75,7 @@ let
             text = path.read_text() if path.is_file() else ""
             front = yaml.safe_load(text.split("---\n")[1]) if text.startswith("---\n") else {}
             selection = (front.get("name"), front.get("model"), front.get("thinkingLevel"))
-            expected = (name, ["synthetic/hf:moonshotai/Kimi-K3"], "low")
+            expected = (name, ["synthetic/hf:moonshotai/Kimi-K3"], "high")
             assert selection == expected, (entry["name"], name, selection)
   '';
 in

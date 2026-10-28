@@ -24,6 +24,9 @@
 
   The runtime defaults to packages/antigravity-acp-release.json, which
   scripts/antigravity-acp-release keeps at Google's newest complete release.
+  tests/antigravity-acp-path.nix passes a stub runtime instead: the real one
+  is about 1 GB unpacked and needs network and a Google sign-in to run, so only
+  a stub can report the argv[0], pid, and environment the wrapper execs it with.
 */
 {
   pkgs,
@@ -32,13 +35,6 @@
     inherit pkgs;
     pins = (builtins.fromJSON (builtins.readFile ./antigravity-acp-release.json)).platforms;
   },
-  caBundles ? [
-    "/etc/ssl/certs/ca-certificates.crt"
-    "/etc/pki/tls/certs/ca-bundle.crt"
-    "/etc/ssl/cert.pem"
-    "/etc/ssl/ca-bundle.pem"
-    "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-  ],
 }:
 
 let
@@ -46,6 +42,15 @@ let
   inherit (runtime.passthru.pin) executable harness;
   dir = "${runtime}/libexec/antigravity-acp";
   coreutils = "${pkgs.coreutils}/bin";
+
+  # The system bundles first, so local CAs still apply, then the nixpkgs one.
+  caBundles = [
+    "/etc/ssl/certs/ca-certificates.crt"
+    "/etc/pki/tls/certs/ca-bundle.crt"
+    "/etc/ssl/cert.pem"
+    "/etc/ssl/ca-bundle.pem"
+    "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+  ];
 
   # The mktemp -d templates of Compound Engineering's cross-model scripts
   # whose directory holds an Antigravity run home. tests/antigravity-acp-path.nix

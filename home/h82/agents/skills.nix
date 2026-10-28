@@ -81,6 +81,18 @@ in
     '';
   };
 
+  options.my.antigravitySkillNames = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    internal = true;
+    readOnly = true;
+    default = lib.attrNames config.my.agentSkills ++ ceSkillNames;
+    description = ''
+      Every skill linked into ~/${antigravityRoot}: the contributed skills and
+      the pinned Compound Engineering ones. The Antigravity ACP wrapper links
+      these into Compound Engineering run homes.
+    '';
+  };
+
   config.home.activation.antigravitySkillsRetire = lib.hm.dag.entryBefore [
     "checkLinkTargets"
   ] retireScript;
