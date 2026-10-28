@@ -56,9 +56,13 @@ Already-built generations cannot acquire a cleanup hook from this repository cha
 
 ## When delegation starts
 
-The common instructions call for early delegation when substantial research or triage contains independently answerable questions. Examples include comparing sources, reconciling datasets, and investigating distinct plausible causes. Agents assign bounded investigations with evidence and uncertainty in the return, then the root reconciles the results and gives the final answer.
+The common instructions' `When to delegate` section owns research briefing and result-verification rules. Substantial research or triage starts useful independent investigations early; simple lookups and indivisible dependent reasoning stay local.
 
-Simple lookups and indivisible dependent reasoning stay local. This policy works within user authorization, runtime restrictions, recipient permissions, and each invoked skill's ownership and sequencing rules. The role tables select the model after the agent identifies useful work to delegate.
+Each scout gets one lookup question with named sources and an exact command for a CLI source. Questions about impact, compatibility, or design intent use `implement` or a higher suitable role. Research briefs require bounded reads, rereading truncated output, and distinguishing a completed search from a source the child could not read. A failed named tool produces the observed error with secrets redacted, rather than an unsupported capability claim or a switch to an unnamed connector.
+
+Before relying on a negative result, the root checks its cheapest supporting claim directly. A contradictory check discards the child's result and leads to an inline investigation or a narrower brief, with that discarded result reported. Skill-specific failure and recovery rules still govern what happens next.
+
+The rendered-instruction check verifies delivery of this policy to Claude Code, Codex, OMP, and Antigravity. It does not prove model compliance in a live session. Fresh T3 behavior remains separate acceptance evidence. The role tables select models after useful work is identified; this briefing policy changes no model or effort setting.
 
 ## T3 Code table
 
