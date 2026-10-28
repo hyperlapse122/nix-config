@@ -60,7 +60,9 @@ The common instructions' `When to delegate` section owns research briefing and r
 
 Each scout gets one lookup question with named sources and an exact command for a CLI source. Questions about impact, compatibility, or design intent use `implement` or a higher suitable role. Research briefs require bounded reads, rereading truncated output, and distinguishing a completed search from a source the child could not read.
 
-A failed research call leads the child to inspect the error, tool usage, and execution context, then correct recoverable errors through the named tool. Recovery follows the owning skill's rules and continues only while there is reason to expect progress. An unresolved return includes the redacted error, diagnostic and recovery attempts, and remaining blocker; it does not turn a failed query into a successful empty result or authorize an unnamed connector.
+A failed research call leads the child to inspect the error, tool usage, and execution context, then correct recoverable errors through the named tool. Corrections preserve the target host, repository, and filters, and favor per-invocation changes without granting new authority over persistent state. Recovery follows the owning skill's rules and continues only while there is reason to expect progress.
+
+A successful recovery reports the redacted initial error and corrected command. An unresolved return includes the redacted error, diagnostic and recovery attempts, and remaining blocker. Neither outcome authorizes an unnamed connector, and a failed query never becomes a successful empty result.
 
 Before relying on a negative or unresolved result, the root checks its cheapest supporting claim directly. A contradictory check discards the child's result and leads to an inline investigation or a narrower brief, with that discarded result reported. Skill-specific failure and recovery rules still govern what happens next.
 
