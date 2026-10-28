@@ -28,8 +28,9 @@ and [developer command reference](https://learn.chatgpt.com/docs/developer-comma
 - `codex` runs the pinned binary with a default home and an alternate
   `CODEX_HOME`, both initially enabling apps, and checks that the wrapper
   disables the feature. The unwrapped binary supplies the enabled control.
-- The same check verifies local skill discovery and an ordinary MCP tool's
-  discovery and invocation through a fresh app-server thread, without credentials.
+- The same check verifies local skill discovery and asks a fresh app-server
+  process for its effective app feature. It also discovers and calls an ordinary
+  MCP tool through that process, without credentials.
 - Authenticated standalone and live T3 sessions require separate verification.
   A temporary home is a package test, not evidence that the installed T3 process
   used a changed package. Host-injected tools also need separate attribution:

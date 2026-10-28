@@ -86,6 +86,9 @@ def check(wrapper):
                 })
                 process.stdin.write('{"method":"initialized"}\n')
                 process.stdin.flush()
+                features = request("experimentalFeature/list", {})
+                apps = next(feature for feature in features["data"] if feature["name"] == "apps")
+                assert apps["enabled"] is False, "app-server leaves apps enabled"
                 thread = request("thread/start", {"cwd": str(work), "ephemeral": True})
                 thread_id = thread["thread"]["id"]
                 status = request("mcpServerStatus/list", {"threadId": thread_id})
