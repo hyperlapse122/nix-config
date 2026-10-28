@@ -155,7 +155,8 @@ in
       on = lib.filter isOn entries;
       off = lib.filter (entry: !isOn entry) entries;
       enabled =
-        if lib.any (entry: !entry.bootstrap) on then on else map (withTraitForcedOn label) production;
+        on
+        ++ lib.optionals (!lib.any (entry: !entry.bootstrap) on) (map (withTraitForcedOn label) production);
     in
     {
       inherit enabled;

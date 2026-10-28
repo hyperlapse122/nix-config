@@ -6,7 +6,8 @@
   Boots a machine whose user imports home/h82/security/gpg.nix with
   `my.gpgAgentRelay` pointing at a stub agent on 127.0.0.1, standing in for
   the remote host's relay. The stub speaks just enough Assuan to answer
-  `GETINFO version` and counts the TCP connections it accepts.
+  `GETINFO version` and counts the TCP connections that send it, so a bare
+  port probe is never counted.
 
   Verifies, in the user's systemd session (no graphical session):
   - `gpg-connect-agent 'GETINFO version'` gets the stub's version through the
@@ -25,15 +26,20 @@
 let
   port = 4321;
   stub = pkgs.writeText "gpg-agent-stub.py" ''
-    import pathlib, socketserver
+    import pathlib, socketserver, threading
     count = pathlib.Path("/tmp/stub-connections")
     count.write_text("0")
+    lock = threading.Lock()
     class Agent(socketserver.StreamRequestHandler):
         def handle(self):
-            count.write_text(str(int(count.read_text()) + 1))
+            counted = False
             self.wfile.write(b"OK Pleased to meet you\n")
             for line in self.rfile:
                 if line.startswith(b"GETINFO version"):
+                    if not counted:
+                        counted = True
+                        with lock:
+                            count.write_text(str(int(count.read_text()) + 1))
                     self.wfile.write(b"D 9.9.9-relay-stub\nOK\n")
                 elif line.startswith(b"BYE"):
                     self.wfile.write(b"OK closing connection\n")
@@ -95,7 +101,6 @@ pkgs.testers.nixosTest {
 
     machine.systemctl("start agent-stub.service")
     machine.wait_for_open_port(${toString port})
-    # wait_for_open_port's own probe is a connection too, so count from here.
     before = int(machine.succeed("cat /tmp/stub-connections"))
     for _ in range(2):
         out = machine.succeed(user("gpg-connect-agent --no-autostart 'GETINFO version' /bye"))

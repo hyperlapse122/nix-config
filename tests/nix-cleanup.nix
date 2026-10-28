@@ -64,7 +64,6 @@ let
     failed=1
   '';
 
-  # The limit that governs each host's menu.
   bootLimit = cfg: cfg.boot.loader.systemd-boot.configurationLimit;
 
   # Store-path interpolations stay inside optionalString guards so that removing

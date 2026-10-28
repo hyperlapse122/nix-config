@@ -122,6 +122,15 @@ pkgs.runCommand "proton-vpn-tests" { } ''
   ${configurations.guard}
   ${protonVpn.guard}
   failed=0
+  # The profile enables Proton VPN only outside bootstrap. The split above
+  # follows the trait, so a default widened to bootstrap would only move those
+  # outputs to the positive side; pin the clause here.
+  ${lib.concatMapStrings (
+    entry:
+    lib.optionalString entry.config.my.protonVpn.enable (
+      fail "${entry.name}: a bootstrap output enables my.protonVpn.enable"
+    )
+  ) configurations.bootstraps}
 
   ${concatMapStringsSep "\n" (hostAssertions true) protonVpn.enabled}
   ${concatMapStringsSep "\n" (hostAssertions false) protonVpn.disabled}
