@@ -3,14 +3,20 @@
 
     import ./tests/gemini.nix { inherit pkgs self; }
 
-  Asserts that implicit memory is disabled declaratively for the Gemini CLI
-  for user `h82` on every configuration `tests/lib/configurations.nix` yields,
+  Asserts that implicit memory is disabled declaratively for the Gemini and
+  Antigravity CLIs for user `h82` on every configuration `tests/lib/configurations.nix` yields,
   production and bootstrap alike, since none of it depends on a host trait
   or on `my.bootstrap`.
 
   Verifies, per configuration:
   - ~/.gemini/settings.json sets experimental.autoMemory = false.
-  - no Home Manager file targets .gemini/antigravity-cli/settings.json.
+  - no Home Manager file targets .gemini/antigravity-cli/settings.json: the
+    Antigravity CLI rewrites it, so a store symlink there would block the next
+    activation.
+  - home.activation.antigravitySettings runs after installPackages and,
+    executed in a scratch HOME through tests/lib/agent-activation.nix, sets
+    disableAutoGenerateMemories = true in that file while keeping the keys
+    the CLI wrote, and does not swallow a merger refusal.
   - home.activation.antigravityAcpSettings runs after installPackages and,
     executed in a scratch HOME through tests/lib/agent-activation.nix, sets
     auth.type = "oauth-personal" in ~/.gemini/antigravity-acp/settings.json
@@ -53,6 +59,35 @@ let
         echo 'Home Manager must not target ~/.gemini/antigravity-cli/settings.json on ${hostName}' >&2
         failed=1
       '';
+
+      cliActivation = userConfig.home.activation.antigravitySettings or null;
+      cliRunsAfterPackages = lib.elem "installPackages" (
+        if cliActivation == null then [ ] else (cliActivation.after or [ ])
+      );
+      cliSettings =
+        if cliActivation == null then
+          ''
+            echo 'missing home.activation.antigravitySettings on ${hostName}' >&2
+            failed=1
+          ''
+        else
+          ''
+            if [ ${lib.boolToString cliRunsAfterPackages} != true ]; then
+              echo 'home.activation.antigravitySettings must run after installPackages on ${hostName}' >&2
+              failed=1
+            fi
+            ${executeActivation {
+              script = cliActivation.data or "";
+              home = userConfig.home.homeDirectory or "";
+              contract = {
+                file = ".gemini/antigravity-cli/settings.json";
+                declared = {
+                  set.disableAutoGenerateMemories = true;
+                  remove = [ ];
+                };
+              };
+            }}
+          '';
 
       acpActivation = userConfig.home.activation.antigravityAcpSettings or null;
       acpRunsAfterPackages = lib.elem "installPackages" (
@@ -105,6 +140,7 @@ let
     ''
       ${geminiDelivery}
       ${symlinkPresent}
+      ${cliSettings}
       ${acpSettings}
     '';
 in

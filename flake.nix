@@ -102,6 +102,7 @@
           "agent-instructions"
           "android-sdk"
           "antigravity-profiles"
+          "antigravity-skills"
           "baloo-extractor"
           "cargo-settings"
           "desktop-autostart"
@@ -535,6 +536,10 @@
           };
           boot-splash = import ./tests/boot-splash.nix { inherit pkgs self; };
           agent-plugins = import ./tests/agent-plugins.nix { inherit pkgs self; };
+          antigravity-skills = import ./tests/antigravity-skills.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
           korean-skills = import ./tests/korean-skills.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;

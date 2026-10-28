@@ -8,6 +8,8 @@
   revision this repository expects:
 
     Claude Code               ~/.claude/skills/<name>
+    Antigravity CLI, and T3 Code's Antigravity instances
+                              ~/.gemini/antigravity-cli/skills/<name>
     OMP                       ~/.omp/agent/skills/<name>
     Codex                     ~/.codex/skills/<name>
 
@@ -31,7 +33,10 @@
     directory itself, never its files with `recursive = true`.
   - no enabled target is ~/.codex/skills/.system or under it, which Codex
     owns.
-  - the other roots declare exactly the three skill directories plus test-audit;
+  - the other roots declare exactly the three skill directories plus test-audit,
+    and ~/.gemini/antigravity-cli/skills also every skill of the pinned
+    compound-engineering-plugin input (its `skills/<name>` directories that
+    hold a SKILL.md; tests/antigravity-skills.nix checks their content);
     OMP declares only its whole root. Content checks below cover all four
     delivered skill trees; native OMP checks also exercise discovery.
   - nothing exists at ~/.agents/skills or ~/.gemini/config/skills in the
@@ -81,8 +86,19 @@ let
   # these; tests/test-audit-skill.nix checks their content.
   otherSkillNames = [ "test-audit" ];
 
+  # Antigravity loads no plugins, so its root also holds the pinned Compound
+  # Engineering skills, named by the pinned input rather than the module.
+  ceRoot = ".gemini/antigravity-cli/skills";
+  ceSkillsDir = "${self.inputs.compound-engineering-plugin}/skills";
+  ceSkillNames = lib.attrNames (
+    lib.filterAttrs (
+      name: type: type == "directory" && builtins.pathExists "${ceSkillsDir}/${name}/SKILL.md"
+    ) (builtins.readDir ceSkillsDir)
+  );
+
   roots = [
     ".claude/skills"
+    ".gemini/antigravity-cli/skills"
     ".omp/agent/skills"
     ".codex/skills"
   ];
@@ -225,7 +241,11 @@ let
           if root == ".omp/agent/skills" then
             [ root ]
           else
-            sorted (map (name: "${root}/${name}") (skillNames ++ otherSkillNames));
+            sorted (
+              map (name: "${root}/${name}") (
+                skillNames ++ otherSkillNames ++ lib.optionals (root == ceRoot) ceSkillNames
+              )
+            );
       in
       lib.optionalString (found != expected) ''
         echo ${esc "~/${root} on ${label} must hold exactly ${lib.concatStringsSep ", " expected}, got: ${lib.concatStringsSep ", " found}"} >&2

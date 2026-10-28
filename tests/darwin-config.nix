@@ -91,9 +91,11 @@
 
   - Korean skills: Home Manager links the humanizer, grammar-checker, and
     style-guide directories of the korean-skills-v1.0.0 tree under
-    ~/.claude/skills and ~/.codex/skills, each as exactly one enabled file, and
-    the in-tree test-audit skill directory beside them, and nothing else under
-    those roots; OMP receives its contributed ~/.omp/agent/skills root; nothing
+    ~/.claude/skills, ~/.gemini/antigravity-cli/skills, and ~/.codex/skills,
+    each as exactly one enabled file, and the in-tree test-audit skill
+    directory beside them, plus every skill of the pinned compound-engineering
+    input under ~/.gemini/antigravity-cli/skills, and nothing else under those
+    roots; OMP receives its contributed ~/.omp/agent/skills root; nothing
     lands under ~/.agents/skills or ~/.gemini/config/skills.
 
   - TLS inspection CA: my.tlsInspectionCa.enable defaults to false and the
@@ -411,6 +413,7 @@ let
       # literals, so a mutated registry or root cannot move the expectation.
       koreanRoots = [
         ".claude/skills"
+        ".gemini/antigravity-cli/skills"
         ".codex/skills"
       ];
       koreanNames = [
@@ -422,6 +425,16 @@ let
       # The vendored test-audit skill shares those roots; its source is the
       # in-tree skill directory inside the flake's source tree.
       testAuditTargets = map (root: "${root}/test-audit") koreanRoots;
+      # Antigravity loads no plugins, so its root also holds every skill of
+      # the pinned Compound Engineering input, named by that input.
+      ceSkillsDir = "${self.inputs.compound-engineering-plugin}/skills";
+      ceTargets = map (name: ".gemini/antigravity-cli/skills/${name}") (
+        lib.attrNames (
+          lib.filterAttrs (
+            name: type: type == "directory" && builtins.pathExists "${ceSkillsDir}/${name}/SKILL.md"
+          ) (builtins.readDir ceSkillsDir)
+        )
+      );
       # Resolved targets of enabled entries, not attribute names. The source is
       # compared as a string with its context dropped, so no darwin derivation
       # is built, and the store path is never interpolated.
@@ -843,9 +856,9 @@ let
           )
           "${entry.name}: ${target} must be exactly one enabled home.file whose source is the in-tree test-audit skill directory, got ${builtins.toJSON (map koreanSourceOf files)}"
       ) testAuditTargets)
-      (check (sort koreanUnderRoots == sort (koreanTargets ++ testAuditTargets))
+      (check (sort koreanUnderRoots == sort (koreanTargets ++ testAuditTargets ++ ceTargets))
         "${entry.name}: the targets under the skill roots must be exactly ${
-          builtins.toJSON (koreanTargets ++ testAuditTargets)
+          builtins.toJSON (koreanTargets ++ testAuditTargets ++ ceTargets)
         }, got ${builtins.toJSON (sort koreanUnderRoots)}"
       )
       (check (lib.length (koreanFilesAt ".omp/agent/skills") == 1)
