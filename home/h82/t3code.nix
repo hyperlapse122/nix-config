@@ -31,6 +31,7 @@ let
   ompScope = pkgs.writeText "omp-t3-OMP.json" (
     builtins.toJSON {
       enabledModels = ompPatterns;
+      inherit (catalogs) disabledProviders;
       ask.enabled = false;
       todo.reminders = false;
       inherit (ompRoles)

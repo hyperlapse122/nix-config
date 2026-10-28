@@ -47,7 +47,7 @@ in
           builtins.toJSON {
             memory.backend = "off";
             autolearn.enabled = false;
-            disabledProviders = [ "omp-managed" ];
+            inherit (catalogs) disabledProviders;
             enabledModels = catalogs.patterns;
             startup.checkUpdate = false;
             marketplace.autoUpdate = "off";

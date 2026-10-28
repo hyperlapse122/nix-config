@@ -337,7 +337,9 @@ OMP_TOOLS_SENTENCES = [
 
 OMP_ROLE_SENTENCES = [
     "This section applies only to the active OMP harness, including OMP-led T3 sessions.",
-    "Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user.",
+    "OMP model execution uses only `synthetic`, `google-antigravity`, and `openrouter`; `openai-codex` is disabled.",
+    "Native Codex remains available for sanctioned external reviews.",
+    "Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) unless explicitly requested by the user.",
     "Inside T3 Code, the T3 Code table decides.",
     "Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.",
     "Inside T3, use `delegate_task` with the instance, model and options the T3 Code table names, setting `target.model` and `target.options` and comparing the returned selection before counting configuration as applied.",
@@ -368,7 +370,8 @@ OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an 
 - Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
 
 OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions.
-- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) or `openai-codex` unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
+- OMP model execution uses only `synthetic`, `google-antigravity`, and `openrouter`; `openai-codex` is disabled. Native Codex remains available for sanctioned external reviews.
+- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
 
 ## OMP table
 

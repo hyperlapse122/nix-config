@@ -128,6 +128,8 @@ All other GPT `max` uses and every GPT `ultra` use require an explicit request f
 
 ### OMP
 
+OMP sessions use only `synthetic`, `google-antigravity`, and `openrouter`. The `openai-codex` provider is disabled in both standalone OMP and T3 Code's OMP instance. Native Codex remains available through its own CLI, T3 Code's `codex` instance, and sanctioned external reviews. Existing authentication and conversation state are preserved.
+
 | Role | Chain |
 | --- | --- |
 | `root` | `google-antigravity/gemini-4-argon` `high` |

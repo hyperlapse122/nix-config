@@ -301,11 +301,10 @@ class Activation(unittest.TestCase):
                     "google-antigravity/gpt-*",
                     *(f"openrouter/{row['id']}" for row in OPENROUTER["data"]
                       if row["id"].startswith("openrouter/") and row["id"] != "openrouter/bodybuilder"),
-                    "openai-codex/*",
                 ]
                 target.write_text(
                     "autolearn: {enabled: true}\ndisabledProviders: []\n"
-                    "tui: {mouse: true}\nenabledModels: ['google-antigravity/**']\n"
+                    "tui: {mouse: true}\nenabledModels: ['openai-codex/*']\n"
                 )
                 self.assertIn("old-generated", discovered_skills())
                 activate()
@@ -316,6 +315,7 @@ class Activation(unittest.TestCase):
                 self.assertEqual(value["marketplace"]["autoUpdate"], "off")
                 self.assertIs(value["tui"]["mouse"], False)
                 self.assertEqual(value["enabledModels"], expected_patterns)
+                self.assertEqual(value["disabledProviders"], ["omp-managed", "openai-codex"])
                 expected_roles = {
                     "default": "google-antigravity/gemini-4-argon",
                     "smol": "google-antigravity/gemini-3.5-flash-lite:low",
@@ -341,10 +341,11 @@ class Activation(unittest.TestCase):
                                       ("task.enableEffort", "true"),
                                       ("task.maxEffort", "high"),
                                       ("tui.mouse", "false"),
-                                      ("enabledModels", expected_patterns)):
+                                      ("enabledModels", expected_patterns),
+                                      ("disabledProviders", ["omp-managed", "openai-codex"])):
                     result = subprocess.run([OMP, "config", "get", key], cwd=home, env=env,
                                             capture_output=True, text=True, timeout=20)
-                    actual = json.loads(result.stdout) if key in ("modelRoles", "task.agentModelOverrides", "enabledModels") else result.stdout.strip()
+                    actual = json.loads(result.stdout) if key in ("modelRoles", "task.agentModelOverrides", "enabledModels", "disabledProviders") else result.stdout.strip()
                     self.assertEqual((result.returncode, actual), (0, expected), result.stderr)
                 self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():
