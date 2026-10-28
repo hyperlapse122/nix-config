@@ -88,6 +88,13 @@ let
       {
         path = [
           "features"
+          "apps"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "features"
           "memories"
         ];
         value = false;
@@ -104,6 +111,8 @@ let
     service_tier = "priority"
     developer_instructions = "retired"
     unrelated = "keep me"
+    [features]
+    apps = true
     [agents]
     default_subagent_model = "old-child"
     default_subagent_reasoning_effort = "low"
@@ -112,6 +121,8 @@ let
     trust_level = "trusted"
     [plugins."example@local"]
     enabled = true
+    [mcp_servers.local]
+    command = "local-mcp-server"
   '';
   applied = {
     model = "gpt-6.1-sol";
@@ -125,8 +136,10 @@ let
     };
     projects."/scratch/project".trust_level = "trusted";
     plugins."example@local".enabled = true;
+    mcp_servers.local.command = "local-mcp-server";
     check_for_update_on_startup = false;
     features = {
+      apps = false;
       in_app_updates = false;
       daemon_auto_start = false;
       memories = false;

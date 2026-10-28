@@ -13,8 +13,9 @@
     attribute.
   - under two different `CODEX_HOME`s, one standing for a home a T3 Code
     instance would get only by declaring one, whose config.toml never
-    receives the declared keys, `codex features list` reports `in_app_updates` and `daemon_auto_start` as
-    false. The unwrapped binary beside it reports both as true, so the
+    receives the declared keys, `codex features list` reports `apps`,
+    `in_app_updates`, and `daemon_auto_start` as false even if config enables
+    apps. The unwrapped binary beside it reports these as true, so the
     assertion cannot pass on a default that already is false.
   - the wrapper carries `check_for_update_on_startup=false`, which has no
     feature listing to read, so its text is the only place to see it.
@@ -29,6 +30,9 @@
     SKILL.md lists it twice.
   - the wrapper execs a binary beside which a runnable `codex-code-mode-host`
     lives.
+  - a fresh app-server thread discovers and calls an ordinary local MCP tool
+    with apps disabled, offline and without credentials. This does not prove
+    authenticated connector absence or live T3 behavior.
   - every NixOS configuration installs `codex` in user packages with an
     executable `bin/codex`, the pinned version, the wrapper flags, and a
     runnable sibling `codex-code-mode-host`.
@@ -92,13 +96,19 @@ pkgs.runCommand "codex-tests" { } ''
     fail=1
   fi
 
-  for home in "$PWD/default-home" "$PWD/provider-home"; do
+  for home in "$HOME/.codex" "$PWD/provider-home"; do
     mkdir -p "$home"
-    listing=$(CODEX_HOME="$home" "$wrapper" features list 2>/dev/null) || {
+    printf '[features]\napps = true\n' > "$home/config.toml"
+    if [ "$home" = "$HOME/.codex" ]; then
+      listing=$(env -u CODEX_HOME "$wrapper" features list 2>/dev/null) || fail=1
+    else
+      listing=$(CODEX_HOME="$home" "$wrapper" features list 2>/dev/null) || fail=1
+    fi
+    if [ -z "$listing" ]; then
       echo "codex features list failed under $home" >&2
       fail=1
-    }
-    for feature in in_app_updates daemon_auto_start; do
+    fi
+    for feature in apps in_app_updates daemon_auto_start; do
       if ! grep -Eq "^$feature +[a-z ]*false$" <<< "$listing"; then
         echo "the wrapper leaves $feature enabled under CODEX_HOME=$home" >&2
         fail=1
@@ -106,8 +116,9 @@ pkgs.runCommand "codex-tests" { } ''
     done
   done
 
+  mkdir -p default-home
   raw=$(CODEX_HOME="$PWD/default-home" "$binary" features list 2>/dev/null) || true
-  for feature in in_app_updates daemon_auto_start; do
+  for feature in apps in_app_updates daemon_auto_start; do
     if ! grep -Eq "^$feature +[a-z ]*true$" <<< "$raw"; then
       echo "the unwrapped binary does not enable $feature, so the wrapper assertion proves nothing" >&2
       fail=1
@@ -183,6 +194,8 @@ pkgs.runCommand "codex-tests" { } ''
   fi
 
   ${lib.concatMapStrings assertConfiguration configurations.entries}
+
+  ${pkgs.python3}/bin/python ${./codex-apps.py} "$wrapper"
 
   [ "$fail" -eq 0 ] || exit 1
   touch $out
