@@ -1,6 +1,8 @@
 ---
 title: Feedback Sweep - Plan
+type: fix
 date: 2026-10-28
+execution: code
 topic: feedback-sweep
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-sweep
@@ -8,7 +10,9 @@ product_contract_source: ce-sweep
 
 ## Goal Capsule
 
-Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they merged.
+Make delegated research return usable evidence or an explicit failure, so the root can finish the investigation without trusting an incomplete result.
+
+Implement R58 through the shared delegation instructions and their existing rendered-delivery contract. Preserve the remaining requirements as follow-up; this delivery does not complete the entire sweep. The Product Contract governs outcomes and the Planning Contract governs implementation. Publish a reviewed pull request and leave merging to the user.
 
 ## Human Notes
 
@@ -71,6 +75,14 @@ R45, R52, R53, and R57 have merged repository changes but still need deployed ac
   > Unusable children left the root to repeat retrieval and research. Cover all five proposed briefing rules; evaluate optional scout-effort changes only after evidence from the briefing improvements.
 <!-- sweep-items:end -->
 
+### Problem Frame
+
+R58 reports that delegated source fetching and research returned incomplete results that the root had to repeat. The common delegation section requests a bounded brief but does not distinguish a single lookup from interpretation, require complete source reads, constrain tool substitution, or require the root to verify a negative return. Every active harness receives that section, so one shared correction can cover the affected roles without changing model selection.
+
+### Key Decisions
+
+- Retain R55 and R56 as unresolved product choices (session-settled: user-directed — chosen over discussing either choice now: the user explicitly selected leaving both in the rolling plan). Governs R55 and R56.
+
 ### Outstanding Questions
 
 - R29 needs deployed-host and live T3 evidence. Preserve the detailed checklist in #316 and the archived [previous delivery plan](feedback-sweep-plan-2026-10-28.md).
@@ -90,6 +102,75 @@ R45, R52, R53, and R57 have merged repository changes but still need deployed ac
 
 - State file: `.compound-engineering/artifacts/feedback-sweep/state.yml` — the authoritative record of every item's lifecycle.
 - Last run: the `last_run` block in the state file (outcome and per-source counts).
-- The [previous delivery plan](feedback-sweep-plan-2026-10-28.md) was archived unchanged because it contains implementation planning. This rolling artifact contains requirements only.
+- The [previous delivery plan](feedback-sweep-plan-2026-10-28.md) was archived unchanged because it contains implementation planning. This artifact retains the backlog requirements and now contains the active R58 implementation plan.
 - Partial delivery evidence: [PR #385](https://github.com/hyperlapse122/nix-config/pull/385), [PR #391](https://github.com/hyperlapse122/nix-config/pull/391), and [PR #404](https://github.com/hyperlapse122/nix-config/pull/404). All merged into `main` but explicitly retain live acceptance or incident limitations.
 - Closed this run: [PR #399](https://github.com/hyperlapse122/nix-config/pull/399) explicitly closes #379 and merged into `main` at `1dfa02194bc5882a129c309d184568ab66805b2b`.
+
+## Planning Contract
+
+Product Contract unchanged. This delivery implements the repository portion of R58 while retaining every other open requirement and R58's live acceptance gap.
+
+### Key Technical Decisions
+
+- KTD1. Keep the five briefing rules in `home/h82/agents/instructions/instructions.md.tmpl` under `When to delegate`. A scout receives one lookup question with exact files, symbols, ranges, or CLI commands. Interpretation about impact, compatibility, or intent goes to `implement` or a higher suitable role. The existing role tables and skill ownership rules remain authoritative. Governs R58.
+- KTD2. Put source-reading discipline and tool-error reporting in the same section. Research briefs require bounded reads, smaller rereads after truncation, and a distinction between searched-and-not-found and not-read-with-reason. A failed named tool is reported with its error and stops that child's task; it does not authorize connector substitution or an unsupported capability claim. Apply existing secret-handling rules to error text. This changes briefing requirements, not a harness's tool permissions. Governs R58.
+- KTD3. Require one direct root check of the cheapest supporting claim before acting on an unavailable, empty, or unconfirmed child result. Contradiction causes the root to discard that result, investigate inline or send a narrower brief, and disclose the discarded result. Already successful independent work need not be repeated. Governs R58.
+- KTD4. Extend the independent expected routing text in `tests/agent-instructions.py`. Its existing exact-section check and four rendered delivery variants are the primary owner of the instruction contract. Do not add duplicate per-harness substring tests, a new check, a runtime delegation harness, or a production seam. Update `docs/agent-routing.md` in the same change because this edits routing policy. Governs R58.
+
+### Assumptions and Scope Boundaries
+
+R58 is the independently actionable repository work in this backlog. R29, R45, R52, R53, R54, and R57 need affected-host or deployed-session observations; R46 depends on upstream behavior. R47-R49, R51, R55, and R56 retain their evidence requirements or user choices. None is silently resolved by shipping R58.
+
+Keep model efforts and chains unchanged. The optional R58 scout-effort increase remains deferred until the briefing rules have comparative evidence. Do not install skills, change pipeline waiting rules, change signing or network configuration, deploy a host generation, or add a delegate runner. Existing skill-specific sequencing and failure rules still constrain the root's next action.
+
+The expected instruction contract protects delivered wording; it cannot prove a model follows it. Fresh T3 behavior must be reported separately from repository proof. No new abstraction or competing mechanism needs development: the current shared section and exact rendered-output owner already establish the correct boundaries.
+
+## Implementation Units
+
+### U1. Deliver complete and verifiable research briefs
+
+**Goal:** Give all active harnesses the R58 delegation rules at the existing shared instruction boundary.
+
+**Requirements:** R58; KTD1-KTD4.
+
+**Dependencies:** None.
+
+**Files:** `home/h82/agents/instructions/instructions.md.tmpl`, `tests/agent-instructions.py`.
+
+**Approach:** Replace the vague brief bullet with concise rules owned by the common delegation section. Extend the independently maintained expected section, preserving all pre-existing policy and harness-specific rendering. Keep failure reporting compatible with protected secret handling and skill-owned lifecycle decisions.
+
+**Execution note:** Change the expected contract first and demonstrate that the old template fails at the intended rendered-routing check before updating the template.
+
+**Test scenarios:**
+
+1. Each rendered Claude Code, Codex, OMP, and Antigravity delivery carries the complete five-rule contract without duplicated normative text.
+2. The old template fails after the expected contract changes; the corrected template passes.
+3. Removing or negating a new rule from a rendered delivery fails the existing exact routing-section guard.
+
+**Verification:** The Python contract self-test and materialized `agent-instructions` check pass. The mutation fails for the delegation contract, not an unrelated rendering or evaluation failure.
+
+### U2. Explain the policy and preserve evidence limits
+
+**Goal:** Keep the routing guide aligned with the delivered delegation policy.
+
+**Requirements:** R58; KTD4.
+
+**Dependencies:** U1.
+
+**Files:** `docs/agent-routing.md`.
+
+**Approach:** Update `When delegation starts` to explain the resulting briefs and root verification, referring to the common section as the normative owner. Preserve the model tables and describe the live acceptance boundary without claiming authenticated T3 behavior from a rendering check.
+
+**Test expectation:** None — explanatory documentation; U1 owns the normative delivered-output regression.
+
+**Verification:** Changed Markdown passes lint and the routing guide remains consistent with the shared instructions. Record fresh T3 behavioral evidence only if an available session can load the changed instructions; otherwise leave that evidence pending and keep #402 open.
+
+## Verification Contract
+
+Use `tests/agent-instructions.py` for focused contract and mutation proof, then the declared `agent-instructions` check for materialized deliveries. Read the repository's check-assertion learnings before relying on those guards. Follow `AGENTS.md` for whitespace, formatting, Markdown lint, flake evaluation, every declared check, VM tests, and production/bootstrap outputs on supported builders. Report local results and current-head CI separately.
+
+No host apply is part of validation. Linux/Darwin builds establish delivery and packaging, not model compliance. Fresh T3 lookup splitting, interpretation routing, tool-failure reporting, and root verification remain distinct live acceptance requirements.
+
+## Definition of Done
+
+U1 and U2 are implemented, regression-verified, simplified, reviewed, and published in an open pull request with accurate CI/platform evidence. The Product Contract retains the other thirteen open items. R58 remains open until fresh-session behavioral evidence is recorded; use a related-issue link instead of an automatic closing keyword when publishing only repository proof.
