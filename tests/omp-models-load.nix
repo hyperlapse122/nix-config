@@ -32,6 +32,7 @@ let
       map (user: {
         home = user.home.homeDirectory;
         files = toString user.home-files;
+        activate = "${user.home.activationPackage}/activate";
         documents = pkgs.lib.mapAttrs (_: path: toString path) user.my.omp.documents;
       }) users
     )
