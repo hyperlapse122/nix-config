@@ -46,6 +46,9 @@ def timestamp(value):
         return datetime.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
 
 
+WEEK = 7 * 24 * 60
+
+
 def window(label, used, reset=None, model=None, **extra):
     used = float(used)
     if not 0 <= used <= 100:
@@ -118,15 +121,17 @@ def claude():
     data = json.loads(run(['node', str(Path(__file__).with_name('agent-usage-claude.mjs'))]))
     windows = []
     rates = data.get('rate_limits') or {}
-    for label in ('five_hour', 'seven_day'):
+    for label, minutes in (('five_hour', 300), ('seven_day', WEEK)):
         entry = rates.get(label)
         if entry and entry.get('utilization') is not None:
-            windows.append(window(label, entry['utilization'], entry.get('resets_at')))
+            windows.append(window(label, entry['utilization'], entry.get('resets_at'),
+                                  durationMins=minutes))
     for model in ('Opus', 'Sonnet'):
         label = 'seven_day_' + model.lower()
         entry = rates.get(label)
         if entry and entry.get('utilization') is not None:
-            windows.append(window(label, entry['utilization'], entry.get('resets_at'), model=model))
+            windows.append(window(label, entry['utilization'], entry.get('resets_at'), model=model,
+                                  durationMins=WEEK))
     scoped = data.get('model_scoped', rates.get('model_scoped', []))
     if isinstance(scoped, dict):
         scoped = [dict(entry, display_name=entry.get('display_name', name))
@@ -134,8 +139,10 @@ def claude():
     for entry in scoped:
         if entry.get('utilization') is None:
             continue
+        # Claude's model-scoped limits share the seven-day window's reset.
         scoped_window = window(entry['display_name'], entry['utilization'],
-                               entry.get('resets_at'), model=entry['display_name'])
+                               entry.get('resets_at'), model=entry['display_name'],
+                               durationMins=WEEK)
         if not any(existing.get('model', '').casefold() == scoped_window['model'].casefold()
                    and existing['usedPercent'] == scoped_window['usedPercent']
                    and existing.get('resetsAt') == scoped_window.get('resetsAt')
@@ -201,7 +208,11 @@ def grok():
     config = data['config']
     period = config['currentPeriod']
     label = period['type'].removeprefix('USAGE_PERIOD_TYPE_').lower()
-    return entry.get('email'), [window(label, config.get('creditUsagePercent', 0), period['end'])]
+    duration = {}
+    if period.get('start') is not None:
+        duration['durationMins'] = (timestamp(period['end']) - timestamp(period['start'])) / 60
+    return entry.get('email'), [window(label, config.get('creditUsagePercent', 0), period['end'],
+                                       **duration)]
 
 
 def synthetic():
@@ -358,26 +369,56 @@ def cached(provider, refresh):
         return cache_view(record)
 
 
-def thresholds(result):
+PACE_TOLERANCE = 10
+FLOOR = 10
+
+
+def scope_state(entries):
+    overshoots = [e['overshootPercent'] for e in entries if e['overshootPercent'] is not None]
+    remaining = [e['remainingPercent'] for e in entries if e['remainingPercent'] is not None]
+    return dict(overshootPercent=max(overshoots, default=None),
+                remainingPercent=min(remaining, default=None))
+
+
+def skip_reason(state):
+    if state['remainingPercent'] is not None and state['remainingPercent'] < FLOOR:
+        return 'below floor'
+    if state['overshootPercent'] is not None and state['overshootPercent'] > 0:
+        return 'ahead of pace'
+    return None
+
+
+def judge(result):
     result = copy.deepcopy(result)
-    provider_below, models_below = False, set()
+    now = time.time()
     # Only inference windows participate in routing and fallback scoring.
     result['resources'] = [entry for entry in result['windows'] if entry.get('resource')]
     result['windows'] = [entry for entry in result['windows'] if not entry.get('resource')]
     for entry in result['windows']:
-        if result['status'] == 'stale' and entry.get('resetsAt', float('inf')) <= time.time():
+        if result['status'] == 'stale' and entry.get('resetsAt', float('inf')) <= now:
             entry['historicalRemainingPercent'] = entry['remainingPercent']
             entry['remainingPercent'] = None
-        remaining = entry['remainingPercent']
-        below = remaining is not None and remaining < 25
-        entry['belowThreshold'] = below
-        if below:
-            if entry.get('model'):
-                models_below.add(entry['model'])
-            else:
-                provider_below = True
-    result['belowThreshold'] = provider_below
-    result['belowThresholdModels'] = sorted(models_below)
+        remaining, duration = entry['remainingPercent'], entry.get('durationMins')
+        elapsed = None
+        if remaining is not None and duration and duration > 0 and entry.get('resetsAt') is not None:
+            left = 100 * (entry['resetsAt'] - now) / (duration * 60)
+            elapsed = min(100, max(0, 100 - left))
+        overshoot = None if elapsed is None else entry['usedPercent'] - elapsed - PACE_TOLERANCE
+        entry.update(elapsedPercent=elapsed, overshootPercent=overshoot,
+                     aheadOfPace=overshoot is not None and overshoot > 0,
+                     belowFloor=remaining is not None and remaining < FLOOR)
+    provider = scope_state([e for e in result['windows'] if not e.get('model')])
+    result.update(provider, skipReason=skip_reason(provider))
+    result['skip'] = result['skipReason'] is not None
+    result['skipModels'] = {}
+    for model in sorted({e['model'] for e in result['windows'] if e.get('model')}):
+        state = scope_state([e for e in result['windows'] if e.get('model') == model])
+        if skip_reason(state) is None:
+            continue
+        # The root ranks a model's entries by these values alone, so they
+        # fold in the provider-wide windows the entries are also subject to.
+        combined = scope_state([state, provider])
+        result['skipModels'][model] = dict(combined, skipReason=skip_reason(combined))
     return result
 
 
@@ -397,7 +438,7 @@ def main():
             result = cached(provider, args.refresh)
         except (OSError, ValueError, KeyError, TypeError):
             result = fetch(provider)
-        return thresholds(result)
+        return judge(result)
 
     # Providers have separate cache files and locks, so they are read at once;
     # a cold run then waits for the slowest provider, not the sum of all five.
@@ -414,7 +455,13 @@ def main():
                           if 'nextRegenAt' in entry else f"resets at {display_time(entry.get('resetsAt'))}")
                 remaining = entry['remainingPercent']
                 allowance = 'unknown' if remaining is None else f'{remaining:g}%'
-                print(f"  {entry['label']}: {entry['usedPercent']:g}% used, {allowance} remaining; {timing}")
+                pace = ''
+                if entry.get('elapsedPercent') is not None:
+                    state = 'ahead of pace' if entry['aheadOfPace'] else 'within pace'
+                    pace = f"; {entry['elapsedPercent']:.0f}% elapsed, {state}"
+                if entry.get('belowFloor'):
+                    pace += '; below floor'
+                print(f"  {entry['label']}: {entry['usedPercent']:g}% used, {allowance} remaining; {timing}{pace}")
 
 
 if __name__ == '__main__':
