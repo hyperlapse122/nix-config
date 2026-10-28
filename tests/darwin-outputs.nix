@@ -22,6 +22,10 @@
     codex among them, and CROSS_MODEL_MAX_PEERS to 2;
   - a login agent at load sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS
     to 1 for GUI apps, both variants;
+  - the retireOrca activation, run in scratch homes, removes Orca's agent
+    hooks, status line, and state directories, ~/Library/Application
+    Support/orca included, and keeps what other tools wrote
+    (tests/test_retire_orca.py);
   - gpg-agent.conf names the darwin pinentry filter, whose proxy delegates to
     pinentry_mac, with both cache TTLs at 0, and scdaemon.conf is the shared
     one; activation imports pinentry_mac's defaults with UseKeychain false;
@@ -592,6 +596,9 @@ let
       # bootstrap has neither.
       nrdaemon=$sys/Library/LaunchDaemons/org.nixos.network-recovery.plist
       python3 ${streamTimeoutEffects} "$gen" "$production" || bad "Claude GUI timeout lifecycle failed"
+      python3 ${./test_retire_orca.py} ${
+        pkgs.writeText "retire-orca-block.sh" (user.home.activation.retireOrca.data or "exit 1")
+      } 1 || bad "the retireOrca activation failed its contract"
       nrrotate=$sys/etc/newsyslog.d/network-recovery.conf
       if [ "$production" = 1 ]; then
         nrarg() { /usr/bin/plutil -extract "$1" raw "$nrdaemon" 2>/dev/null || true; }

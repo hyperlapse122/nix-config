@@ -427,6 +427,7 @@
               ./tests/restore-age-identity.py;
           boot-layout-invariants = import ./tests/boot-layout-invariants.nix { inherit pkgs; };
           claude = import ./tests/claude.nix { inherit pkgs self; };
+          retire-orca = import ./tests/retire-orca.nix { inherit pkgs self; };
           codex = import ./tests/codex.nix { inherit pkgs self; };
           omp-settings = import ./tests/omp-settings.nix {
             inherit pkgs self;

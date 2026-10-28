@@ -10,6 +10,7 @@
     ./instructions
     ./korean-skills.nix
     ./omp.nix
+    ./retire-orca.nix
     ./skills.nix
     ./test-audit.nix
     ./tokscale.nix
