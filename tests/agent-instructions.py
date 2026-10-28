@@ -14,17 +14,22 @@ from pathlib import Path
 CARD_KEY = "621512777E6933FEB4458FDC4945855D4F283F05"
 FAKE_KEY = "0123456789ABCDEF0123456789ABCDEF01234567"
 ACTION = "{{ .user.gpgKey }}"
-DELIVERIES = ("claude", "codex", "omp")
+DELIVERIES = ("claude", "codex", "omp", "antigravity")
 ROUTING_HEADING = "Agent roles and routing"
 CLAUDE_HEADING = "Claude Code role orchestration"
 CODEX_HEADING = "Codex role orchestration"
 OMP_TOOLS_HEADING = "OMP tools and Compound Engineering"
 OMP_ROLE_HEADING = "OMP role orchestration"
+ANTIGRAVITY_HEADING = "Antigravity harness"
 HARNESS_HEADINGS = {
     "claude": [CLAUDE_HEADING],
     "codex": [CODEX_HEADING],
     "omp": [OMP_TOOLS_HEADING, OMP_ROLE_HEADING],
+    "antigravity": [ANTIGRAVITY_HEADING],
 }
+# Antigravity truncates a rule file at 24,000 bytes.
+RULE_FRONTMATTER = "---\ntrigger: always_on\n---\n\n"
+RULE_LIMIT = 24000
 
 ROLES = {
     "root": "Conversation with the user, delegation, progress",
@@ -49,15 +54,15 @@ DEEPSEEK = "`omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash`"
 T3_ROOTS = {
     "claude": f"`claudeAgent` `claude-opus-5-5` `medium` → {KIMI} → {GLM}",
     "codex": "`codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium`",
-    "omp": "`omp` `google-antigravity/gemini-4-argon` `high`",
+    "omp": KIMI,
 }
 T3_CHAINS = {
     "scout": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
     "quick": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
-    "writing": "`omp` `google-antigravity/gemini-4-argon` `low` → `claudeAgent` `claude-opus-5-5` `low`",
-    "visual": f"`omp` `google-antigravity/gemini-4-argon` `low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
-    "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-3.8-flash` `high`",
-    "implement-high": f"`claudeAgent` `claude-opus-5-5` `medium` → {GLM} → {KIMI} → `codex` `gpt-6.1-sol` `medium` → `omp` `google-antigravity/gemini-4-argon` `high`",
+    "writing": "`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low`",
+    "visual": f"`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
+    "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high`",
+    "implement-high": f"`claudeAgent` `claude-opus-5-5` `medium` → {GLM} → {KIMI} → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-4-argon-high`",
     "deep": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `medium` Fast → `claudeAgent` `claude-opus-5-5` `xhigh`",
     "hard-decision": "`codex` `gpt-6.1-sol` `max` → `claudeAgent` `claude-fable-5-1` `max`",
     "review": "`codex` `gpt-6.1-sol` `medium` → `codex` `gpt-6.1-sol` `high` → `claudeAgent` `claude-opus-5-5` `high`",
@@ -67,9 +72,9 @@ T3_CHAINS = {
 }
 SOL = "`gpt-6.1-sol`"
 TERRA = "`gpt-6.1-terra`"
-ARGON = "`google-antigravity/gemini-4-argon`"
-FLASH = "`google-antigravity/gemini-3.8-flash`"
-LITE = "`google-antigravity/gemini-3.5-flash-lite`"
+OMP_KIMI = "`synthetic/hf:moonshotai/Kimi-K3` `high` (S)"
+OMP_GLM = "`synthetic/hf:zai-org/GLM-5.3` `high` (S)"
+OMP_DEEPSEEK = "`synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `low` (S)"
 HARNESS_CHAINS = {
     "claude": {
         "root": "`opus` `medium`",
@@ -102,18 +107,18 @@ HARNESS_CHAINS = {
         "peer": "CE selection",
     },
     "omp": {
-        "root": f"{ARGON} `high`",
-        "scout": f"{LITE} `low`",
-        "quick": f"{LITE} `minimal`",
-        "writing": f"{ARGON} `low`",
-        "visual": f"{ARGON} `low`",
-        "implement": f"{FLASH} `low`",
-        "implement-high": f"{FLASH} `medium`",
-        "deep": f"{FLASH} `medium`",
-        "hard-decision": f"{ARGON} `high`",
-        "review": f"{FLASH} `medium`",
-        "review-gate": f"{ARGON} `high`",
-        "architect": f"{ARGON} `high`",
+        "root": OMP_KIMI,
+        "scout": OMP_DEEPSEEK,
+        "quick": OMP_DEEPSEEK,
+        "writing": OMP_KIMI,
+        "visual": OMP_KIMI,
+        "implement": OMP_GLM,
+        "implement-high": OMP_GLM,
+        "deep": OMP_GLM,
+        "hard-decision": OMP_KIMI,
+        "review": OMP_GLM,
+        "review-gate": OMP_KIMI,
+        "architect": OMP_KIMI,
         "peer": "CE selection",
     },
 }
@@ -128,7 +133,8 @@ def chain_table(chains):
 
 
 def t3_chains(delivery):
-    return {"root": T3_ROOTS[delivery], **T3_CHAINS}
+    root = {"root": T3_ROOTS[delivery]} if delivery in T3_ROOTS else {}
+    return root | T3_CHAINS
 
 
 CE_COVERAGE = """| Workflow / identity | Role and boundary |
@@ -159,6 +165,16 @@ CE_COVERAGE = """| Workflow / identity | Role and boundary |
 | Browser/device/prototype execution, general workers | `implement` with required modalities/tools; frontend and UI `visual`; status only `quick` |
 | Commit/publication/babysitting coordination | `root`; commit messages `quick`; deterministic commands need no extra model call; diagnosis `deep` |"""
 
+# The Antigravity ACP release T3 Code embeds; packages/t3code-release.json
+# must pin the same version, so a T3 Code bump that changes it fails here.
+ACP_VERSION = "1.3.0"
+ANTIGRAVITY_T3_SENTENCES = [
+    f"The `antigravity` model IDs are those Antigravity ACP `{ACP_VERSION}` offers, the release the pinned T3 Code embeds; each ID ends in its effort.",
+    "Dispatch an `antigravity` entry by setting `target.model` only, with no effort option, and compare the returned model ID with the requested one before counting configuration as applied.",
+    f"Inside T3 Code, run a Compound Engineering `antigravity` peer on the T3 `antigravity` instance by mapping the skill's bare model ID and effort to `<id>-<effort>`, such as `gemini-4-argon` with `high` to `gemini-4-argon-high`; this mapping holds for ACP `{ACP_VERSION}`.",
+    "Antigravity ACP sessions, the T3 `antigravity` instance and Compound Engineering peers alike, load none of these instructions, not even a repository's `AGENTS.md`; put every rule a delegated Antigravity task needs in its prompt.",
+]
+
 ROUTING_SENTENCES = [
     "A role picks a model and grants no permission to delegate: keep each skill's root ownership, selection triggers, sequencing, prompts, tools, permissions, artifact contracts, and required review and verification stages.",
     "Fill unspecified fields from the role's table entry, never implicitly from the parent.",
@@ -177,7 +193,7 @@ ROUTING_SENTENCES = [
     "Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.",
     "Entries marked (S) are Synthetic and expire after 2026-11-18.",
     "From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish.",
-    "Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.",
+    "OMP may use these entries automatically, inside and outside T3 Code.",
     "The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.",
     "`gpt-6.1-sol` at `max` runs automatically only for `hard-decision` and `review-gate`; every other GPT `max` use and every GPT `ultra` use requires the user's explicit request for the affected work.",
     "OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.",
@@ -191,7 +207,7 @@ ROUTING_SENTENCES = [
     "Inside T3 Code, run cross-model work and reviews through `delegate_task` in place of a skill's own CLI or worktree transport, in the shared checkout without a worktree.",
     "Children that write files may run in parallel there.",
     "Tell a read-only child to inspect without editing, and disclose that its read-only access was a prompt instruction, not an enforced restriction.",
-]
+] + ANTIGRAVITY_T3_SENTENCES
 
 
 def routing_contract(delivery):
@@ -223,7 +239,7 @@ def routing_contract(delivery):
 - Before delegating, run `agent-usage --json` and read the chain's providers. Skip every entry of a provider whose provider-wide below-threshold flag is set, and only the entries of the models a provider lists as below threshold. A `stale` or `unknown` status alone skips nothing.
 - When every runnable entry was skipped only for the usage threshold, use the one whose lowest applicable `remainingPercent` is highest and say that every entry was below the threshold; never revive an entry skipped for any other reason.
 - Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.
-- Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. Inside T3 Code these entries override the OMP rule against switching to Synthetic automatically; outside T3 Code, OMP still never switches to Synthetic automatically.
+- Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. OMP may use these entries automatically, inside and outside T3 Code.
 - The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.
 - `gpt-6.1-sol` at `max` runs automatically only for `hard-decision` and `review-gate`; every other GPT `max` use and every GPT `ultra` use requires the user's explicit request for the affected work. OMP entries run at `high` at most, the highest effort T3 Code passes to OMP.
 - A Codex entry marked Fast runs at `serviceTier` `priority`, and every other Codex entry at `default`. Never select `ultrafast`.
@@ -240,7 +256,9 @@ def routing_contract(delivery):
 
 ## T3 Code table
 
-{chain_table(t3_chains(delivery))}"""
+{chain_table(t3_chains(delivery))}
+
+""" + "\n".join("- " + sentence for sentence in ANTIGRAVITY_T3_SENTENCES)
 
 
 CLAUDE_SENTENCES = [
@@ -309,7 +327,7 @@ CODEX_CONTRACT = """- This section applies only to the active Codex harness, inc
 - Inside T3, use `delegate_task` for every delegated role, never top-level conversations or direct provider CLI workers. Discover the exact provider instance, model and option descriptors with `orchestrator_capabilities`; search omitted models before declaring absence. Check child/cross-provider eligibility and required modalities/tools. Explicitly set `target.model` and the provider's effort and supported tier in `target.options`. For Codex use `reasoningEffort` and `serviceTier`: Standard=`default`, Fast=`priority`. Do not extrapolate these option names or values to other providers. Compare returned provider, model and options with the request before counting configuration as applied.
 - Distinguish omitted enumeration, missing descriptors, discovery failure, disabled capabilities, provider rejection and returned-selection mismatch. Bounded discovery/recovery follows the owning skill; unsupported or unverifiable selections are reported as unavailable/degraded, with its compatible fallback. Never silently clamp, substitute a model outside the role's chain, invoke a CLI escape route inside T3, drop required review or claim the requested configuration ran. Queue/backpressure and launch failures must not create duplicate live work.
 - Outside T3, use supported native Codex model/effort controls and the owning skill's compatible transport. Treat child service tier as inherited from the root unless the installed client demonstrably supports independent control. Preserve the root tier and disclose the actual inherited child tier; if a required independent tier cannot be honored, including a Fast `scout` or `quick` child under a Standard root or Standard under an accelerated root, report the limitation rather than changing the root or claiming isolation.
-- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. Do not add Antigravity to an allowlist incidentally; an unauthorized Gemini recipient or unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist, prohibitions, checkout egress gate and only its permitted live opt-in exception to checkout `off`. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override. Disclose permitted recipients before sending. Provider availability alone authorizes no recipient and proves no missing effort control. A recipient outside the allowlist or an unsupported prescribed effort is an unavailable/degraded pass, not permission for GPT substitution.
 
 ## CE transport, artifacts and lifecycle
 
@@ -329,25 +347,26 @@ OMP_TOOLS_SENTENCES = [
     "Use `github` (`xd://github`) for repository summaries (`repo_view`), repository file reads (`file_read`), searches (`search_issues`, `search_prs`, `search_code`, `search_commits`, `search_repos`), Actions run watching (`run_watch`), PR creation (`pr_create`), PR checkout (`pr_checkout`), and pushing `pr_checkout`-managed branches (`pr_push`).",
     "Retain `gh` CLI and `git push` as the fallback where OMP's GitHub surfaces lack the required operation, flag, freshness, or safety constraint, including `gh issue create/edit/close/comment`, `gh pr comment/review/edit/merge/ready`, `gh api graphql`, `gh --attach`, explicit cross-checkout `--repo HOST/OWNER/REPO` and `--hostname HOST` qualification, repository `<kind>/short-kebab-slug` branch naming, and uncached head-SHA verification with `git push --force-with-lease=<branch>:<sha>`.",
     "Preserve existing GitLab rules (`glab` and `mr://` diffs).",
-    "When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.",
-    "GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`.",
-    "The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access.",
+    "Synthetic and OpenRouter models establish no recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from an OMP session, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`.",
+    "The user permits sanctioned OMP cross-model reviews (explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access.",
     "Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction.",
 ]
 
 OMP_ROLE_SENTENCES = [
     "This section applies only to the active OMP harness, including OMP-led T3 sessions.",
-    "OMP model execution uses only `synthetic`, `google-antigravity`, and `openrouter`; `openai-codex` is disabled.",
-    "Native Codex remains available for sanctioned external reviews.",
-    "Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) unless explicitly requested by the user.",
+    "OMP model execution uses only `synthetic` and `openrouter`; `openai-codex` and `google-antigravity` are disabled.",
+    "Native Codex and Antigravity remain available for sanctioned external reviews.",
+    "Outside T3, delegated roles use the Synthetic models of the OMP table automatically; run `openrouter` models only when the user explicitly requests them.",
     "Inside T3 Code, the T3 Code table decides.",
-    "Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.",
+    "From 2026-11-19 (local date), the Synthetic models have expired and standalone OMP has no automatic model: start no new work and ask the user which model to use.",
+    "Kimi K3, GLM 5.3, and GLM 5.3 Flash accept only `low`, `high`, and `max`, and DeepSeek V4.1 Flash accepts `none` through `max`; none of them offers `medium`, so never send `medium` to them.",
     "Inside T3, use `delegate_task` with the instance, model and options the T3 Code table names, setting `target.model` and `target.options` and comparing the returned selection before counting configuration as applied.",
     "On `instanceId` `omp` the effort option is `thinking`; do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or other providers.",
-    'Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"lo"` for `implement` and `"med"` for `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`.',
+    'Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"med"` for `implement`, `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`.',
     "Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`.",
+    'On these three-step ladders, `task` maps `effort` `"lo"` to `low`, `"med"` to `high`, and `"hi"` to `max`, which `maxEffort` caps at `high`.',
     "Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending.",
-    "A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`.",
+    "A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override, and never runs on OMP.",
 ]
 
 OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an HTTP URL for fetching. Search uses the managed Synthetic credential command; never read or print keys.
@@ -365,25 +384,32 @@ OMP_TOOLS_CONTRACT = """- Use native `web_search` for search and `read` with an 
 ## Cross-model review identity and permissions
 
 - Compound Engineering skills live in the complete pinned tree under `~/.omp/agent/plugins/compound-engineering`; read referenced assets relative to that tree and retain each skill's recipient permission, tool restrictions, identity checks, result schema, and lifecycle rules.
-- When the runtime attests a `google-antigravity` Gemini model serving the OMP session, pass host family `gemini` and `CROSS_MODEL_HOST_HARNESS=omp` so sanctioned `claude` and `codex` peers run as different-family reviews.
-- GLM does not establish a recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from GLM or another unattested OMP model, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`. Automatic unknown-host review remains skipped; never invent an OMP peer token, export the opt-in as a session default, substitute a recognized family for GLM, or turn a missing, failed, or cancelled result into a successful empty review.
-- Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (automatic attested-Gemini peer passes and explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
+- Synthetic and OpenRouter models establish no recognized CE host family: for an explicitly requested `ce-code-review` cross-model pass from an OMP session, keep host family `unknown` with `CROSS_MODEL_HOST_HARNESS=omp` and `CROSS_MODEL_EXPLICIT_UNKNOWN_HOST=1` on the worker's `env` prefix for that run only, and keep `independence_verified` `false`. Automatic unknown-host review remains skipped; never invent an OMP peer token, export the opt-in as a session default, substitute a recognized family for the serving model, or turn a missing, failed, or cancelled result into a successful empty review.
+- Inside T3, use app-owned delegation instead of launching the CLI peer worker. The user permits sanctioned OMP cross-model reviews (explicitly requested unknown-host passes) through T3's ordinary delegated permissions without enforced read-only access. Tell the reviewer to inspect without editing, and report that this is an instruction rather than a technical restriction. This exception does not change CLI restrictions, recipient consent, or any other agent's review policy. Validate the complete terminal artifact, retain task IDs and requested/returned selection, and keep serving model/effort `unverified` without serving evidence."""
 
 OMP_ROLE_CONTRACT = """- This section applies only to the active OMP harness, including OMP-led T3 sessions.
-- OMP model execution uses only `synthetic`, `google-antigravity`, and `openrouter`; `openai-codex` is disabled. Native Codex remains available for sanctioned external reviews.
-- Outside T3, use only the selected `google-antigravity` Gemini models for delegated roles; never automatically switch to separately billed API providers (`synthetic`, `openrouter`) unless explicitly requested by the user. Inside T3 Code, the T3 Code table decides.
+- OMP model execution uses only `synthetic` and `openrouter`; `openai-codex` and `google-antigravity` are disabled. Native Codex and Antigravity remain available for sanctioned external reviews.
+- Outside T3, delegated roles use the Synthetic models of the OMP table automatically; run `openrouter` models only when the user explicitly requests them. Inside T3 Code, the T3 Code table decides.
+- From 2026-11-19 (local date), the Synthetic models have expired and standalone OMP has no automatic model: start no new work and ask the user which model to use.
 
 ## OMP table
 
 """ + chain_table(HARNESS_CHAINS["omp"]) + """
 
-- Upstream Gemini API validation on `gemini-3.8-flash` and `gemini-4-argon` accepts only `low`, `medium`, and `high`; never send `minimal`, `xhigh`, or `max` to either model.
+- Kimi K3, GLM 5.3, and GLM 5.3 Flash accept only `low`, `high`, and `max`, and DeepSeek V4.1 Flash accepts `none` through `max`; none of them offers `medium`, so never send `medium` to them.
 
 ## Dispatch and compatibility
 
 - Inside T3, use `delegate_task` with the instance, model and options the T3 Code table names, setting `target.model` and `target.options` and comparing the returned selection before counting configuration as applied. On `instanceId` `omp` the effort option is `thinking`; do not extrapolate Codex option names (`reasoningEffort`, `serviceTier`) to OMP or other providers.
-- Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"lo"` for `implement` and `"med"` for `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`. Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`.
-- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override; never route a Gemini-led `peer` review back to `google-antigravity`."""
+- Outside T3, route subagents through `task`: `sonic` for `quick`, `scout` and `seance` for `scout`, `writer` for `writing`, `designer` for `visual`, `task` with `effort` `"med"` for `implement`, `implement-high` and `deep`, `reviewer` and `security-reviewer` for `review`, and `architect` for `hard-decision`, `review-gate` and `architect`. Keep `tasks[].model` reserved for `seance` consults and `modelRoles.web` as `web/synthetic`. On these three-step ladders, `task` maps `effort` `"lo"` to `low`, `"med"` to `high`, and `"hi"` to `max`, which `maxEffort` caps at `high`.
+- Preserve CE's conversation-over-checkout-over-project-over-default peer precedence, recipient allowlist (`CROSS_MODEL_PEERS`), prohibitions, checkout egress gate, and disclosure before sending. A `peer` retains CE's selected external identity and exact prescribed effort unless the owning skill permits the user's override, and never runs on OMP."""
+
+ANTIGRAVITY_SENTENCES = [
+    "This section applies only to the Antigravity CLI (`agy`).",
+    "Antigravity ACP sessions, including the T3 `antigravity` instance and Compound Engineering peers, do not load these instructions.",
+    "An `agy` session passes host family `gemini` and `CROSS_MODEL_HOST_HARNESS=antigravity` to Compound Engineering cross-model reviews, so sanctioned `claude` and `codex` peers run as different-family reviews.",
+]
+ANTIGRAVITY_CONTRACT = "\n".join("- " + sentence for sentence in ANTIGRAVITY_SENTENCES)
 
 HEADINGS = [
     "Language and Locale",
@@ -623,7 +649,7 @@ def content_problems(text, key, delivery):
         problems += chain_problems(subsection(body, "Codex table"), HARNESS_CHAINS["codex"], "Codex")
         if body.strip() != CODEX_CONTRACT:
             problems.append("unapproved Codex normative section")
-    else:
+    elif delivery == "omp":
         tools_body = sections.get(OMP_TOOLS_HEADING, "")
         problems += sentence_problems(tools_body, OMP_TOOLS_SENTENCES, "OMP tools")
         role_body = sections.get(OMP_ROLE_HEADING, "")
@@ -631,6 +657,11 @@ def content_problems(text, key, delivery):
         problems += chain_problems(subsection(role_body, "OMP table"), HARNESS_CHAINS["omp"], "OMP")
         if tools_body.strip() != OMP_TOOLS_CONTRACT or role_body.strip() != OMP_ROLE_CONTRACT:
             problems.append("unapproved OMP normative section")
+    else:
+        body = sections.get(ANTIGRAVITY_HEADING, "")
+        problems += sentence_problems(body, ANTIGRAVITY_SENTENCES, "Antigravity")
+        if body.strip() != ANTIGRAVITY_CONTRACT:
+            problems.append("unapproved Antigravity normative section")
     if any(token in text for token in ("{{", "}}", "<no value>")) or re.search(r"@\w+@", text):
         problems.append("unrendered placeholder")
     for line in text.splitlines():
@@ -641,12 +672,39 @@ def content_problems(text, key, delivery):
     return problems
 
 
-def delivery_problems(path, expected, key, delivery):
+def read_rules(directory):
+    """Join a rules directory's prefixed files back into one render."""
     try:
-        text = path.read_bytes().decode("utf-8")
+        names = sorted(path.name for path in directory.iterdir() if path.name.startswith("nix-config-"))
     except OSError:
-        return ["missing delivered instructions"]
-    problems = content_problems(text, key, delivery)
+        return None, ["missing delivered instructions"]
+    problems = []
+    if not names or names != [f"nix-config-{index:02d}.md" for index in range(1, len(names) + 1)]:
+        problems.append(f"unexpected rule files: {names}")
+    bodies = []
+    for name in names:
+        data = (directory / name).read_bytes()
+        if len(data) >= RULE_LIMIT:
+            problems.append(f"rule file reaches {RULE_LIMIT} bytes: {name}")
+        text = data.decode("utf-8")
+        if not text.startswith(RULE_FRONTMATTER + "# "):
+            problems.append(f"rule file does not open with always_on frontmatter and a section: {name}")
+        bodies.append(text.removeprefix(RULE_FRONTMATTER))
+    return "".join(bodies), problems
+
+
+def delivery_problems(path, expected, key, delivery):
+    if delivery == "antigravity":
+        text, problems = read_rules(path)
+        if text is None:
+            return problems
+    else:
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except OSError:
+            return ["missing delivered instructions"]
+        problems = []
+    problems += content_problems(text, key, delivery)
     if text != expected:
         problems.append("delivered instructions differ from independent rendering")
     return problems
@@ -710,7 +768,7 @@ def self_test(template):
                 assert_problem(text, other, "unexpected instruction sections")
         assert_sentence_mutants(text, delivery, ROUTING_SENTENCES)
         assert_chain_mutants(text, delivery, t3_chains(delivery), "T3", 1)
-        for other in DELIVERIES:
+        for other in T3_ROOTS if delivery in T3_ROOTS else ():
             if other != delivery:
                 own = f"| `root` | {T3_ROOTS[delivery]} |"
                 assert_problem(text.replace(own, f"| `root` | {T3_ROOTS[other]} |"), delivery, "incorrect T3 chain for `root`")
@@ -770,10 +828,40 @@ def self_test(template):
         path.write_text(render(template, CARD_KEY, "claude"))
         assert "incorrect host recipient" in delivery_problems(path, expected, FAKE_KEY, "claude")
 
+        rules = Path(directory) / "rules"
+        sections = re.split(r"(?m)^(?=# )", rendered["antigravity"])[1:]
+        split = len(sections) // 2
+
+        def write_rules(bodies, frontmatter=RULE_FRONTMATTER):
+            shutil.rmtree(rules, ignore_errors=True)
+            rules.mkdir()
+            for index, body in enumerate(bodies, 1):
+                (rules / f"nix-config-{index:02d}.md").write_text(frontmatter + body)
+
+        def rule_problems():
+            return delivery_problems(rules, rendered["antigravity"], FAKE_KEY, "antigravity")
+
+        assert rule_problems() == ["missing delivered instructions"]
+        halves = ["".join(sections[:split]), "".join(sections[split:])]
+        write_rules(halves)
+        assert not rule_problems(), rule_problems()
+        write_rules(["".join(sections)])
+        assert any("reaches" in problem for problem in rule_problems())
+        write_rules(halves, "")
+        assert any("always_on" in problem for problem in rule_problems())
+        write_rules([halves[0][:-1], halves[0][-1] + halves[1]])
+        assert any("always_on" in problem for problem in rule_problems())
+        write_rules(halves + ["# Stale\n"])
+        assert "delivered instructions differ from independent rendering" in rule_problems()
+        write_rules(halves)
+        (rules / "nix-config-02.md").rename(rules / "nix-config-03.md")
+        assert any("unexpected rule files" in problem for problem in rule_problems())
+
     harness = {
         "claude": (CLAUDE_HEADING, CLAUDE_SENTENCES, "Claude Code", "unapproved Claude Code normative section"),
         "codex": (CODEX_HEADING, CODEX_SENTENCES, "Codex", "unapproved Codex normative section"),
         "omp": (OMP_ROLE_HEADING, OMP_TOOLS_SENTENCES + OMP_ROLE_SENTENCES, "OMP", "unapproved OMP normative section"),
+        "antigravity": (ANTIGRAVITY_HEADING, ANTIGRAVITY_SENTENCES, "Antigravity", "unapproved Antigravity normative section"),
     }
     # Rules the role contract retired: each fails as an unapproved addition.
     retired = {
@@ -787,11 +875,13 @@ def self_test(template):
             "Inside T3, use `delegate_task` on `instanceId` `omp` for OMP-led children and external instances for `peer` tasks.",
             "Only OMP-led CE-required Claude peer tasks may receive the owning skill's exact prescribed effort.",
         ],
+        "antigravity": [],
     }
     for delivery, (heading, sentences, name, unapproved) in harness.items():
         text = rendered[delivery]
         assert_sentence_mutants(text, delivery, sentences)
-        assert_chain_mutants(text, delivery, HARNESS_CHAINS[delivery], name, 0)
+        if delivery in HARNESS_CHAINS:
+            assert_chain_mutants(text, delivery, HARNESS_CHAINS[delivery], name, 0)
         for contrary in retired[delivery] + [
             "Always run reviewers at max effort.",
             "Use Ultrafast without an explicit user request.",
@@ -799,7 +889,7 @@ def self_test(template):
         ]:
             assert_problem(insert_bullet(text, heading, contrary), delivery, unapproved, contrary)
     omp_implement = f"| `implement` | {HARNESS_CHAINS['omp']['implement']} |"
-    assert_problem(rendered["omp"].replace(omp_implement, omp_implement.replace("`low`", "`max`")), "omp", "incorrect OMP chain for `implement`")
+    assert_problem(rendered["omp"].replace(omp_implement, omp_implement.replace("`high`", "`max`")), "omp", "incorrect OMP chain for `implement`")
 
 
 REPOSITORY_SENTENCES = {
@@ -845,6 +935,63 @@ def check_repository_docs(agents, concepts):
                 assert mutated != text
                 assert any(sentence in problem for problem in repository_doc_problems(mutated, kind)), sentence
     return problems
+
+
+DOC_ROOTS = {"Claude Code": "claude", "Codex": "codex", "OMP": "omp"}
+
+
+def doc_section(text, heading):
+    match = re.search(rf"(?ms)^{re.escape(heading)}\n(.*?)(?=^##+ |\Z)", text)
+    return match[1] if match else ""
+
+
+def routing_doc_problems(text):
+    """docs/agent-routing.md repeats every table the template renders."""
+    t3 = doc_section(text, "## T3 Code table")
+    problems = chain_problems(t3, T3_CHAINS, "docs/agent-routing.md T3")
+    roots = {}
+    for label, cell in re.findall(r"(?m)^\| `root` \(([^)]+)\) \| (.*) \|$", t3):
+        roots[label] = None if label in roots else cell
+    for label in sorted(set(roots) | set(DOC_ROOTS)):
+        if label not in DOC_ROOTS or roots.get(label) != T3_ROOTS[DOC_ROOTS[label]]:
+            problems.append(f"incorrect docs/agent-routing.md T3 chain for `root` ({label})")
+    for label, delivery in DOC_ROOTS.items():
+        body = doc_section(text, "### " + label)
+        problems += chain_problems(body, HARNESS_CHAINS[delivery], f"docs/agent-routing.md {label}")
+    return problems
+
+
+def check_routing_doc(text):
+    problems = routing_doc_problems(text)
+    if problems:
+        return problems
+    rows = [f"| `{role}` | {cell} |" for role, cell in T3_CHAINS.items()]
+    rows += [f"| `root` ({label}) | {T3_ROOTS[delivery]} |" for label, delivery in DOC_ROOTS.items()]
+    rows += [f"| `{role}` | {cell} |" for chains in HARNESS_CHAINS.values() for role, cell in chains.items()]
+    for row in rows:
+        assert row in text, row
+        mutated = text.replace(row, row[:-2] + " → `omp` `x` `low` |")
+        assert routing_doc_problems(mutated), row
+    return []
+
+
+def acp_pin_problems(release):
+    """The T3 Code pin must embed the ACP release the T3 Code table names."""
+    pins = release.get("antigravity") or {}
+    versions = sorted({str(pin.get("version")) for pin in pins.values()})
+    if versions != [ACP_VERSION]:
+        return [
+            f"packages/t3code-release.json pins Antigravity ACP {versions or 'nothing'}, "
+            f"but the T3 Code table records ACP {ACP_VERSION}; probe the new release's model IDs "
+            "and update the table, the peer mapping, and docs/agent-routing.md"
+        ]
+    return []
+
+
+def check_acp_pin(release):
+    for bad in ({}, {"antigravity": {"x86_64-linux": {"version": ACP_VERSION}, "aarch64-darwin": {"version": "9.9.9"}}}):
+        assert acp_pin_problems(bad), bad
+    return acp_pin_problems(release)
 
 
 def check_activation(template, entry):
@@ -905,6 +1052,12 @@ def check_activation(template, entry):
         sentinel.chmod(0o444)
         for item in entry["paths"]:
             path = home / item["target"]
+            if item["delivery"] == "antigravity":
+                # An earlier render's extra rule file and the user's own rule.
+                path.mkdir(parents=True)
+                (path / "nix-config-99.md").write_text("stale")
+                (path / "own.md").write_text("user rule")
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.symlink_to(sentinel)
         if entry["kdeActivation"]:
@@ -912,6 +1065,10 @@ def check_activation(template, entry):
         apply()
         verify("en-US")
         assert sentinel.read_text() == "old generation", "wrote through old generation link"
+        for item in entry["paths"]:
+            if item["delivery"] == "antigravity":
+                own = home / item["target"] / "own.md"
+                assert own.is_file() and own.read_text() == "user rule", "removed a user rule"
         preferences("ko_KR.UTF-8")
         verify("en-US")  # Source changed, but no apply has happened.
         apply(env | {"DRY_RUN": "1"})
@@ -932,16 +1089,29 @@ def check_activation(template, entry):
                 apply()
                 verify("en", "unavailable")
         if entry.get("failureTemplate"):
-            snapshot = {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+            def snapshot():
+                return {
+                    str(path): path.read_bytes()
+                    for item in entry["paths"]
+                    for path in [home / item["target"], *(home / item["target"]).glob("*")]
+                    if path.is_file()
+                }
+
+            before = snapshot()
             preferences("en-US")
-            # The second delivery fails after the first rendered successfully.
-            Path(entry["failureTemplate"]).write_text(template + "\n{{ if .codex }}{{ .missing }}{{ end }}\n")
-            result = subprocess.run(
-                [bash, "-eu", "-c", entry["activation"]], env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            )
-            assert result.returncode != 0, "renderer failure was swallowed"
-            assert snapshot == {item["target"]: (home / item["target"]).read_bytes() for item in entry["paths"]}
+            for failure in (
+                # The second delivery fails after the first rendered successfully.
+                "\n{{ if .codex }}{{ .missing }}{{ end }}\n",
+                # One top-level section cannot fit in a rule file.
+                "\n{{ if .antigravity }}# Oversized\n\n" + "x" * RULE_LIMIT + "\n{{ end }}",
+            ):
+                Path(entry["failureTemplate"]).write_text(template + failure)
+                result = subprocess.run(
+                    [bash, "-eu", "-c", entry["activation"]], env=env,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                assert result.returncode != 0, "renderer failure was swallowed"
+                assert before == snapshot(), "a failed render changed delivered instructions"
 
 
 def check_darwin_helper(template, helper, renderer, template_path):
@@ -962,7 +1132,7 @@ def check_darwin_helper(template, helper, renderer, template_path):
             "failureTemplate": str(template_copy),
             "paths": [{"target": target, "delivery": delivery} for delivery, target in (
                 ("claude", ".claude/CLAUDE.md"), ("codex", ".codex/AGENTS.md"),
-                ("omp", ".omp/agent/AGENTS.md"),
+                ("omp", ".omp/agent/AGENTS.md"), ("antigravity", ".gemini/config/rules"),
             )],
         }
         check_activation(template, entry)
@@ -976,6 +1146,8 @@ def main():
     check_darwin_helper(template, sys.argv[5], sys.argv[6], sys.argv[1])
     entries = json.loads(Path(sys.argv[2]).read_text())
     problems = check_repository_docs(Path(sys.argv[3]).read_text(), Path(sys.argv[4]).read_text())
+    problems += check_routing_doc(Path(sys.argv[7]).read_text())
+    problems += check_acp_pin(json.loads(Path(sys.argv[8]).read_text()))
     for problem in problems:
         print(problem, file=sys.stderr)
     failed = bool(problems)

@@ -155,6 +155,15 @@ let
     meta.mainProgram = "npm-release";
   };
 
+  # Resolves the latest Antigravity CLI release and its per-platform digests
+  # from Google's release feed.
+  antigravityCliRelease = pythonHelper "antigravity-cli-release" ../scripts/antigravity-cli-release;
+
+  # Resolves the newest complete Antigravity ACP runtime release by probing
+  # candidate versions on Google's download host, and hashes its archives,
+  # which upstream publishes no checksum for.
+  antigravityAcpRelease = pythonHelper "antigravity-acp-release" ../scripts/antigravity-acp-release;
+
   # Resolves the newest T3 Code nightly and its asset digests from the GitHub
   # releases API.
   t3codeRelease = pythonHelper "t3code-release" ../scripts/t3code-release;
@@ -193,6 +202,8 @@ in
     grokBuildRelease
     agentUsage
     npmRelease
+    antigravityCliRelease
+    antigravityAcpRelease
     t3codeRelease
     syntheticModelsWatch
     openrouterCatalogSnapshot

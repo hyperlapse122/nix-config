@@ -11,15 +11,28 @@ and writes or checks the pin file both T3 Code packages
 consume, so the two artifacts always come from the same nightly. Refuses to write a pin
 for a release missing any of those assets or their digests, or a version that
 is not strictly newer than the one already pinned.
+
+The pin also carries an `antigravity` section: the Antigravity ACP runtime
+that release's own CLI downloads. The script fetches the x86_64-linux CLI
+tarball, checks it against the sha256 digest GitHub records for it, and reads
+`ANTIGRAVITY_RELEASE_VERSION` and the `releaseAssets` map out of the bundled
+`t3` binary with a narrow literal parser, so the T3 Code and ACP pins can
+never disagree. The section is rewritten whenever it is missing or differs
+from the table, even at an unchanged T3 Code version. A digest mismatch, a
+download URL outside dl.google.com/agy-extensions/releases/, a table that does
+not parse, or a missing supported system exits with status 2 and writes
+nothing; every other refusal exits with status 1.
 """
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 DEFAULT_SOURCE_URL = "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=50"
@@ -40,6 +53,30 @@ TARGET_ASSETS = {
     },
 }
 
+# The system whose CLI tarball is read for the embedded Antigravity table, and
+# how the table keys each supported system.
+TABLE_SOURCE_SYSTEM = "x86_64-linux"
+TABLE_PLATFORMS = {
+    "x86_64-linux": "linux-x64",
+    "aarch64-linux": "linux-arm64",
+    "aarch64-darwin": "darwin-arm64",
+}
+ACP_URL_PREFIX = "https://dl.google.com/agy-extensions/releases/"
+UNREADABLE_TABLE_STATUS = 2
+
+TABLE_VERSION_PATTERN = re.compile(rb'ANTIGRAVITY_RELEASE_VERSION = "([^"\n]+)";')
+TABLE_START_PATTERN = re.compile(rb"releaseAssets = (?:/\*[^*]*\*/ )?new Map\(\[")
+TABLE_ENTRY_PATTERN = re.compile(
+    rb'\["(?P<key>[a-z0-9-]+)", \{\s*version: ANTIGRAVITY_RELEASE_VERSION,'
+    rb'\s*url: "(?P<url>[^"]+)",'
+    rb'\s*sha256: "(?P<sha256>[0-9a-f]{64})",'
+    rb"\s*archiveBytes: (?P<archive>\d+),"
+    rb'\s*executable: \{\s*name: "(?P<exe_name>[^"]+)",\s*bytes: (?P<exe_bytes>\d+)\s*\},'
+    rb'\s*harness: \{\s*name: "(?P<harness_name>[^"]+)",\s*bytes: (?P<harness_bytes>\d+)\s*\}'
+    rb"\s*\}\]"
+)
+TABLE_WINDOW = 1 << 16
+
 TAG_PATTERN = re.compile(r"^v(\d+\.\d+\.\d+-nightly\.\d{8}\.\d+)$")
 VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$")
 DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
@@ -47,6 +84,10 @@ DIGEST_PATTERN = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
 
 class Failure(Exception):
     """A refusal that should stop the caller with a readable message."""
+
+
+class TableFailure(Failure):
+    """The embedded Antigravity table could not be read or trusted."""
 
 
 def fetch(url):
@@ -67,6 +108,17 @@ def fetch(url):
     if proc.returncode != 0:
         raise Failure(f"fetching {url} failed with status {proc.returncode}")
     return proc.stdout
+
+
+def download(url, destination):
+    """Download one URL to a file with curl."""
+    proc = subprocess.run(
+        ["curl", "-sfL", "--max-time", "900", "-o", destination, url],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise Failure(f"downloading {url} failed with status {proc.returncode}")
 
 
 def hex_to_sri(sha256_hex):
@@ -137,6 +189,81 @@ def parse_release(version, data):
     return {"version": version, "tag": tag, "platforms": platforms}
 
 
+def embedded_table(resolved):
+    """Return the `antigravity` section read from the release's own CLI.
+
+    The tarball is checked against the digest GitHub records for it before it
+    is read, and is never unpacked to disk.
+    """
+    cli = resolved["platforms"][TABLE_SOURCE_SYSTEM]["cli"]
+    url = (
+        "https://github.com/pingdotgg/t3code/releases/download/"
+        f"{resolved['tag']}/{cli['asset']}"
+    )
+    with tempfile.TemporaryDirectory(prefix="t3code-release.") as directory:
+        archive = os.path.join(directory, cli["asset"])
+        download(url, archive)
+        with open(archive, "rb") as f:
+            digest = hashlib.file_digest(f, "sha256").hexdigest()
+        if digest != cli["sha256"]:
+            raise TableFailure(
+                f"{cli['asset']} has sha256 {digest}, expected {cli['sha256']}"
+            )
+        try:
+            # One streaming pass: read the binary when its member comes up.
+            binary, count = None, 0
+            with tarfile.open(archive, "r|gz") as tar:
+                for m in tar:
+                    if m.isfile() and re.fullmatch(r"[^/]+/t3", m.name):
+                        count += 1
+                        if count == 1:
+                            binary = tar.extractfile(m).read()
+            if count != 1:
+                raise TableFailure(f"{cli['asset']} holds {count} t3 binaries")
+        except (tarfile.TarError, EOFError) as exc:
+            raise TableFailure(f"{cli['asset']} is not readable: {exc}") from None
+    return parse_table(binary)
+
+
+def parse_table(binary):
+    """Parse the Antigravity release table out of the bundled CLI's bytes."""
+    version = TABLE_VERSION_PATTERN.search(binary)
+    start = TABLE_START_PATTERN.search(binary)
+    if not version or not start:
+        raise TableFailure("the bundled CLI holds no Antigravity release table")
+    window = binary[start.end() : start.end() + TABLE_WINDOW]
+    window = window.split(b"]);", 1)[0] + b"]"
+    entries = {}
+    for match in TABLE_ENTRY_PATTERN.finditer(window):
+        entries[match["key"].decode("ascii")] = match
+    section = {}
+    for system, platform in TABLE_PLATFORMS.items():
+        match = entries.get(platform)
+        if match is None:
+            raise TableFailure(f"the Antigravity release table has no {platform} entry")
+        url = match["url"].decode("ascii")
+        if not url.startswith(ACP_URL_PREFIX):
+            raise TableFailure(f"the {platform} Antigravity URL is outside {ACP_URL_PREFIX}")
+        sha256_hex = match["sha256"].decode("ascii")
+        section[system] = {
+            "platform": platform,
+            "version": version[1].decode("ascii"),
+            "url": url,
+            "sha256": sha256_hex,
+            "hash": hex_to_sri(sha256_hex),
+            "archiveBytes": int(match["archive"]),
+            "executable": {
+                "name": match["exe_name"].decode("ascii"),
+                "bytes": int(match["exe_bytes"]),
+            },
+            "harness": {
+                "name": match["harness_name"].decode("ascii"),
+                "bytes": int(match["harness_bytes"]),
+            },
+        }
+    return section
+
+
 def pinned_release(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -174,17 +301,29 @@ def main(argv=None):
             if writing and isinstance(current_data, dict)
             else None
         )
+        same_version = current_version == resolved["version"]
         if current_version is not None:
             try:
                 is_newer = version_key(resolved["version"]) > version_key(current_version)
             except ValueError:
                 is_newer = True
-            if not is_newer:
+            if not is_newer and not same_version:
                 print(
                     f"{args.output} is already up to date at version {current_version} "
                     f"(resolved {resolved['version']} is not newer)"
                 )
                 return 0
+
+        resolved["antigravity"] = embedded_table(resolved)
+        if (
+            same_version
+            and current_data.get("antigravity") == resolved["antigravity"]
+        ):
+            print(
+                f"{args.output} is already up to date at version {current_version} "
+                "with a matching antigravity section"
+            )
+            return 0
 
         out_json = json.dumps(resolved, indent=2) + "\n"
 
@@ -207,6 +346,9 @@ def main(argv=None):
         print(f"updated {args.output} to version {resolved['version']}")
         return 0
 
+    except TableFailure as exc:
+        print(f"t3code-release: {exc}", file=sys.stderr)
+        return UNREADABLE_TABLE_STATUS
     except (Failure, OSError) as exc:
         print(f"t3code-release: {exc}", file=sys.stderr)
         return 1

@@ -48,6 +48,9 @@ let
     claude = ".claude/CLAUDE.md";
     codex = ".codex/AGENTS.md";
     omp = ".omp/agent/AGENTS.md";
+    # A directory of rule files; recursive linking lets Home Manager prune
+    # the files a later render no longer produces.
+    antigravity = ".gemini/config/rules";
   };
 in
 {
@@ -60,6 +63,7 @@ in
         lib.nameValuePair "agent-instructions-${delivery}" {
           inherit target;
           source = "${rendered}/${target}";
+          recursive = delivery == "antigravity";
         }
       ) targets;
 

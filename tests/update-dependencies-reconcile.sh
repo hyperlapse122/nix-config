@@ -18,12 +18,17 @@
 #     `flake.lock` (including refusal of an unusable locked rev), and every
 #     release runner (`claude-desktop-release`, `claude-code-release`,
 #     `android-sdk-release`, `mise-release`, `chatgpt-release`,
-#     `t3code-release`, `wifiman-desktop-release`, `omp-release`, `npm-release`
-#     for `acpx` and `claude-agent-sdk`, `codex-release`, `grok-build-release`);
+#     `t3code-release`, `antigravity-cli-release`, `wifiman-desktop-release`,
+#     `omp-release`, `npm-release` for `acpx` and `claude-agent-sdk`,
+#     `codex-release`, `grok-build-release`, `antigravity-acp-release`);
 #   - soft-failing updaters (`chatgpt-release`, `t3code-release`,
-#     `wifiman-desktop-release`, `omp-release`, `npm-release` for `acpx` and
-#     `claude-agent-sdk`, `codex-release`, `grok-build-release`) emit `::warning`, restore their
-#     pin (and lock file for the npm packages), and let the remaining updates continue.
+#     `antigravity-cli-release`, `wifiman-desktop-release`, `omp-release`,
+#     `npm-release` for `acpx` and `claude-agent-sdk`, `codex-release`,
+#     `grok-build-release`, `antigravity-acp-release`) emit `::warning`, restore
+#     their pin (and lock file for the npm packages), and let the remaining
+#     updates continue;
+#   - a failing `antigravity-acp-release` leaves a T3 Code bump already in
+#     `packages/t3code-release.json` in place.
 # - Runs `Verify updates` under `bash -e` (without `pipefail`):
 #   - `nix fmt`, `nix flake check`, and `.#vmChecks.all` failing in turn each
 #     report `status=failure`; all succeeding reports `status=success`;
@@ -31,7 +36,7 @@
 # - Runs `Push verified updates directly to main` against a sandboxed git
 #   remote initialized with the repository's real `.gitignore`:
 #   - per-pin bump commits (`compound-engineering`, `t3code`, `omp`, `acpx`,
-#     `grok-build`, etc.) each land with their exact commit message and only their own files;
+#     `grok-build`, `antigravity-cli`, `antigravity-acp`, etc.) each land with their exact commit message and only their own files;
 #   - unchanged `origin/main` commits before `git rebase` and never sweeps
 #     `fmt.log`, `check.log`, or `vm-check.log` into `git add -A`;
 #   - diverged `origin/main` rebases cleanly and pushes both commits.
@@ -123,6 +128,8 @@ EOF
   printf '{"version": "1.0.0"}\n' >"$clone/packages/chatgpt-version.json"
   printf '{"version": "0.0.46-nightly.20261003.2600"}\n' >"$clone/packages/t3code-release.json"
   printf '{"version": "1.0.0"}\n' >"$clone/packages/wifiman-desktop-version.json"
+  printf '{"version": "1.4.8", "platforms": {}}\n' >"$clone/packages/antigravity-cli-release.json"
+  printf '{"version": "1.4.3", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
   printf '{"version": "1.4.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
   printf '{"version": "0.20.0"}\n' >"$clone/packages/acpx-release.json"
   printf '{"lockfileVersion": 3, "name": "acpx"}\n' >"$clone/packages/acpx/package-lock.json"
@@ -355,6 +362,22 @@ case "\$*" in
     fi
     printf '{"version": "0.0.47-nightly.20261005.2700"}\n' >packages/t3code-release.json
     ;;
+  "run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" agy-cli "* ]]; then
+      printf '{"version": "partial' >packages/antigravity-cli-release.json
+      echo "antigravity-cli-release: manifest lacks linux-arm" >&2
+      exit 1
+    fi
+    printf '{"version": "1.5.0", "platforms": {}}\n' >packages/antigravity-cli-release.json
+    ;;
+  "run .#antigravity-acp-release -- --output packages/antigravity-acp-release.json")
+    if [[ " \${FAIL_SOFT:-} " == *" agy-acp "* ]]; then
+      printf '{"version": "partial' >packages/antigravity-acp-release.json
+      echo "antigravity-acp-release: probe returned 500" >&2
+      exit 1
+    fi
+    printf '{"version": "1.5.1", "platforms": {}}\n' >packages/antigravity-acp-release.json
+    ;;
   "run .#wifiman-desktop-release -- --output packages/wifiman-desktop-version.json")
     if [[ " \${FAIL_SOFT:-} " == *" wifiman "* ]]; then
       printf '{"version": "partial' >packages/wifiman-desktop-version.json
@@ -444,6 +467,10 @@ grep -q '"1.5.0"' "$clone/packages/omp-release.json" ||
   fail "update step did not update packages/omp-release.json"
 grep -q '"1.0.71"' "$clone/packages/grok-build-release.json" ||
   fail "update step did not update packages/grok-build-release.json"
+grep -q '"1.5.0"' "$clone/packages/antigravity-cli-release.json" ||
+  fail "update step did not update packages/antigravity-cli-release.json"
+grep -q '"1.5.1"' "$clone/packages/antigravity-acp-release.json" ||
+  fail "update step did not update packages/antigravity-acp-release.json"
 grep -q '"9.9.9"' "$clone/packages/acpx-release.json" &&
   grep -q '"new": true' "$clone/packages/acpx/package-lock.json" ||
   fail "update step did not update acpx pin and lock file"
@@ -454,9 +481,9 @@ grep -q '"9.9.9"' "$clone/packages/claude-agent-sdk-release.json" &&
   fail "npm-release did not run for acpx and claude-agent-sdk, in that order"
 pass 'the update step runs flake update, compound-engineering-plugin pin/lock update, and all release updaters'
 
-read -r status clone <<<"$(run_update_step update-soft-fail "FAIL_SOFT=chatgpt t3code wifiman omp acpx claude-agent-sdk codex grok")"
+read -r status clone <<<"$(run_update_step update-soft-fail "FAIL_SOFT=chatgpt t3code agy-cli wifiman omp acpx claude-agent-sdk codex grok agy-acp")"
 ((status == 0)) || fail "soft-failing updaters aborted the update step: $(cat "$scratch/update-soft-fail-step.log")"
-for title in "ChatGPT update skipped" "T3 Code update skipped" "WiFiman Desktop update skipped" "OMP update skipped" "acpx update skipped" "claude-agent-sdk update skipped" "Codex update skipped" "Grok Build update skipped"; do
+for title in "ChatGPT update skipped" "T3 Code update skipped" "WiFiman Desktop update skipped" "OMP update skipped" "acpx update skipped" "claude-agent-sdk update skipped" "Codex update skipped" "Grok Build update skipped" "Antigravity CLI update skipped" "Antigravity ACP runtime update skipped"; do
   grep -q "^::warning title=$title::" "$scratch/update-soft-fail-step.log" ||
     fail "missing warning for '$title': $(cat "$scratch/update-soft-fail-step.log")"
 done
@@ -470,9 +497,17 @@ done
   packages/claude-agent-sdk-release.json \
   packages/claude-agent-sdk/package-lock.json \
   packages/codex-release.json \
-  packages/grok-build-release.json) ]] ||
+  packages/grok-build-release.json \
+  packages/antigravity-cli-release.json \
+  packages/antigravity-acp-release.json) ]] ||
   fail "soft-failing updaters left partial changes in their pin or lock files"
-pass 'soft-failing updaters (chatgpt, t3code, wifiman, omp, acpx, claude-agent-sdk, codex, grok-build) warn, restore their files, and let the step continue'
+pass 'soft-failing updaters (chatgpt, t3code, antigravity-cli, wifiman, omp, acpx, claude-agent-sdk, codex, grok-build, antigravity-acp) warn, restore their files, and let the step continue'
+
+read -r status clone <<<"$(run_update_step update-acp-fail "FAIL_SOFT=agy-acp")"
+((status == 0)) || fail "a failing antigravity-acp-release aborted the update step: $(cat "$scratch/update-acp-fail-step.log")"
+grep -q '0.0.47-nightly.20261005.2700' "$clone/packages/t3code-release.json" ||
+  fail "a failing antigravity-acp-release reverted the T3 Code bump in packages/t3code-release.json"
+pass 'a failing antigravity-acp-release keeps the T3 Code bump'
 
 read -r status _ <<<"$(run_update_step update-bad-rev "LOCKED_REV=null")"
 ((status != 0)) || fail "update step accepted a non-hex locked revision for compound-engineering-plugin"
@@ -546,6 +581,8 @@ printf '{"version": "%s"}\n' "$new_t3_version" >"$clone/packages/t3code-release.
 printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/omp-release.json"
 printf '{"version": "0.21.0"}\n' >"$clone/packages/acpx-release.json"
 printf '{"version": "1.0.71", "platforms": {}}\n' >"$clone/packages/grok-build-release.json"
+printf '{"version": "1.5.0", "platforms": {}}\n' >"$clone/packages/antigravity-cli-release.json"
+printf '{"version": "1.5.1", "platforms": {}}\n' >"$clone/packages/antigravity-acp-release.json"
 printf '{"lockfileVersion": 3, "name": "acpx", "new": true}\n' >"$clone/packages/acpx/package-lock.json"
 sed -i 's/compound-engineering-v2.67.0/compound-engineering-v2.68.0/' \
   "$clone/flake.nix" "$clone/home/h82/agents/agent-plugin-pins.nix"
@@ -554,12 +591,14 @@ sed -i 's/1111111111111111111111111111111111111111/22222222222222222222222222222
 (cd "$clone" && bash -e -c "$push_script") >"$scratch/pin-bumps-step.log" 2>&1 ||
   fail "the push step failed on the per-pin updates: $(tail -n 5 "$scratch/pin-bumps-step.log")"
 commits=$("$git_bin" --git-dir "$origin" log --reverse --format='%H %s' "$base_sha..main")
-[[ $(wc -l <<<"$commits") == 5 ]] || fail "expected 5 per-pin commits, found: $commits"
+[[ $(wc -l <<<"$commits") == 7 ]] || fail "expected 7 per-pin commits, found: $commits"
 for expected in \
   'chore(packages): bump omp to 1.5.0|packages/omp-release.json' \
   'chore(packages): bump grok-build to 1.0.71|packages/grok-build-release.json' \
   'chore(packages): bump acpx to 0.21.0|packages/acpx-release.json packages/acpx/package-lock.json' \
   "chore(packages): bump t3code to $new_t3_version|packages/t3code-release.json" \
+  'chore(packages): bump antigravity-cli to 1.5.0|packages/antigravity-cli-release.json' \
+  'chore(packages): bump antigravity-acp to 1.5.1|packages/antigravity-acp-release.json' \
   'chore(agents): bump compound-engineering to compound-engineering-v2.68.0|flake.lock flake.nix home/h82/agents/agent-plugin-pins.nix'; do
   subject=${expected%%|*} want=${expected#*|}
   sha=$(awk -v s="$subject" '{ sha = $1; sub(/^[^ ]+ /, "") } $0 == s { print sha }' <<<"$commits")
@@ -567,7 +606,7 @@ for expected in \
   files=$("$git_bin" --git-dir "$origin" show --format= --name-only "$sha" | sort | paste -sd ' ')
   [[ $files == "$want" ]] || fail "'$subject' carries $files, want $want"
 done
-pass 'the t3code, omp, acpx, grok-build, and compound-engineering changes each land as their own commit with only their files'
+pass 'the t3code, antigravity-cli, antigravity-acp, omp, acpx, grok-build, and compound-engineering changes each land as their own commit with only their files'
 
 # --- origin/main unchanged: dirty-tree commit-before-rebase & .gitignore logs
 read -r origin clone <<<"$(setup_clone same)"

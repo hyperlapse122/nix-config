@@ -17,16 +17,11 @@ in
   disabledProviders = [
     "omp-managed"
     "openai-codex"
+    "google-antigravity"
   ];
   # OMP uses path globs: model IDs themselves contain slashes. Synthetic rows
   # are listed exactly because OMP's bundled catalog can carry models the live
   # catalog has retired, and a glob would offer those too.
   patterns =
-    map (row: "synthetic/${row.id}") synthetic.data
-    ++ [
-      "google-antigravity/gemini-*"
-      "google-antigravity/claude-*"
-      "google-antigravity/gpt-*"
-    ]
-    ++ map (row: "openrouter/${row.id}") openrouterData;
+    map (row: "synthetic/${row.id}") synthetic.data ++ map (row: "openrouter/${row.id}") openrouterData;
 }

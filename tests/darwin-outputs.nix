@@ -27,6 +27,10 @@
   - `nr` on PATH is nr-darwin;
   - installed OMP credential helpers read the user's secret state directory;
   - serve-html on PATH is the packaged helper the shared instructions name;
+  - agy on PATH is the pinned Antigravity CLI, agy_acp_server.par execs the
+    runtime built from packages/antigravity-acp-release.json and sets no
+    SSL_CERT_FILE, because the macOS .par finds its CA bundle itself, and
+    localharness_external beside it is that runtime's;
   - the VSCodium settings merge targets Application Support;
   - grok on PATH resolves to the grok-build wrapper, and the profile has no
     `agent` executable;
@@ -246,6 +250,13 @@ let
       serveHtmlPackage =
         (import ../packages/agent-tools.nix { inherit (entry.host) pkgs; }).serveHtml or null;
       serveHtml = lib.optionalString (serveHtmlPackage != null) (lib.getExe serveHtmlPackage);
+      agy = "${import ../packages/antigravity-cli.nix { inherit (entry.host) pkgs; }}/bin/agy";
+      antigravityRuntime = "${
+        import ../packages/antigravity-acp.nix {
+          inherit (entry.host) pkgs;
+          pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
+        }
+      }/libexec/antigravity-acp";
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -421,6 +432,21 @@ let
       elif [ "$(readlink -f "$gen/home-path/bin/serve-html" || true)" != ${lib.escapeShellArg serveHtml} ]; then
         bad "serve-html on PATH is not the packaged helper"
       fi
+
+      [ "$(readlink -f "$gen/home-path/bin/agy" || true)" = ${lib.escapeShellArg agy} ] \
+        || bad "agy on PATH is not the pinned Antigravity CLI"
+      agyPar=$(readlink -f "$gen/home-path/bin/agy_acp_server.par" || true)
+      if [ -z "$agyPar" ] || [ ! -x "$agyPar" ]; then
+        bad "no agy_acp_server.par on PATH"
+      else
+        grep -qxF ${lib.escapeShellArg "exec ${antigravityRuntime}/agy_acp_server.par \"$@\""} "$agyPar" \
+          || bad "agy_acp_server.par does not exec the PATH-pinned runtime's .par"
+        if grep -qF SSL_CERT_FILE "$agyPar"; then
+          bad "the macOS agy_acp_server.par wrapper sets SSL_CERT_FILE"
+        fi
+      fi
+      [ "$(readlink -f "$gen/home-path/bin/localharness_external" || true)" = ${lib.escapeShellArg "${antigravityRuntime}/localharness_external"} ] \
+        || bad "localharness_external on PATH is not the PATH-pinned runtime's"
 
       codexBlock=$TMPDIR/codex-settings-$variant.sh
       stepBlock codexSettings > "$codexBlock"

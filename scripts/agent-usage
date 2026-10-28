@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import selectors
-import sqlite3
 import subprocess
 import tempfile
 import time
@@ -19,8 +18,9 @@ import tomllib
 
 
 class Unavailable(Exception):
-    def __init__(self, exhausted=False):
+    def __init__(self, exhausted=False, reason=None):
         self.exhausted = exhausted
+        self.reason = reason
 
 
 def load(path):
@@ -145,32 +145,9 @@ def claude():
 
 
 def gemini():
-    data = json.loads(run(['omp', 'usage', '--json', '--provider', 'google-antigravity']))
-    entries = data if isinstance(data, list) else data.get('reports', data.get('entries', data.get('providers', [])))
-    if isinstance(entries, dict):
-        entries = [dict(entry, provider=name) for name, entry in entries.items()]
-    windows, scopes = [], []
-    for entry in entries:
-        if entry.get('provider', entry.get('providerId')) != 'google-antigravity':
-            continue
-        scopes.append(json.dumps(entry.get('scope', entry.get('metadata', {}).get('email', 'default')), sort_keys=True))
-        for limit in entry.get('limits', []):
-            # Antigravity also reports Claude/GPT shared buckets; only the
-            # google counter measures the Gemini models routed here.
-            if not limit.get('id', '').startswith('google-antigravity:google:'):
-                continue
-            amount, period = limit['amount'], limit.get('window', {})
-            used = amount.get('usedFraction')
-            if used is None:
-                used = 1 - amount['remainingFraction']
-            scope = limit.get('scope')
-            if scope:
-                scopes.append(json.dumps(scope, sort_keys=True))
-            model = scope.get('modelId') if isinstance(scope, dict) else None
-            windows.append(window(limit.get('label', period.get('label', 'usage')), used * 100,
-                                  timestamp(period['resetsAt']) / 1000 if period.get('resetsAt') else None,
-                                  model=model, durationMins=period.get('durationMs', 0) / 60000))
-    return '|'.join(sorted(scopes)), windows
+    # Neither agy nor the Antigravity ACP runtime exposes a read-only quota
+    # call, and OMP no longer carries the provider, so no source exists.
+    raise Unavailable(reason='no read-only Antigravity quota source')
 
 
 def grok_entry():
@@ -257,7 +234,7 @@ def identity_stamp(provider):
         'codex': [Path(os.environ.get('CODEX_HOME', home / '.codex')) / 'auth.json'],
         'claude': [home / '.claude.json', Path(os.environ.get('CLAUDE_CONFIG_DIR', home / '.claude')) / '.claude.json',
                    Path(os.environ.get('CLAUDE_CONFIG_DIR', home / '.claude')) / '.credentials.json'],
-        'gemini': [Path(os.environ.get('PI_CODING_AGENT_DIR', home / '.omp/agent')) / 'auth.json'],
+        'gemini': [],
         'grok': [Path(os.environ.get('GROK_HOME', home / '.grok')) / name
                  for name in ('auth.json', 'config.json', 'config.toml')],
         'synthetic': [],
@@ -269,18 +246,6 @@ def identity_stamp(provider):
             stamp.append([str(path), stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size])
         except OSError:
             stamp.append([str(path), None])
-    if provider == 'gemini':
-        database = Path(os.environ.get('PI_CODING_AGENT_DIR', home / '.omp/agent')) / 'agent.db'
-        try:
-            # Current OMP keeps OAuth credentials in SQLite. Observe only row
-            # identities and revision times, never the credential data column.
-            with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=.5) as connection:
-                rows = connection.execute(
-                    "SELECT id, updated_at FROM auth_credentials WHERE provider=? ORDER BY id",
-                    ('google-antigravity',)).fetchall()
-            stamp.append([list(row) for row in rows])
-        except sqlite3.Error:
-            stamp.append(None)
     # Presence is enough: key-based sessions do not have subscription limits.
     stamp.append([bool(os.environ.get(key)) for key in (
         'XAI_API_KEY', 'XAI_BASE_URL', 'GROK_BASE_URL', 'GROK_API_BASE_URL',
@@ -319,6 +284,8 @@ def fetch(provider):
         result = dict(status='unknown', windows=[], fetchedAt=time.time())
         if isinstance(exc, Unavailable) and exc.exhausted:
             result['exhausted'] = True
+        if isinstance(exc, Unavailable) and exc.reason:
+            result['reason'] = exc.reason
     if account:
         result['accountHash'] = hashlib.sha256(str(account).encode()).hexdigest()
     return result
@@ -441,7 +408,7 @@ def main():
         print(json.dumps({'providers': providers}))
     else:
         for provider, result in providers.items():
-            print(f"{provider}: {result['status']}")
+            print(f"{provider}: {result['status']}" + (f" ({result['reason']})" if result.get('reason') else ''))
             for entry in result['windows'] + result['resources']:
                 timing = (f"regenerates {entry.get('nextRegenPercent')}% at {display_time(entry['nextRegenAt'])}"
                           if 'nextRegenAt' in entry else f"resets at {display_time(entry.get('resetsAt'))}")

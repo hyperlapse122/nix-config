@@ -104,8 +104,7 @@ def prepare(entry, home):
     # Protected production helper commands remain the consumer; only fake
     # credentials enter this process, and the sandbox has no user auth files.
     providers = json.loads((agent / "models.yml").read_text())["providers"]
-    assert set(providers) == {"synthetic", "openrouter", "google-antigravity"}, "local Codex definitions are forbidden"
-    assert set(providers["google-antigravity"]) == {"modelOverrides"}, "google-antigravity must stay OAuth-only"
+    assert set(providers) == {"synthetic", "openrouter"}, "only Synthetic and OpenRouter may be declared"
     skill = agent / "skills/u5-proof"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: u5-proof\ndescription: ACP_SKILL_PROOF\n---\nACP skill fixture.\n")
@@ -113,6 +112,9 @@ def prepare(entry, home):
     work.mkdir()
     (work / "AGENTS.md").write_text("ACP_REPOSITORY_PROOF\n")
     return work
+
+
+SMOL_MODEL = "hf:deepseek-ai/DeepSeek-V4.1-Flash"
 
 
 class Fixture(http.server.BaseHTTPRequestHandler):
@@ -175,6 +177,13 @@ class Fixture(http.server.BaseHTTPRequestHandler):
                 return
             self.json_response({"jsonrpc": "2.0", "id": body["id"], "result": result})
             return
+        if body.get("model") == SMOL_MODEL:
+            # OMP's smol role condenses skill descriptions into the routing
+            # hints the main prompt lists; keep the description as the hint.
+            self.server.side_requests.append(body)
+            prompt = str(body["messages"][-1]["content"])
+            self.stream({"content": prompt.rpartition("Description: ")[2].strip()}, "stop")
+            return
         self.server.requests.append(body)
         assert self.path == "/openai/v1/chat/completions", self.path
         messages = str(body["messages"])
@@ -210,6 +219,9 @@ class Fixture(http.server.BaseHTTPRequestHandler):
                                                 "content": "{}"}), "tool_calls"
         else:
             delta, reason = {"content": "ACP_COMPLETED " + self.server.nonce}, "stop"
+        self.stream(delta, reason)
+
+    def stream(self, delta, reason):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
@@ -233,7 +245,7 @@ def endpoint(home):
     server.daemon_threads = True
     server.tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     server.tls.load_cert_chain(cert, key)
-    server.requests, server.mcp_calls, server.mcp_frames, server.errors = [], [], [], []
+    server.requests, server.side_requests, server.mcp_calls, server.mcp_frames, server.errors = [], [], [], [], []
     server.nonce = "MCP_RESULT_" + os.urandom(8).hex()
     server.cancel_started, server.cancel_release = threading.Event(), threading.Event()
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -250,13 +262,8 @@ def exchange(config, home, work):
         client.initialize()
         state = client.call("session/new", cwd=str(work), mcpServers=mcp)
         session = state["sessionId"]
-        assert option(state, "model")["currentValue"] == "google-antigravity/gemini-4-argon", state
+        assert option(state, "model")["currentValue"] == STARTUP_MODEL, state
         assert option(state, "thinking")["currentValue"] == "high", option(state, "thinking")
-        reply = client.receive(client.send("session/prompt", {"sessionId": session,
-                               "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
-        assert not server.requests, "Antigravity startup fell back to a paid API provider"
-        assert "No API key found for google-antigravity." in reply.get("error", {}).get("data", {}).get("details", ""), reply
-        print("Unified ACP startup stays on Gemini 4 Argon high without auth and sends no API request")
         state = client.call("session/set_config_option", sessionId=session, configId="model",
                             value="synthetic/hf:zai-org/GLM-5.3")
         state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="max")
@@ -292,6 +299,33 @@ def exchange(config, home, work):
             client.stderr.seek(0)
             print("ACP fixture diagnostics:", server.errors, client.stderr.read(), file=sys.stderr)
         server.cancel_release.set()
+        client.close()
+        server.shutdown()
+        server.server_close()
+
+
+MISSING_SYNTHETIC_KEY = "No API key found for synthetic."
+STARTUP_MODEL = "synthetic/hf:moonshotai/Kimi-K3"
+
+
+def missing_synthetic_key(config, home, work):
+    # The OpenRouter key stays valid, so a fallback would reach the fixture.
+    server, env, _ = endpoint(home)
+    client = Acp(config, home, work, {**env, "SYNTHETIC_API_KEY": ""})
+    try:
+        client.initialize()
+        state = client.call("session/new", cwd=str(work), mcpServers=[])
+        assert option(state, "model")["currentValue"] == STARTUP_MODEL, state
+        reply = client.receive(client.send("session/prompt", {"sessionId": state["sessionId"],
+                               "prompt": [{"type": "text", "text": "ACP_EXCHANGE"}]}), allow_error=True)
+        assert not server.requests and not server.side_requests, "startup without a Synthetic key fell back to another provider"
+        assert MISSING_SYNTHETIC_KEY in json.dumps(reply), reply
+        print(f"{'T3' if '--config' in config['commandArgs'] else 'standalone'} ACP without a Synthetic key"
+              " stays on Kimi K3 and sends no request")
+    finally:
+        if sys.exc_info()[0]:
+            client.stderr.seek(0)
+            print("ACP missing-key diagnostics:", server.errors, client.stderr.read(), file=sys.stderr)
         client.close()
         server.shutdown()
         server.server_close()
@@ -399,94 +433,91 @@ def catalog(config, home, work, expected_names):
         client.close()
 
 
+DISABLED = {"openai-codex": "openai-codex/gpt-6-astra",
+            "google-antigravity": "google-antigravity/gemini-4-argon"}
+
+
+def stored_credentials(command_path, home):
+    env = {"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV}
+    result = subprocess.run([command_path, "auth", "export"], env=env,
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    return {row["provider"]: row["credential"] for row in json.loads(result.stdout)["credentials"]}
+
+
+def rejects_disabled(command, home, work, selector):
+    provider = selector.split("/", 1)[0]
+    result = subprocess.run(command, input="", cwd=work,
+                            env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0 and f'Provider "{provider}" is disabled.' in result.stderr, (selector, result.stderr)
+
+
 def standalone_cli_scope(entry, api, api_expected_names):
-    # Unauthenticated standalone CLI with explicit --model must fail closed without hitting paid APIs.
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         work = prepare(entry, home)
-        cli_fail = subprocess.run(
-            [api["commandPath"], "--no-extensions", "--no-session", "--model", "google-antigravity/gemini-4-argon", "-p", "smoke"],
-            cwd=work, env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
-            capture_output=True, text=True, timeout=20,
-        )
-        assert cli_fail.returncode != 0 and "No API key found for google-antigravity." in cli_fail.stderr, cli_fail.stderr
-    with tempfile.TemporaryDirectory() as temporary:
-        home = Path(temporary)
-        work = prepare(entry, home)
-        import_fake_oauth(api["commandPath"], home, ("google-antigravity", "openai-codex"))
+        import_fake_oauth(api["commandPath"], home, tuple(DISABLED))
+        credentials = stored_credentials(api["commandPath"], home)
+        assert set(credentials) == set(DISABLED), credentials
         config_path = home / ".omp/agent/config.yml"
         common = config_path.read_bytes()
         control = json.loads(common)
-        control["disabledProviders"] = [p for p in control["disabledProviders"] if p != "openai-codex"]
+        control["disabledProviders"] = [p for p in control["disabledProviders"] if p not in DISABLED]
         config_path.write_text(json.dumps(control))
         try:
             raw = raw_bundled_models(api["commandPath"], home)
         finally:
             config_path.write_bytes(common)
         raw_selectors = {row["selector"] for row in raw}
-        assert {"google-antigravity/tab_flash_lite_preview",
-                "google-antigravity/tab_jump_flash_lite_preview"} <= raw_selectors, "raw catalog missing tab_* controls"
+        # Without the managed exclusion the fake logins expose both providers,
+        # so the checks below prove disabledProviders, not missing auth.
+        assert set(DISABLED.values()) <= raw_selectors, sorted(s for s in raw_selectors if s.split("/")[0] in DISABLED)
         assert any(s.startswith("openrouter/") and not s.startswith("openrouter/openrouter/")
                    for s in raw_selectors), "raw catalog missing uncurated OpenRouter vendor controls"
-        antigravity_names = {
-            row["selector"]: row["name"] for row in raw
-            if row["provider"] == "google-antigravity" and row["id"].startswith(("gemini-", "claude-", "gpt-"))
-        }
-        codex_names = {row["selector"]: row["name"] for row in raw if row["provider"] == "openai-codex"}
-        assert "google-antigravity/gpt-oss-120b" in antigravity_names and len(antigravity_names) >= 9, antigravity_names
-        assert "openai-codex/gpt-6-astra" in codex_names, codex_names
         # Standalone OMP without T3's --config/--models/--model must enforce ~/.omp/agent/config.yml.
         standalone = {"commandPath": api["commandPath"], "commandArgs": ["--mode", "acp"]}
         client = Acp(standalone, home, work, OFFLINE_ENV)
         try:
             client.initialize()
             state = client.call("session/new", cwd=str(work), mcpServers=[])
-            assert option(state, "model")["currentValue"] == "google-antigravity/gemini-4-argon", state
+            assert option(state, "model")["currentValue"] == STARTUP_MODEL, state
             assert option(state, "thinking")["currentValue"] == "high", option(state, "thinking")
             session = state["sessionId"]
-            state = client.call("session/set_config_option", sessionId=session, configId="model", value="google-antigravity/gemini-3.8-flash")
-            assert values(state, "thinking") == {"off", "auto", "low", "medium", "high"}, option(state, "thinking")
-            expected_standalone = set(api_expected_names) | set(antigravity_names)
-            assert values(state, "model") == expected_standalone, (
-                sorted(values(state, "model") - expected_standalone)[:8],
-                sorted(expected_standalone - values(state, "model"))[:8],
+            assert values(state, "model") == set(api_expected_names), (
+                sorted(values(state, "model") - set(api_expected_names))[:8],
+                sorted(set(api_expected_names) - values(state, "model"))[:8],
             )
-            rejected = client.receive(client.send(
-                "session/set_config_option", {"sessionId": session, "configId": "model",
-                                              "value": "openai-codex/gpt-6-astra"}), allow_error=True)
-            assert "error" in rejected, "ACP accepted the disabled Codex provider"
-            state = client.call("session/set_config_option", sessionId=session, configId="thinking", value="high")
-            assert option(state, "model")["currentValue"] == "google-antigravity/gemini-3.8-flash", state
+            for selector in DISABLED.values():
+                rejected = client.receive(client.send(
+                    "session/set_config_option", {"sessionId": session, "configId": "model",
+                                                  "value": selector}), allow_error=True)
+                assert "error" in rejected, ("ACP accepted a disabled provider", selector)
+            assert option(client.call("session/set_config_option", sessionId=session, configId="thinking",
+                                      value="high"), "model")["currentValue"] == STARTUP_MODEL
         finally:
             client.close()
         widened = json.loads(common)
-        widened["enabledModels"].append("openai-codex/*")
+        widened["enabledModels"] += [provider + "/*" for provider in DISABLED]
         config_path.write_text(json.dumps(widened))
-        explicit = subprocess.run(
-            [api["commandPath"], "--no-extensions", "--no-session", "--model",
-             "openai-codex/gpt-6-astra", "-p", "smoke"],
-            cwd=work, env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
-            capture_output=True, text=True, timeout=20,
-        )
-        assert explicit.returncode != 0 and 'Provider "openai-codex" is disabled.' in explicit.stderr, explicit.stderr
+        for selector in DISABLED.values():
+            rejects_disabled([api["commandPath"], "--no-extensions", "--no-session", "--model", selector, "-p", "smoke"],
+                             home, work, selector)
+        assert stored_credentials(api["commandPath"], home) == credentials, "disabling a provider changed its stored login"
     # Also verify T3's ACP command isolates T3 sessions when ~/.omp/agent/config.yml drifts wider.
     with tempfile.TemporaryDirectory() as temporary:
         home = Path(temporary)
         work = prepare(entry, home)
         drifted = json.loads((home / ".omp/agent/config.yml").read_text())
-        drifted["enabledModels"] = ["synthetic/**", "google-antigravity/**", "openrouter/**", "openai-codex/*"]
+        drifted["enabledModels"] = ["synthetic/**", "openrouter/**", *(provider + "/**" for provider in DISABLED)]
         drifted["disabledProviders"] = []
         (home / ".omp/agent/config.yml").write_text(json.dumps(drifted))
-        import_fake_oauth(api["commandPath"], home, ("google-antigravity", "openai-codex"))
-        catalog(api, home, work, {**api_expected_names, **antigravity_names})
-        pinned_args = list(api["commandArgs"])
-        pinned_args[pinned_args.index("--model") + 1] = "openai-codex/gpt-6-astra"
-        explicit = subprocess.run(
-            [api["commandPath"], *pinned_args], input="", cwd=work,
-            env={"HOME": str(home), "PATH": os.environ["PATH"], **OFFLINE_ENV},
-            capture_output=True, text=True, timeout=20,
-        )
-        assert explicit.returncode != 0 and 'Provider "openai-codex" is disabled.' in explicit.stderr, explicit.stderr
+        import_fake_oauth(api["commandPath"], home, tuple(DISABLED))
+        catalog(api, home, work, api_expected_names)
+        for selector in DISABLED.values():
+            pinned_args = list(api["commandArgs"])
+            pinned_args[pinned_args.index("--model") + 1] = selector
+            rejects_disabled([api["commandPath"], *pinned_args], home, work, selector)
 
 def applied(entry, home):
     target = home / ".t3/userdata/settings.json"
@@ -549,29 +580,27 @@ if __name__ == "__main__":
             instances = applied(entry, home)
             api = instances["omp"]["config"]
             assert set(api["customModels"]) == expected and len(api["customModels"]) == len(expected), "T3 API selectors capped or changed"
-            patterns = {
-                "google-antigravity/gemini-*",
-                "google-antigravity/claude-*",
-                "google-antigravity/gpt-*",
-            } | {s for s in expected if s.startswith(("synthetic/", "openrouter/"))}
+            patterns = expected
             args = api["commandArgs"]
             assert set(args[args.index("--models") + 1].split(",")) == patterns, "CLI scope differs from unified selection"
-            assert args[args.index("--model") + 1] == "google-antigravity/gemini-4-argon"
+            assert args[args.index("--model") + 1] == STARTUP_MODEL
             assert args[args.index("--thinking") + 1] == "high"
             overlay = json.loads(Path(args[args.index("--config") + 1]).read_text())
             assert set(overlay["enabledModels"]) == patterns, "overlay scope differs from unified selection"
-            assert overlay["modelRoles"]["default"] == "google-antigravity/gemini-4-argon"
+            assert overlay["modelRoles"]["default"] == STARTUP_MODEL
             assert overlay["modelRoles"]["web"] == "web/synthetic"
             assert overlay["defaultThinkingLevel"] == "high"
             assert overlay["task"]["enableEffort"] is True and overlay["task"]["maxEffort"] == "high"
             assert overlay["github"] == {"enabled": True}
-            assert overlay["task"]["agentModelOverrides"]["architect"] == "google-antigravity/gemini-4-argon:high"
+            assert overlay["task"]["agentModelOverrides"]["architect"] == STARTUP_MODEL + ":high"
             work = prepare(entry, home)
             common = (home / ".omp/agent/config.yml").read_bytes()
             assert overlay["skills"]["customDirectories"] == json.loads(common.decode())["skills"]["customDirectories"]
             assert set(json.loads(common.decode())["enabledModels"]) == patterns, "common CLI config.yml missing curated enabledModels"
             catalog(api, home, work, expected_names)
             exchange(api, home, work)
+            missing_synthetic_key(api, home, work)
+            missing_synthetic_key({"commandPath": api["commandPath"], "commandArgs": ["--mode", "acp"]}, home, work)
             interaction(api, home, work, "synthetic/hf:zai-org/GLM-5.3")
             interaction({"commandPath": api["commandPath"], "commandArgs": ["--mode", "acp"]},
                         home, work, "synthetic/hf:zai-org/GLM-5.3", standalone=True)

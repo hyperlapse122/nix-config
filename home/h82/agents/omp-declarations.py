@@ -54,7 +54,7 @@ def entry(row, provider):
         result["reasoning"] = reasoning is not None
         if reasoning is not None:
             efforts = reasoning.get("efforts" if synthetic else "supported_efforts") or []
-            # The declared startup model must not inherit Synthetic's generic ladder.
+            # GLM 5.3 must not inherit Synthetic's generic ladder.
             if synthetic and row["id"] == "hf:zai-org/GLM-5.3":
                 efforts = ["low", "high", "max"]
             supported = [effort for effort in EFFORTS if effort in efforts]
@@ -71,17 +71,7 @@ def main(synthetic, openrouter, bundled, synthetic_helper, openrouter_helper, ou
     for provider in ("synthetic", "openrouter"):
         if not any(name == provider for name, _ in known):
             raise ValueError(f"OMP listed no bundled {provider} models")
-    providers = {
-        # Upstream Gemini API rejects minimal on gemini-3.8-flash; overriding its
-        # ladder keeps P3 ("lo" -> low) and P4 ("med" -> medium) aligned.
-        "google-antigravity": {
-            "modelOverrides": {
-                "gemini-3.8-flash": {
-                    "thinking": {"mode": "effort", "efforts": ["low", "medium", "high"]},
-                }
-            }
-        }
-    }
+    providers = {}
     for name, path, helper, url in (
         ("synthetic", synthetic, synthetic_helper, "https://api.synthetic.new/openai/v1"),
         ("openrouter", openrouter, openrouter_helper, "https://openrouter.ai/api/v1"),

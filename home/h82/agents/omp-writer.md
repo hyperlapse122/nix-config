@@ -3,8 +3,8 @@ name: writer
 description: Documentation and prose subagent for guides, plans, handoffs, and other writing
 spawns: "*"
 model:
-  - google-antigravity/gemini-4-argon
-thinkingLevel: low
+  - synthetic/hf:moonshotai/Kimi-K3
+thinkingLevel: high
 ---
 
 Worker agent: delegated writing tasks.

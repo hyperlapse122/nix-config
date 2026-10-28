@@ -1,13 +1,16 @@
 {
   defaultThinkingLevel = "high";
   github.enabled = true;
+  # Synthetic is the automatic choice; OpenRouter runs only when asked for.
+  # Kimi K3 and GLM 5.3 offer low, high, and max; DeepSeek V4.1 Flash offers
+  # none through max. None of them offers medium.
   modelRoles = {
-    default = "google-antigravity/gemini-4-argon";
-    smol = "google-antigravity/gemini-3.5-flash-lite:low";
-    slow = "google-antigravity/gemini-4-argon:high";
-    plan = "google-antigravity/gemini-4-argon:high";
-    task = "google-antigravity/gemini-3.8-flash:low";
-    commit = "google-antigravity/gemini-3.5-flash-lite:minimal";
+    default = "synthetic/hf:moonshotai/Kimi-K3";
+    smol = "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low";
+    slow = "synthetic/hf:moonshotai/Kimi-K3:high";
+    plan = "synthetic/hf:moonshotai/Kimi-K3:high";
+    task = "synthetic/hf:zai-org/GLM-5.3:high";
+    commit = "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low";
     web = "web/synthetic";
   };
   task = {
@@ -15,13 +18,13 @@
     enableEffort = true;
     maxEffort = "high";
     agentModelOverrides = {
-      sonic = "google-antigravity/gemini-3.5-flash-lite:minimal";
-      scout = "google-antigravity/gemini-3.5-flash-lite:low";
-      seance = "google-antigravity/gemini-3.5-flash-lite:low";
-      task = "google-antigravity/gemini-3.8-flash:low";
-      reviewer = "google-antigravity/gemini-3.8-flash:medium";
-      "security-reviewer" = "google-antigravity/gemini-3.8-flash:medium";
-      architect = "google-antigravity/gemini-4-argon:high";
+      sonic = "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low";
+      scout = "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low";
+      seance = "synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash:low";
+      task = "synthetic/hf:zai-org/GLM-5.3:high";
+      reviewer = "synthetic/hf:zai-org/GLM-5.3:high";
+      "security-reviewer" = "synthetic/hf:zai-org/GLM-5.3:high";
+      architect = "synthetic/hf:moonshotai/Kimi-K3:high";
     };
   };
 }

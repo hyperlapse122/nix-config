@@ -44,6 +44,16 @@ let
     }
   );
   ompPatterns = catalogs.patterns;
+
+  # The runtime of the Antigravity ACP release the pinned T3 Code embeds,
+  # which can trail the newest one that packages/antigravity-acp-path.nix puts
+  # on PATH. T3 Code resolves an explicit binaryPath before its managed
+  # download, finds localharness_external beside it, and sets the child's
+  # SSL_CERT_FILE itself on Linux, so the instance needs no wrapper.
+  antigravityAcp = import ../../packages/antigravity-acp.nix {
+    inherit pkgs;
+    pins = (builtins.fromJSON (builtins.readFile ../../packages/t3code-release.json)).antigravity;
+  };
   openrouterSelectors = map (row: "openrouter/${row.id}") catalogs.openrouter.data;
   apiSelectors = lib.unique (
     map (row: "synthetic/${row.id}") catalogs.synthetic.data ++ openrouterSelectors
@@ -63,9 +73,9 @@ let
         "--models"
         (lib.concatStringsSep "," ompPatterns)
         # --models otherwise falls back to the first available API model
-        # when the configured Antigravity default has no authentication.
+        # when the configured Synthetic default has no authentication.
         "--model"
-        "google-antigravity/gemini-4-argon"
+        "synthetic/hf:moonshotai/Kimi-K3"
         "--thinking"
         "high"
       ];
@@ -80,8 +90,8 @@ let
   # on. A cleanup that drops default-valued settings must keep it, or the instance
   # would go back to following T3 Code's default. App state (onboarding marks,
   # folded panels, favorites, and every provider instance field not declared
-  # here) stays the app's. T3 Code leaves its built-in Antigravity and Pi
-  # instances off until they are enabled, so none shows up on its own.
+  # here) stays the app's. T3 Code leaves its built-in Pi
+  # instance off until it is enabled, so none shows up on its own.
   settings = {
     addProjectBaseDirectory = "~/src";
     autoResumeLimitedThreads = true;
@@ -93,6 +103,11 @@ let
     enableAgentDeviceAccess = true;
     enableDeviceSupport = true;
     providerInstances = {
+      antigravity = {
+        driver = "antigravity";
+        enabled = true;
+        config.binaryPath = "${antigravityAcp}/libexec/antigravity-acp/agy_acp_server.par";
+      };
       claudeAgent = {
         driver = "claudeAgent";
         enabled = true;
@@ -162,10 +177,6 @@ let
   # Nested entries that used to be declared, retired the same way. An earlier
   # generation hid OpenCode's text-generation alias here; prune drops the
   retiredPaths = [
-    {
-      path = [ "providerInstances" ];
-      key = "antigravity";
-    }
     {
       path = [ "providerInstances" ];
       key = "omp-codex";
