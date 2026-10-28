@@ -878,7 +878,6 @@ def self_test(template):
 
         rules = Path(directory) / "rules"
         sections = re.split(r"(?m)^(?=# )", rendered["antigravity"])[1:]
-        split = len(sections) // 2
 
         def write_rules(bodies, frontmatter=RULE_FRONTMATTER):
             shutil.rmtree(rules, ignore_errors=True)
@@ -890,19 +889,18 @@ def self_test(template):
             return delivery_problems(rules, rendered["antigravity"], FAKE_KEY, "antigravity")
 
         assert rule_problems() == ["missing delivered instructions"]
-        halves = ["".join(sections[:split]), "".join(sections[split:])]
-        write_rules(halves)
+        write_rules(sections)
         assert not rule_problems(), rule_problems()
         write_rules(["".join(sections)])
         assert any("reaches" in problem for problem in rule_problems())
-        write_rules(halves, "")
+        write_rules(sections, "")
         assert any("always_on" in problem for problem in rule_problems())
-        write_rules([halves[0][:-1], halves[0][-1] + halves[1]])
+        write_rules([sections[0][:-1], sections[0][-1] + sections[1], *sections[2:]])
         assert any("always_on" in problem for problem in rule_problems())
-        write_rules(halves + ["# Stale\n"])
+        write_rules(sections + ["# Stale\n"])
         assert "delivered instructions differ from independent rendering" in rule_problems()
-        write_rules(halves)
-        (rules / "nix-config-02.md").rename(rules / "nix-config-03.md")
+        write_rules(sections)
+        (rules / "nix-config-02.md").rename(rules / "nix-config-99.md")
         assert any("unexpected rule files" in problem for problem in rule_problems())
 
     harness = {
