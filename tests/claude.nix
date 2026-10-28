@@ -7,7 +7,9 @@
   right tier on every Home Manager user environment
   `tests/lib/configurations.nix` yields (`userEntries`): NixOS and non-NixOS
   hosts, production and bootstrap alike, since no tier depends on a host kind,
-  a host trait, or `my.bootstrap`.
+  a host trait, or `my.bootstrap`. The one exception, the stream idle timeout
+  the network recovery trait adds on macOS, is checked by
+  tests/darwin-config.nix.
 
   The declared set is split across three tiers. A setting whose persistent
   form is an environment variable is declared through session variables; a key

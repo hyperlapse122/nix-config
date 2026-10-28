@@ -1343,6 +1343,7 @@
           host-options = import ./tests/host-options.nix { inherit pkgs self; };
           host-secrets = import ./tests/host-secrets.nix { inherit pkgs; };
           tls-inspection-ca = import ./tests/tls-inspection-ca.nix { inherit pkgs; };
+          network-recovery = import ./tests/network-recovery.nix { inherit pkgs; };
           inherit (import ./tests/non-nixos-scripts.nix { inherit pkgs; })
             install-user-age-identity
             nr-linux

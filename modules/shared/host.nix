@@ -55,5 +55,6 @@
     t3.desktop.enable = lib.mkEnableOption "the T3 Code desktop app (NixOS and macOS hosts only)";
     wifiman.enable = lib.mkEnableOption "UniFi WiFiman Desktop and its root daemon (NixOS hosts only)";
     tlsInspectionCa.enable = lib.mkEnableOption "trust for the TLS inspection CA in secrets/hosts/<host>/tls-inspection-ca.yaml, through a combined CA bundle and macOS admin trust (macOS hosts only)";
+    networkRecovery.enable = lib.mkEnableOption "a root daemon that repairs the network after a network switch leaves the Mac offline, and a shorter Claude Code stream idle timeout (macOS hosts only)";
   };
 }

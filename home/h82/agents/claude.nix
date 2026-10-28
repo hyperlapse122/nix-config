@@ -5,6 +5,8 @@
   ...
 }:
 let
+  streamTimeoutEnabled =
+    config.my.kind == "darwin" && config.my.networkRecovery.enable && !config.my.bootstrap;
   merger = "${
     (import ../../../packages/agent-tools.nix { inherit pkgs; }).agentSettings
   }/bin/agent-settings";
@@ -97,7 +99,45 @@ in
 {
   my.agents.crossModelPeers = [ "claude" ];
 
-  home.sessionVariables = environmentTier;
+  # A running session drops a stream that stalls after a network switch within
+  # a minute instead of Claude Code's 180-second default, so it recovers on the
+  # next request once the network recovery daemon has the Mac back online.
+  home.sessionVariables =
+    environmentTier
+    // lib.optionalAttrs streamTimeoutEnabled {
+      CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS = "60000";
+    };
+
+  # Finder and Dock launches inherit launchd's environment, not shell exports.
+  launchd.agents.claude-stream-timeout = lib.mkIf streamTimeoutEnabled {
+    enable = true;
+    config = {
+      ProgramArguments = [
+        "/bin/launchctl"
+        "setenv"
+        "CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS"
+        "60000"
+      ];
+      RunAtLoad = true;
+    };
+  };
+
+  home.activation.claudeStreamTimeout = lib.mkIf (config.my.kind == "darwin") (
+    lib.hm.dag.entryAfter [ "installPackages" ] ''
+      if [[ ! -v DRY_RUN ]]; then
+        ${
+          if streamTimeoutEnabled then
+            "/bin/launchctl setenv CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS 60000"
+          else
+            ''
+              if [[ $(/bin/launchctl getenv CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS) == 60000 ]]; then
+                /bin/launchctl unsetenv CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS
+              fi
+            ''
+        }
+      fi
+    ''
+  );
 
   # No executable-existence guard, unlike the KDE activation blocks. Those test their
   # tool with `[ -x ]` because it comes from a package that may be absent; this

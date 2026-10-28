@@ -214,6 +214,20 @@ A Mac whose network traffic an endpoint protection product inspects re-signs TLS
 
 Every production apply then writes `/etc/ssl/nix-config/ca-certificates.crt`, this generation's Nix roots followed by the CA, and restarts nix-daemon when the bundle changed. Shells, nix-daemon, and apps launched from Finder or the Dock see `SSL_CERT_FILE`, `NIX_SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, and `GIT_SSL_CAINFO` pointing at it; relaunch a running app to pick them up. When macOS itself does not trust the CA as an SSL root in its admin trust settings, the apply adds that trust, which shows the authorization dialog; declining it prints a warning and the next apply asks again. To replace the CA, re-encrypt the file the same way. Keep the certificate's subject and fingerprint out of commits, since the repository is public.
 
+## Network recovery
+
+On a Mac where switching networks can leave it offline until Wi-Fi is turned off and on, the `my.networkRecovery.enable` trait repairs that without you. A root launch daemon, `org.nixos.network-recovery`, runs every 5 seconds. When the network changes, or the Mac wakes, it checks plain HTTP to `captive.apple.com`, name resolution, and a direct TCP connection. While the Mac has no default route, as when Wi-Fi is still joining or is turned off, it does nothing. When a check fails on a network the Mac joined less than 10 seconds ago, it waits, since a new network often needs a few seconds for DHCP and DNS. After that, it tries these steps in order and stops at the first one after which the checks pass:
+
+1. Flush the DNS cache.
+2. Bring Tailscale down and up again, only when it was connected and someone is logged in at the console. It runs the app's CLI as that user with no flags, so your Tailscale settings stay.
+3. Turn the network service that carries the default route off and on: Wi-Fi, or another service such as iPhone USB tethering. It skips this step when the default route goes through a tunnel, such as a Tailscale exit node, or when no single service matches.
+
+A captive portal or a policy page answers the HTTP check with its own page; the daemon logs that and repairs nothing. When every step fails, the daemon stops trying on that network and only checks until the network changes again. It never restarts an app, and it never touches Endpoint Protector or Defender.
+
+Each daemon run has a 25-second budget. When it runs out, the next run continues the unfinished ladder. A failed off/on or down/up pair leaves a restore record: physical services are restored first, and a pending Tailscale reconnect does not block the physical repair it may need.
+
+The log is `/var/log/network-recovery.log`, rotated by `newsyslog`. Each line names the episode by a short hash, never by a network name or address, so you can attach it to an issue as it is. Newly launched Claude Code sessions on such a host get `CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=60000` through both shell exports and the macOS GUI environment. Relaunch T3 Code after applying to pick it up. A stream that stalls during a switch can then time out after a minute; retry once connectivity returns. Codex keeps its default 300-second stream timeout. To turn the feature off, remove the trait from `hosts/<host>/default.nix` and apply; this also removes the managed GUI timeout, while preserving a different value you set yourself.
+
 ## Containers
 
 A Mac runs containers in one Podman machine, `podman-machine-default`: a rootful Fedora CoreOS VM on the libkrun provider with 4 CPUs and an 8 GiB memory cap. Every apply, bootstrap included, creates it when it is missing, and a launch agent starts it at login and whenever it stops. No app needs launching and no account signs in.
@@ -289,6 +303,7 @@ AVDs live in `~/.android/avd` and name their system image by its SDK path. When 
 | `… is not owned by …`, `… must have mode 0600`, or `cannot decrypt …` during activation | The identity file has the wrong owner or mode, or it is not this host's. Recover it again with the same command. |
 | `nr: not inside a git repository; …` | `nr` was run outside the clone. `cd` into it, or pass `--flake-dir <path>`. |
 | `docker` or `podman` reports that the connection is refused, while `podman machine list` shows the machine running | gvproxy, the machine's network helper, died. Run `podman machine stop`; the launch agent starts the machine again within a minute. |
+| The Mac stays offline after a network switch even with the network recovery trait | Read the last lines of `/var/log/network-recovery.log`. An exhausted episode means every step failed on that network; turn Wi-Fi off and on by hand. A captive or policy result means the network answered with its own page; sign in to the portal. |
 | The first apply stops in `podmanMachines` | `podman machine init` could not download the machine image. Apply again once the network is back. |
 | The second apply aborts in `copyApps` | The terminal lacks the App Management permission, or the apply runs over SSH. See step 8. |
 | The apply stops with `Existing file '…/Library/Android/sdk' would be clobbered` | An SDK, usually Android Studio's, is a real directory at `~/Library/Android/sdk`, where Home Manager links the pinned SDK. Run `mv ~/Library/Android/sdk ~/Library/Android/sdk.before-nix-config` and apply again. Point Android Studio at the linked SDK, or delete the old one once nothing uses it. |

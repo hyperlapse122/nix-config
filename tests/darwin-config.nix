@@ -104,6 +104,12 @@
     in all six CA variables, a RunAtLoad login agent sets them for GUI apps,
     and the trait without a CA file fails an assertion. Bootstrap runs no
     step, has no agent, and keeps nix-darwin's default bundle.
+  - Network recovery: my.networkRecovery.enable defaults to false and the
+    fixture enables it. In production a root daemon runs the packaged script
+    at load and every 5 seconds with /var/db/network-recovery and the
+    Tailscale app's CLI, logging to /var/log/network-recovery.log, newsyslog
+    rotates that log, and the user's session sets
+    CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS to 60000. Bootstrap has none of it.
 
   Every comparison is rendered into the builder, so a failure names the
   fixture and the reason instead of aborting evaluation. No darwin store path
@@ -1036,6 +1042,57 @@ let
       ) "${entry.name}: a production output with the trait and no CA file must fail an assertion")
     ];
 
+  # The network recovery trait: in production a root daemon runs the packaged
+  # script every 5 seconds, newsyslog rotates its log, and Claude Code sessions
+  # get a 60-second stream idle timeout; bootstrap carries none of it.
+  assertNetworkRecovery =
+    entry:
+    let
+      config = entry.host.config;
+      production = !entry.bootstrap;
+      daemon = config.launchd.daemons.network-recovery or null;
+      arguments = daemon.serviceConfig.ProgramArguments or [ ];
+      rotation = config.environment.etc."newsyslog.d/network-recovery.conf".text or null;
+      idle =
+        config.home-manager.users.${config.my.user.name}.home.sessionVariables.CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS
+          or null;
+    in
+    lib.concatStrings [
+      (check config.my.networkRecovery.enable "${entry.name}: the fixture must enable my.networkRecovery, or the checks below prove nothing")
+      (check (
+        !entry.host.options.my.networkRecovery.enable.default
+      ) "${entry.name}: my.networkRecovery.enable must default to false")
+      (check
+        (
+          if production then
+            daemon != null
+            && lib.hasSuffix "/bin/network-recovery" (plain (lib.head (arguments ++ [ "" ])))
+            &&
+              lib.drop 1 arguments == [
+                "--state-dir"
+                "/var/db/network-recovery"
+                "--tailscale"
+                "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+              ]
+            && (daemon.serviceConfig.StartInterval or null) == 5
+            && (daemon.serviceConfig.RunAtLoad or false)
+            && (daemon.serviceConfig.StandardOutPath or null) == "/var/log/network-recovery.log"
+          else
+            daemon == null
+        )
+        "${entry.name}: a root daemon must run the network recovery script every 5 seconds in production, and none may exist in bootstrap"
+      )
+      (check (
+        if production then
+          rotation != null && lib.hasInfix "/var/log/network-recovery.log" rotation
+        else
+          rotation == null
+      ) "${entry.name}: newsyslog must rotate the network recovery log in production only")
+      (check (idle == (if production then "60000" else null))
+        "${entry.name}: Claude Code sessions must get CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS=60000 in production and nothing in bootstrap"
+      )
+    ];
+
   # Device creation is macOS-only; the module must not reach other hosts.
   assertNoDevicesElsewhere = lib.concatStrings [
     (check (
@@ -1059,6 +1116,7 @@ pkgs.runCommand "darwin-config" { } ''
   ${assertMapping}
   ${lib.concatMapStrings assertEntry darwinFixtures}
   ${lib.concatMapStrings assertTlsInspectionCa darwinFixtures}
+  ${lib.concatMapStrings assertNetworkRecovery darwinFixtures}
   ${assertNoDevicesElsewhere}
   ${assertMobileDeviceTypes}
   [ "$fail" = 0 ] || exit 1
