@@ -120,6 +120,15 @@ class RetireOrca(unittest.TestCase):
         # The hooks file stays, so Codex keeps its trust state for it.
         self.assertEqual(len(tomllib.loads((self.home / '.codex/config.toml').read_text())['hooks']['state']), 3)
 
+    def test_stale_trust_goes_once_the_hooks_file_is_gone(self):
+        # An earlier run that deleted hooks.json but could not edit config.toml
+        # leaves the trust entries behind; a later run must still drop them.
+        self.seed()
+        (self.home / '.codex/hooks.json').unlink()
+        self.run_block()
+        self.assertEqual(tomllib.loads((self.home / '.codex/config.toml').read_text())['hooks']['state'],
+                         {'/elsewhere/hooks.json:stop:0:0': {'trusted_hash': 'sha256:c'}})
+
     def test_second_run_changes_nothing(self):
         self.seed(claude=claude_settings(status=OTHER_STATUS, extra_group={'hooks': [OTHER]}))
         self.run_block()

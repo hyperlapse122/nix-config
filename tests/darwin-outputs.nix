@@ -69,7 +69,8 @@
   - the retired-cask step runs after the Flighty step and before the Home
     Manager activation call, with every brew call going through /usr/bin/sudo
     as the primary user with the absolute brew path; it uninstalls the
-    grok-bot and orca casks, then untaps stablyai/orca;
+    grok-bot and orca casks, then untaps stablyai/orca, which
+    tests/retired-brew-effects.py runs against a recording brew stub;
   - with the TLS inspection CA trait, production shells and a RunAtLoad
     login agent set all six CA variables to
     /etc/ssl/nix-config/ca-certificates.crt, nix-daemon's plist names it, the
@@ -670,10 +671,6 @@ let
       retiredbrewline=$(lineof ${lib.escapeShellArg ''PATH="${config.homebrew.prefix}/bin:$PATH" /usr/bin/sudo --preserve-env=PATH --user=${config.system.primaryUser} --set-home /usr/bin/env NONINTERACTIVE=1 ${brewExe} "$@"''}); retiredbrewline=''${retiredbrewline:-0}
       retiredlistline=$(lineof ${lib.escapeShellArg ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'grok-bot' is not installed." ]; then''}); retiredlistline=''${retiredlistline:-0}
       retiredline=$(lineof 'elif ! retiredBrew uninstall --cask --force grok-bot; then'); retiredline=''${retiredline:-0}
-      orcalistline=$(lineof ${lib.escapeShellArg ''if [ -z "$retiredList" ] || [ "$retiredList" = "Error: Cask 'orca' is not installed." ]; then''}); orcalistline=''${orcalistline:-0}
-      orcaline=$(lineof 'elif ! retiredBrew uninstall --cask --force orca; then'); orcaline=''${orcaline:-0}
-      taplistline=$(lineof 'if ! retiredTaps=$(retiredBrew tap 2>&1); then'); taplistline=''${taplistline:-0}
-      untapline=$(lineof 'elif ! retiredBrew untap stablyai/orca; then'); untapline=''${untapline:-0}
       hmline=$(lineof "echo Activating home-manager configuration for "); hmline=''${hmline:-0}
       if [ "$bundleline" = 0 ] || [ "$hmline" = 0 ]; then
         bad "the system activation has no brew bundle or Home Manager activation call"
@@ -697,11 +694,8 @@ let
       elif ! [ "$bundleline" -lt "$retiredbrewline" ] || ! [ "$flightyline" -lt "$retiredbrewline" ] || ! [ "$retiredbrewline" -lt "$retiredlistline" ] || ! [ "$retiredlistline" -lt "$retiredline" ] || ! [ "$retiredline" -lt "$hmline" ]; then
         bad "the retired-cask step does not run after brew bundle and the Flighty step and before Home Manager"
       fi
-      if [ "$orcalistline" = 0 ] || [ "$orcaline" = 0 ] || [ "$taplistline" = 0 ] || [ "$untapline" = 0 ]; then
-        bad "the retired-cask step does not uninstall the orca cask and then untap stablyai/orca"
-      elif ! [ "$retiredbrewline" -lt "$orcalistline" ] || ! [ "$orcalistline" -lt "$orcaline" ] || ! [ "$orcaline" -lt "$taplistline" ] || ! [ "$taplistline" -lt "$untapline" ] || ! [ "$untapline" -lt "$hmline" ]; then
-        bad "the orca cask is not uninstalled before its tap is removed, both before Home Manager"
-      fi
+      python3 ${./retired-brew-effects.py} "$sys/activate" \
+        || bad "the retired-cask step did not uninstall orca before untapping stablyai/orca, or failed the apply (tests/retired-brew-effects.py)"
 
       [ -n "$(ls -A "$sys/Library/Fonts/Nix Fonts" 2>/dev/null)" ] \
         || bad "no fonts under Library/Fonts/Nix Fonts"
