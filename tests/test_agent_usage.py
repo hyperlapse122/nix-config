@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -44,12 +43,6 @@ class UsageTest(unittest.TestCase):
             "claude": {"rate_limits": {"five_hour": {"utilization": 30, "resets_at": reset},
                 "seven_day": {"utilization": 40, "resets_at": reset}},
                 "model_scoped": [{"display_name": "Fable", "utilization": 90, "resets_at": reset}]},
-            "omp": [{"provider": "openai-codex", "limits": [{"amount": {"usedFraction": 1}}]},
-                    {"provider": "google-antigravity", "scope": "gemini-account", "limits": [{
-                        "id": "google-antigravity:google:default:gemini-weekly",
-                        "label": "Gemini", "scope": "provider", "window": {
-                            "id": "weekly", "durationMs": 604800000, "resetsAt": reset * 1000},
-                        "amount": {"usedFraction": .2, "remainingFraction": .8}}]}],
             "grok": {"config": {"creditUsagePercent": 10, "currentPeriod": {
                 "type": "USAGE_PERIOD_TYPE_WEEKLY", "start": reset - 604800, "end": reset}}},
             "synthetic": {"subscription": {"limit": 100, "requests": 30, "renewsAt": reset},
@@ -74,7 +67,7 @@ for line in sys.stdin:
   print(json.dumps({'id':r['id'],'result':data['codex']}),flush=True)
 ''')
         self.stub("node", "import json,sys\nif data.get('fail_claude'):\n print(" + repr(TOKEN) + ",file=sys.stderr)\n sys.exit(1)\nprint(json.dumps(data['claude']))")
-        self.stub("omp", "import json,sys\nassert sys.argv[1:]==['usage','--json','--provider','google-antigravity']\nprint(json.dumps(data['omp']))")
+        self.stub("omp", "import sys\nsys.exit(1)")
         self.stub("grok", "import sys\nassert sys.argv[1:]==['models']")
         self.stub("omp-synthetic-key", "print('" + TOKEN + "')")
         outer = self
@@ -139,7 +132,6 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
     def test_readers_preserve_provider_and_model_windows(self):
         result = self.invoke()
         self.assertEqual(result['codex']['windows'][1]['remainingPercent'], 20)
-        self.assertEqual(result['gemini']['windows'][0]['remainingPercent'], 80)
         self.assertEqual(result['claude']['windows'][-1]['model'], 'Fable')
         weekly = result['synthetic']['windows'][-1]
         self.assertEqual(weekly['remainingPercent'], 20)
@@ -194,13 +186,10 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
         auth.write_text(json.dumps(entry))
         self.assertEqual(self.invoke()['grok']['status'], 'unknown')
 
-    def test_omp_reports_envelope_and_nested_claude_model_windows(self):
-        self.data['omp'] = {'reports': self.data['omp']}
+    def test_claude_nested_model_windows(self):
         self.data['claude']['rate_limits']['model_scoped'] = self.data['claude'].pop('model_scoped')
         self.save()
-        result = self.invoke()
-        self.assertEqual(result['gemini']['status'], 'ok')
-        self.assertEqual(result['claude']['belowThresholdModels'], ['Fable'])
+        self.assertEqual(self.invoke()['claude']['belowThresholdModels'], ['Fable'])
 
     def test_claude_legacy_model_windows_and_equivalent_scoped_windows(self):
         rates = self.data['claude']['rate_limits']
@@ -217,19 +206,14 @@ sys.stdout.buffer.write(response.read()+b'\\n'+str(response.code).encode())
         self.save()
         self.assertEqual(self.invoke('--refresh')['claude']['windows'], legacy['windows'])
 
-    def test_gemini_ignores_low_third_party_shared_buckets(self):
-        limits = self.data['omp'][1]['limits']
-        limits[0]['amount'] = {'usedFraction': .1}
-        for counter in ('anthropic', 'openai'):
-            limits.append({'id': f'google-antigravity:{counter}:default:3p-weekly',
-                           'scope': {'provider': 'google-antigravity', 'windowId': 'weekly',
-                                     'sharedGroup': '3p-weekly'},
-                           'amount': {'usedFraction': .95}})
-        self.save()
+    def test_gemini_is_unknown_with_reason_and_skips_nothing(self):
         result = self.invoke()['gemini']
+        self.assertEqual(result['status'], 'unknown')
+        self.assertTrue(result['reason'])
+        self.assertEqual(result['windows'], [])
         self.assertFalse(result['belowThreshold'])
         self.assertEqual(result['belowThresholdModels'], [])
-        self.assertEqual(min(w['remainingPercent'] for w in result['windows']), 90)
+        self.assertEqual(self.calls('omp'), 0)
 
     def test_synthetic_search_is_reported_outside_routing_windows(self):
         self.data['synthetic']['subscription']['requests'] = 5
@@ -301,7 +285,6 @@ closed()
         self.assertEqual(results[0]['codex']['windows'], results[1]['codex']['windows'])
         self.invoke()
         self.assertEqual(self.calls('codex'), 1)
-        self.assertEqual(self.calls('omp'), 1)
 
     def test_failure_cache_refresh_and_stale_success(self):
         self.data['fail'] = True
@@ -354,20 +337,6 @@ closed()
         result = self.invoke()['codex']
         self.assertEqual(result['windows'][1]['remainingPercent'], 95)
         self.assertEqual(self.calls('codex'), 2)
-
-    def test_omp_database_account_switch_invalidates_cache(self):
-        database = self.root / '.omp/agent/agent.db'
-        database.parent.mkdir(parents=True)
-        with sqlite3.connect(database) as connection:
-            connection.execute('CREATE TABLE auth_credentials (id INTEGER, provider TEXT, updated_at INTEGER)')
-            connection.execute("INSERT INTO auth_credentials VALUES (1, 'google-antigravity', 1)")
-        self.invoke()
-        with sqlite3.connect(database) as connection:
-            connection.execute("UPDATE auth_credentials SET id=2, updated_at=2")
-        self.data['omp'][1]['limits'][0]['amount']['usedFraction'] = .9
-        self.save()
-        self.assertAlmostEqual(self.invoke()['gemini']['windows'][0]['remainingPercent'], 10)
-        self.assertEqual(self.calls('omp'), 2)
 
     def age_cache(self, seconds):
         for path in (self.root / 'cache/agent-usage').glob('*.json'):
