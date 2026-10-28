@@ -361,7 +361,7 @@ let
       esac
       waiveragent=$(agent claude-rm-waiver)
       case $waiveragent in
-        *'<string>/bin/launchctl</string><string>setenv</string><string>CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS</string><string>1</string></array>'*'<key>RunAtLoad</key><true/>'*) ;;
+        *'exec/bin/launchctlsetenvCLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS1</string></array>'*'<key>RunAtLoad</key><true/>'*) ;;
         *) bad "no login agent sets CLAUDE_CODE_EVEN_MORE_DANGEROUSLY_SKIP_PERMISSIONS to 1 for GUI apps" ;;
       esac
       minikube=$(agent minikube)
