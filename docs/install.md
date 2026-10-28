@@ -73,7 +73,7 @@ Confirm hardware and VM behavior separately from repository builds, and follow t
 
 ### MS-7D91-VM
 
-NixOS as a VMware Workstation guest on the MS-7D91 PC (Intel i7-13700F, NVIDIA GeForce RTX 3060), which runs Windows. Windows owns the YubiKey; the guest uses Windows' Gpg4win agent for every GPG operation. Windows-side setup is outside this repository; the guest expects the following.
+NixOS as a VMware Workstation guest on the MS-7D91 PC (Intel i7-13700F, NVIDIA GeForce RTX 3060), which runs Windows. Windows owns the YubiKey; the guest uses Windows' Gpg4win agent for every GPG operation. [Windows host](windows.md) sets up the Windows side, including the VM itself; the guest expects the following.
 
 - The VM uses UEFI firmware with Secure Boot off, a virtual NVMe disk, and 3D acceleration. `hosts/MS-7D91-VM/disko.nix` expects that disk at `/dev/disk/by-id/nvme-VMware_Virtual_NVMe_Disk_VMware_NVME_0000`; confirm it in the `lsblk` step.
 - The VM has two network adapters: one on VMware's NAT network for internet access, and one on an isolated host-only network with the subnet `192.168.250.0/24`, where Windows has `192.168.250.1`. Attach no other VM to that host-only network: it is the only boundary in front of the relay.

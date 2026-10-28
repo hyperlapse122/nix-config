@@ -38,6 +38,7 @@ zsh, Git, Ghostty, Claude Code, Claude Desktop, ChatGPT, Codex, Pi (with `pi-acp
 - [Fresh installation](docs/install.md): initialize the disk, bootstrap, and recover the age identity.
 - [Updates and recovery](docs/recovery.md): retry failures, roll back, repair from the installation media, and recover card and signing-key access.
 - [macOS hosts](docs/macos.md): set up a Mac with nix-darwin, recover its secrets, and apply routine updates.
+- [Windows host](docs/windows.md): set up the Windows PC that runs the VMware guest and lends it the YubiKey.
 - [Adding a host](docs/adding-a-host.md): create a host directory, its bootstrap age material, and its `.sops.yaml` recipient, for a NixOS, a non-NixOS, or a macOS host.
 - [Secret file conventions](secrets/README.md)
 

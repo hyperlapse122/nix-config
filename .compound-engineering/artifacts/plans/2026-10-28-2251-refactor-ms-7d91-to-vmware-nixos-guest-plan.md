@@ -14,7 +14,7 @@ execution: code
 
 - **Objective:** The MS-7D91 work PC runs Windows, and the user still gets this repository's Linux environment (Plasma on Wayland, T3 Code, a Linux home of its own) inside a VMware Workstation virtual machine, with YubiKey GPG signing and decryption working on Windows and in the VM at the same time.
 - **Means:** Remove the bare-metal `MS-7D91` NixOS host and the hardware modules only it used, add the `MS-7D91-VM` NixOS host for the VMware guest, and point the guest's GPG at the Windows Gpg4win agent through a relay on an isolated VMware network (KTD1, KTD3).
-- **Product authority:** The user, through the 2026-10-28 brainstorm. Windows-side setup (Gpg4win, the relay program, VMware networks) is outside this repository.
+- **Product authority:** The user, through the 2026-10-28 brainstorm. Windows-side setup (Gpg4win, the relay program, VMware networks) is documented in `docs/windows.md` but not managed by Nix.
 - **Execution profile:** Deep. Seven units across host removal, boot, checks, GPG relay, SSH, the new host, and docs. One pull request.
 - **Stop conditions:** Stop and report instead of improvising when re-encrypting SOPS files fails (card missing, PIN rejected), when a change would need a real plaintext credential in a build, or when a check can only be made green by removing its guard.
 - **Who finishes:** `ce-work` implements and verifies in repository checks; the user runs the Windows and VMware runtime checks in Definition of Done.
@@ -51,7 +51,7 @@ WSL 3.0 (released 2026-09-29) adds Linux containers (`wslc`) but changes neither
 - **Windows owns the card; the guest forwards to the Windows agent.** Both systems can sign and decrypt at once, and the PIN prompt appears on Windows. (session-settled: user-directed — chosen over switching the card by USB passthrough and over supporting both: passthrough locks Windows out of the card.) Governs R8, R9, R10.
 - **One always-on relay serves both console and SSH use.** The user works both in the VMware console and over SSH from Windows. (session-settled: user-directed — chosen over SSH-session-only forwarding.) Governs R9, R11.
 - **The relay is plain TCP on an isolated VMware network, not an SSH reverse tunnel.** The isolated network is the security boundary for an unauthenticated TCP hop. (session-settled: user-directed — chosen over a persistent Windows-to-guest `ssh -R` tunnel: the user preferred the simpler transport and asked to rely on VMware's host-only style isolation.) Governs R9, R10.
-- **Windows-side setup stays out of the repository.** The repository defines only what the guest expects of the relay. (session-settled: user-directed — chosen over a Windows setup guide and over a PowerShell script.) Governs R12.
+- **Windows-side setup is a manual guide, not automation.** `docs/windows.md` walks a fresh Windows PC through Gpg4win, VMware, the isolated network, the relay, and the VM; nothing on Windows is applied by the repository. (session-settled: user-directed — the user first kept Windows out of the repository, then asked for a guide like `docs/macos.md`; chosen over a PowerShell script.) Governs R12.
 - **No disk encryption inside the guest.** Windows BitLocker or VMware VM encryption protects the virtual disk instead of LUKS. (session-settled: user-directed — chosen over keeping guest LUKS: no passphrase at every VM boot.) Governs R7.
 - **Delete the hardware modules only MS-7D91 used.** Git history restores them if bare-metal hardware returns. (session-settled: user-directed — chosen over keeping them inert behind traits.) Governs R2.
 - **The guest carries only Plasma and T3 Code from MS-7D91's roles.** (session-settled: user-directed — the user selected T3 Code alone, leaving out the Tailscale subnet route, the office printer queue, and `/mnt/data`, then also removed Tailscale, Proton VPN, and WiFiman entirely.) Governs R5.
@@ -77,7 +77,7 @@ WSL 3.0 (released 2026-09-29) adds Linux containers (`wslc`) but changes neither
 - R9. A user service in the guest connects to the Windows relay over the isolated VMware network and presents it as the guest's gpg-agent socket for every login session, whether started from the VMware console or over SSH.
 - R10. The guest expects the relay on its own isolated VMware network adapter, separate from the adapter that gives internet access, and expects it to expose only Gpg4win's restricted extra socket.
 - R11. The guest accepts SSH logins from Windows over the isolated network.
-- R12. The relay's address, port, and the extra-socket-only requirement are recorded where a reader setting up Windows can find them, without a Windows setup guide in the repository.
+- R12. A separate Windows guide sets up a fresh Windows PC for the guest: disk encryption, Gpg4win, VMware Workstation, the isolated network, the relay with its address, port, and extra-socket-only requirement, and the VM.
 
 **Install and recovery**
 
@@ -114,7 +114,7 @@ WSL 3.0 (released 2026-09-29) adds Linux containers (`wslc`) but changes neither
 
 ### Scope Boundaries
 
-- Windows-side setup: installing Gpg4win, choosing and running the relay program, creating the isolated VMware network, Windows firewall rules, and Gpg4win's SSH support for the YubiKey authentication key.
+- Automating Windows-side setup; `docs/windows.md` is a manual guide.
 - USB passthrough of the YubiKey into the guest.
 - VirtualBox support and NixOS-WSL hosts.
 - Tailscale, Proton VPN, WiFiman, printing, the Tailscale subnet route, and the `/mnt/data` disk in the guest. Without Tailscale, only Windows on the same PC can reach the guest.
@@ -188,7 +188,7 @@ Which configuration owns each piece:
 | Relay endpoint value | `hosts/MS-7D91-VM/default.nix` through `my.gpgAgentRelay` (KTD3) |
 | Relay socket, local agent off | `home/h82/security/gpg.nix` (KTD3, KTD5) |
 | SSH server and authorized key | `my.sshServer` NixOS module (KTD6) |
-| Windows relay, VMnet, firewall | User, outside the repository |
+| Windows relay, VMnet, firewall | User, by hand per `docs/windows.md` |
 
 ### Assumptions
 
