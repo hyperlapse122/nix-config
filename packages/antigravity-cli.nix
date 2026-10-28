@@ -8,7 +8,7 @@ let
     source.platforms.${system}
       or (throw "packages/antigravity-cli-release.json pins no agy release for ${system}");
 in
-pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
+pkgs.stdenvNoCC.mkDerivation {
   pname = "antigravity-cli";
   inherit (source) version;
 
@@ -52,4 +52,4 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     platforms = lib.attrNames source.platforms;
     mainProgram = "agy";
   };
-})
+}

@@ -204,20 +204,22 @@ def embedded_table(resolved):
         archive = os.path.join(directory, cli["asset"])
         download(url, archive)
         with open(archive, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
+            digest = hashlib.file_digest(f, "sha256").hexdigest()
         if digest != cli["sha256"]:
             raise TableFailure(
                 f"{cli['asset']} has sha256 {digest}, expected {cli['sha256']}"
             )
         try:
-            with tarfile.open(archive, "r:gz") as tar:
-                members = [
-                    m for m in tar.getmembers()
-                    if m.isfile() and re.fullmatch(r"[^/]+/t3", m.name)
-                ]
-                if len(members) != 1:
-                    raise TableFailure(f"{cli['asset']} holds {len(members)} t3 binaries")
-                binary = tar.extractfile(members[0]).read()
+            # One streaming pass: read the binary when its member comes up.
+            binary, count = None, 0
+            with tarfile.open(archive, "r|gz") as tar:
+                for m in tar:
+                    if m.isfile() and re.fullmatch(r"[^/]+/t3", m.name):
+                        count += 1
+                        if count == 1:
+                            binary = tar.extractfile(m).read()
+            if count != 1:
+                raise TableFailure(f"{cli['asset']} holds {count} t3 binaries")
         except (tarfile.TarError, EOFError) as exc:
             raise TableFailure(f"{cli['asset']} is not readable: {exc}") from None
     return parse_table(binary)
