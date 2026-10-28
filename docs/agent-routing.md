@@ -58,11 +58,13 @@ Already-built generations cannot acquire a cleanup hook from this repository cha
 
 The common instructions' `When to delegate` section owns research briefing and result-verification rules. Substantial research or triage starts useful independent investigations early; simple lookups and indivisible dependent reasoning stay local.
 
-Each scout gets one lookup question with named sources and an exact command for a CLI source. Questions about impact, compatibility, or design intent use `implement` or a higher suitable role. Research briefs require bounded reads, rereading truncated output, and distinguishing a completed search from a source the child could not read. A failed named tool produces the observed error with secrets redacted, rather than an unsupported capability claim or a switch to an unnamed connector.
+Each scout gets one lookup question with named sources and an exact command for a CLI source. Questions about impact, compatibility, or design intent use `implement` or a higher suitable role. Research briefs require bounded reads, rereading truncated output, and distinguishing a completed search from a source the child could not read.
 
-Before relying on a negative result, the root checks its cheapest supporting claim directly. A contradictory check discards the child's result and leads to an inline investigation or a narrower brief, with that discarded result reported. Skill-specific failure and recovery rules still govern what happens next.
+A failed research call leads the child to inspect the error, tool usage, and execution context, then correct recoverable errors through the named tool. Recovery follows the owning skill's rules and continues only while there is reason to expect progress. An unresolved return includes the redacted error, diagnostic and recovery attempts, and remaining blocker; it does not turn a failed query into a successful empty result or authorize an unnamed connector.
 
-The rendered-instruction check verifies delivery of this policy to Claude Code, Codex, OMP, and Antigravity. It does not prove model compliance in a live session. Fresh T3 behavior remains separate acceptance evidence. The role tables select models after useful work is identified; this briefing policy changes no model or effort setting.
+Before relying on a negative or unresolved result, the root checks its cheapest supporting claim directly. A contradictory check discards the child's result and leads to an inline investigation or a narrower brief, with that discarded result reported. Skill-specific failure and recovery rules still govern what happens next.
+
+The rendered-instruction check verifies delivery of this policy to Claude Code, Codex, OMP, and Antigravity. It does not prove model compliance in a live session. Fresh T3 behavior remains separate acceptance evidence. The role tables select models after useful work is identified; both Luna lookup roles now use medium effort with Fast.
 
 ## T3 Code table
 
@@ -73,8 +75,8 @@ Inside T3 Code, Claude Code, Codex, and OMP each receive their own `root` row an
 | `root` (Claude Code) | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) |
 | `root` (Codex) | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
 | `root` (OMP) | `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) |
-| `scout` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
-| `quick` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
+| `scout` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
+| `quick` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
 | `writing` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low` |
 | `visual` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) |
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high` |
@@ -119,8 +121,8 @@ All other GPT `max` uses and every GPT `ultra` use require an explicit request f
 | Role | Chain |
 | --- | --- |
 | `root` | `gpt-6.1-sol` `high` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
-| `scout` | `gpt-6-luna` `low` Fast |
-| `quick` | `gpt-6-luna` `low` Fast |
+| `scout` | `gpt-6-luna` `medium` Fast |
+| `quick` | `gpt-6-luna` `medium` Fast |
 | `writing` | `gpt-6.1-terra` `medium` |
 | `visual` | `gpt-6.1-terra` `medium` |
 | `implement` | `gpt-6.1-terra` `medium` |
@@ -167,8 +169,8 @@ This routing is compared against `docs/guide/agent-model-matching.md` in <https:
 | `root` (Claude Code) | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) | Daily · Normal root: Opus 5.5 `medium` → Kimi K3 `max` → GLM-5.3 `max` | OMP effort caps at `high`, so `max` becomes `high` on Kimi K3 and GLM-5.3; Synthetic entries expire after 2026-11-18. |
 | `root` (Codex) | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` | Obsessive · Normal root: Astra `medium` → Sol Fast `medium` → Sol `medium` (+GPT-5.6 Sol) | Uses Sol `high` as primary; retains the Sol fallbacks and drops the older GPT-5.6 Sol fallback. |
 | `root` (OMP) | `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) | None | The OMP root has no oh-my-openagent counterpart; Kimi K3 expires after 2026-11-18. |
-| `scout` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) | `explore`, `librarian`: Kimi highspeed → Luna Fast `low` → Haiku `medium` → DeepSeek Flash `max` → Qwen/MiniMax | Kimi highspeed, Qwen, and MiniMax are unavailable here; DeepSeek Flash runs at `high` instead of `max` under the OMP cap and expires after 2026-11-18. |
-| `quick` | `codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) | `quick`: Luna Fast `low` → Haiku `medium` → DeepSeek Flash `off` → … Grok 4.20 non-reasoning → GLM-5.3-Flash `low` → MiMo | Grok 4.20 and MiMo are unavailable here; Synthetic entries expire after 2026-11-18. |
+| `scout` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) | `explore`, `librarian`: Kimi highspeed → Luna Fast `low` → Haiku `medium` → DeepSeek Flash `max` → Qwen/MiniMax | Luna uses `medium` instead of `low`; Kimi highspeed, Qwen, and MiniMax are unavailable here; DeepSeek Flash runs at `high` instead of `max` under the OMP cap and expires after 2026-11-18. |
+| `quick` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) | `quick`: Luna Fast `low` → Haiku `medium` → DeepSeek Flash `off` → … Grok 4.20 non-reasoning → GLM-5.3-Flash `low` → MiMo | Luna uses `medium` instead of `low`; Grok 4.20 and MiMo are unavailable here; Synthetic entries expire after 2026-11-18. |
 | `writing` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low` | `writing`: Argon `low` → Opus 5.5 `low` → Opus 4.6 | Argon runs on T3 Code's `antigravity` instance; drops the older Opus 4.6 fallback. |
 | `visual` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) | `visual-engineering`: Argon `low` → Fable 5.1 `max` → Opus 5.5 `max` → Kimi K3 `max` | Argon runs on T3 Code's `antigravity` instance; Kimi K3 runs at `high` instead of `max` under the OMP cap and expires after 2026-11-18. |
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high` | `unspecified-low`: Sonnet `medium` → MiMo → Grok 4.7 `xhigh` → GLM-5.3 `high` → Sol `medium` … | MiMo is unavailable here; appends Gemini 3.8 Flash `high` on the `antigravity` instance; GLM-5.3 expires after 2026-11-18. |

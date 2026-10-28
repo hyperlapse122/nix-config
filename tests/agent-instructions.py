@@ -57,8 +57,8 @@ T3_ROOTS = {
     "omp": KIMI,
 }
 T3_CHAINS = {
-    "scout": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
-    "quick": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
+    "scout": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
+    "quick": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
     "writing": "`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low`",
     "visual": f"`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
     "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high`",
@@ -93,8 +93,8 @@ HARNESS_CHAINS = {
     },
     "codex": {
         "root": f"{SOL} `high` → {SOL} `medium` Fast → {SOL} `medium`",
-        "scout": "`gpt-6-luna` `low` Fast",
-        "quick": "`gpt-6-luna` `low` Fast",
+        "scout": "`gpt-6-luna` `medium` Fast",
+        "quick": "`gpt-6-luna` `medium` Fast",
         "writing": f"{TERRA} `medium`",
         "visual": f"{TERRA} `medium`",
         "implement": f"{TERRA} `medium`",
@@ -227,8 +227,10 @@ def routing_contract(delivery):
 - Give a `scout` child one lookup question. Name the files, symbols, or bounded line ranges to read, and the exact command when the source is a CLI. Start independent lookup questions as separate scouts in parallel.
 - Route questions requiring interpretation of code impact, compatibility, or design intent to `implement` or a higher suitable role, not `scout`.
 - Every research brief requires one file or bounded range per read command and smaller rereads when output is truncated. Read the named sources in full before reporting an unresolved answer, or identify what was not read and why. Distinguish "searched and not found" from "not read, with the reason".
-- When a named tool call fails, the child reports the error verbatim with secrets redacted and stops its task. Never substitute a capability-degraded or skip sentence for the observed error, or switch to a built-in connector or app integration the brief did not name. The root follows the owning skill's failure and recovery rules.
-- Before acting on a child's "unavailable", "empty", or "not confirmed" return, the root runs one direct check of the cheapest supporting claim, such as a list call or file read. If that check contradicts the child, discard the return, investigate inline or send a narrower brief, and report the discarded result.
+- When a named research tool call fails, the child inspects the error and relevant tool usage or execution context, then corrects recoverable invocation or context errors and retries through that same tool within its existing authority and the owning skill's recovery rules. One failed call does not establish that the tool is unavailable.
+- Retry only when new evidence, a corrected invocation, or a changed context gives reason to expect progress; stop recovery when no justified authorized action remains or the owning workflow requires a stop or handoff.
+- When returning unresolved research, report the observed error verbatim with secrets redacted, diagnostic and recovery attempts, and the remaining blocker. Never present a failed query as a successful empty result, substitute a capability-degraded or skip sentence for the observed error, or switch to a built-in connector or app integration the brief did not name. The root follows the owning skill's failure and recovery rules.
+- Before acting on a child's "unavailable", "empty", "not confirmed", or unresolved return, the root runs one direct check of the cheapest supporting claim, such as a list call or file read. If that check contradicts the child, discard the return, investigate inline or send a narrower brief, and report the discarded result.
 - While children investigate, advance complementary work instead of repeating their searches. The root integrates their results, checks conflicting evidence, and owns user communication and the final conclusion.
 - This policy permits proactive delegation within existing user authorization, runtime restrictions, recipient permissions, and the invoked skill's ownership and sequencing rules. It does not override an explicit delegation prohibition or move a skill's root-owned decisions to a child.
 
