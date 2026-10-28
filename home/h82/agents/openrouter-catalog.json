@@ -2626,7 +2626,7 @@
           "text"
         ]
       },
-      "context_length": 262144,
+      "context_length": 1000000,
       "reasoning": {
         "mandatory": false,
         "default_enabled": true
