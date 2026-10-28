@@ -68,6 +68,13 @@ let
     {
       path = [
         "features"
+        "apps"
+      ];
+      value = false;
+    }
+    {
+      path = [
+        "features"
         "memories"
       ];
       value = false;
