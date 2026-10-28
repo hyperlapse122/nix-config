@@ -150,9 +150,9 @@ Standalone OMP uses the Synthetic models below automatically and runs OpenRouter
 | `architect` | `synthetic/hf:moonshotai/Kimi-K3` `high` (S) |
 | `peer` | CE selection |
 
-## Usage threshold
+## Usage pace
 
-Before delegating, the root runs `agent-usage --json` to read cached usage windows for Codex, Claude, Gemini, Grok, and Synthetic. The `gemini` key reports Antigravity and stays `unknown`, with a `reason`, until a read-only Antigravity quota source exists. Any provider whose provider-wide window has less than 25% remaining sets its provider-wide below-threshold flag and is skipped across the chain; a model-scoped window below 25% skips only that model's entries, while `stale` or `unknown` status alone skips nothing. When every runnable entry in a chain was skipped only because of the 25% threshold, the root uses the entry whose lowest applicable `remainingPercent` is highest and reports that every entry was below the threshold, without reviving any entry skipped for a disabled provider, unoffered model, exhausted quota, passed Synthetic expiry, or confirmed launch rejection.
+Before delegating, the root runs `agent-usage --json` to read cached usage windows for Codex, Claude, Gemini, Grok, and Synthetic. The `gemini` key reports Antigravity's Gemini weekly and 5-hour buckets, read from Google's quota summary with the shell Antigravity ACP runtime's own sign-in; without that sign-in it stays `unknown` with a `reason`. A window is ahead of pace when its used share exceeds the share of the window that has elapsed by more than 10 percentage points, and below the floor when less than 10% remains. A provider-wide window that is ahead of pace or below the floor skips that provider across the chain; a model-scoped window skips only that model's entries. Chain order never changes. Windows whose length is unknown, and Synthetic's rolling weekly quota, are judged by the floor alone, and `stale` or `unknown` status alone skips nothing. When every runnable entry in a chain was skipped only for usage, the root uses the least-ahead entry, ranking entries skipped for the floor after those skipped for pace, and reports that every entry was skipped for usage, without reviving any entry skipped for a disabled provider, unoffered model, exhausted quota, passed Synthetic expiry, or confirmed launch rejection.
 
 ## Comparison with oh-my-openagent
 
@@ -192,5 +192,4 @@ This routing is compared against `docs/guide/agent-model-matching.md` in <https:
 - [#376](https://github.com/hyperlapse122/nix-config/issues/376): Decide whether Gemini 3.8 Flash leads the `scout` and `quick` roles.
 - [#377](https://github.com/hyperlapse122/nix-config/issues/377): Remove Synthetic models from routing after 2026-11-18.
 - [#378](https://github.com/hyperlapse122/nix-config/issues/378): Decide whether to remove Grok Build again.
-- [#379](https://github.com/hyperlapse122/nix-config/issues/379): Route by usage pace instead of a fixed 25% remaining threshold.
 - [#380](https://github.com/hyperlapse122/nix-config/issues/380): Report delegated tasks to the user as a table.
