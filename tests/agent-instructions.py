@@ -57,8 +57,8 @@ T3_ROOTS = {
     "omp": KIMI,
 }
 T3_CHAINS = {
-    "scout": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
-    "quick": f"`codex` `gpt-6-luna` `low` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
+    "scout": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
+    "quick": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
     "writing": "`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low`",
     "visual": f"`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
     "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high`",
@@ -93,8 +93,8 @@ HARNESS_CHAINS = {
     },
     "codex": {
         "root": f"{SOL} `high` → {SOL} `medium` Fast → {SOL} `medium`",
-        "scout": "`gpt-6-luna` `low` Fast",
-        "quick": "`gpt-6-luna` `low` Fast",
+        "scout": "`gpt-6-luna` `medium` Fast",
+        "quick": "`gpt-6-luna` `medium` Fast",
         "writing": f"{TERRA} `medium`",
         "visual": f"{TERRA} `medium`",
         "implement": f"{TERRA} `medium`",
@@ -227,8 +227,12 @@ def routing_contract(delivery):
 - Give a `scout` child one lookup question. Name the files, symbols, or bounded line ranges to read, and the exact command when the source is a CLI. Start independent lookup questions as separate scouts in parallel.
 - Route questions requiring interpretation of code impact, compatibility, or design intent to `implement` or a higher suitable role, not `scout`.
 - Every research brief requires one file or bounded range per read command and smaller rereads when output is truncated. Read the named sources in full before reporting an unresolved answer, or identify what was not read and why. Distinguish "searched and not found" from "not read, with the reason".
-- When a named tool call fails, the child reports the error verbatim with secrets redacted and stops its task. Never substitute a capability-degraded or skip sentence for the observed error, or switch to a built-in connector or app integration the brief did not name. The root follows the owning skill's failure and recovery rules.
-- Before acting on a child's "unavailable", "empty", or "not confirmed" return, the root runs one direct check of the cheapest supporting claim, such as a list call or file read. If that check contradicts the child, discard the return, investigate inline or send a narrower brief, and report the discarded result.
+- When a named research tool call fails, the child inspects the error and relevant tool usage or execution context, then corrects recoverable invocation or context errors and retries through that same tool within its existing authority and the owning skill's recovery rules. One failed call does not establish that the tool is unavailable.
+- Preserve the brief's target host, repository, and filter constraints when correcting a command; an unsupported constraint remains unresolved rather than being dropped. Prefer per-invocation changes to arguments, working directory, and environment; recovery grants no new authority to change repository state, persistent CLI configuration, or authentication.
+- Retry only when new evidence, a corrected invocation, or a changed context gives reason to expect progress; stop recovery when no justified authorized action remains or the owning workflow requires a stop or handoff.
+- Report the initial error and corrected command when recovery succeeds, with secrets redacted. When returning unresolved research, report the observed error verbatim with secrets redacted, diagnostic and recovery attempts, and the remaining blocker.
+- Never present a failed query as a successful empty result, substitute a capability-degraded or skip sentence for the observed error, or switch to a built-in connector or app integration the brief did not name. The root follows the owning skill's failure and recovery rules.
+- Before acting on a child's "unavailable", "empty", "not confirmed", or unresolved return, the root runs one direct check of the cheapest supporting claim, such as a list call or file read. If that check contradicts the child, discard the return, investigate inline or send a narrower brief, and report the discarded result.
 - While children investigate, advance complementary work instead of repeating their searches. The root integrates their results, checks conflicting evidence, and owns user communication and the final conclusion.
 - This policy permits proactive delegation within existing user authorization, runtime restrictions, recipient permissions, and the invoked skill's ownership and sequencing rules. It does not override an explicit delegation prohibition or move a skill's root-owned decisions to a child.
 
@@ -874,7 +878,6 @@ def self_test(template):
 
         rules = Path(directory) / "rules"
         sections = re.split(r"(?m)^(?=# )", rendered["antigravity"])[1:]
-        split = len(sections) // 2
 
         def write_rules(bodies, frontmatter=RULE_FRONTMATTER):
             shutil.rmtree(rules, ignore_errors=True)
@@ -886,19 +889,18 @@ def self_test(template):
             return delivery_problems(rules, rendered["antigravity"], FAKE_KEY, "antigravity")
 
         assert rule_problems() == ["missing delivered instructions"]
-        halves = ["".join(sections[:split]), "".join(sections[split:])]
-        write_rules(halves)
+        write_rules(sections)
         assert not rule_problems(), rule_problems()
         write_rules(["".join(sections)])
         assert any("reaches" in problem for problem in rule_problems())
-        write_rules(halves, "")
+        write_rules(sections, "")
         assert any("always_on" in problem for problem in rule_problems())
-        write_rules([halves[0][:-1], halves[0][-1] + halves[1]])
+        write_rules([sections[0][:-1], sections[0][-1] + sections[1], *sections[2:]])
         assert any("always_on" in problem for problem in rule_problems())
-        write_rules(halves + ["# Stale\n"])
+        write_rules(sections + ["# Stale\n"])
         assert "delivered instructions differ from independent rendering" in rule_problems()
-        write_rules(halves)
-        (rules / "nix-config-02.md").rename(rules / "nix-config-03.md")
+        write_rules(sections)
+        (rules / "nix-config-02.md").rename(rules / "nix-config-99.md")
         assert any("unexpected rule files" in problem for problem in rule_problems())
 
     harness = {
@@ -990,15 +992,21 @@ def doc_section(text, heading):
 
 
 def routing_doc_problems(text):
-    """docs/agent-routing.md repeats every table the template renders."""
-    t3 = doc_section(text, "## T3 Code table")
-    problems = chain_problems(t3, T3_CHAINS, "docs/agent-routing.md T3")
-    roots = {}
-    for label, cell in re.findall(r"(?m)^\| `root` \(([^)]+)\) \| (.*) \|$", t3):
-        roots[label] = None if label in roots else cell
-    for label in sorted(set(roots) | set(DOC_ROOTS)):
-        if label not in DOC_ROOTS or roots.get(label) != T3_ROOTS[DOC_ROOTS[label]]:
-            problems.append(f"incorrect docs/agent-routing.md T3 chain for `root` ({label})")
+    """Validate every current-policy table, including the comparison column."""
+    comparison = doc_section(text, "## Comparison with oh-my-openagent")
+    current_column = "\n".join(
+        " | ".join(row.split(" | ")[:2]) + " |"
+        for row in comparison.splitlines() if row.startswith("| ")
+    )
+    problems = []
+    for name, body in (("T3", doc_section(text, "## T3 Code table")), ("comparison", current_column)):
+        problems += chain_problems(body, T3_CHAINS, f"docs/agent-routing.md {name}")
+        roots = {}
+        for label, cell in re.findall(r"(?m)^\| `root` \(([^)]+)\) \| (.*) \|$", body):
+            roots[label] = None if label in roots else cell
+        for label in sorted(set(roots) | set(DOC_ROOTS)):
+            if label not in DOC_ROOTS or roots.get(label) != T3_ROOTS[DOC_ROOTS[label]]:
+                problems.append(f"incorrect docs/agent-routing.md {name} chain for `root` ({label})")
     for label, delivery in DOC_ROOTS.items():
         body = doc_section(text, "### " + label)
         problems += chain_problems(body, HARNESS_CHAINS[delivery], f"docs/agent-routing.md {label}")
@@ -1016,6 +1024,13 @@ def check_routing_doc(text):
         assert row in text, row
         mutated = text.replace(row, row[:-2] + " → `omp` `x` `low` |")
         assert routing_doc_problems(mutated), row
+    comparison = doc_section(text, "## Comparison with oh-my-openagent")
+    for row in comparison.splitlines():
+        if row.startswith("| `"):
+            cells = row.split(" | ")
+            cells[1] += " → `omp` `x` `low`"
+            mutated = text.replace(row, " | ".join(cells), 1)
+            assert routing_doc_problems(mutated), row
     return []
 
 
