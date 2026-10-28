@@ -94,6 +94,12 @@ jobs:
             git checkout -- packages/t3code-release.json
           fi
 
+          # 9. Update the Antigravity CLI. A feed failure keeps the current
+          # pin and lets the other updates through, as T3 Code's does.
+          if ! nix run .#antigravity-cli-release -- --output packages/antigravity-cli-release.json; then
+            echo "::warning title=Antigravity CLI update skipped::antigravity-cli-release failed; keeping the current pin in packages/antigravity-cli-release.json."
+            git checkout -- packages/antigravity-cli-release.json
+          fi
 
           # 10. Update WiFiman Desktop. An API failure keeps the current pin
           # and lets the other updates through, as T3 Code's does.
@@ -141,6 +147,16 @@ jobs:
           if ! nix run .#grok-build-release -- --output packages/grok-build-release.json; then
             echo "::warning title=Grok Build update skipped::grok-build-release failed; keeping the current pin in packages/grok-build-release.json."
             git checkout -- packages/grok-build-release.json
+          fi
+
+          # 15. Update the Antigravity ACP runtime on PATH. Google publishes
+          # no pointer, so the helper probes candidate versions and downloads
+          # only a newer complete release. It writes only the PATH pin; T3
+          # Code's runtime pin comes from t3code-release. A failure keeps the
+          # current pin and lets the other updates through, as T3 Code's does.
+          if ! nix run .#antigravity-acp-release -- --output packages/antigravity-acp-release.json; then
+            echo "::warning title=Antigravity ACP runtime update skipped::antigravity-acp-release failed; keeping the current pin in packages/antigravity-acp-release.json."
+            git checkout -- packages/antigravity-acp-release.json
           fi
 
           if [ -z "$(git status --porcelain)" ]; then
@@ -238,6 +254,18 @@ jobs:
             NEW_VER=$(jq -r .version packages/t3code-release.json)
             git add packages/t3code-release.json
             git commit -m "chore(packages): bump t3code to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/antigravity-cli-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/antigravity-cli-release.json)
+            git add packages/antigravity-cli-release.json
+            git commit -m "chore(packages): bump antigravity-cli to $NEW_VER"
+          fi
+
+          if [ -n "$(git status --porcelain packages/antigravity-acp-release.json)" ]; then
+            NEW_VER=$(jq -r .version packages/antigravity-acp-release.json)
+            git add packages/antigravity-acp-release.json
+            git commit -m "chore(packages): bump antigravity-acp to $NEW_VER"
           fi
 
 

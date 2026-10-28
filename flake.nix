@@ -101,6 +101,7 @@
           "agent-browser-deps"
           "agent-instructions"
           "android-sdk"
+          "antigravity-profiles"
           "baloo-extractor"
           "cargo-settings"
           "desktop-autostart"
@@ -225,6 +226,14 @@
         grok-build = import ./packages/grok-build.nix { inherit pkgs; };
         npm-release = agentTools.npmRelease;
         acpx = import ./packages/acpx.nix { inherit pkgs; };
+        antigravity-cli-release = agentTools.antigravityCliRelease;
+        antigravity-cli = import ./packages/antigravity-cli.nix { inherit pkgs; };
+        antigravity-acp-release = agentTools.antigravityAcpRelease;
+        antigravity-acp = import ./packages/antigravity-acp.nix {
+          inherit pkgs;
+          pins = (builtins.fromJSON (builtins.readFile ./packages/antigravity-acp-release.json)).platforms;
+        };
+        antigravity-acp-path = import ./packages/antigravity-acp-path.nix { inherit pkgs; };
         t3code-release = agentTools.t3codeRelease;
         synthetic-models-watch = agentTools.syntheticModelsWatch;
         openrouter-catalog-snapshot = agentTools.openrouterCatalogSnapshot;
@@ -509,6 +518,11 @@
             inherit pkgs self;
             fixtures = linuxFixtures;
           };
+          antigravity-acp-path = import ./tests/antigravity-acp-path.nix {
+            inherit pkgs;
+            pluginSource = inputs.compound-engineering-plugin;
+          };
+          antigravity-cli-sources = pinnedSources "antigravity-cli-sources" ./packages/antigravity-cli-release.json;
           shell-utilities = import ./tests/shell-utilities.nix { inherit pkgs self; };
           mise-settings = import ./tests/mise-settings.nix {
             inherit pkgs self;
@@ -563,6 +577,12 @@
           grok-build-release =
             pythonScriptCheck "grok-build-release" ./scripts/grok-build-release
               ./tests/test_grok_build_release.py;
+          antigravity-cli-release =
+            pythonScriptCheck "antigravity-cli-release" ./scripts/antigravity-cli-release
+              ./tests/test_antigravity_cli_release.py;
+          antigravity-acp-release =
+            pythonScriptCheck "antigravity-acp-release" ./scripts/antigravity-acp-release
+              ./tests/test_antigravity_acp_release.py;
           # The Claude helper runs against the pinned SDK with real Node, so the
           # check carries both instead of letting that test skip.
           agent-usage =
@@ -683,6 +703,10 @@
           podman-containers = import ./tests/podman-containers.nix { inherit pkgs self; };
           android-sdk = import ./tests/android-sdk.nix { inherit pkgs self; };
           session-variables = import ./tests/session-variables.nix {
+            inherit pkgs self;
+            fixtures = linuxFixtures;
+          };
+          antigravity-profiles = import ./tests/antigravity-profiles.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
           };

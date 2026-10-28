@@ -67,6 +67,12 @@ in
     ++ [
       (import ../../packages/claude-code.nix { inherit pkgs; })
       (import ../../packages/codex.nix { inherit pkgs; })
+      (import ../../packages/antigravity-cli.nix { inherit pkgs; })
+      # Compound Engineering's Antigravity route finds the runtime on PATH.
+      (import ../../packages/antigravity-acp-path.nix {
+        inherit pkgs;
+        skills = lib.attrNames config.my.agentSkills;
+      })
       (import ../../packages/agent-tools.nix { inherit pkgs; }).serveHtml
       (
         let

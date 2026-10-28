@@ -11,12 +11,21 @@
   Verifies, per configuration:
   - ~/.gemini/settings.json sets experimental.autoMemory = false.
   - no Home Manager file targets .gemini/antigravity-cli/settings.json.
+  - home.activation.antigravityAcpSettings runs after installPackages and,
+    executed in a scratch HOME through tests/lib/agent-activation.nix, sets
+    auth.type = "oauth-personal" in ~/.gemini/antigravity-acp/settings.json
+    while keeping the keys the runtime wrote, so the ACP runtime asks for the
+    Google sign-in Compound Engineering's Antigravity route expects.
 */
 { pkgs, self }:
 let
   inherit (pkgs) lib;
 
   configurations = import ./lib/configurations.nix { inherit pkgs self; };
+
+  executeActivation = import ./lib/agent-activation.nix { inherit pkgs; };
+
+  acpSettingsFile = ".gemini/antigravity-acp/settings.json";
 
   assertHost =
     entry:
@@ -44,10 +53,59 @@ let
         echo 'Home Manager must not target ~/.gemini/antigravity-cli/settings.json on ${hostName}' >&2
         failed=1
       '';
+
+      acpActivation = userConfig.home.activation.antigravityAcpSettings or null;
+      acpRunsAfterPackages = lib.elem "installPackages" (
+        if acpActivation == null then [ ] else (acpActivation.after or [ ])
+      );
+      acpSettings =
+        if acpActivation == null then
+          ''
+            echo 'missing home.activation.antigravityAcpSettings on ${hostName}' >&2
+            failed=1
+          ''
+        else
+          ''
+            if [ ${lib.boolToString acpRunsAfterPackages} != true ]; then
+              echo 'home.activation.antigravityAcpSettings must run after installPackages on ${hostName}' >&2
+              failed=1
+            fi
+            ${executeActivation {
+              script = acpActivation.data or "";
+              home = userConfig.home.homeDirectory or "";
+              contract = {
+                file = acpSettingsFile;
+                declared.setPaths = [
+                  {
+                    path = [
+                      "auth"
+                      "type"
+                    ];
+                    value = "oauth-personal";
+                  }
+                ];
+                seed = {
+                  auth = {
+                    type = "gemini-api-key";
+                    project = "kept";
+                  };
+                  model = "kept";
+                };
+                expected = {
+                  auth = {
+                    type = "oauth-personal";
+                    project = "kept";
+                  };
+                  model = "kept";
+                };
+              };
+            }}
+          '';
     in
     ''
       ${geminiDelivery}
       ${symlinkPresent}
+      ${acpSettings}
     '';
 in
 pkgs.runCommand "gemini-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''
