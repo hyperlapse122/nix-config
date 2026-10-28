@@ -8,7 +8,7 @@ On a NixOS host:
 sudo nixos-rebuild switch --flake .#<host>
 ```
 
-Replace `<host>` with the machine's directory name under `hosts/`, listed below. After initial installation and key recovery, this command applies the system, Home Manager configuration, and gh/glab authentication files together. Three YubiKeys carry the same signing key, each under its own PIN; any one of them handles Git signing and initial secret recovery. Ordinary rebuilds use the local age identity inside LUKS. Sign in to 1Password manually; the SSH agent configuration is declarative.
+Replace `<host>` with the machine's directory name under `hosts/`, listed below. After initial installation and key recovery, this command applies the system, Home Manager configuration, and gh/glab authentication files together. Three YubiKeys carry the same signing key, each under its own PIN; any one of them handles Git signing and initial secret recovery. Ordinary rebuilds use the local age identity, which the host's disk encryption protects. Sign in to 1Password manually; the SSH agent configuration is declarative.
 
 On a non-NixOS host, run this from the clone:
 
@@ -24,7 +24,7 @@ On a macOS host, `nr switch` from the clone builds the nix-darwin system, which 
 
 | Host | Machine |
 | --- | --- |
-| `MS-7D91` | MSI MS-7D91 desktop workstation (Intel i7-13700F + NVIDIA RTX 3060) |
+| `MS-7D91-VM` | VMware Workstation guest on the MSI MS-7D91 PC, which runs Windows; GPG goes through the Windows Gpg4win agent |
 | `MacBook-Pro-Mac17-9` | Apple silicon MacBook Pro (model identifier `Mac17,9`), macOS |
 
 [Adding a host](docs/adding-a-host.md) covers a new machine.
@@ -35,13 +35,13 @@ zsh, Git, Ghostty, Claude Code, Claude Desktop, ChatGPT, Codex, Pi (with `pi-acp
 
 ## Installation and operation
 
-- [Fresh installation](docs/install.md): initialize the internal NVMe disk, bootstrap, and enroll Secure Boot and TPM2 keys.
-- [Updates and recovery](docs/recovery.md): retry failures, roll back, and recover TPM, card, and signing-key access.
+- [Fresh installation](docs/install.md): initialize the disk, bootstrap, and recover the age identity.
+- [Updates and recovery](docs/recovery.md): retry failures, roll back, repair from the installation media, and recover card and signing-key access.
 - [macOS hosts](docs/macos.md): set up a Mac with nix-darwin, recover its secrets, and apply routine updates.
 - [Adding a host](docs/adding-a-host.md): create a host directory, its bootstrap age material, and its `.sops.yaml` recipient, for a NixOS, a non-NixOS, or a macOS host.
 - [Secret file conventions](secrets/README.md)
 
-Each `<host>-bootstrap` output can be installed without private keys or tokens. The final outputs can also be evaluated and built without plaintext secrets. Applying them requires the local age identity, encrypted tokens, and a Secure Boot signing bundle. Authentication recovery is not complete until the repository contains the real tokens in encrypted form and the bootstrap ciphertext.
+Each `<host>-bootstrap` output can be installed without private keys or tokens. The final outputs can also be evaluated and built without plaintext secrets. Applying them requires the local age identity and encrypted tokens. Authentication recovery is not complete until the repository contains the real tokens in encrypted form and the bootstrap ciphertext.
 
 ## Development checks
 

@@ -6,7 +6,7 @@
 sudo nixos-rebuild switch --flake .#<host>
 ```
 
-Replace `<host>` with the machine's directory name under `hosts/`, here and in the commands below. This command does not format disks or enroll TPM or UEFI keys. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
+Replace `<host>` with the machine's directory name under `hosts/`, here and in the commands below. This command does not format disks. Once the local age identity is ready, it does not depend on the YubiKey, desktop keyring, or 1Password login state. Rebuilds work without the card, but actual Git signing does not.
 
 Update inputs with `nix flake update`. Review the `flake.lock` diff and pass `nix flake check`, the VM tests (`nix build --no-link .#vmChecks.all`), and the builds of every `nixosConfigurations`, `homeConfigurations`, and `systemConfigs` output (see `../AGENTS.md`) before applying. Afterward, use each CLI to check whether its remote token is valid. Successful deployment of authentication files does not guarantee that the server accepts the tokens. Periodic updates are also automated via the `Update dependencies` GitHub Actions workflow (`.github/workflows/update-dependencies.yml`), which tests and lands updates directly on `main` or opens an automated reconciliation pull request.
 
@@ -29,122 +29,39 @@ Select a supported previous NixOS generation from the boot menu. Production outp
 sudo nixos-rebuild switch --rollback
 ```
 
-The initial boot generation limit is 5. Before removing old generations, confirm that the current generation boots with Secure Boot. Rollback alone cannot fix changes to firmware/db/dbx that alter whether an older generation is trusted.
+The initial boot generation limit is 5.
 
 Weekly cleanup keeps the 10 newest generations regardless of age, so every entry the menu offers still resolves even after months without a rebuild. That retention floor is what makes the menu trustworthy, not the generation limit: the menu is rewritten only by a rebuild, while collection runs on a timer. Raising `configurationLimit` above the retention count in `modules/nixos/system/nix-cleanup.nix` would break that guarantee, and the `nix-cleanup` check fails when it does.
 
 ## An authentication stack that refuses
 
-If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead, holding Space at power-on to open it. Under the PCR 7 binding the TPM still releases the disk key there, so no passphrase is required for the rollback itself. Confirm the passphrase works before you need it, because a change to Secure Boot policy would make it mandatory.
+If a rebuild leaves the lock screen or `sudo` refusing a correct password, do not start with `sudo nixos-rebuild switch --rollback`: that command needs the `sudo` that is refusing. Select a previous generation at the boot menu instead, holding Space at power-on to open it.
 
-There is no second way in. No root password is declared, and lanzaboote signs the kernel command line, so `init=/bin/sh` cannot be injected at the boot menu. When no previous generation boots, the remaining path is the installation media and `nixos-enter`, below.
+No root password is declared. When no previous generation boots, use the installation media and `nixos-enter`, below.
 
 Booting an older generation escapes the stack but does not undo anything else in it.
 
-## TPM unlock failure
+## Repair from the installation media
 
-Changes to firmware or Secure Boot policy can prevent automatic unlocking. Boot with the LUKS recovery passphrase and check whether an intended change caused the failure. Update TPM enrollment after verifying the correct final Secure Boot state.
-
-```sh
-sudo systemd-cryptenroll /dev/disk/by-partlabel/disk-main-luks \
-  --wipe-slot=tpm2 --tpm2-device=auto --tpm2-pcrs=7:sha256 --tpm2-with-pin=no
-```
-
-Use `--wipe-slot=tpm2` only for TPM slots. Do not delete the recovery passphrase slot. Verify both the new automatic unlock and passphrase unlock before updating the external LUKS header backup.
-
-## Back up LUKS and Secure Boot recovery material
-
-Immediately after installation and after updating TPM slots, connect external media and verify that it is mounted. Replace `backup_mount` below with the external media's mount point, not a path on the target disk. `backup_dir` keeps each host's backup in its own folder, named by the hostname, which `mkHost` sets to `<host>`. The backup files are encrypted for a GPG recipient, so they can be stored independently of whether the media itself is encrypted. Keep plaintext intermediate files only on the temporary filesystem under `/run/user`.
+If the system cannot boot, use the installation media to mount the existing filesystems with the declared layout below. Do not rerun disko's formatting mode. With network access, clone the repository again into `/tmp/nix-config` under the target root. Without network access, copy it from external media to the same path.
 
 ```sh
-set -euo pipefail
-umask 077
-backup_mount=/run/media/h82/EXTERNAL_BACKUP
-backup_dir="$backup_mount/$(uname -n)"
-if ! findmnt --mountpoint "$backup_mount" >/dev/null; then
-  printf '%s\n' 'external backup mount is missing; refusing to write under /run' >&2
-  exit 1
-fi
-sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$backup_dir"
-backup_tmp=$(mktemp -d /run/user/"$(id -u)"/nix-backup.XXXXXX)
-cleanup() {
-  sudo rm -f -- "$backup_tmp/luks-header.img" "$backup_tmp/sbctl.tar" "$backup_tmp/header-check" "$backup_tmp/bundle-check"
-  rmdir "$backup_tmp" 2>/dev/null || true
-}
-trap cleanup EXIT
-sudo cryptsetup luksHeaderBackup /dev/disk/by-partlabel/disk-main-luks \
-  --header-backup-file "$backup_tmp/luks-header.img"
-sudo tar --xattrs --acls --numeric-owner -C /var/lib \
-  -cpf "$backup_tmp/sbctl.tar" sbctl
-sudo chown -R "$(id -u):$(id -g)" "$backup_tmp"
-gpg --armor --encrypt \
-  --recipient 621512777E6933FEB4458FDC4945855D4F283F05 \
-  --output "$backup_dir/luks-header.img.asc" "$backup_tmp/luks-header.img"
-gpg --armor --encrypt \
-  --recipient 621512777E6933FEB4458FDC4945855D4F283F05 \
-  --output "$backup_dir/sbctl.tar.asc" "$backup_tmp/sbctl.tar"
-test -s "$backup_dir/luks-header.img.asc" \
-  && test -s "$backup_dir/sbctl.tar.asc"
-gpg --decrypt --output "$backup_tmp/header-check" "$backup_dir/luks-header.img.asc"
-gpg --decrypt --output "$backup_tmp/bundle-check" "$backup_dir/sbctl.tar.asc"
-cmp "$backup_tmp/luks-header.img" "$backup_tmp/header-check"
-cmp "$backup_tmp/sbctl.tar" "$backup_tmp/bundle-check"
-cleanup
-trap - EXIT
-```
-
-The LUKS header contains the key slots from the time of the backup. Keep both `.asc` files on external media. If you suspect that the header backup was exposed, replace the recovery passphrase and service credentials.
-
-If the system cannot boot, use the installation USB to open the existing filesystems with the declared layout below. Do not rerun disko's formatting mode. With network access on the installation USB, clone the repository again into `/tmp/nix-config` under the target root. Without network access, copy it from external media to the same path.
-
-```sh
-sudo cryptsetup open /dev/disk/by-partlabel/disk-main-luks cryptroot
-sudo mount -o subvol=/root,compress=zstd,noatime /dev/mapper/cryptroot /mnt
+sudo mount -o subvol=/root,compress=zstd,noatime /dev/disk/by-partlabel/disk-main-root /mnt
 sudo install -d /mnt/home /mnt/nix /mnt/var/log /mnt/boot /mnt/tmp
-sudo mount -o subvol=/home,compress=zstd,noatime /dev/mapper/cryptroot /mnt/home
-sudo mount -o subvol=/nix,compress=zstd,noatime /dev/mapper/cryptroot /mnt/nix
-sudo mount -o subvol=/log,compress=zstd,noatime /dev/mapper/cryptroot /mnt/var/log
+sudo mount -o subvol=/home,compress=zstd,noatime /dev/disk/by-partlabel/disk-main-root /mnt/home
+sudo mount -o subvol=/nix,compress=zstd,noatime /dev/disk/by-partlabel/disk-main-root /mnt/nix
+sudo mount -o subvol=/log,compress=zstd,noatime /dev/disk/by-partlabel/disk-main-root /mnt/var/log
 sudo mount /dev/disk/by-partlabel/disk-main-ESP /mnt/boot
 if sudo test -d /mnt/tmp/nix-config/.git; then
   sudo git -C /mnt/tmp/nix-config pull --ff-only
 else
   sudo git clone https://github.com/hyperlapse122/nix-config.git /mnt/tmp/nix-config
 fi
-```
-
-`nixos-enter` creates the required `/dev`, `/sys`, and `/proc` bind mounts itself. Restore `/var/lib/sbctl` before running `nixos-rebuild boot`. The commands to restore signed boot files follow.
-
-## Lost Secure Boot signing keys
-
-Connect the encrypted external backup, restore `/var/lib/sbctl`, and check the backup files' ownership and permissions. To restore from a running installation, extract the saved bundle and sign the next boot generation again:
-
-```sh
-set -o pipefail
-gpg --decrypt /path/to/sbctl.tar.asc | \
-  sudo tar --xattrs --acls --numeric-owner -xpf - -C /var/lib
-sudo chown -R root:root /var/lib/sbctl
-sudo chmod -R go-rwx /var/lib/sbctl
-sudo nixos-rebuild boot --flake .#<host>
-```
-
-On the installation USB, complete the mount procedure above, then import the public key and check the card as the live environment's normal user. Decrypt in the shell opened by `nix develop`; do not depend on the target's root GPG agent.
-
-```sh
-nix develop path:/mnt/tmp/nix-config
-gpg --import /mnt/tmp/nix-config/keys/signing.asc
-gpg --card-status
-set -o pipefail
-gpg --decrypt /path/to/sbctl.tar.asc | \
-  sudo tar --xattrs --acls --numeric-owner -xpf - -C /mnt/var/lib
-sudo chown -R root:root /mnt/var/lib/sbctl
-sudo chmod -R go-rwx /mnt/var/lib/sbctl
 sudo nixos-enter --root /mnt -c \
   'cd /tmp/nix-config && nixos-rebuild boot --flake .#<host>'
 ```
 
-If the existing `/mnt/var/lib/sbctl` is intact, skip decryption and extraction and run only the last command. Without a backup, generate a new bundle and repeat UEFI key enrollment. Update TPM enrollment under the new Secure Boot policy too.
-
-Do not keep LUKS recovery material only on the locked target disk or rely on that disk's TPM automatic unlock as the sole recovery method.
+`nixos-enter` creates the required `/dev`, `/sys`, and `/proc` bind mounts itself.
 
 ## Lost or replaced YubiKey
 
@@ -219,19 +136,3 @@ Follow these steps in order when a non-NixOS host, a macOS host, or a NixOS host
 ## Replace tokens or the age identity
 
 To change tokens, edit the SOPS-encrypted token file and rebuild. If the local age identity was exposed, generate a new identity and re-encrypt all ciphertext for the new recipient. Update the bootstrap ciphertext and local identity together. Historical ciphertext remains in the repository, so revoke and reissue potentially exposed service tokens through their providers.
-
-## Restore an iPhone or iPad from an IPSW file
-
-Every NixOS host ships `idevicerestore`, `irecovery`, and libimobiledevice and runs `usbmuxd`. A udev rule gives the logged-in user the device in DFU and recovery mode, so no `sudo` is needed. Put the device in DFU mode, connect it over USB, and confirm the mode:
-
-```sh
-irecovery -q
-```
-
-Then restore from a local IPSW file:
-
-```sh
-idevicerestore -e <file>.ipsw
-```
-
-`-e` erases the device. Leave it out to update and keep data. Do not add `-l`: it ignores the file and downloads the latest signed firmware. `--ipsw-info <file>.ipsw` prints what the file holds without touching the device. idevicerestore still asks Apple's signing server to sign the restore, so the host needs network access and the build in the IPSW must still be signed. When the device reboots into restore mode it reaches idevicerestore through `usbmuxd`, so check `systemctl status usbmuxd` if the restore stalls at that point.
