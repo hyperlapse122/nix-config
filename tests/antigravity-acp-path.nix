@@ -192,9 +192,6 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   done
   printf 'rule\n' > "$rulesSrc/nix-config-01.md"
 
-  noRulesHome=$PWD/no-rules-home
-  mkdir -p "$noRulesHome/.gemini/antigravity-cli/skills/humanizer"
-
   # make_ce_home <dir or mktemp template>: a run home the way the plugin
   # makes one, under a mode-0700 directory.
   make_ce_home() {
@@ -217,8 +214,9 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
     [ ! -s stderr ] || fail "$label: the wrapper wrote to stderr: $(cat stderr)"
   }
 
-  # assert_linked <label> <home> [home-dir]: the named skills that exist and
-  # the rule directory are linked to the fake HOME's, in private directories.
+  # assert_linked <label> <home> [home-dir]: the named skills that exist are
+  # linked to the fake HOME's, in private directories, and the HOME's rule
+  # directory is not linked, because the ACP runtime never reads it.
   assert_linked() {
     local label=$1 home=$2 src=''${3:-$fakeHome}
     for skill in grammar-checker humanizer test-audit; do
@@ -229,9 +227,8 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
     [ ! -e "$home/antigravity-cli/skills/style-guide" ] || fail "$label: style-guide, which is not named, was linked"
     [ ! -e "$home/antigravity-cli/skills/no-such-skill" ] && [ ! -L "$home/antigravity-cli/skills/no-such-skill" ] \
       || fail "$label: no-such-skill, which has no source, was linked"
-    [ -L "$home/config/rules" ] && [ "$(readlink "$home/config/rules")" = "$src/.gemini/config/rules" ] \
-      || fail "$label: config/rules is not linked to the HOME's rule directory"
-    for dir in antigravity-cli antigravity-cli/skills config; do
+    [ ! -e "$home/config" ] && [ ! -L "$home/config" ] || fail "$label: config was created"
+    for dir in antigravity-cli antigravity-cli/skills; do
       mode=$(stat -c %a "$home/$dir" 2>/dev/null || echo missing)
       [ "$mode" = 700 ] || fail "$label: $dir has mode $mode, not 700"
     done
@@ -254,18 +251,11 @@ pkgs.runCommand "antigravity-acp-path-tests" { } ''
   run_home "slashes" HOME="$fakeHome" GEMINI_HOME="$tmpdir//xmodel-doc-peer-slash//gemini-home/"
   assert_linked "slashes" "$home"
 
-  # A HOME without a rule directory: skills are linked, no config/ appears.
-  home=$(make_ce_home "$tmpdir/xmodel-doc-peer-XXXXXX")
-  run_home "no rule directory" HOME="$noRulesHome" GEMINI_HOME="$home"
-  [ -L "$home/antigravity-cli/skills/humanizer" ] || fail "no rule directory: humanizer is not linked"
-  [ ! -e "$home/config" ] || fail "no rule directory: config was created"
-
   # An entry already in the run home stays as it is.
   home=$(make_ce_home "$tmpdir/xmodel-cr-scratch-XXXXXX")
-  mkdir -p -m 700 "$home/antigravity-cli/skills/humanizer" "$home/config/rules"
+  mkdir -p -m 700 "$home/antigravity-cli/skills/humanizer"
   run_home "existing entries" HOME="$fakeHome" GEMINI_HOME="$home"
   [ ! -L "$home/antigravity-cli/skills/humanizer" ] || fail "existing entries: humanizer was replaced"
-  [ ! -L "$home/config/rules" ] || fail "existing entries: config/rules was replaced"
   [ -L "$home/antigravity-cli/skills/test-audit" ] || fail "existing entries: test-audit is not linked"
 
   # A symlink planted at antigravity-cli or config is not followed.

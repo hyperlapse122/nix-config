@@ -15,12 +15,12 @@
 
   Compound Engineering gives each run a private GEMINI_HOME, `gemini-home`
   under a mktemp -d directory, and copies the sign-in into it itself. The
-  runtime reads skills and rules only from GEMINI_HOME, so when GEMINI_HOME is
-  such a run home the wrapper links into it each skill in `skills` that
-  exists under ~/.gemini/antigravity-cli/skills/, and ~/.gemini/config/rules
-  when it exists. Home Manager passes the names home/h82/agents/skills.nix
-  links there. Any other GEMINI_HOME, such as T3 Code's instance homes, is
-  left alone.
+  runtime reads skills only from GEMINI_HOME, so when GEMINI_HOME is such a
+  run home the wrapper links into it each skill in `skills` that exists under
+  ~/.gemini/antigravity-cli/skills/. Home Manager passes the names
+  home/h82/agents/skills.nix links there. The ACP runtime loads no global
+  rule files from any location, so the shared rules are not linked. Any
+  other GEMINI_HOME, such as T3 Code's instance homes, is left alone.
 
   The runtime defaults to packages/antigravity-acp-release.json, which
   scripts/antigravity-acp-release keeps at Google's newest complete release.
@@ -119,17 +119,6 @@ let
             ${coreutils}/ln -s "$src" "$dest" || true
           fi
         done
-      ) 2>/dev/null || true
-
-      (
-        umask 077
-        src=$HOME/.gemini/config/rules
-        dest=$gemini_home/config/rules
-        [ -d "$src" ] || exit 0
-        private_subdir "$gemini_home/config" || exit 0
-        if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
-          ${coreutils}/ln -s "$src" "$dest" || true
-        fi
       ) 2>/dev/null || true
     }
 
