@@ -61,6 +61,11 @@
     /etc/nix-config-host records the host and variant, the Brewfile lists the
     expected casks, the shared fonts are installed, and activation turns on
     automatic appearance without pinning AppleInterfaceStyle;
+  - running the activation's user-defaults block with stub commands writes,
+    as the primary user, exactly the Dock's persistent-apps,
+    persistent-others, show-recents, and tilesize, each with the value its
+    option holds, then restarts that user's Dock; nothing else in activation
+    touches com.apple.dock;
   - the system activate script runs the Xcode step, mas through launchctl
     asuser for App Store id 497799835, after brew bundle and before the Home
     Manager activation call, then the KakaoTalk step for App Store id
@@ -226,6 +231,11 @@ let
 
   authEffects = ./lib/containers-auth-effects.py;
 
+  # Runs the activation's user-defaults block with stub commands and compares
+  # its Dock writes with the Dock options; tests/darwin-config.nix owns what
+  # those options must be.
+  dockWrites = ./lib/dock-writes.py;
+
   mapping = import ../modules/shared/darwin-apps.nix;
   expectedCasks = lib.sort lib.lessThan mapping.casks;
 
@@ -265,6 +275,17 @@ let
           pins = (builtins.fromJSON (builtins.readFile ../packages/antigravity-acp-release.json)).platforms;
         }
       }/libexec/antigravity-acp";
+      # Only these four Dock keys may be written; the rest stay the user's.
+      expectedDock = pkgs.writeText "expected-dock.json" (
+        builtins.toJSON {
+          inherit (config.system.defaults.dock)
+            persistent-apps
+            persistent-others
+            show-recents
+            tilesize
+            ;
+        }
+      );
     in
     ''
       name=${lib.escapeShellArg entry.name}
@@ -712,6 +733,8 @@ let
       if grep -Eq "defaults write -g '?AppleInterfaceStyle'? " "$sys/activate"; then
         bad "the system activation pins AppleInterfaceStyle"
       fi
+      python3 ${dockWrites} "$sys/activate" ${expectedDock} ${lib.escapeShellArg config.my.user.name} \
+        || bad "the system activation's Dock writes differ from the Dock options"
     '';
 in
 pkgs.runCommand "darwin-outputs"
