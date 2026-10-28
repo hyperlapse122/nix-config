@@ -33,7 +33,8 @@
     directory itself, never its files with `recursive = true`.
   - no enabled target is ~/.codex/skills/.system or under it, which Codex
     owns.
-  - the other roots declare exactly the three skill directories plus test-audit,
+  - the other roots declare exactly the three skill directories plus test-audit
+    and the skills tests/pinned-skills.nix checks,
     and ~/.gemini/antigravity-cli/skills also every skill of the pinned
     compound-engineering-plugin input (its `skills/<name>` directories that
     hold a SKILL.md; tests/antigravity-skills.nix checks their content);
@@ -83,8 +84,27 @@ let
   ];
 
   # Every other skill the roots hold. Only the root population below counts
-  # these; tests/test-audit-skill.nix checks their content.
-  otherSkillNames = [ "test-audit" ];
+  # these; tests/test-audit-skill.nix and tests/pinned-skills.nix check their
+  # content.
+  otherSkillNames = [
+    "test-audit"
+    "frontend-design"
+    "web-design-guidelines"
+    "vercel-react-best-practices"
+    "vercel-composition-patterns"
+    "vercel-react-native-skills"
+    "expo-native-ui"
+    "expo-upgrade"
+    "expo-ui"
+    "expo-animation"
+    "expo-router"
+    "expo-data-fetching"
+    "playwright-best-practices"
+    "ux-writing"
+    "cli-design"
+    "design-lenses"
+    "ux-flows"
+  ];
 
   # Antigravity loads no plugins, so its root also holds the pinned Compound
   # Engineering skills, named by the pinned input rather than the module.
