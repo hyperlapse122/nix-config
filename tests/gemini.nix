@@ -22,6 +22,10 @@
     auth.type = "oauth-personal" in ~/.gemini/antigravity-acp/settings.json
     while keeping the keys the runtime wrote, so the ACP runtime asks for the
     Google sign-in Compound Engineering's Antigravity route expects.
+  - home.activation.antigravityMcpConfig runs after installPackages and,
+    executed in a scratch HOME, adds the fff MCP server by its store path to
+    ~/.gemini/config/mcp_config.json while keeping a server `agy mcp add`
+    wrote there.
 */
 { pkgs, self }:
 let
@@ -136,12 +140,58 @@ let
               };
             }}
           '';
+      mcpActivation = userConfig.home.activation.antigravityMcpConfig or null;
+      mcpRunsAfterPackages = lib.elem "installPackages" (
+        if mcpActivation == null then [ ] else (mcpActivation.after or [ ])
+      );
+      mcpConfig =
+        if mcpActivation == null then
+          ''
+            echo 'missing home.activation.antigravityMcpConfig on ${hostName}' >&2
+            failed=1
+          ''
+        else
+          ''
+            if [ ${lib.boolToString mcpRunsAfterPackages} != true ]; then
+              echo 'home.activation.antigravityMcpConfig must run after installPackages on ${hostName}' >&2
+              failed=1
+            fi
+            ${executeActivation {
+              script = mcpActivation.data or "";
+              home = userConfig.home.homeDirectory or "";
+              contract = {
+                file = ".gemini/config/mcp_config.json";
+                declared.ownEntries = [
+                  {
+                    path = [ "mcpServers" ];
+                    entries.fff = {
+                      command = "${pkgs.fff-mcp}/bin/fff-mcp";
+                      args = [ "--no-update-check" ];
+                      disabled = false;
+                    };
+                  }
+                ];
+                # A server added with `agy mcp add` survives beside it.
+                seed.mcpServers.other = {
+                  command = "other";
+                  disabled = false;
+                };
+                preservePaths = [
+                  [
+                    "mcpServers"
+                    "other"
+                  ]
+                ];
+              };
+            }}
+          '';
     in
     ''
       ${geminiDelivery}
       ${symlinkPresent}
       ${cliSettings}
       ${acpSettings}
+      ${mcpConfig}
     '';
 in
 pkgs.runCommand "gemini-tests" { nativeBuildInputs = [ pkgs.diffutils ]; } ''

@@ -47,6 +47,24 @@ let
       ];
     }
   );
+
+  # The Antigravity CLI keeps user-scope MCP servers in their own file, the one
+  # `agy mcp add` writes, so ownEntries upserts only the declared server. The
+  # ACP runtime reads no such file: T3 Code passes its MCP servers per session.
+  fff = import ./fff-server.nix { inherit pkgs; };
+  mcpDeclared = pkgs.writeText "antigravity-declared-mcp-config.json" (
+    builtins.toJSON {
+      ownEntries = [
+        {
+          path = [ "mcpServers" ];
+          entries.fff = {
+            inherit (fff) command args;
+            disabled = false;
+          };
+        }
+      ];
+    }
+  );
 in
 {
   my.agents.crossModelPeers = [ "antigravity" ];
@@ -78,6 +96,16 @@ in
         --label 'Antigravity CLI' \
         --settings ${config.home.homeDirectory}/.gemini/antigravity-cli/settings.json \
         --declared ${cliDeclared}
+    fi
+  '';
+
+  home.activation.antigravityMcpConfig = lib.hm.dag.entryAfter [ "installPackages" ] ''
+    if [[ ! -v DRY_RUN ]]; then
+      ${merger} \
+        --label 'Antigravity CLI MCP' \
+        --settings ${config.home.homeDirectory}/.gemini/config/mcp_config.json \
+        --declared ${mcpDeclared} \
+        --ledger ${config.home.homeDirectory}/.gemini/config/mcp-config-ownership.json
     fi
   '';
 }
