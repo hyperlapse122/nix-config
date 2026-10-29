@@ -7712,7 +7712,7 @@
           "text"
         ]
       },
-      "context_length": 1000000,
+      "context_length": 1048576,
       "reasoning": {
         "mandatory": true,
         "supported_efforts": [
@@ -8074,31 +8074,6 @@
         "supported_efforts": [
           "max",
           "xhigh",
-          "high",
-          "medium",
-          "low",
-          "minimal",
-          "none"
-        ],
-        "default_effort": "medium"
-      }
-    },
-    {
-      "id": "upstage/solar-pro-3",
-      "name": "Upstage: Solar Pro 3",
-      "architecture": {
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ]
-      },
-      "context_length": 131072,
-      "reasoning": {
-        "mandatory": false,
-        "default_enabled": false,
-        "supported_efforts": [
           "high",
           "medium",
           "low",
