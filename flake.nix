@@ -538,6 +538,7 @@
               touch $out
             '';
           gemini = import ./tests/gemini.nix { inherit pkgs self; };
+          grok = import ./tests/grok.nix { inherit pkgs self; };
           ghq = import ./tests/ghq.nix {
             inherit pkgs self;
             fixtures = linuxFixtures;
