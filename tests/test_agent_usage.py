@@ -370,27 +370,29 @@ closed()
 
     def test_pace_and_floor_decide_provider_skip(self):
         week = 10080
-        # (used, minutes left, duration, expected skipReason)
+        # (used, minutes left, duration, expected skipReason, expected aheadOfPace)
         cases = [
-            (78, week * 5 / 7, week, 'ahead of pace'),
-            (80, 60, week, None),
-            (21, 270, 300, 'ahead of pace'),
-            (20, 270, 300, None),
-            (10, week * 2, week, None),
-            (10.1, week * 2, week, 'ahead of pace'),
-            (90, 60, week, None),
-            (90.1, 60, week, 'below floor'),
-            (95, week * 2, week, 'below floor'),
-            (95, 60, 0, 'below floor'),
+            (26, week * .864, week, None, False),
+            (78, week * 5 / 7, week, None, True),
+            (80, 60, week, None, False),
+            (35.1, 270, 300, None, True),
+            (35, 270, 300, None, False),
+            (25, week * 2, week, None, False),
+            (25.1, week * 2, week, None, True),
+            (90, 60, week, None, False),
+            (90.1, 60, week, 'below floor', False),
+            (95, week * 2, week, 'below floor', True),
+            (95, 60, 0, 'below floor', False),
         ]
-        for used, left, duration, reason in cases:
+        for used, left, duration, reason, ahead in cases:
             with self.subTest(used=used, left=left, duration=duration):
                 result = self.codex_weekly(used, left, duration)
                 self.assertEqual(result['skipReason'], reason)
                 self.assertEqual(result['skip'], reason is not None)
+                self.assertEqual(result['aheadOfPace'], ahead)
         weekly = self.codex_weekly(78, week * 5 / 7)['windows'][1]
         self.assertAlmostEqual(weekly['elapsedPercent'], 200 / 7, delta=.1)
-        self.assertAlmostEqual(weekly['overshootPercent'], 78 - 200 / 7 - 10, delta=.1)
+        self.assertAlmostEqual(weekly['overshootPercent'], 78 - 200 / 7 - 25, delta=.1)
         self.assertTrue(weekly['aheadOfPace'])
         unpaced = self.codex_weekly(30, 60, 0)
         self.assertIsNone(unpaced['windows'][1]['elapsedPercent'])
@@ -409,14 +411,17 @@ closed()
         self.save()
         result = self.invoke('--refresh')['claude']
         self.assertFalse(result['skip'])
-        self.assertEqual(result['skipModels'], {'Fable': {
-            'overshootPercent': 20, 'remainingPercent': 60, 'skipReason': 'ahead of pace'}})
+        self.assertFalse(result['aheadOfPace'])
+        self.assertEqual(result['skipModels'], {})
+        self.assertEqual(result['aheadModels'], {'Fable': {
+            'overshootPercent': 5, 'remainingPercent': 60}})
         self.data['claude']['rate_limits']['seven_day']['utilization'] = 95
         self.save()
         result = self.invoke('--refresh')['claude']
         self.assertEqual(result['skipReason'], 'below floor')
-        self.assertEqual(result['skipModels']['Fable'], {
-            'overshootPercent': 20, 'remainingPercent': 5, 'skipReason': 'below floor'})
+        self.assertEqual(result['skipModels'], {'Fable': {
+            'overshootPercent': 5, 'remainingPercent': 5, 'skipReason': 'below floor'}})
+        self.assertEqual(result['aheadModels'], {})
 
     def test_rolling_and_unknown_length_windows_use_the_floor_alone(self):
         self.data['synthetic']['planWeeklyLimit']['percentRemaining'] = 8

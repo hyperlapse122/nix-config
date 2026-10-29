@@ -420,7 +420,7 @@ def cached(provider, refresh):
         return cache_view(record)
 
 
-PACE_TOLERANCE = 10
+PACE_TOLERANCE = 25
 FLOOR = 10
 
 
@@ -434,9 +434,11 @@ def scope_state(entries):
 def skip_reason(state):
     if state['remainingPercent'] is not None and state['remainingPercent'] < FLOOR:
         return 'below floor'
-    if state['overshootPercent'] is not None and state['overshootPercent'] > 0:
-        return 'ahead of pace'
     return None
+
+
+def ahead_of_pace(state):
+    return state['overshootPercent'] is not None and state['overshootPercent'] > 0
 
 
 def judge(result):
@@ -461,15 +463,18 @@ def judge(result):
     provider = scope_state([e for e in result['windows'] if not e.get('model')])
     result.update(provider, skipReason=skip_reason(provider))
     result['skip'] = result['skipReason'] is not None
+    result['aheadOfPace'] = ahead_of_pace(provider)
     result['skipModels'] = {}
+    result['aheadModels'] = {}
     for model in sorted({e['model'] for e in result['windows'] if e.get('model')}):
         state = scope_state([e for e in result['windows'] if e.get('model') == model])
-        if skip_reason(state) is None:
-            continue
         # The root ranks a model's entries by these values alone, so they
         # fold in the provider-wide windows the entries are also subject to.
         combined = scope_state([state, provider])
-        result['skipModels'][model] = dict(combined, skipReason=skip_reason(combined))
+        if skip_reason(combined):
+            result['skipModels'][model] = dict(combined, skipReason=skip_reason(combined))
+        elif ahead_of_pace(state):
+            result['aheadModels'][model] = combined
     return result
 
 
