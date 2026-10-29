@@ -179,12 +179,21 @@ let
                 table = table[part]
             assert table.get(leaf) != entry["value"], f"seed already holds declared {entry['path']}"
             table[leaf] = entry["value"]
+        for entry in declared.get("ownEntries", []):
+            table = expected
+            for part in entry["path"]:
+                table = table.setdefault(part, {})
+            table.update(entry["entries"])
         target.write_text(seed)
         result = run()
         assert result.returncode == 0, result.stderr
         actual = tomllib.loads(target.read_text())
         assert actual == expected, "Codex activation did not apply declarations, retire keys, and preserve unmanaged state"
         assert actual["check_for_update_on_startup"] is False
+        fff = actual.get("mcp_servers", {}).get("fff", {})
+        assert fff.get("command", "").startswith("/nix/store/") and fff["command"].endswith("/bin/fff-mcp"), "Codex must start the fff MCP server by its store path"
+        assert os.access(fff["command"], os.X_OK), "the fff MCP server command is not executable"
+        assert fff.get("args") == ["--no-update-check"], "the fff MCP server must run without its update check"
         assert all(actual["features"][key] is False for key in ["in_app_updates", "daemon_auto_start", "memories"]), "Codex settings must be TOML booleans"
         protected = b'[features\nmalformed = true\n'
         target.write_bytes(protected)

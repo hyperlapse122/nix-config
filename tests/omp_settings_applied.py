@@ -347,6 +347,21 @@ class Activation(unittest.TestCase):
                 self.assertEqual(discovered_skills(), {"authored"})
                 for skill, contents in skills.items():
                     self.assertEqual(skill.read_bytes(), contents)
+                # The fff MCP server starts by its store path, since T3 Code and
+                # GUI sessions do not inherit the login PATH.
+                mcp = target.parent / "mcp.json"
+                servers = json.loads(mcp.read_text())["mcpServers"]
+                self.assertEqual(set(servers), {"fff"})
+                fff = servers["fff"]
+                self.assertTrue(fff["command"].startswith("/nix/store/")
+                                and fff["command"].endswith("/bin/fff-mcp"), fff)
+                self.assertTrue(os.access(fff["command"], os.X_OK), fff)
+                self.assertEqual(fff["args"], ["--no-update-check"])
+                servers["fff"]["auth"] = {"token": "FAKE_TOKEN"}
+                mcp.write_text(json.dumps({"mcpServers": servers}))
+                activate()
+                self.assertEqual(json.loads(mcp.read_text())["mcpServers"]["fff"]["auth"],
+                                 {"token": "FAKE_TOKEN"})
                 target.write_text("memory: {backend: local}\nnewSetting: true\n")
                 activate()
                 self.assertEqual(yaml.safe_load(target.read_text()), value)

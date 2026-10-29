@@ -97,6 +97,12 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.settings.parent.stat().st_mode & 0o777, 0o700)
 
+    def test_an_empty_file_merges_as_an_empty_object(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text('')
+        self.merge()
+        self.assertEqual(self.read(), DECLARED)
+
     def test_refuses_a_symlinked_settings_path(self):
         self.settings.parent.mkdir(parents=True)
         target = Path(self.tmp.name) / 'elsewhere.json'
