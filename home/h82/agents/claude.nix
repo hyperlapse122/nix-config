@@ -100,7 +100,24 @@ let
     );
 
   declared = renderDeclared "claude-declared-settings.json" settingsTier retiredKeys settingsPaths;
-  declaredGlobalConfig = renderDeclared "claude-declared-global-config.json" globalConfigTier [ ] [ ];
+  # User-scope MCP servers live in the global config's top-level mcpServers.
+  # ownEntries upserts only the servers named here and leaves the ones the
+  # user adds with `claude mcp add -s user`.
+  fff = import ./fff-server.nix { inherit pkgs; };
+  declaredGlobalConfig = pkgs.writeText "claude-declared-global-config.json" (
+    builtins.toJSON {
+      set = globalConfigTier;
+      ownEntries = [
+        {
+          path = [ "mcpServers" ];
+          entries.fff = {
+            type = "stdio";
+            inherit (fff) command args;
+          };
+        }
+      ];
+    }
+  );
 in
 {
   my.agents.crossModelPeers = [ "claude" ];
@@ -188,7 +205,8 @@ in
       ${merger} \
         --label 'Claude Code' \
         --settings ${config.home.homeDirectory}/.claude.json \
-        --declared ${declaredGlobalConfig}
+        --declared ${declaredGlobalConfig} \
+        --ledger ${config.home.homeDirectory}/.claude/global-config-ownership.json
     fi
   '';
 }

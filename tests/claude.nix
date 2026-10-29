@@ -111,6 +111,19 @@ let
     leftArrowOpensAgents = false;
   };
 
+  # The user-scope fff MCP server, by its store path so a GUI or T3 Code
+  # session that lacks the login PATH still starts it.
+  globalConfigEntries = [
+    {
+      path = [ "mcpServers" ];
+      entries.fff = {
+        type = "stdio";
+        command = "${pkgs.fff-mcp}/bin/fff-mcp";
+        args = [ "--no-update-check" ];
+      };
+    }
+  ];
+
   expectedDeclared =
     name: set: remove: setPaths:
     pkgs.writeText name (
@@ -135,10 +148,14 @@ let
       file = ".claude.json";
       declared = {
         set = globalConfigTier;
-        remove = [ ];
-        setPaths = [ ];
+        ownEntries = globalConfigEntries;
       };
-      expected = expectedDeclared "claude-expected-global-config.json" globalConfigTier [ ] [ ];
+      expected = pkgs.writeText "claude-expected-global-config.json" (
+        builtins.toJSON {
+          set = globalConfigTier;
+          ownEntries = globalConfigEntries;
+        }
+      );
     }
   ];
 
@@ -220,6 +237,22 @@ let
             contract = {
               file = merge.file;
               declared = merge.declared;
+            }
+            // lib.optionalAttrs (merge.attr == "claudeGlobalConfig") {
+              # A server the user added with `claude mcp add -s user` must
+              # survive beside the declared one.
+              seed = {
+                activationUnmanaged = "keep";
+                leftArrowOpensAgents = true;
+                mcpServers.other.command = "other";
+              };
+              preservePaths = [
+                [ "activationUnmanaged" ]
+                [
+                  "mcpServers"
+                  "other"
+                ]
+              ];
             }
             // lib.optionalAttrs (merge.attr == "claudeSettings") {
               seed = {
