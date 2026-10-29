@@ -86,7 +86,9 @@ in
       );
       "models.yml" = lib.mkDefault (import ./omp-declarations.nix { inherit pkgs omp; });
       # Restored whole on apply, so a server added by hand lasts only until
-      # the next apply; the reconciler keeps a declared server's auth.
+      # the next apply; the reconciler keeps a declared server's auth. OMP in
+      # ACP mode, as T3 Code runs it, ignores this file and connects only the
+      # servers the client sends in session/new.
       "mcp.json" = lib.mkDefault (
         pkgs.writeText "omp-mcp.json" (
           builtins.toJSON {
