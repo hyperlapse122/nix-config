@@ -21,6 +21,8 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 - Use the harness's native read, write, edit, or patch tools for routine file reads, writes, and edits when a suitable tool is available.
 - Use shell commands or scripts such as Python and `sed` for file I/O only when the harness has no suitable native tool or the operation requires a command-line tool.
 - The GPG and encryption rules take precedence for decrypted output: pipe it straight into the consuming command without opening decrypted files with file tools.
+- Inside a git-tracked directory, search file names and contents with the fff MCP tools (`find_files`, `grep`, `multi_grep`) first.
+- Use the harness's built-in search when the fff tools are unavailable or fail, or outside a git-tracked directory.
 
 # Git
 
