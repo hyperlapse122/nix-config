@@ -197,8 +197,9 @@ ROUTING_SENTENCES = [
     "Use a slow entry only when every fast entry in the chain is skipped.",
     "Within the tier in use, take the first entry in chain order that is not ahead of pace: its provider's `aheadOfPace` flag is unset and its model is not listed in `aheadModels`.",
     "When every entry of that tier is ahead of pace, take the one with the lowest `overshootPercent`, read from its model's `aheadModels` entry when present and from its provider otherwise.",
-    "When the usage check skips every entry of a chain, use the one with the highest `remainingPercent`, read from its model's `skipModels` entry when present and from its provider otherwise.",
+    "When the usage check skips every entry the other reasons leave runnable, use the one with the highest `remainingPercent`, read from its model's `skipModels` entry when present and from its provider otherwise.",
     "Never revive an entry whose usage is exhausted or that was skipped for any other reason.",
+    "When no entry of a chain can run, do the work in the root and say that the chain had no runnable entry.",
     "Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.",
     "Entries marked (S) are Synthetic and expire after 2026-11-18.",
     "From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish.",
@@ -259,7 +260,7 @@ def routing_contract(delivery):
 - Read each entry under its usage account: `codex` under `codex`, `claudeAgent` under `claude`, `antigravity` under `gemini`, `grok` under `grok`, and `omp` under `synthetic`. The usage check skips every entry of a provider whose `skip` flag is set, and only the entries of the models listed in its `skipModels`. A `stale` or `unknown` status alone skips nothing.
 - `codex` and `claudeAgent` entries are fast, and `antigravity`, `omp`, and `grok` entries are slow, except that a chain's first entry counts as fast. Use a slow entry only when every fast entry in the chain is skipped.
 - Within the tier in use, take the first entry in chain order that is not ahead of pace: its provider's `aheadOfPace` flag is unset and its model is not listed in `aheadModels`. When every entry of that tier is ahead of pace, take the one with the lowest `overshootPercent`, read from its model's `aheadModels` entry when present and from its provider otherwise.
-- When the usage check skips every entry of a chain, use the one with the highest `remainingPercent`, read from its model's `skipModels` entry when present and from its provider otherwise. Never revive an entry whose usage is exhausted or that was skipped for any other reason.
+- When the usage check skips every entry the other reasons leave runnable, use the one with the highest `remainingPercent`, read from its model's `skipModels` entry when present and from its provider otherwise. Never revive an entry whose usage is exhausted or that was skipped for any other reason. When no entry of a chain can run, do the work in the root and say that the chain had no runnable entry.
 - Synthetic's weekly allowance is a rolling quota: report its next regeneration time and amount in place of a reset time.
 - Entries marked (S) are Synthetic and expire after 2026-11-18. From 2026-11-19 (local date), start no new Synthetic work; tasks already running may finish. OMP may use these entries automatically, inside and outside T3 Code.
 - The other Synthetic models (Qwen 3.8 27B, Nemotron 3 Super 120B, GPT-OSS-120B, GLM-4.7-Flash and the `syn:*` aliases) run only on explicit request, under the same expiry.
