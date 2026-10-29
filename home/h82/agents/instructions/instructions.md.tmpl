@@ -235,8 +235,8 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 {{ if .claude }}| `root` | `claudeAgent` `claude-opus-5-5` `medium` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) |
 {{ end }}{{ if .codex }}| `root` | `codex` `gpt-6.1-sol` `high` → `codex` `gpt-6.1-sol` `medium` Fast → `codex` `gpt-6.1-sol` `medium` |
 {{ end }}{{ if .omp }}| `root` | `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) |
-{{ end }}| `scout` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
-| `quick` | `codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
+{{ end }}| `scout` | `codex` `gpt-6-luna` `high` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `high` (S) |
+| `quick` | `codex` `gpt-6-luna` `high` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → `omp` `synthetic/hf:deepseek-ai/DeepSeek-V4.1-Flash` `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S) |
 | `writing` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low` |
 | `visual` | `antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → `omp` `synthetic/hf:moonshotai/Kimi-K3` `high` (S) |
 | `implement` | `claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → `omp` `synthetic/hf:zai-org/GLM-5.3` `high` (S) → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high` |
@@ -292,8 +292,8 @@ The user's GPG key is on a YubiKey that stays connected, and its PIN is usually 
 | Role | Chain |
 | --- | --- |
 | `root` | `gpt-6.1-sol` `high` → `gpt-6.1-sol` `medium` Fast → `gpt-6.1-sol` `medium` |
-| `scout` | `gpt-6-luna` `medium` Fast |
-| `quick` | `gpt-6-luna` `medium` Fast |
+| `scout` | `gpt-6-luna` `high` Fast |
+| `quick` | `gpt-6-luna` `high` Fast |
 | `writing` | `gpt-6.1-terra` `medium` |
 | `visual` | `gpt-6.1-terra` `medium` |
 | `implement` | `gpt-6.1-terra` `medium` |

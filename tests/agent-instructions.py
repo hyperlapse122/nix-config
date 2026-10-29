@@ -57,8 +57,8 @@ T3_ROOTS = {
     "omp": KIMI,
 }
 T3_CHAINS = {
-    "scout": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
-    "quick": f"`codex` `gpt-6-luna` `medium` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
+    "scout": f"`codex` `gpt-6-luna` `high` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `high` (S)",
+    "quick": f"`codex` `gpt-6-luna` `high` Fast → `claudeAgent` `claude-haiku-5-5` `medium` → {DEEPSEEK} `off` (S) → `omp` `synthetic/hf:zai-org/GLM-5.3-Flash` `low` (S)",
     "writing": "`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-opus-5-5` `low`",
     "visual": f"`antigravity` `gemini-4-argon-low` → `claudeAgent` `claude-fable-5-1` `max` → `claudeAgent` `claude-opus-5-5` `max` → {KIMI}",
     "implement": f"`claudeAgent` `claude-sonnet-5-5` `medium` → `grok` `grok-4.7` `xhigh` → {GLM} → `codex` `gpt-6.1-sol` `medium` → `antigravity` `gemini-3.8-flash-high`",
@@ -93,8 +93,8 @@ HARNESS_CHAINS = {
     },
     "codex": {
         "root": f"{SOL} `high` → {SOL} `medium` Fast → {SOL} `medium`",
-        "scout": "`gpt-6-luna` `medium` Fast",
-        "quick": "`gpt-6-luna` `medium` Fast",
+        "scout": "`gpt-6-luna` `high` Fast",
+        "quick": "`gpt-6-luna` `high` Fast",
         "writing": f"{TERRA} `medium`",
         "visual": f"{TERRA} `medium`",
         "implement": f"{TERRA} `medium`",
