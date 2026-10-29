@@ -681,7 +681,9 @@ def read_text(settings):
 
 def read_settings(settings):
     text = read_text(settings)
-    if text is None:
+    # An empty file holds nothing to keep. The Antigravity CLI creates its MCP
+    # config as a 0-byte file, which json.loads rejects.
+    if text is None or not text.strip():
         return {}
     try:
         current = json.loads(text)
