@@ -15,6 +15,7 @@ let
     openrouterKeyFile = "${keyDirectory}/openrouter_api_key";
   };
   roles = import ./omp-roles.nix;
+  fff = import ./fff-server.nix { inherit pkgs; };
   documents = config.my.omp.documents;
   declared = pkgs.writeText "omp-common-documents.json" (
     builtins.toJSON (lib.mapAttrs (_: path: toString path) documents)
@@ -84,7 +85,18 @@ in
         )
       );
       "models.yml" = lib.mkDefault (import ./omp-declarations.nix { inherit pkgs omp; });
-      "mcp.json" = lib.mkDefault (pkgs.writeText "omp-mcp.json" ''{"mcpServers":{}}'');
+      # Restored whole on apply, so a server added by hand lasts only until
+      # the next apply; the reconciler keeps a declared server's auth.
+      "mcp.json" = lib.mkDefault (
+        pkgs.writeText "omp-mcp.json" (
+          builtins.toJSON {
+            mcpServers.fff = {
+              type = "stdio";
+              inherit (fff) command args;
+            };
+          }
+        )
+      );
     };
 
     home.packages = [
