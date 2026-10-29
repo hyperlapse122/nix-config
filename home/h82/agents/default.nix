@@ -5,6 +5,7 @@
     ./claude.nix
     ./codex.nix
     ./cross-model-peers.nix
+    ./fff.nix
     ./gemini.nix
     ./grok.nix
     ./instructions
