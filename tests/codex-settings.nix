@@ -19,6 +19,8 @@
   - `--settings` is exactly ~/.codex/config.toml, read from the flags the
     merger is invoked with rather than from anywhere in the text.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
+  - applied in a scratch HOME, the merge adds `[mcp_servers.fff]` with the
+    fff-mcp store path and keeps the MCP server already in the file.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
   `lib.optionalString`, so a removed declaration fails inside the builder
@@ -101,6 +103,17 @@ let
       }
     ];
     remove = [ "developer_instructions" ];
+    # The fff MCP server by its store path, so the T3 Code Codex instance,
+    # which shares this file but not the login PATH, still starts it.
+    ownEntries = [
+      {
+        path = [ "mcp_servers" ];
+        entries.fff = {
+          command = "${pkgs.fff-mcp}/bin/fff-mcp";
+          args = [ "--no-update-check" ];
+        };
+      }
+    ];
   };
   expected = pkgs.writeText "codex-expected-settings.json" (builtins.toJSON declared);
 
@@ -136,7 +149,13 @@ let
     };
     projects."/scratch/project".trust_level = "trusted";
     plugins."example@local".enabled = true;
-    mcp_servers.local.command = "local-mcp-server";
+    mcp_servers = {
+      local.command = "local-mcp-server";
+      fff = {
+        command = "${pkgs.fff-mcp}/bin/fff-mcp";
+        args = [ "--no-update-check" ];
+      };
+    };
     check_for_update_on_startup = false;
     features = {
       apps = false;

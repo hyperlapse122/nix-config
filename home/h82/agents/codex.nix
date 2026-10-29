@@ -91,10 +91,21 @@ let
   # so a stale copy would hand Codex the old rules beside the current ones.
   retiredKeys = [ "developer_instructions" ];
 
+  # MCP servers are tables under mcp_servers, beside ones Codex apps and
+  # `codex mcp add` write there, so ownEntries upserts only the declared ones.
+  # The T3 Code Codex instance shares this file through homePath ~/.codex.
+  fff = import ./fff-server.nix { inherit pkgs; };
+
   declared = pkgs.writeText "codex-declared-settings.json" (
     builtins.toJSON {
       setPaths = declaredPaths;
       remove = retiredKeys;
+      ownEntries = [
+        {
+          path = [ "mcp_servers" ];
+          entries.fff = { inherit (fff) command args; };
+        }
+      ];
     }
   );
 in
@@ -112,7 +123,8 @@ in
         --format toml \
         --label Codex \
         --settings ${config.home.homeDirectory}/.codex/config.toml \
-        --declared ${declared}
+        --declared ${declared} \
+        --ledger ${config.home.homeDirectory}/.codex/config-ownership.json
     fi
   '';
 }

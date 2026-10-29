@@ -179,6 +179,11 @@ let
                 table = table[part]
             assert table.get(leaf) != entry["value"], f"seed already holds declared {entry['path']}"
             table[leaf] = entry["value"]
+        for entry in declared.get("ownEntries", []):
+            table = expected
+            for part in entry["path"]:
+                table = table.setdefault(part, {})
+            table.update(entry["entries"])
         target.write_text(seed)
         result = run()
         assert result.returncode == 0, result.stderr
