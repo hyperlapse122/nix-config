@@ -20,7 +20,9 @@
     merger is invoked with rather than from anywhere in the text.
   - no Home Manager file targets ~/.codex/config.toml, which Codex rewrites.
   - applied in a scratch HOME, the merge adds `[mcp_servers.fff]` with the
-    fff-mcp store path and keeps the MCP server already in the file.
+    fff-mcp store path and keeps the MCP server already in the file, and it
+    turns off the enabled `computer_use` feature and both bundled Computer Use
+    plugins while an unrelated plugin stays enabled.
 
   Every lookup carries an `or` fallback and every conditional block sits behind
   `lib.optionalString`, so a removed declaration fails inside the builder
@@ -101,6 +103,29 @@ let
         ];
         value = false;
       }
+      {
+        path = [
+          "features"
+          "computer_use"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "plugins"
+          "computer-use@openai-bundled"
+          "enabled"
+        ];
+        value = false;
+      }
+      {
+        path = [
+          "plugins"
+          "unified-computer-use@openai-bundled"
+          "enabled"
+        ];
+        value = false;
+      }
     ];
     remove = [ "developer_instructions" ];
     # The fff MCP server by its store path, so the T3 Code Codex instance,
@@ -126,6 +151,7 @@ let
     unrelated = "keep me"
     [features]
     apps = true
+    computer_use = true
     [agents]
     default_subagent_model = "old-child"
     default_subagent_reasoning_effort = "low"
@@ -133,6 +159,10 @@ let
     [projects."/scratch/project"]
     trust_level = "trusted"
     [plugins."example@local"]
+    enabled = true
+    [plugins."computer-use@openai-bundled"]
+    enabled = true
+    [plugins."unified-computer-use@openai-bundled"]
     enabled = true
     [mcp_servers.local]
     command = "local-mcp-server"
@@ -148,7 +178,11 @@ let
       max_threads = 3;
     };
     projects."/scratch/project".trust_level = "trusted";
-    plugins."example@local".enabled = true;
+    plugins = {
+      "example@local".enabled = true;
+      "computer-use@openai-bundled".enabled = false;
+      "unified-computer-use@openai-bundled".enabled = false;
+    };
     mcp_servers = {
       local.command = "local-mcp-server";
       fff = {
@@ -162,6 +196,7 @@ let
       in_app_updates = false;
       daemon_auto_start = false;
       memories = false;
+      computer_use = false;
     };
   };
   assertHost =

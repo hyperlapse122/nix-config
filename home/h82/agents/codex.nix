@@ -79,6 +79,32 @@ let
       ];
       value = false;
     }
+    {
+      path = [
+        "features"
+        "computer_use"
+      ];
+      value = false;
+    }
+    # The computer_use feature flag alone leaves the cua_repl MCP server, with
+    # its computer surface, that the unified-computer-use plugin starts. The
+    # ChatGPT desktop app installs and enables both plugins here.
+    {
+      path = [
+        "plugins"
+        "computer-use@openai-bundled"
+        "enabled"
+      ];
+      value = false;
+    }
+    {
+      path = [
+        "plugins"
+        "unified-computer-use@openai-bundled"
+        "enabled"
+      ];
+      value = false;
+    }
   ];
 
   # Keys this repository used to declare and has since retired. The merge only
