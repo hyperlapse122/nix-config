@@ -24,31 +24,6 @@
       }
     },
     {
-      "id": "hf:deepseek-ai/DeepSeek-V4.1-Flash",
-      "display_name": "DeepSeek V4.1 Flash",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
-      "context_length": 524288,
-      "max_output_length": 65536,
-      "pricing": {
-        "prompt": "$0.0000006",
-        "completion": "$0.0000012",
-        "input_cache_reads": "$0.00000003",
-        "input_cache_writes": "0"
-      },
-      "reasoning_parameters": {
-        "efforts": [
-          "none",
-          "low",
-          "high",
-          "xhigh",
-          "max"
-        ]
-      }
-    },
-    {
       "id": "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
       "display_name": "DeepSeek V4.1 Flash 10/17",
       "input_modalities": [
@@ -93,29 +68,6 @@
           "low",
           "high",
           "max"
-        ]
-      }
-    },
-    {
-      "id": "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
-      "display_name": "Nemotron 3 Super 120B",
-      "input_modalities": [
-        "text"
-      ],
-      "context_length": 262144,
-      "max_output_length": 65536,
-      "pricing": {
-        "prompt": "$0.0000003",
-        "completion": "$0.000001",
-        "input_cache_reads": "$0.00000006",
-        "input_cache_writes": "0"
-      },
-      "reasoning_parameters": {
-        "efforts": [
-          "none",
-          "low",
-          "medium",
-          "high"
         ]
       }
     },
