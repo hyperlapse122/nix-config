@@ -167,7 +167,7 @@ let
         env.pop("DRY_RUN", None)
         def run():
             return subprocess.run(["bash", "-euo", "pipefail", "-c", redirected], env=env, capture_output=True, text=True)
-        seed = 'model = "old-model"\nmodel_reasoning_effort = "old-effort"\nservice_tier = "old-tier"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "old-effort"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncustom = true\n'
+        seed = 'model = "old-model"\nmodel_reasoning_effort = "old-effort"\nservice_tier = "old-tier"\ncheck_for_update_on_startup = true\ndeveloper_instructions = "retired"\ncustom = "keep"\n[agents]\ndefault_subagent_model = "old-child"\ndefault_subagent_reasoning_effort = "old-effort"\nmax_threads = 3\n[features]\nin_app_updates = true\ndaemon_auto_start = true\nmemories = true\ncomputer_use = true\ncustom = true\n[plugins."computer-use@openai-bundled"]\nenabled = true\n[plugins."unified-computer-use@openai-bundled"]\nenabled = true\n'
         expected = tomllib.loads(seed)
         for key in declared["remove"]:
             assert key in expected, f"seed lacks retired key {key}"
