@@ -34,9 +34,9 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pkgs.writableTmpDirAsHomeHook
   ];
 
-  # The app and update flags hold under any CODEX_HOME, including a home a T3 Code
-  # instance gets when it declares one, whose config.toml never receives the
-  # declared settings.
+  # The app, Computer Use, and update flags hold under any CODEX_HOME, including
+  # a home a T3 Code instance gets when it declares one, whose config.toml never
+  # receives the declared settings.
   # daemon_auto_start would install and update a background copy of Codex
   # outside the store; nixpkgs patches it off, which a prebuilt pin cannot.
   # Codex spawns codex-code-mode-host from beside its own executable, never
@@ -51,7 +51,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
       --prefix PATH : ${
         lib.makeBinPath ([ pkgs.ripgrep ] ++ lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.bubblewrap)
       } \
-      --add-flags "-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start --disable apps"
+      --add-flags "-c check_for_update_on_startup=false --disable in_app_updates --disable daemon_auto_start --disable apps --disable computer_use"
 
     runHook postInstall
   '';

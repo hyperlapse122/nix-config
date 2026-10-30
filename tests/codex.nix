@@ -14,9 +14,11 @@
   - under two different `CODEX_HOME`s, one standing for a home a T3 Code
     instance would get only by declaring one, whose config.toml never
     receives the declared keys, `codex features list` reports `apps`,
-    `in_app_updates`, and `daemon_auto_start` as false even if config enables
-    apps. The unwrapped binary beside it reports these as true, so the
-    assertion cannot pass on a default that already is false.
+    `in_app_updates`, `daemon_auto_start`, and `computer_use` as false even if
+    config enables apps and Computer Use. The unwrapped binary beside it reports
+    the first three as true, so the assertion cannot pass on a default that
+    already is false; Computer Use relies on the config enabling it instead,
+    because its default on Linux is not established.
   - the wrapper carries `check_for_update_on_startup=false`, which has no
     feature listing to read, so its text is the only place to see it.
   - the bundled model catalog lists `gpt-6.1-sol`, the model the cross-model
@@ -49,6 +51,7 @@ let
     "-c check_for_update_on_startup=false"
     "--disable in_app_updates"
     "--disable daemon_auto_start"
+    "--disable computer_use"
   ];
   userPackageOf =
     pname: entry:
@@ -98,7 +101,7 @@ pkgs.runCommand "codex-tests" { } ''
 
   for home in "$HOME/.codex" "$PWD/provider-home"; do
     mkdir -p "$home"
-    printf '[features]\napps = true\n' > "$home/config.toml"
+    printf '[features]\napps = true\ncomputer_use = true\n' > "$home/config.toml"
     if [ "$home" = "$HOME/.codex" ]; then
       listing=$(env -u CODEX_HOME "$wrapper" features list 2>/dev/null) || fail=1
     else
@@ -108,7 +111,7 @@ pkgs.runCommand "codex-tests" { } ''
       echo "codex features list failed under $home" >&2
       fail=1
     fi
-    for feature in apps in_app_updates daemon_auto_start; do
+    for feature in apps in_app_updates daemon_auto_start computer_use; do
       if ! grep -Eq "^$feature +[a-z ]*false$" <<< "$listing"; then
         echo "the wrapper leaves $feature enabled under CODEX_HOME=$home" >&2
         fail=1
